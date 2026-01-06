@@ -1,0 +1,199 @@
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
+import Grid from "@mui/material/Grid";
+import { Box, Button, Typography } from "@mui/material";
+import { useRouter } from "next/router";
+import SummarySleeve from "./summary-sleeve";
+import SizesList from "../summary-sizes";
+import BASE_URL from "Base/api";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import DocumentListTShirt from "./document-list";
+import FabListInq from "../summary-fab";
+import SumTable from "../summary-table";
+import { DashboardSummaryHeader } from "@/components/shared/dashboard-summary-header";
+
+export default function Summary() {
+  const router = useRouter();
+  const [status, setStatus] = useState();
+  const inqType = router.query.inqType;
+  const from = router.query.from;
+  const optionDetails = JSON.parse(localStorage.getItem("OptionDetails"));
+  const inquiryDetails = JSON.parse(localStorage.getItem("InquiryDetails"));
+  const customerName = inquiryDetails.customerName;
+  const optionName = optionDetails.optionName;
+
+  const window =
+    optionDetails.windowType == 1
+      ? "T-Shirt"
+      : optionDetails.windowType == 2
+      ? "Shirt"
+      : optionDetails.windowType == 3
+      ? "Cap"
+      : optionDetails.windowType == 4
+      ? "Visor"
+      : optionDetails.windowType == 5
+      ? "Hat"
+      : optionDetails.windowType == 6
+      ? "Bag"
+      : optionDetails.windowType == 7
+      ? "Bottom"
+      : "Short";
+  const navToPrev = () => {
+    if (from) {
+      router.push({
+        pathname: "/production/ongoing/select-fabric/",
+        query: { inqType: inqType },
+      });
+    } else {
+      router.push({
+        pathname: `/production/ongoing/tshirt/document-panel/`,
+        query: { inqType: inqType },
+      });
+    }
+  };
+
+  const fetchQuotationDataList = async () => {
+    try {
+      const response = await fetch(
+        `${BASE_URL}/Inquiry/GetInquirySummeryHeaderBYOptionID?InquiryID=${optionDetails.inquiryID}&OptionId=${optionDetails.id}&WindowType=${optionDetails.windowType}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch Quotation List");
+      }
+
+      const data = await response.json();
+      if (data.result) {
+        setStatus(data.result.approvedStatus);
+      }
+    } catch (error) {
+      console.error("Error fetching Quotation List:", error);
+    }
+  };
+
+  const handleSaveValues = () => {
+    const dataFromLocalStorage = JSON.parse(localStorage.getItem("data"));
+    const token = localStorage.getItem("token");
+    const bodyData = {
+      InquiryID: optionDetails.inquiryID,
+      InqCode: optionDetails.inqCode,
+      WindowType: optionDetails.windowType,
+      OptionId: optionDetails.id,
+      InqOptionName: optionDetails.optionName,
+      TotalUnits: parseFloat(dataFromLocalStorage.totalUnits),
+      UnitCost: parseFloat(dataFromLocalStorage.unitCost),
+      TotalCost: parseFloat(dataFromLocalStorage.totalCost),
+      ProfitPercentage: parseFloat(dataFromLocalStorage.profitPercentage),
+      UnitProfit: parseFloat(dataFromLocalStorage.profit),
+      TotalProfit: parseFloat(dataFromLocalStorage.totalProfit),
+      SellingPrice: parseFloat(dataFromLocalStorage.sellingPrice),
+      Revanue: parseFloat(dataFromLocalStorage.revenue),
+      ApprovedStatus: 0,
+      ApprvedUnitCost: parseFloat(dataFromLocalStorage.unitCost) || 0,
+      ApprvedTotalCost: parseFloat(dataFromLocalStorage.totalCost) || 0,
+      ApprvedProfitPercentage:
+        parseFloat(dataFromLocalStorage.profitPercentage) || 0,
+      ApprvedUnitProfit: parseFloat(dataFromLocalStorage.profit) || 0,
+      ApprvedTotalProfit: parseFloat(dataFromLocalStorage.totalProfit) || 0,
+      ApprvedSellingPrice: parseFloat(dataFromLocalStorage.sellingPrice) || 0,
+      ApprvedRevanue: parseFloat(dataFromLocalStorage.revenue) || 0,
+      ApprvedTotalUnits: parseFloat(dataFromLocalStorage.totalUnits) || 0,
+    };
+    fetch(`${BASE_URL}/Inquiry/CreateOrUpdateInquirySummeryHeader`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(bodyData),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.statusCode == 200) {
+          toast.success(data.message);
+        } else {
+          toast.error(data.message);
+        }
+      })
+      .catch((error) => {
+        toast.error(error.message || "");
+      });
+  };
+
+  useEffect(() => {
+    fetchQuotationDataList();
+  }, []);
+
+  return (
+    <>
+      <ToastContainer />
+
+      <DashboardSummaryHeader
+        customerName={customerName}
+        optionName={optionName}
+        inquiryDetails={inquiryDetails.styleName}
+        window={window}
+        href="/production/ongoing/"
+        link="Ongoing Inquiries"
+        title="Summary"
+      />
+
+      <Grid
+        container
+        rowSpacing={1}
+        columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}
+      >
+        <Grid item xs={12} display="flex" justifyContent="space-between">
+          <Typography fontWeight="bold">Summary</Typography>
+          <Box display="flex" sx={{ gap: "10px" }}>
+            <Button onClick={navToPrev} variant="outlined" color="primary">
+              previous
+            </Button>
+            <Link href="/production/ongoing/select-inquiry/">
+              <Button variant="outlined" color="primary">
+                main menu
+              </Button>
+            </Link>
+            <Button
+              onClick={handleSaveValues}
+              disabled={status == 1 ? true : false}
+              variant="outlined"
+              color="primary"
+            >
+              done
+            </Button>
+          </Box>
+        </Grid>
+        <Grid item xs={12}>
+          <Grid container>
+            <Grid item xs={12} p={1} lg={5}>
+              <SumTable />
+              <SummarySleeve />
+            </Grid>
+            <Grid item xs={12} p={1} lg={7}>
+              <Grid container>
+                <Grid item xs={12}>
+                  <DocumentListTShirt />
+                </Grid>
+                <Grid item xs={12}>
+                  <FabListInq />
+                </Grid>
+              </Grid>
+            </Grid>
+            <Grid item xs={12} p={1}>
+              <SizesList />
+            </Grid>
+          </Grid>
+        </Grid>
+      </Grid>
+    </>
+  );
+}

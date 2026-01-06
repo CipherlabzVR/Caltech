@@ -1,0 +1,14 @@
+.actionButton {
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.actionButton:hover {
+  background-color: rgba(94, 129, 244, 0.1);
+}
+
+.activeButton {
+  background-color: rgba(94, 129, 244, 0.15);
+  color: #5e81f4;
+}
+

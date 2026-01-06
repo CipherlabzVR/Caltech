@@ -1,0 +1,238 @@
+[1mdiff --git a/components/ProjectManagementModule/ProjectFormDialog.js b/components/ProjectManagementModule/ProjectFormDialog.js[m
+[1mindex cfe1606..7533810 100644[m
+[1m--- a/components/ProjectManagementModule/ProjectFormDialog.js[m
+[1m+++ b/components/ProjectManagementModule/ProjectFormDialog.js[m
+[36m@@ -17,6 +17,118 @@[m [mimport { Formik } from "formik";[m
+ import * as Yup from "yup";[m
+ import dayjs from "dayjs";[m
+ [m
+[32m+[m[32mconst normalizeToArray = (data) => {[m
+[32m+[m[32m  if (Array.isArray(data)) return data;[m
+[32m+[m[32m  if (Array.isArray(data?.result)) return data.result;[m
+[32m+[m[32m  if (Array.isArray(data?.result?.items)) return data.result.items;[m
+[32m+[m[32m  if (Array.isArray(data?.data)) return data.data;[m
+[32m+[m[32m  if (Array.isArray(data?.data?.items)) return data.data.items;[m
+[32m+[m[32m  if (Array.isArray(data?.items)) return data.items;[m
+[32m+[m[32m  if (data && typeof data === "object") {[m
+[32m+[m[32m    const firstArray = Object.values(data).find((value) => Array.isArray(value));[m
+[32m+[m[32m    if (firstArray) return firstArray;[m
+[32m+[m[32m  }[m
+[32m+[m[32m  return [];[m
+[32m+[m[32m};[m
+[32m+[m
+[32m+[m[32mconst toNumericId = (value) => {[m
+[32m+[m[32m  if (value === null || value === undefined) return null;[m
+[32m+[m[32m  const parsed = Number(value);[m
+[32m+[m[32m  return Number.isNaN(parsed) ? null : parsed;[m
+[32m+[m[32m};[m
+[32m+[m
+[32m+[m[32mconst getCustomerLabel = (customer) => {[m
+[32m+[m[32m  if (!customer) return "";[m
+[32m+[m[32m  if (customer.displayName) return customer.displayName;[m
+[32m+[m
+[32m+[m[32m  const name = [customer.firstName, customer.lastName].filter(Boolean).join(" ").trim();[m
+[32m+[m[32m  if (name) return name;[m
+[32m+[m
+[32m+[m[32m  return ([m
+[32m+[m[32m    customer.company ||[m
+[32m+[m[32m    customer.companyName ||[m
+[32m+[m[32m    customer.customerName ||[m
+[32m+[m[32m    customer.emailAddress ||[m
+[32m+[m[32m    customer.email ||[m
+[32m+[m[32m    ""[m
+[32m+[m[32m  );[m
+[32m+[m[32m};[m
+[32m+[m
+[32m+[m[32mconst buildCustomerOptions = (customersData) => {[m
+[32m+[m[32m  const normalized = normalizeToArray(customersData);[m
+[32m+[m[32m  const seen = new Set();[m
+[32m+[m
+[32m+[m[32m  return normalized[m
+[32m+[m[32m    .map((customer) => {[m
+[32m+[m[32m      const candidateIds = [[m
+[32m+[m[32m        customer?.id,[m
+[32m+[m[32m        customer?.customerId,[m
+[32m+[m[32m        customer?.customer?.id,[m
+[32m+[m[32m        customer?.customer?.customerId,[m
+[32m+[m[32m      ];[m
+[32m+[m
+[32m+[m[32m      const idCandidate = candidateIds.find([m
+[32m+[m[32m        (candidate) => candidate !== null && candidate !== undefined[m
+[32m+[m[32m      );[m
+[32m+[m
+[32m+[m[32m      const id = toNumericId(idCandidate);[m
+[32m+[m[32m      const label = getCustomerLabel(customer);[m
+[32m+[m
+[32m+[m[32m      if (!id && !label) return null;[m
+[32m+[m[32m      if (id && seen.has(id)) return null;[m
+[32m+[m
+[32m+[m[32m      if (id) {[m
+[32m+[m[32m        seen.add(id);[m
+[32m+[m[32m      }[m
+[32m+[m
+[32m+[m[32m      return {[m
+[32m+[m[32m        ...customer,[m
+[32m+[m[32m        id,[m
+[32m+[m[32m        label,[m
+[32m+[m[32m      };[m
+[32m+[m[32m    })[m
+[32m+[m[32m    .filter(Boolean);[m
+[32m+[m[32m};[m
+[32m+[m
+[32m+[m[32mconst extractCustomerContact = (customer) => {[m
+[32m+[m[32m  if (!customer) {[m
+[32m+[m[32m    return { phone: "", email: "" };[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  const phoneCandidates = [[m
+[32m+[m[32m    customer.phoneNumber,[m
+[32m+[m[32m    customer.mobileNumber,[m
+[32m+[m[32m    customer.contactNumber,[m
+[32m+[m[32m    customer.contactNo,[m
+[32m+[m[32m    customer.telephone,[m
+[32m+[m[32m    customer.phone,[m
+[32m+[m[32m    customer.phoneNo,[m
+[32m+[m[32m    customer.primaryContact?.phoneNumber,[m
+[32m+[m[32m    customer.primaryContact?.contactNumber,[m
+[32m+[m[32m    customer.customer?.phoneNumber,[m
+[32m+[m[32m  ];[m
+[32m+[m
+[32m+[m[32m  const emailCandidates = [[m
+[32m+[m[32m    customer.emailAddress,[m
+[32m+[m[32m    customer.email,[m
+[32m+[m[32m    customer.mailAddress,[m
+[32m+[m[32m    customer.primaryContact?.emailAddress,[m
+[32m+[m[32m    customer.primaryContact?.email,[m
+[32m+[m[32m    customer.customer?.emailAddress,[m
+[32m+[m[32m  ];[m
+[32m+[m
+[32m+[m[32m  const phone =[m
+[32m+[m[32m    phoneCandidates.find([m
+[32m+[m[32m      (value) => typeof value === "string" && value.trim().length > 0[m
+[32m+[m[32m    ) || "";[m
+[32m+[m[32m  const email =[m
+[32m+[m[32m    emailCandidates.find([m
+[32m+[m[32m      (value) => typeof value === "string" && value.trim().length > 0[m
+[32m+[m[32m    ) || "";[m
+[32m+[m
+[32m+[m[32m  return { phone, email };[m
+[32m+[m[32m};[m
+[32m+[m
+ const validationSchema = Yup.object().shape({[m
+   name: Yup.string().required("Project name is required"),[m
+   clientName: Yup.string().required("Client name is required"),[m
+[36m@@ -41,6 +153,7 @@[m [mconst validationSchema = Yup.object().shape({[m
+   endDate: Yup.date()[m
+     .required("End date is required")[m
+     .min(Yup.ref("startDate"), "End date cannot be earlier than start date"),[m
+[32m+[m[32m  customerId: Yup.number().nullable(),[m
+ });[m
+ [m
+ const ProjectFormDialog = ({[m
+[36m@@ -50,6 +163,8 @@[m [mconst ProjectFormDialog = ({[m
+   initialValues,[m
+   teamMembers = [],[m
+   title = "New Project",[m
+[32m+[m[32m  customersData,[m
+[32m+[m[32m  customersLoading = false,[m
+ }) => {[m
+   const defaultValues = useMemo([m
+     () => ({[m
+[36m@@ -66,11 +181,17 @@[m [mconst ProjectFormDialog = ({[m
+       description: "",[m
+       notes: "",[m
+       memberIds: [],[m
+[32m+[m[32m      customerId: null,[m
+       ...(initialValues || {}),[m
+     }),[m
+     [initialValues][m
+   );[m
+ [m
+[32m+[m[32m  const customerOptions = useMemo([m
+[32m+[m[32m    () => buildCustomerOptions(customersData),[m
+[32m+[m[32m    [customersData][m
+[32m+[m[32m  );[m
+[32m+[m
+   return ([m
+     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>[m
+       <DialogTitle sx={{ fontWeight: 600 }}>{title}</DialogTitle>[m
+[36m@@ -126,6 +247,47 @@[m [mconst ProjectFormDialog = ({[m
+                       helperText={touched.name && errors.name}[m
+                     />[m
+                   </Grid>[m
+[32m+[m[32m                  <Grid item xs={12} md={6}>[m
+[32m+[m[32m                    <Autocomplete[m
+[32m+[m[32m                      options={customerOptions}[m
+[32m+[m[32m                      value={[m
+[32m+[m[32m                        customerOptions.find([m
+[32m+[m[32m                          (customer) =>[m
+[32m+[m[32m                            toNumericId(customer.id) === toNumericId(values.customerId)[m
+[32m+[m[32m                        ) || null[m
+[32m+[m[32m                      }[m
+[32m+[m[32m                      onChange={(_, newValue) => {[m
+[32m+[m[32m                        setFieldValue([m
+[32m+[m[32m                          "customerId",[m
+[32m+[m[32m                          newValue ? toNumericId(newValue.id) : null[m
+[32m+[m[32m                        );[m
+[32m+[m[32m                        if (newValue) {[m
+[32m+[m[32m                          setFieldValue("clientName", newValue.label || "");[m
+[32m+[m[32m                          const { phone, email } = extractCustomerContact(newValue);[m
+[32m+[m[32m                          if (phone) {[m
+[32m+[m[32m                            setFieldValue("clientPhoneNumber", phone);[m
+[32m+[m[32m                          }[m
+[32m+[m[32m                          if (email) {[m
+[32m+[m[32m                            setFieldValue("clientEmail", email);[m
+[32m+[m[32m                          }[m
+[32m+[m[32m                        }[m
+[32m+[m[32m                      }}[m
+[32m+[m[32m                      getOptionLabel={(option) => option?.label ?? ""}[m
+[32m+[m[32m                      isOptionEqualToValue={(option, value) =>[m
+[32m+[m[32m                        toNumericId(option?.id) === toNumericId(value?.id)[m
+[32m+[m[32m                      }[m
+[32m+[m[32m                      loading={customersLoading}[m
+[32m+[m[32m                      loadingText="Loading customers..."[m
+[32m+[m[32m                      noOptionsText={customersLoading ? "Loading..." : "No customers found"}[m
+[32m+[m[32m                      renderInput={(params) => ([m
+[32m+[m[32m                        <TextField[m
+[32m+[m[32m                          {...params}[m
+[32m+[m[32m                          label="Customer"[m
+[32m+[m[32m                          placeholder="Select customer"[m
+[32m+[m[32m                        />[m
+[32m+[m[32m                      )}[m
+[32m+[m[32m                    />[m
+[32m+[m[32m                  </Grid>[m
+                   <Grid item xs={12} md={6}>[m
+                     <TextField[m
+                       name="clientName"[m
+[1mdiff --git a/pages/pmo/projects/index.js b/pages/pmo/projects/index.js[m
+[1mindex da20a6e..accab9d 100644[m
+[1m--- a/pages/pmo/projects/index.js[m
+[1m+++ b/pages/pmo/projects/index.js[m
+[36m@@ -29,6 +29,7 @@[m [mimport {[m
+ } from "@/Services/projectManagementService";[m
+ import dayjs from "dayjs";[m
+ import { useRouter } from "next/router";[m
+[32m+[m[32mimport useApi from "@/components/utils/useApi";[m
+ [m
+ const statusOptions = [[m
+   { label: "All", value: "" },[m
+[36m@@ -50,6 +51,10 @@[m [mconst Projects = () => {[m
+     status: "",[m
+     search: "",[m
+   });[m
+[32m+[m[32m  const {[m
+[32m+[m[32m    data: customersData,[m
+[32m+[m[32m    loading: customersLoading,[m
+[32m+[m[32m  } = useApi("/Customer/GetAllCustomer");[m
+ [m
+   const loadTeamMembers = useCallback(async () => {[m
+     try {[m
+[36m@@ -305,6 +310,8 @@[m [mconst Projects = () => {[m
+         onClose={() => setProjectDialogOpen(false)}[m
+         onSubmit={handleCreateProject}[m
+         teamMembers={teamMembers}[m
+[32m+[m[32m        customersData={customersData}[m
+[32m+[m[32m        customersLoading={customersLoading}[m
+       />[m
+ [m
+       <ProjectDetailDialog[m

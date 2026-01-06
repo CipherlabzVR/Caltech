@@ -1,0 +1,430 @@
+import React from "react";
+import {
+    KeyboardArrowRight as ArrowRight,
+    KeyboardArrowDown as ArrowDown,
+    GridView as GridIcon,
+    AdminPanelSettings as AdminIcon,
+    AssessmentOutlined as ReportIcon,
+    Brush as BrushIcon,
+    Folder as FolderIcon,
+    DesignServices as DesignIcon,
+    AttachMoney,
+    AssignmentTurnedIn as ProjectIcon,
+} from "@mui/icons-material";
+import ReceiptIcon from '@mui/icons-material/Receipt';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import { ProjectNo } from "Base/catelogue";
+import DescriptionIcon from "@mui/icons-material/Description";
+import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+import BeenhereOutlinedIcon from "@mui/icons-material/BeenhereOutlined";
+import EventSeatOutlinedIcon from "@mui/icons-material/EventSeatOutlined";
+import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing';
+import FastfoodIcon from '@mui/icons-material/Fastfood';
+import CallIcon from '@mui/icons-material/Call';
+import People from '@mui/icons-material/People';
+import SupportAgentIcon from '@mui/icons-material/SupportAgent';
+import StorefrontIcon from '@mui/icons-material/Storefront';
+import WorkIcon from '@mui/icons-material/Work';
+import FactoryIcon from '@mui/icons-material/Factory';
+
+
+export const getSidebarData = (IsGarmentSystem) => {
+    const sidebarData = [
+        {
+            title: "Dashboard",
+            path: "/dashboard/dashboard/",
+            icon: <GridIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 7,
+            IsAvailable: true,
+            subNav: [
+                { title: "Dashboard", path: "/dashboard/main", categoryId: 39, isAvailable: true },
+                { title: "Dashboard", path: "/dashboard/pos", categoryId: 60, isAvailable: true },
+                { title: "Dashboard", path: "/dashboard/reservation", categoryId: 61, isAvailable: true },
+                { title: "Help Desk Dashboard", path: "/dashboard/help-desk", categoryId: 107, isAvailable: true },
+                { title: "My Help Desk Dashboard", path: "/dashboard/help-desk/self", categoryId: 107, isAvailable: true, userTypeRestriction: 14 }, // Only for HelpDeskSupport
+            ],
+        },
+        {
+            title: "Project Management",
+            path: "/pmo/dashboard",
+            icon: <ProjectIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 21,
+            IsAvailable: true,
+            subNav: [
+                { title: "Dashboard", path: "/pmo/dashboard", categoryId: 119, isAvailable: true },
+                { title: "Projects", path: "/pmo/projects", categoryId: 120, isAvailable: true },
+                { title: "Tasks", path: "/pmo/tasks", categoryId: 121, isAvailable: true },
+                { title: "Team", path: "/pmo/team", categoryId: 122, isAvailable: true },
+                { title: "Timeline", path: "/pmo/timeline", categoryId: 123, isAvailable: true },
+                { title: "Financials", path: "/pmo/financials", categoryId: 124, isAvailable: true },
+                { title: "Reports", path: "/pmo/reports", categoryId: 125, isAvailable: true },
+            ],
+        },
+        {
+            title: "Finance",
+            path: "/finance/finance/",
+            icon: <AttachMoney />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 10,
+            IsAvailable: true,
+            subNav: [
+                { title: "Chart Of Account", path: "/finance/chart-of-account/", categoryId: 41, isAvailable: true },
+                { title: "Payments", path: "/finance/payments/", categoryId: 42, isAvailable: true },
+                { title: "Tax", path: "/finance/tax/", categoryId: 58, isAvailable: true },
+                { title: "Bank History", path: "/finance/bank-history/", categoryId: 97, isAvailable: true },
+                { title: "Cheque Payments", path: "/finance/cheque-payments/", categoryId: 98, isAvailable: true },
+            ],
+        },
+        {
+            title: "HR",
+            path: "/hr/hr/",
+            icon: <WorkIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 6,
+            IsAvailable: true,
+            subNav: [
+                { title: "Recruitment", path: "/hr/recruitment/", categoryId: 126, isAvailable: true },
+                { title: "Employee Lifecycle", path: "/hr/employee-lifecycle/", categoryId: 127, isAvailable: true },
+                { title: "Shift Attendance", path: "/hr/shifts-attendance/", categoryId: 128, isAvailable: true },
+                { title: "Leave Management", path: "/hr/leave-management/", categoryId: 129, isAvailable: true },
+                { title: "Expense Management", path: "/hr/expense-management/", categoryId: 130, isAvailable: true },
+                { title: "Performance Management", path: "/hr/performance-management/", categoryId: 131, isAvailable: true },
+                { title: "Payroll", path: "/hr/payroll/", categoryId: 132, isAvailable: true },
+                { title: "Payroll Tax", path: "/hr/payroll-tax/", categoryId: 133, isAvailable: true },
+            ],
+        },
+        {
+            title: "Master Data",
+            path: "/master/master/",
+            icon: <FolderIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 1,
+            IsAvailable: true,
+            subNav: [
+                { title: "Customers", path: "/master/customers/", categoryId: 1, isAvailable: true },
+                { title: "Sales Person", path: "/master/sales-person/", categoryId: 2, isAvailable: true },
+                { title: "Inquiry Category", path: "/master/inquiry/", categoryId: 3, isAvailable: true },
+                { title: "Fabric", path: "/master/fabric/", categoryId: 4, isAvailable: true },
+                { title: "GSM", path: "/master/gsm/", categoryId: 5, isAvailable: true },
+                { title: "Composition", path: "/master/composition/", categoryId: 6, isAvailable: true },
+                { title: "Supplier", path: "/master/supplier/", categoryId: 7, isAvailable: true },
+                { title: "Color Code", path: "/master/color-code/", categoryId: 8, isAvailable: true },
+                { title: "Size", path: "/master/size/", categoryId: 9, isAvailable: true },
+                { title: "Items", path: "/master/items/", categoryId: 10, isAvailable: true },
+                { title: "Unit of Measures", path: "/master/uom/", categoryId: 11, isAvailable: true },
+                { title: "Category", path: "/master/category/", categoryId: 12, isAvailable: true },
+                { title: "Sub Category", path: "/master/sub-category/", categoryId: 13, isAvailable: true },
+                { title: "Orders", path: "/master/orders/", categoryId: 16, isAvailable: true },
+                { title: "Bank", path: "/master/bank/", categoryId: 15, isAvailable: true },
+                { title: "Cash Flow Types", path: "/master/cash-flow/", categoryId: 59, isAvailable: true },
+                { title: "Doctors", path: "/master/doctors/", categoryId: 70, isAvailable: true },
+                { title: "Tasks", path: "/master/tasks/", categoryId: 63, isAvailable: true },
+                { title: "Packages", path: "/master/package/", categoryId: 65, isAvailable: true },
+                { title: "Time Slots", path: "/master/time-slots/", categoryId: 66, isAvailable: true },
+                { title: "Day Type", path: "/master/day-type/", categoryId: 76, isAvailable: true },
+                { title: "OT Type", path: "/master/ot-type/", categoryId: 79, isAvailable: true },
+                { title: "Shift", path: "/master/shift/", categoryId: 81, isAvailable: true },
+                { title: "Employment Type", path: "/master/employment-type/", categoryId: 80, isAvailable: true },
+                { title: "Company", path: "/master/company/", categoryId: 82, isAvailable: true },
+                { title: "Classifications", path: "/master/classifications/", categoryId: 83, isAvailable: true },
+                { title: "Job Title", path: "/master/job-title/", categoryId: 84, isAvailable: true },
+                { title: "Department", path: "/master/department/", categoryId: 84, isAvailable: true },
+                { title: "Person Title", path: "/master/person-title/", categoryId: 85, isAvailable: true },
+                { title: "Portion", path: "/master/portion/", categoryId: 86, isAvailable: true },
+                { title: "Kitchen", path: "/master/kitchen/", categoryId: 87, isAvailable: true },
+                { title: "Menu List", path: "/master/menu-list/", categoryId: 88, isAvailable: true },
+                { title: "Dinning Table", path: "/master/table/", categoryId: 89, isAvailable: true },
+                { title: "Steward", path: "/master/steward/", categoryId: 90, isAvailable: true },
+                { title: "Employee", path: "/master/Employee/", categoryId: 93, isAvailable: true },
+                { title: "Combo Meal", path: "/master/combo/", categoryId: 94, isAvailable: true },
+                { title: "DBR Machine", path: "/master/dbr-machine/", categoryId: 100, isAvailable: true },
+                { title: "Projects", path: "/master/projects/", categoryId: 53, isAvailable: true },
+                { title: "Delivery Methods", path: "/master/delivery-methods/", categoryId: 147, isAvailable: true },
+                { title: "Department", path: "/master/department/", categoryId: 78, isAvailable: true },
+                { title: "Currency", path: "/master/currency/", categoryId: 148, isAvailable: true },
+            ],
+        },
+        {
+            title: "ECommerce",
+            path: "/ecom/ecom/",
+            icon: <StorefrontIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 20,
+            IsAvailable: true,
+            subNav: [
+                { title: "Online Orders", path: "/ecom/orders/", categoryId: 107, isAvailable: true },
+            ],
+        },
+        {
+            title: "Apparel",
+            path: "/inquiry/Inquiry/",
+            icon: <DesignIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 8,
+            IsAvailable: true,
+            subNav: [
+                {
+                    title: "Inquiry",
+                    path: "/inquiry/inquries/",
+                    categoryId: 51,
+                    isAvailable: true
+                },
+                {
+                    title: "Pending Quotations",
+                    path: "/quotations/pending-quotation/",
+                    categoryId: 52,
+                    isAvailable: true,
+                },
+                {
+                    title: "Approved Quotations",
+                    path: "/quotations/approved-quotation/",
+                    categoryId: 54,
+                    isAvailable: true,
+                },
+                { title: "Sent Quotations", path: "/quotations/sent-list/", categoryId: 71, isAvailable: true },
+                { title: "Proforma Invoice", path: "/quotations/proforma-list/", categoryId: 72, isAvailable: true },
+                { title: "Tech Pack", path: "/quotations/tech-pack/", categoryId: 73, isAvailable: true },
+                { title: "Sample", path: "/quotations/sample/", categoryId: 74, isAvailable: true },
+                { title: "Projects", path: "/production/projects/", categoryId: 53, isAvailable: true },
+                { title: "My Tasks", path: "/production/tasks/", categoryId: 55, isAvailable: true },
+                { title: "Ongoing", path: "/production/ongoing/", categoryId: 56, isAvailable: true },
+                { title: "Follow Up", path: "/production/follow-up/", categoryId: 75, isAvailable: true },
+            ],
+        },
+        {
+            title: "Inventory",
+            path: "/inventory/inventory/",
+            icon: <InventoryIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 2,
+            IsAvailable: true,
+            subNav: [
+                { title: "Goods Receive Note", path: "/inventory/grn/", categoryId: 17, isAvailable: true },
+                { title: "Purchase Order Note", path: "/inventory/purchase-order/", categoryId: 18, isAvailable: true },
+                { title: "Shipment", path: "/inventory/shipment/", categoryId: 19, isAvailable: true },
+                { title: "Outlet Note", path: "/inventory/outlet-note/", categoryId: 20, isAvailable: true },
+                { title: "Stock Dispatch", path: "/inventory/stock-dispatch/", categoryId: 21, isAvailable: true },
+                { title: "Stock Adjustment", path: "/inventory/stock-adjustment/", categoryId: 40, isAvailable: true },
+                { title: "Stock Transfer Note", path: "/inventory/stock-transfer/", categoryId: 69, isAvailable: true },
+                { title: "Goods Return Note", path: "/inventory/grn-return/", categoryId: 77, isAvailable: true },
+            ],
+        },
+        {
+            title: "Sales",
+            path: "/sales/sales/",
+            icon: <ReceiptIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 3,
+            IsAvailable: true,
+            subNav: [
+                { title: "Invoice", path: "/sales/invoice/", categoryId: 22, isAvailable: true },
+                { title: "Customer Credit/Debit Notes", path: "/sales/credit-note/", categoryId: 23, isAvailable: true },
+                { title: "Receipt", path: "/sales/receipt/", categoryId: 24, isAvailable: true },
+                { title: "Shift", path: "/sales/shift/", categoryId: 25, isAvailable: true },
+                { title: "Day End", path: "/sales/day-end/", categoryId: 26, isAvailable: true },
+                { title: "Daily Deposit", path: "/sales/deposit/", categoryId: 27, isAvailable: true },
+                { title: "Sales Return", path: "/sales/sales-return/", categoryId: 62, isAvailable: true },
+                { title: "POS Shift", path: "/sales/pos-shift/", categoryId: 95, isAvailable: true },
+                { title: "POS Day End", path: "/sales/pos-dayend/", categoryId: 96, isAvailable: true },
+                { title: "Shift Summary", path: "/sales/summary/", categoryId: 104, isAvailable: true },
+                { title: "Cash In/Out", path: "/sales/cash-in-out/", categoryId: 117, isAvailable: true },
+                { title: "Bank Payments", path: "/sales/bank-payments/", categoryId: 118, isAvailable: true },
+            ],
+        },
+        {
+            title: "Restaurant POS",
+            path: "/restaurant/restaurant/",
+            icon: <FastfoodIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 16,
+            IsAvailable: true,
+            subNav: [
+                { title: "Dashboard", path: "/restaurant/dashboard/", categoryId: 91, isAvailable: true },
+            ],
+        },
+        {
+            title: "Production",
+            path: "/production/production/",
+            icon: <PrecisionManufacturingIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 15,
+            IsAvailable: true,
+            subNav: [
+                { title: "Bill Of Material", path: "/production/bom/", categoryId: 14, isAvailable: true },
+            ],
+        },
+        {
+            title: "Manufacture",
+            path: "/manufacture/manufacture/",
+            icon: <FactoryIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 22,
+            IsAvailable: true,
+            subNav: [
+                { title: "Customers", path: "/manufacture/customer/", categoryId: 144, isAvailable: true },
+                { title: "Projects", path: "/manufacture/projects/", categoryId: 145, isAvailable: true },
+                { title: "Bill Of Material", path: "/manufacture/bom/", categoryId: 139, isAvailable: true },
+                { title: "Bill Of Quantities", path: "/manufacture/boq/", categoryId: 140, isAvailable: true },
+                { title: "Material Request Note", path: "/manufacture/material-request-note/", categoryId: 141, isAvailable: true },
+                { title: "Material Issued Note", path: "/manufacture/material-issued-note/", categoryId: 142, isAvailable: true },
+                { title: "Material Return Note", path: "/manufacture/material-return-note/", categoryId: 143, isAvailable: true },
+            ],
+        },
+        {
+            title: "Contact",
+            path: "/contact/contact/",
+            icon: <CallIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 17,
+            IsAvailable: true,
+            subNav: [
+                { title: "Contact", path: "/contact/contact", categoryId: 92, isAvailable: true }
+            ],
+        },
+    ];
+    if (ProjectNo === 2) {
+        sidebarData.push({
+            title: "Calendar",
+            path: "/reservation/inner-calendar",
+            icon: <EventAvailableIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 14,
+            IsAvailable: true,
+        });
+    }
+
+    sidebarData.push({
+        title: "Reservation",
+        path: "/reservation/reservation/",
+        icon: <EventSeatOutlinedIcon />,
+        iconClosed: <ArrowRight />,
+        iconOpened: <ArrowDown />,
+        ModuleId: 11,
+        IsAvailable: true,
+        subNav: [
+            { title: "Pencil Notes", path: "/reservation/notes/", categoryId: 64, isAvailable: true },
+            { title: "Reservations", path: "/reservation/reservations/", categoryId: 43, isAvailable: true },
+            { title: "Gallery", path: "/reservation/gallery/", categoryId: 44, isAvailable: true },
+            { title: "Bookings", path: "/reservation/booking/", categoryId: 67, isAvailable: true },
+            { title: "Reserved Slots", path: "/reservation/reserved-slots/", categoryId: 68, isAvailable: true },
+        ],
+    });
+    sidebarData.push({
+        title: "Approval",
+        path: "/reservation/reservation/",
+        icon: <BeenhereOutlinedIcon />,
+        iconClosed: <ArrowRight />,
+        iconOpened: <ArrowDown />,
+        ModuleId: 12,
+        IsAvailable: true,
+        subNav: [
+            { title: "Payment Approval", path: "/reservation/approval/", categoryId: 45, isAvailable: true },
+            { title: "Charge Sheet Approval", path: "/reservation/charge-sheet-approval/", categoryId: 46, isAvailable: true },
+        ],
+    });
+    sidebarData.push({
+        title: "Payments",
+        path: "/reservation/reservation/",
+        icon: <DescriptionIcon />,
+        iconClosed: <ArrowRight />,
+        iconOpened: <ArrowDown />,
+        ModuleId: 13,
+        IsAvailable: true,
+        subNav: [
+            { title: "Invoice", path: "/reservation/invoice/", categoryId: 47, isAvailable: true },
+            { title: "Payment History", path: "/reservation/payment-history/", categoryId: 48, isAvailable: true },
+        ],
+    });
+    sidebarData.push({
+        title: "Reports",
+        path: "/reports/reports/",
+        icon: <ReportIcon />,
+        iconClosed: <ArrowRight />,
+        iconOpened: <ArrowDown />,
+        ModuleId: 4,
+        IsAvailable: true,
+        subNav: [
+            // { title: "Stock Balance", path: "/reports/stock/", categoryId: 28, isAvailable: true },
+            { title: "Summary Reports", path: "/reports/summery-report/", categoryId: 29, isAvailable: true },
+            { title: "Customer Outstanding", path: "/reports/outstanding/", categoryId: 30, isAvailable: true },
+            { title: "Reservation Reports", path: "/reservation/reports/", categoryId: 50, isAvailable: true },
+        ],
+    });
+    sidebarData.push({
+        title: "CRM",
+        path: "/crm/crm/",
+        icon: <People />,
+        iconClosed: <ArrowRight />,
+        iconOpened: <ArrowDown />,
+        ModuleId: 18,
+        IsAvailable: true,
+        subNav: [
+            { title: "Dashboard", path: "/crm/dashboard/", categoryId: 136, isAvailable: true },                       
+            { title: "Kanban", path: "/crm/kanban/", categoryId: 115, isAvailable: true },                       
+            { title: "Accounts", path: "/crm/accounts/", categoryId: 109, isAvailable: true },  
+            { title: "Contacts", path: "/crm/contacts/", categoryId: 110, isAvailable: true },
+            { title: "Leads", path: "/crm/leads/", categoryId: 116, isAvailable: true },                        
+            { title: "Activities", path: "/crm/activities/", categoryId: 112, isAvailable: true },                     
+            { title: "Quotes", path: "/crm/quotes/", categoryId: 113, isAvailable: true },                     
+            { title: "Payment Plan", path: "/crm/payment-plan/", categoryId: 137, isAvailable: true },                     
+            { title: "Sales Person", path: "/crm/sales-person/", categoryId: 135, isAvailable: true },                     
+            { title: "Meetings", path: "/crm/meeting/", categoryId: 146, isAvailable: true },                      
+        ],
+    });
+
+    sidebarData.push({
+        title: "Help Desk",
+        path: "/help-desk/help-desk/",
+        icon: <SupportAgentIcon />,
+        iconClosed: <ArrowRight />,
+        iconOpened: <ArrowDown />,
+        ModuleId: 19,
+        IsAvailable: true,
+        subNav: [
+            { title: "Tickets", path: "/help-desk/tickets/", categoryId: 105, isAvailable: true },
+            { title: "Categories", path: "/help-desk/categories/", categoryId: 106, isAvailable: true },
+            { title: "Project and Customer Assign", path: "/help-desk/assign/", categoryId: 107, isAvailable: true },
+            { title: "Purchase Order", path: "/help-desk/purchase-order/", categoryId: 18, isAvailable: true },
+            { title: "Work Order", path: "/help-desk/work-order/", categoryId: 138, isAvailable: true },
+        ],
+    });
+
+    sidebarData.push({
+        title: "Administrator",
+        path: "/administrator/administrator/",
+        icon: <AdminIcon />,
+        iconClosed: <ArrowRight />,
+        iconOpened: <ArrowDown />,
+        ModuleId: 5,
+        IsAvailable: true,
+        subNav: [
+            { title: "Users", path: "/administrator/users/", categoryId: 31, isAvailable: true },
+            { title: "Roles", path: "/administrator/roles/", categoryId: 32, isAvailable: true },
+            { title: "Settings", path: "/administrator/settings/", categoryId: 33, isAvailable: true },
+            { title: "Report Settings", path: "/administrator/report-settings/", categoryId: 34, isAvailable: true },
+            { title: "Warehouse", path: "/administrator/warehouse/", categoryId: 35, isAvailable: true },
+            { title: "Company", path: "/administrator/company/", categoryId: 36, isAvailable: true },
+            { title: "Fiscal Periods", path: "/administrator/fiscal-period/", categoryId: 37, isAvailable: true },
+            { title: "Terminal", path: "/administrator/terminal/", categoryId: 38, isAvailable: true },
+            { title: "Printers", path: "/administrator/Printers/", categoryId: 99, isAvailable: true },
+        ],
+    });
+
+    return sidebarData;
+};
