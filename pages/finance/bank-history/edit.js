@@ -28,16 +28,20 @@ const validationSchema = Yup.object().shape({
   Description: Yup.string().required("Description is required"),
 });
 
-export default function EditBankHistory({ item, fetchItems }) {
+export default function EditBankHistory({ item, fetchItems, banks }) {
   const [open, setOpen] = React.useState(false);
   const handleClose = () => setOpen(false);
   const inputRef = useRef(null);
   const [cashFlowTypeId, setCashFlowTypeId] = useState(item.cashFlowTypeId || null);
+  const [bankId, setBankId] = useState(item.bankId || null);
+  const [transactionType, setTransactionType] = useState(item.transactionType || 1);
   const { data: cashFlowTypeList } = useApi("/CashFlowType/GetCashFlowTypesByType?cashType=3");
   const [cashFlowTypes, setCashFlowTypes] = useState([]);
 
   const handleOpen = async () => {
     setCashFlowTypeId(item.cashFlowTypeId || null);
+    setBankId(item.bankId || null);
+    setTransactionType(item.transactionType || 1);
     setOpen(true);
   };
 
@@ -57,7 +61,32 @@ export default function EditBankHistory({ item, fetchItems }) {
     }
   }, [cashFlowTypeList]);
 
+  const formatDateTimeLocal = (dateString) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  const convertToSLTime = (datetimeLocalValue) => {
+    if (!datetimeLocalValue) return null;
+    // datetime-local value is in format: "YYYY-MM-DDTHH:mm"
+    // We need to treat this as SL time (UTC+5:30) and convert to ISO string
+    // Append seconds and SL timezone offset (+05:30)
+    const slTimeString = `${datetimeLocalValue}:00+05:30`;
+    const date = new Date(slTimeString);
+    return date.toISOString();
+  };
+
   const handleSubmit = (values) => {
+    if(!bankId){
+      toast.error("Please Select Bank");
+      return;
+    }
     if(!cashFlowTypeId){
       toast.error("Please Select Category");
       return;
@@ -67,7 +96,12 @@ export default function EditBankHistory({ item, fetchItems }) {
       Amount: values.Amount,
       Description: values.Description,
       CashFlowTypeId: cashFlowTypeId,
+      BankId: bankId,
+      TransactionType: transactionType,
+      ReferanceDate: values.ReferenceDate ? new Date(values.ReferenceDate).toISOString() : null,
+      CreatedOn: values.CreatedOn,
     }
+
     fetch(`${BASE_URL}/BankHistory/UpdateBankHistory`, {
       method: "POST",
       body: JSON.stringify(payload),
@@ -109,9 +143,12 @@ export default function EditBankHistory({ item, fetchItems }) {
             initialValues={{
               Description: item.description || "",
               Amount: item.amount || "",
+              ReferenceDate: item.referenceDate ? new Date(item.referenceDate).toISOString().split('T')[0] : (item.createdOn ? new Date(item.createdOn).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
+              CreatedOn: item.createdOn ? formatDateTimeLocal(item.createdOn) : formatDateTimeLocal(new Date()),
             }}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
+            enableReinitialize
           >
             {({ errors, touched, values, setFieldValue }) => (
               <Form>
@@ -152,6 +189,22 @@ export default function EditBankHistory({ item, fetchItems }) {
                         mb: "5px",
                       }}
                     >
+                      Bank
+                    </Typography>
+                    <Select value={bankId} onChange={(e) => setBankId(e.target.value)} fullWidth>
+                      {banks && banks.length === 0 ? <MenuItem value="">No Data Available</MenuItem> :
+                        (banks && banks.map((bank, i) => (
+                          <MenuItem key={i} value={bank.id}>{bank.name} - {bank.accountNo}</MenuItem>
+                        )))}
+                    </Select>
+                  </Grid>
+                  <Grid item xs={12} mt={1}>
+                    <Typography
+                      sx={{
+                        fontWeight: "500",
+                        mb: "5px",
+                      }}
+                    >
                       Category
                     </Typography>
                     <Select value={cashFlowTypeId} onChange={(e) => setCashFlowTypeId(e.target.value)} fullWidth>
@@ -160,6 +213,66 @@ export default function EditBankHistory({ item, fetchItems }) {
                           <MenuItem key={i} value={type.id}>{type.name}</MenuItem>
                         )))}
                     </Select>
+                  </Grid>
+                  <Grid item xs={12} mt={1}>
+                    <Typography
+                      sx={{
+                        fontWeight: "500",
+                        mb: "5px",
+                      }}
+                    >
+                      Transaction Type
+                    </Typography>
+                    <Select fullWidth value={transactionType} onChange={(e) => setTransactionType(e.target.value)}>
+                      <MenuItem value={1}>Deposit</MenuItem>
+                      <MenuItem value={2}>Withdrawal</MenuItem>
+                    </Select>
+                  </Grid>
+                  <Grid item xs={12} mt={1}>
+                    <Typography
+                      sx={{
+                        fontWeight: "500",
+                        mb: "5px",
+                      }}
+                    >
+                      Reference Date
+                    </Typography>
+                    <Field
+                      as={TextField}
+                      fullWidth
+                      name="ReferenceDate"
+                      type="date"
+                      value={values.ReferenceDate || new Date().toISOString().split('T')[0]}
+                      onChange={(e) => {
+                        setFieldValue("ReferenceDate", e.target.value);
+                      }}
+                      InputLabelProps={{
+                        shrink: true,
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} mt={1}>
+                    <Typography
+                      sx={{
+                        fontWeight: "500",
+                        mb: "5px",
+                      }}
+                    >
+                      Created On
+                    </Typography>
+                    <Field
+                      as={TextField}
+                      fullWidth
+                      name="CreatedOn"
+                      type="datetime-local"
+                      value={values.CreatedOn}
+                      onChange={(e) => {
+                        setFieldValue("CreatedOn", e.target.value);
+                      }}
+                      InputLabelProps={{
+                        shrink: true,
+                      }}
+                    />
                   </Grid>
                   <Grid item xs={12} mt={1}>
                     <Typography

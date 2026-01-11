@@ -5,11 +5,11 @@ import { useMemo } from "react";
 const DEFAULT_CATEGORIES = [
   { label: "Dashboard", href: "/pmo/dashboard" },
   { label: "Projects", href: "/pmo/projects" },
+  { label: "Team", href: "/pmo/team" },
   { label: "Tasks", href: "/pmo/tasks" },
   { label: "Timeline", href: "/pmo/timeline" },
   { label: "Financials", href: "/pmo/financials" },
   { label: "Reports", href: "/pmo/reports" },
-  { label: "Team", href: "/pmo/team" },
 ];
 
 const normalizePath = (path) => {

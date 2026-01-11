@@ -36,6 +36,7 @@ const ReportsPage = () => {
     toDate: "",
   });
   const [rows, setRows] = useState([]);
+  const [reportColumns, setReportColumns] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -52,10 +53,28 @@ const ReportsPage = () => {
   }, []);
 
   const columns = useMemo(() => {
+    if (reportColumns?.length) return reportColumns;
     if (!rows?.length) return [];
-    const keys = Object.keys(rows[0] ?? {});
-    return keys;
-  }, [rows]);
+
+    // Fallback: union of keys across all rows (stable-ish).
+    const all = new Set();
+    rows.forEach((r) => Object.keys(r ?? {}).forEach((k) => all.add(k)));
+    return Array.from(all);
+  }, [rows, reportColumns]);
+
+  const formatCell = (column, value) => {
+    if (value === null || value === undefined) return "";
+
+    // Dates often come as ISO strings. Format columns that look like dates.
+    const isDateCol = /date/i.test(column);
+    if (isDateCol) {
+      const d = new Date(value);
+      if (!Number.isNaN(d.getTime())) return d.toLocaleDateString();
+    }
+
+    if (typeof value === "number") return value.toLocaleString();
+    return value?.toString?.() ?? "";
+  };
 
   const handleGenerate = async () => {
     try {
@@ -67,6 +86,7 @@ const ReportsPage = () => {
         toDate: filters.toDate || undefined,
       };
       const data = await getReportData(payload);
+      setReportColumns(data?.columns ?? []);
       setRows(data?.rows ?? []);
       setError(null);
     } catch (err) {
@@ -78,10 +98,20 @@ const ReportsPage = () => {
 
   const handleExport = () => {
     if (!rows.length) return;
-    const worksheet = XLSX.utils.json_to_sheet(rows);
+    // Export with stable, ordered columns.
+    const aoa = [
+      columns,
+      ...rows.map((row) => columns.map((c) => row?.[c] ?? "")),
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(aoa);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Report");
-    XLSX.writeFile(workbook, "project-management-report.xlsx");
+    const selectedLabel =
+      reportTypes.find((t) => t.value === filters.reportType)?.label ?? "Report";
+    XLSX.writeFile(
+      workbook,
+      `project-management-${selectedLabel.toLowerCase().replace(/\s+/g, "-")}.xlsx`
+    );
   };
 
   return (
@@ -205,7 +235,7 @@ const ReportsPage = () => {
               {rows.map((row, index) => (
                 <TableRow key={index}>
                   {columns.map((column) => (
-                    <TableCell key={column}>{row[column]?.toString?.() ?? ""}</TableCell>
+                    <TableCell key={column}>{formatCell(column, row[column])}</TableCell>
                   ))}
                 </TableRow>
               ))}

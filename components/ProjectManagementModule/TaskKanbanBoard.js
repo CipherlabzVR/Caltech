@@ -10,6 +10,7 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import ChecklistOutlinedIcon from "@mui/icons-material/ChecklistOutlined";
@@ -17,7 +18,13 @@ import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
-const TaskCard = ({ task, onEdit, onDelete, onOpenChecklist }) => {
+const TaskCard = ({
+  task,
+  onEdit,
+  onDelete,
+  onOpenChecklist,
+  isDragging = false,
+}) => {
   const [anchorEl, setAnchorEl] = useState(null);
   const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
   const handleMenuClose = () => setAnchorEl(null);
@@ -37,11 +44,41 @@ const TaskCard = ({ task, onEdit, onDelete, onOpenChecklist }) => {
 
   return (
     <Box
+      role="button"
+      tabIndex={0}
+      onClick={(event) => {
+        // If the card menu is open (or we're dragging), don't trigger edit.
+        if (isDragging || Boolean(anchorEl)) return;
+        // If user clicked an action button inside the card, don't trigger edit.
+        if (event?.target?.closest?.("[data-task-action]")) return;
+        onEdit?.(task);
+      }}
+      onKeyDown={(event) => {
+        if (isDragging || Boolean(anchorEl)) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onEdit?.(task);
+        }
+      }}
       sx={{
         p: 2,
         borderRadius: 2,
         bgcolor: "background.paper",
         border: (theme) => `1px solid ${theme.palette.divider}`,
+        backgroundImage: (theme) =>
+          task.isCompleted
+            ? `linear-gradient(135deg, ${alpha(
+                theme.palette.success.main,
+                0.16
+              )} 0%, ${alpha(theme.palette.success.main, 0.05)} 55%, ${alpha(
+                theme.palette.success.main,
+                0
+              )} 100%)`
+            : "none",
+        borderColor: (theme) =>
+          task.isCompleted
+            ? alpha(theme.palette.success.main, 0.35)
+            : theme.palette.divider,
         boxShadow: (theme) =>
           theme.palette.mode === "dark"
             ? "0 18px 30px rgba(15, 23, 42, 0.35)"
@@ -49,6 +86,16 @@ const TaskCard = ({ task, onEdit, onDelete, onOpenChecklist }) => {
         display: "flex",
         flexDirection: "column",
         gap: 1,
+        cursor: "pointer",
+        transition: "transform 0.15s ease, box-shadow 0.15s ease",
+        "&:hover": {
+          transform: "translateY(-1px)",
+        },
+        "&:focus-visible": {
+          outline: "2px solid",
+          outlineColor: "primary.main",
+          outlineOffset: 2,
+        },
       }}
     >
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
@@ -61,10 +108,31 @@ const TaskCard = ({ task, onEdit, onDelete, onOpenChecklist }) => {
               Due {new Date(task.dueDate).toLocaleDateString()}
             </Typography>
           ) : null}
+          {(task.estimatedHours ?? task.EstimatedHours) ? (
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+              Est. {task.estimatedHours ?? task.EstimatedHours}h
+            </Typography>
+          ) : null}
+          {(task.actualHours ?? task.ActualHours) ? (
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+              Actual {task.actualHours ?? task.ActualHours}h
+            </Typography>
+          ) : null}
         </Box>
-        <IconButton size="small" onClick={handleMenuOpen}>
-          <MoreVertIcon fontSize="small" />
-        </IconButton>
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <Box component="span" data-task-action="menu" sx={{ display: "inline-flex" }}>
+            <IconButton
+              size="small"
+              onClick={(event) => {
+                event.stopPropagation();
+                event.preventDefault();
+                handleMenuOpen(event);
+              }}
+            >
+              <MoreVertIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        </Stack>
       </Stack>
       {task.description ? (
         <Typography variant="body2" color="text.secondary">
@@ -103,7 +171,10 @@ const TaskCard = ({ task, onEdit, onDelete, onOpenChecklist }) => {
       {totalChecklist > 0 ? (
         <Box
           role="button"
-          onClick={handleOpenChecklist}
+          onClick={(event) => {
+            event.stopPropagation();
+            handleOpenChecklist();
+          }}
           sx={{
             mt: 1,
             p: 1.5,
@@ -181,7 +252,10 @@ const TaskCard = ({ task, onEdit, onDelete, onOpenChecklist }) => {
           size="small"
           variant="outlined"
           startIcon={<AddIcon />}
-          onClick={handleOpenChecklist}
+          onClick={(event) => {
+            event.stopPropagation();
+            handleOpenChecklist();
+          }}
           sx={{ alignSelf: "flex-start", mt: 1 }}
         >
           Add Checklist
@@ -189,7 +263,8 @@ const TaskCard = ({ task, onEdit, onDelete, onOpenChecklist }) => {
       )}
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
         <MenuItem
-          onClick={() => {
+          onClick={(event) => {
+            event.stopPropagation();
             handleMenuClose();
             onEdit(task);
           }}
@@ -197,7 +272,8 @@ const TaskCard = ({ task, onEdit, onDelete, onOpenChecklist }) => {
           Edit Task
         </MenuItem>
         <MenuItem
-          onClick={() => {
+          onClick={(event) => {
+            event.stopPropagation();
             handleMenuClose();
             handleOpenChecklist();
           }}
@@ -205,7 +281,8 @@ const TaskCard = ({ task, onEdit, onDelete, onOpenChecklist }) => {
           View Checklist
         </MenuItem>
         <MenuItem
-          onClick={() => {
+          onClick={(event) => {
+            event.stopPropagation();
             handleMenuClose();
             onDelete(task);
           }}
@@ -412,6 +489,7 @@ const TaskKanbanBoard = ({
                           >
                             <TaskCard
                               task={card}
+                              isDragging={snapshot.isDragging}
                               onEdit={onEditTask}
                               onDelete={(task) => onDeleteTask?.(task)}
                               onOpenChecklist={onOpenChecklist}

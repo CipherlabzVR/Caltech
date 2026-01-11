@@ -36,31 +36,39 @@ export default function Reservation() {
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
   const [tabIndex, setTabIndex] = useState(0);
+  const [appointmentType, setAppointmentType] = useState(0);
   const { data: docnumber } = getNext("14");
 
   const handleTabChange = (event, newValue) => {
     setTabIndex(newValue);
     setPage(1);
-    fetchResList(1, searchTerm, pageSize, newValue);
+    fetchResList(1, searchTerm, pageSize, newValue, appointmentType);
+  };
+
+  const handleAppointmentTypeChange = (event) => {
+    const value = event.target.value;
+    setAppointmentType(value);
+    setPage(1);
+    fetchResList(1, searchTerm, pageSize, tabIndex, value);
   };
 
   const handleSearchChange = (event) => {
     const value = event.target.value;
     setSearchTerm(value);
     setPage(1);
-    fetchResList(1, value, pageSize, tabIndex);
+    fetchResList(1, value, pageSize, tabIndex, appointmentType);
   };
 
   const handlePageChange = (event, value) => {
     setPage(value);
-    fetchResList(value, searchTerm, pageSize, tabIndex);
+    fetchResList(value, searchTerm, pageSize, tabIndex, appointmentType);
   };
 
   const handlePageSizeChange = (event) => {
     const newSize = event.target.value;
     setPageSize(newSize);
     setPage(1);
-    fetchResList(1, searchTerm, newSize, tabIndex);
+    fetchResList(1, searchTerm, newSize, tabIndex, appointmentType);
   };
 
   const getReservationTypeByTab = (tab) => {
@@ -69,12 +77,12 @@ export default function Reservation() {
     return 5;
   };
 
-  const fetchResList = async (page = 1, search = "", size = pageSize, tab = tabIndex) => {
+  const fetchResList = async (page = 1, search = "", size = pageSize, tab = tabIndex, appointment = appointmentType) => {
     try {
       const token = localStorage.getItem("token");
       const skip = (page - 1) * size;
       const reservationType = getReservationTypeByTab(tab);
-      const query = `${BASE_URL}/Reservation/GetAllReservationSkipAndTake?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}&reservationType=${reservationType}`;
+      const query = `${BASE_URL}/Reservation/GetAllReservationSkipAndTake?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}&reservationType=${reservationType}&appointmentType=${appointment}`;
 
       const response = await fetch(query, {
         method: "GET",
@@ -142,7 +150,25 @@ export default function Reservation() {
             />
           </Search>
         </Grid>
-        <Grid item xs={12} lg={8} mb={1} display="flex" justifyContent="end" order={{ xs: 1, lg: 2 }}>
+        <Grid item xs={6} lg={2} order={{ xs: 3, lg: 2 }}>
+          <FormControl fullWidth size="small">
+            <InputLabel>Appointment Type</InputLabel>
+            <Select
+              value={appointmentType}
+              label="Appointment Type"
+              onChange={handleAppointmentTypeChange}
+            >
+              <MenuItem value={0}>All</MenuItem>
+              <MenuItem value={1}>First</MenuItem>
+              <MenuItem value={2}>Show Saree</MenuItem>
+              <MenuItem value={3}>Fabric & Design</MenuItem>
+              <MenuItem value={4}>Measurement</MenuItem>
+              <MenuItem value={5}>Fiton</MenuItem>
+              <MenuItem value={6}>Trial</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+        <Grid item xs={6} lg={6} mb={1} display="flex" justifyContent="end" order={{ xs: 1, lg: 3 }}>
           {create ? <AddReservation fetchItems={fetchResList} documentNo={docnumber} approve1={approve1} /> : ""}
         </Grid>
         <Grid item xs={12} order={{ xs: 3, lg: 3 }}>

@@ -57,8 +57,8 @@ export const getSidebarData = (IsGarmentSystem) => {
             subNav: [
                 { title: "Dashboard", path: "/pmo/dashboard", categoryId: 119, isAvailable: true },
                 { title: "Projects", path: "/pmo/projects", categoryId: 120, isAvailable: true },
-                { title: "Tasks", path: "/pmo/tasks", categoryId: 121, isAvailable: true },
                 { title: "Team", path: "/pmo/team", categoryId: 122, isAvailable: true },
+                { title: "Tasks", path: "/pmo/tasks", categoryId: 121, isAvailable: true },
                 { title: "Timeline", path: "/pmo/timeline", categoryId: 123, isAvailable: true },
                 { title: "Financials", path: "/pmo/financials", categoryId: 124, isAvailable: true },
                 { title: "Reports", path: "/pmo/reports", categoryId: 125, isAvailable: true },

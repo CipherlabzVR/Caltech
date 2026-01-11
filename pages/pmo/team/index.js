@@ -5,6 +5,10 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Grid,
   Paper,
   Stack,
@@ -16,6 +20,7 @@ import MetricCard from "@/components/ProjectManagementModule/MetricCard";
 import TeamMemberFormDialog from "@/components/ProjectManagementModule/TeamMemberFormDialog";
 import {
   createTeamMember,
+  deleteTeamMember,
   getTeamMembers,
   updateTeamMember,
 } from "@/Services/projectManagementService";
@@ -26,6 +31,8 @@ const TeamDashboard = () => {
   const [team, setTeam] = useState([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editMember, setEditMember] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadTeam = async () => {
     try {
@@ -53,6 +60,20 @@ const TeamDashboard = () => {
     setDialogOpen(false);
     setEditMember(null);
     await loadTeam();
+  };
+
+  const handleDeleteMember = async () => {
+    if (!deleteTarget) return;
+    try {
+      setDeleting(true);
+      await deleteTeamMember(deleteTarget.memberId);
+      setDeleteTarget(null);
+      await loadTeam();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const metrics = useMemo(() => {
@@ -161,6 +182,11 @@ const TeamDashboard = () => {
                         Emp ID: {member.employeeId}
                       </Typography>
                     ) : null}
+                    {member.hourlyRate != null && member.hourlyRate !== "" ? (
+                      <Typography variant="caption" color="text.secondary">
+                        Hourly Rate: {Number(member.hourlyRate).toLocaleString()}
+                      </Typography>
+                    ) : null}
                   </Stack>
                   <Stack direction="row" spacing={1}>
                     <Chip
@@ -179,41 +205,64 @@ const TeamDashboard = () => {
                       Current Focus
                     </Typography>
                     {member.currentTasks && member.currentTasks.length ? (
-                      <Stack spacing={1}>
-                        {member.currentTasks.map((task) => (
-                          <Box
-                            key={task.taskId}
-                            sx={{
-                              p: 1.5,
-                              borderRadius: 2,
-                              bgcolor: "background.default",
-                              border: (theme) => `1px solid ${theme.palette.divider}`,
-                            }}
-                          >
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              {task.taskTitle}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {task.projectName}
-                            </Typography>
-                          </Box>
-                        ))}
-                      </Stack>
+                      <Box
+                        sx={{
+                          maxHeight: 280, // ~5 items visible, scroll for the rest
+                          overflowY: "auto",
+                          pr: 0.5,
+                        }}
+                      >
+                        <Stack spacing={1}>
+                          {[...(member.currentTasks ?? [])]
+                            .sort((a, b) => {
+                              const aDue = a?.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
+                              const bDue = b?.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
+                              return aDue - bDue; // nearest due first
+                            })
+                            .map((task) => (
+                              <Box
+                                key={task.taskId}
+                                sx={{
+                                  p: 1.5,
+                                  borderRadius: 2,
+                                  bgcolor: "background.default",
+                                  border: (theme) => `1px solid ${theme.palette.divider}`,
+                                }}
+                              >
+                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                  {task.taskTitle}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {task.projectName}
+                                </Typography>
+                              </Box>
+                            ))}
+                        </Stack>
+                      </Box>
                     ) : (
                       <Typography variant="body2" color="text.secondary">
                         Not assigned to active tasks.
                       </Typography>
                     )}
                   </Box>
-                  <Button
-                    variant="outlined"
-                    onClick={() => {
-                      setEditMember(member);
-                      setDialogOpen(true);
-                    }}
-                  >
-                    Manage
-                  </Button>
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        setEditMember(member);
+                        setDialogOpen(true);
+                      }}
+                    >
+                      Manage
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      onClick={() => setDeleteTarget(member)}
+                    >
+                      Delete
+                    </Button>
+                  </Stack>
                 </Paper>
               </Grid>
             ))}
@@ -231,6 +280,40 @@ const TeamDashboard = () => {
         onSubmit={handleCreateMember}
         title={editMember ? "Update Member" : "Register Member"}
       />
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onClose={() => {
+          if (!deleting) setDeleteTarget(null);
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 600 }}>Delete team member?</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary">
+            This will remove{" "}
+            <strong>{deleteTarget?.name}</strong> from the Project Crew list.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button
+            onClick={() => setDeleteTarget(null)}
+            color="inherit"
+            disabled={deleting}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleDeleteMember}
+            disabled={deleting}
+          >
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

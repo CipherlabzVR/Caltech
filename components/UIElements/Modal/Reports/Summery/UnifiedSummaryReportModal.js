@@ -9,6 +9,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Modal from "@mui/material/Modal";
 import { Visibility } from "@mui/icons-material";
@@ -18,17 +19,38 @@ import { Catelogue } from "Base/catelogue";
 import useApi from "@/components/utils/useApi";
 import BASE_URL from "Base/api";
 import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
+import {
+  DEFAULT_PAGE_SIZE,
+  filterTopMatches,
+  filterTopMatchesWithLoadMore,
+  withAllOption,
+} from "@/components/utils/autocompleteTopMatches";
 
 const style = {
   position: "absolute",
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: { lg: 400, xs: 350 },
+  width: { xs: "94vw", sm: "80vw", md: 520, lg: 600 },
+  maxWidth: 720,
+  maxHeight: "90vh",
+  overflowY: "auto",
   bgcolor: "background.paper",
   boxShadow: 24,
-  p: 2,
+  borderRadius: 2,
+  p: { xs: 2, sm: 3 },
 };
+
+const renderAutocompleteOption = (props, option) => (
+  <li
+    {...props}
+    style={
+      option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
+    }
+  >
+    {option.label}
+  </li>
+);
 
 const reportConfigs = {
   SalesSummaryReport: {
@@ -289,10 +311,22 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
   const [terminalId, setTerminalId] = useState(config.fields.terminal?.defaultValue || 0);
   const [reservations, setReservations] = useState([]);
   const [reservationId, setReservationId] = useState(config.fields.reservation?.defaultValue || 0);
+  const [optionLimits, setOptionLimits] = useState({});
 
-  const handleOpen = () => setOpen(true);
+  const getLimit = (field) => optionLimits[field] || DEFAULT_PAGE_SIZE;
+  const incLimit = (field) =>
+    setOptionLimits((prev) => ({
+      ...prev,
+      [field]: (prev[field] || DEFAULT_PAGE_SIZE) + DEFAULT_PAGE_SIZE,
+    }));
+
+  const handleOpen = () => {
+    setOptionLimits({});
+    setOpen(true);
+  };
   const handleClose = () => {
     setOpen(false);
+    setOptionLimits({});
     setFromDate("");
     setToDate("");
     setCustomerId(config.fields.customer?.defaultValue || 0);
@@ -445,7 +479,7 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
   const fetchReservations = async () => {
     try {
       const token = localStorage.getItem("token");
-      const query = `${BASE_URL}/Reservation/GetAllReservationSkipAndTake?SkipCount=0&MaxResultCount=1000&Search=null`;
+      const query = `${BASE_URL}/Reservation/GetAllReservationSkipAndTake?SkipCount=0&MaxResultCount=1000&Search=null&appointmentType=0`;
       const response = await fetch(query, {
         method: "GET",
         headers: {
@@ -587,178 +621,257 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
 
     switch (fieldName) {
       case "customer":
-        return (
-          <Grid item {...gridSize} key={fieldName}>
-            <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-              {fieldConfig.label || "Select Customer"}
-            </Typography>
-            <Select
-              fullWidth
-              size="small"
-              value={customerId}
-              onChange={(e) => handleSelectCustomer(e.target.value)}
-            >
-              {fieldConfig.allowAll !== false && <MenuItem value={0}>All</MenuItem>}
-              {customers.length === 0 ? (
-                <MenuItem value="">No Customers Available</MenuItem>
-              ) : (
-                customers.map((customer) => (
-                  <MenuItem key={customer.id} value={customer.id}>
-                    {customer.firstName} {customer.lastName}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </Grid>
-        );
+        {
+          const customerOptions = withAllOption(
+            customers.map((c) => ({
+              id: c.id,
+              label: `${c.firstName || ""} ${c.lastName || ""}`.trim() || String(c.id),
+            })),
+            fieldConfig.allowAll
+          );
+          const value = customerOptions.find((o) => o.id === customerId) || null;
+
+          return (
+            <Grid item {...gridSize} key={fieldName}>
+              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                {fieldConfig.label || "Select Customer"}
+              </Typography>
+              <Autocomplete
+                disableCloseOnSelect
+                fullWidth
+                size="small"
+                options={customerOptions}
+                value={value}
+                onChange={(_, opt) => {
+                  if (opt?.__loadMore) {
+                    incLimit(fieldName);
+                    return;
+                  }
+                  handleSelectCustomer(opt?.id ?? 0);
+                }}
+                isOptionEqualToValue={(option, val) => option.id === val.id}
+                filterOptions={(options, state) =>
+                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
+                }
+                renderOption={renderAutocompleteOption}
+                noOptionsText="No matches"
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Type to search..." />
+                )}
+              />
+            </Grid>
+          );
+        }
 
       case "supplier":
-        return (
-          <Grid item {...gridSize} key={fieldName}>
-            <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-              {fieldConfig.label || "Select Supplier"}
-            </Typography>
-            <Select
-              fullWidth
-              size="small"
-              value={supplierId}
-              onChange={(e) => {
-                setSupplierId(e.target.value);
-                if (config.fields.item?.enabled) {
-                  handleGetSupplierItems(e.target.value);
+        {
+          const supplierOptions = withAllOption(
+            suppliers.map((s) => ({ id: s.id, label: s.name || String(s.id) })),
+            fieldConfig.allowAll
+          );
+          const value = supplierOptions.find((o) => o.id === supplierId) || null;
+
+          return (
+            <Grid item {...gridSize} key={fieldName}>
+              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                {fieldConfig.label || "Select Supplier"}
+              </Typography>
+              <Autocomplete
+                disableCloseOnSelect
+                fullWidth
+                size="small"
+                options={supplierOptions}
+                value={value}
+                onChange={(_, opt) => {
+                  if (opt?.__loadMore) {
+                    incLimit(fieldName);
+                    return;
+                  }
+                  const id = opt?.id ?? 0;
+                  setSupplierId(id);
+                  if (config.fields.item?.enabled) handleGetSupplierItems(id);
+                }}
+                isOptionEqualToValue={(option, val) => option.id === val.id}
+                filterOptions={(options, state) =>
+                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
                 }
-              }}
-            >
-              {fieldConfig.allowAll !== false && <MenuItem value={0}>All</MenuItem>}
-              {suppliers.length === 0 ? (
-                <MenuItem disabled value="">No Suppliers Available</MenuItem>
-              ) : (
-                suppliers.map((supplier) => (
-                  <MenuItem key={supplier.id} value={supplier.id}>
-                    {supplier.name}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </Grid>
-        );
+                renderOption={renderAutocompleteOption}
+                noOptionsText="No matches"
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Type to search..." />
+                )}
+              />
+            </Grid>
+          );
+        }
 
       case "category":
-        return (
-          <Grid item {...gridSize} key={fieldName}>
-            <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-              {fieldConfig.label || "Select Category"}
-            </Typography>
-            <Select
-              fullWidth
-              size="small"
-              value={categoryId}
-              onChange={(e) => {
-                setCategoryId(e.target.value);
-                if (config.fields.subCategory?.enabled) {
-                  handleGetSubCategories(e.target.value);
+        {
+          const categoryOptions = withAllOption(
+            categories.map((c) => ({ id: c.id, label: c.name || String(c.id) })),
+            fieldConfig.allowAll
+          );
+          const value = categoryOptions.find((o) => o.id === categoryId) || null;
+
+          return (
+            <Grid item {...gridSize} key={fieldName}>
+              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                {fieldConfig.label || "Select Category"}
+              </Typography>
+              <Autocomplete
+                disableCloseOnSelect
+                fullWidth
+                size="small"
+                options={categoryOptions}
+                value={value}
+                onChange={(_, opt) => {
+                  if (opt?.__loadMore) {
+                    incLimit(fieldName);
+                    return;
+                  }
+                  const id = opt?.id ?? 0;
+                  setCategoryId(id);
+                  if (config.fields.subCategory?.enabled) handleGetSubCategories(id);
+                  if (config.fields.item?.enabled) handleGetFilteredItems(supplierId, id, subCategoryId);
+                }}
+                isOptionEqualToValue={(option, val) => option.id === val.id}
+                filterOptions={(options, state) =>
+                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
                 }
-                if (config.fields.item?.enabled) {
-                  handleGetFilteredItems(supplierId, e.target.value, subCategoryId);
-                }
-              }}
-            >
-              {fieldConfig.allowAll !== false && <MenuItem value={0}>All</MenuItem>}
-              {categories.length === 0 ? (
-                <MenuItem disabled value="">No Categories Available</MenuItem>
-              ) : (
-                categories.map((category) => (
-                  <MenuItem key={category.id} value={category.id}>
-                    {category.name}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </Grid>
-        );
+                renderOption={renderAutocompleteOption}
+                noOptionsText="No matches"
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Type to search..." />
+                )}
+              />
+            </Grid>
+          );
+        }
 
       case "subCategory":
-        return (
-          <Grid item {...gridSize} key={fieldName}>
-            <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-              {fieldConfig.label || "Select Sub Category"}
-            </Typography>
-            <Select
-              fullWidth
-              size="small"
-              value={subCategoryId}
-              onChange={(e) => {
-                setSubCategoryId(e.target.value);
-                if (config.fields.item?.enabled) {
-                  handleGetFilteredItems(supplierId, categoryId, e.target.value);
+        {
+          const subCategoryOptions = withAllOption(
+            subCategories.map((c) => ({ id: c.id, label: c.name || String(c.id) })),
+            fieldConfig.allowAll
+          );
+          const value = subCategoryOptions.find((o) => o.id === subCategoryId) || null;
+
+          return (
+            <Grid item {...gridSize} key={fieldName}>
+              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                {fieldConfig.label || "Select Sub Category"}
+              </Typography>
+              <Autocomplete
+                disableCloseOnSelect
+                fullWidth
+                size="small"
+                options={subCategoryOptions}
+                value={value}
+                onChange={(_, opt) => {
+                  if (opt?.__loadMore) {
+                    incLimit(fieldName);
+                    return;
+                  }
+                  const id = opt?.id ?? 0;
+                  setSubCategoryId(id);
+                  if (config.fields.item?.enabled) handleGetFilteredItems(supplierId, categoryId, id);
+                }}
+                isOptionEqualToValue={(option, val) => option.id === val.id}
+                filterOptions={(options, state) =>
+                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
                 }
-              }}
-            >
-              {fieldConfig.allowAll !== false && <MenuItem value={0}>All</MenuItem>}
-              {subCategories.length === 0 ? (
-                <MenuItem disabled value="">No Sub Categories Available</MenuItem>
-              ) : (
-                subCategories.map((category) => (
-                  <MenuItem key={category.id} value={category.id}>
-                    {category.name}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </Grid>
-        );
+                renderOption={renderAutocompleteOption}
+                noOptionsText="No matches"
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Type to search..." />
+                )}
+              />
+            </Grid>
+          );
+        }
 
       case "item":
-        return (
-          <Grid item {...gridSize} key={fieldName}>
-            <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-              {fieldConfig.label || "Select Item"}
-            </Typography>
-            <Select
-              fullWidth
-              size="small"
-              value={itemId}
-              onChange={(e) => setItemId(e.target.value)}
-            >
-              {fieldConfig.allowAll !== false && <MenuItem value={0}>All</MenuItem>}
-              {items.length === 0 ? (
-                <MenuItem value="">No Items Available</MenuItem>
-              ) : (
-                items.map((item) => (
-                  <MenuItem key={item.id} value={item.id}>
-                    {item.name}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </Grid>
-        );
+        {
+          const itemOptions = withAllOption(
+            items.map((i) => ({ id: i.id, label: i.name || String(i.id) })),
+            fieldConfig.allowAll
+          );
+          const value = itemOptions.find((o) => o.id === itemId) || null;
+
+          return (
+            <Grid item {...gridSize} key={fieldName}>
+              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                {fieldConfig.label || "Select Item"}
+              </Typography>
+              <Autocomplete
+                disableCloseOnSelect
+                fullWidth
+                size="small"
+                options={itemOptions}
+                value={value}
+                onChange={(_, opt) => {
+                  if (opt?.__loadMore) {
+                    incLimit(fieldName);
+                    return;
+                  }
+                  setItemId(opt?.id ?? 0);
+                }}
+                isOptionEqualToValue={(option, val) => option.id === val.id}
+                filterOptions={(options, state) =>
+                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
+                }
+                renderOption={renderAutocompleteOption}
+                noOptionsText="No matches"
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Type to search..." />
+                )}
+              />
+            </Grid>
+          );
+        }
 
       case "invoice":
-        return (
-          <Grid item {...gridSize} key={fieldName}>
-            <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-              {fieldConfig.label || "Select Invoice"}
-            </Typography>
-            <Select
-              fullWidth
-              size="small"
-              value={invoiceId}
-              onChange={(e) => setInvoiceId(e.target.value)}
-            >
-              {fieldConfig.allowAll !== false && <MenuItem value={0}>All</MenuItem>}
-              {invoices.length === 0 ? (
-                <MenuItem value="">No Invoices Available</MenuItem>
-              ) : (
-                invoices.map((item) => (
-                  <MenuItem key={item.id} value={item.id}>
-                    {item.documentNo} - {formatCurrency(item.grossTotal)}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </Grid>
-        );
+        {
+          const invoiceOptions = withAllOption(
+            invoices.map((inv) => ({
+              id: inv.id,
+              label: `${inv.documentNo || inv.id} - ${formatCurrency(inv.grossTotal)}`,
+            })),
+            fieldConfig.allowAll
+          );
+          const value = invoiceOptions.find((o) => o.id === invoiceId) || null;
+
+          return (
+            <Grid item {...gridSize} key={fieldName}>
+              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                {fieldConfig.label || "Select Invoice"}
+              </Typography>
+              <Autocomplete
+                disableCloseOnSelect
+                fullWidth
+                size="small"
+                options={invoiceOptions}
+                value={value}
+                onChange={(_, opt) => {
+                  if (opt?.__loadMore) {
+                    incLimit(fieldName);
+                    return;
+                  }
+                  setInvoiceId(opt?.id ?? 0);
+                }}
+                isOptionEqualToValue={(option, val) => option.id === val.id}
+                filterOptions={(options, state) =>
+                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
+                }
+                renderOption={renderAutocompleteOption}
+                noOptionsText="No matches"
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Type to search..." />
+                )}
+              />
+            </Grid>
+          );
+        }
 
       case "paymentType":
         return (
@@ -805,82 +918,130 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
         );
 
       case "fiscalPeriod":
-        return (
-          <Grid item {...gridSize} key={fieldName}>
-            <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-              {fieldConfig.label || "Select Fiscal Period"}
-            </Typography>
-            <Select
-              fullWidth
-              size="small"
-              value={fiscalPeriod}
-              onChange={(e) => setFiscalPeriod(e.target.value)}
-            >
-              {fieldConfig.allowAll !== false && <MenuItem value={0}>All</MenuItem>}
-              {fiscalPeriods.length === 0 ? (
-                <MenuItem value="">No Fiscal Periods Available</MenuItem>
-              ) : (
-                fiscalPeriods.map((period) => (
-                  <MenuItem key={period.id} value={period.id}>
-                    {formatDate(period.startDate)} - {period.endDate ? formatDate(period.endDate) : "Still Active"}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </Grid>
-        );
+        {
+          const periodOptions = withAllOption(
+            fiscalPeriods.map((p) => ({
+              id: p.id,
+              label: `${formatDate(p.startDate)} - ${p.endDate ? formatDate(p.endDate) : "Still Active"}`,
+            })),
+            fieldConfig.allowAll
+          );
+          const value = periodOptions.find((o) => o.id === fiscalPeriod) || null;
+
+          return (
+            <Grid item {...gridSize} key={fieldName}>
+              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                {fieldConfig.label || "Select Fiscal Period"}
+              </Typography>
+              <Autocomplete
+                disableCloseOnSelect
+                fullWidth
+                size="small"
+                options={periodOptions}
+                value={value}
+                onChange={(_, opt) => {
+                  if (opt?.__loadMore) {
+                    incLimit(fieldName);
+                    return;
+                  }
+                  setFiscalPeriod(opt?.id ?? 0);
+                }}
+                isOptionEqualToValue={(option, val) => option.id === val.id}
+                filterOptions={(options, state) =>
+                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
+                }
+                renderOption={renderAutocompleteOption}
+                noOptionsText="No matches"
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Type to search..." />
+                )}
+              />
+            </Grid>
+          );
+        }
 
       case "doctor":
-        return (
-          <Grid item {...gridSize} key={fieldName}>
-            <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-              {fieldConfig.label || "Select Doctor"}
-            </Typography>
-            <Select
-              fullWidth
-              size="small"
-              value={doctorId}
-              onChange={(e) => setDoctorId(e.target.value)}
-            >
-              {fieldConfig.allowAll !== false && <MenuItem value={0}>All</MenuItem>}
-              {doctors.length === 0 ? (
-                <MenuItem value="">No Doctors Available</MenuItem>
-              ) : (
-                doctors.map((doctor) => (
-                  <MenuItem key={doctor.id} value={doctor.id}>
-                    {doctor.name}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </Grid>
-        );
+        {
+          const doctorOptions = withAllOption(
+            doctors.map((d) => ({ id: d.id, label: d.name || String(d.id) })),
+            fieldConfig.allowAll
+          );
+          const value = doctorOptions.find((o) => o.id === doctorId) || null;
+
+          return (
+            <Grid item {...gridSize} key={fieldName}>
+              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                {fieldConfig.label || "Select Doctor"}
+              </Typography>
+              <Autocomplete
+                disableCloseOnSelect
+                fullWidth
+                size="small"
+                options={doctorOptions}
+                value={value}
+                onChange={(_, opt) => {
+                  if (opt?.__loadMore) {
+                    incLimit(fieldName);
+                    return;
+                  }
+                  setDoctorId(opt?.id ?? 0);
+                }}
+                isOptionEqualToValue={(option, val) => option.id === val.id}
+                filterOptions={(options, state) =>
+                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
+                }
+                renderOption={renderAutocompleteOption}
+                noOptionsText="No matches"
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Type to search..." />
+                )}
+              />
+            </Grid>
+          );
+        }
 
       case "bank":
-        return (
-          <Grid item {...gridSize} key={fieldName}>
-            <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-              {fieldConfig.label || "Select Bank"}
-            </Typography>
-            <Select
-              fullWidth
-              size="small"
-              value={bankId}
-              onChange={(e) => setBankId(e.target.value)}
-            >
-              {fieldConfig.allowAll !== false && <MenuItem value={0}>All</MenuItem>}
-              {banks.length === 0 ? (
-                <MenuItem value="">No Banks Available</MenuItem>
-              ) : (
-                banks.map((bank) => (
-                  <MenuItem key={bank.id} value={bank.id}>
-                    {bank.name} - {bank.accountUsername} ({bank.accountNo})
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </Grid>
-        );
+        {
+          const bankOptions = withAllOption(
+            banks.map((b) => ({
+              id: b.id,
+              label: `${b.name || ""} - ${b.accountUsername || ""} (${b.accountNo || ""})`.trim() || String(b.id),
+            })),
+            fieldConfig.allowAll
+          );
+          const value = bankOptions.find((o) => o.id === bankId) || null;
+
+          return (
+            <Grid item {...gridSize} key={fieldName}>
+              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                {fieldConfig.label || "Select Bank"}
+              </Typography>
+              <Autocomplete
+                disableCloseOnSelect
+                fullWidth
+                size="small"
+                options={bankOptions}
+                value={value}
+                onChange={(_, opt) => {
+                  if (opt?.__loadMore) {
+                    incLimit(fieldName);
+                    return;
+                  }
+                  setBankId(opt?.id ?? 0);
+                }}
+                isOptionEqualToValue={(option, val) => option.id === val.id}
+                filterOptions={(options, state) =>
+                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
+                }
+                renderOption={renderAutocompleteOption}
+                noOptionsText="No matches"
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Type to search..." />
+                )}
+              />
+            </Grid>
+          );
+        }
 
       case "appointmentType":
         return (
@@ -927,56 +1088,87 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
         );
 
       case "user":
-        return (
-          <Grid item {...gridSize} key={fieldName}>
-            <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-              {fieldConfig.label || "Select User"}
-            </Typography>
-            <Select
-              fullWidth
-              size="small"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-            >
-              {fieldConfig.allowAll !== false && <MenuItem value={0}>All</MenuItem>}
-              {users.length === 0 ? (
-                <MenuItem value="">No Users Available</MenuItem>
-              ) : (
-                users.map((user) => (
-                  <MenuItem key={user.id} value={user.id}>
-                    {user.firstName} {user.lastName} {user.userName ? `(${user.userName})` : ""}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </Grid>
-        );
+        {
+          const userOptions = withAllOption(
+            users.map((u) => ({
+              id: u.id,
+              label: `${u.firstName || ""} ${u.lastName || ""} ${u.userName ? `(${u.userName})` : ""}`.trim() || String(u.id),
+            })),
+            fieldConfig.allowAll
+          );
+          const value = userOptions.find((o) => o.id === userId) || null;
+
+          return (
+            <Grid item {...gridSize} key={fieldName}>
+              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                {fieldConfig.label || "Select User"}
+              </Typography>
+              <Autocomplete
+                disableCloseOnSelect
+                fullWidth
+                size="small"
+                options={userOptions}
+                value={value}
+                onChange={(_, opt) => {
+                  if (opt?.__loadMore) {
+                    incLimit(fieldName);
+                    return;
+                  }
+                  setUserId(opt?.id ?? 0);
+                }}
+                isOptionEqualToValue={(option, val) => option.id === val.id}
+                filterOptions={(options, state) =>
+                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
+                }
+                renderOption={renderAutocompleteOption}
+                noOptionsText="No matches"
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Type to search..." />
+                )}
+              />
+            </Grid>
+          );
+        }
 
       case "cashFlowType":
-        return (
-          <Grid item {...gridSize} key={fieldName}>
-            <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-              {fieldConfig.label || "Select Cash Flow Type"}
-            </Typography>
-            <Select
-              fullWidth
-              size="small"
-              value={cashFlowTypeId}
-              onChange={(e) => setCashFlowTypeId(e.target.value)}
-            >
-              {fieldConfig.allowAll !== false && <MenuItem value={0}>All</MenuItem>}
-              {cashFlowTypes.length === 0 ? (
-                <MenuItem value="">No Cash Flow Types Available</MenuItem>
-              ) : (
-                cashFlowTypes.map((cashFlow) => (
-                  <MenuItem key={cashFlow.id} value={cashFlow.id}>
-                    {cashFlow.name}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </Grid>
-        );
+        {
+          const cashFlowOptions = withAllOption(
+            cashFlowTypes.map((c) => ({ id: c.id, label: c.name || String(c.id) })),
+            fieldConfig.allowAll
+          );
+          const value = cashFlowOptions.find((o) => o.id === cashFlowTypeId) || null;
+
+          return (
+            <Grid item {...gridSize} key={fieldName}>
+              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                {fieldConfig.label || "Select Cash Flow Type"}
+              </Typography>
+              <Autocomplete
+                disableCloseOnSelect
+                fullWidth
+                size="small"
+                options={cashFlowOptions}
+                value={value}
+                onChange={(_, opt) => {
+                  if (opt?.__loadMore) {
+                    incLimit(fieldName);
+                    return;
+                  }
+                  setCashFlowTypeId(opt?.id ?? 0);
+                }}
+                isOptionEqualToValue={(option, val) => option.id === val.id}
+                filterOptions={(options, state) =>
+                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
+                }
+                renderOption={renderAutocompleteOption}
+                noOptionsText="No matches"
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Type to search..." />
+                )}
+              />
+            </Grid>
+          );
+        }
 
       case "cashType":
         return (
@@ -1001,56 +1193,87 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
         );
 
       case "terminal":
-        return (
-          <Grid item {...gridSize} key={fieldName}>
-            <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-              {fieldConfig.label || "Select Terminal"}
-            </Typography>
-            <Select
-              fullWidth
-              size="small"
-              value={terminalId}
-              onChange={(e) => setTerminalId(e.target.value)}
-            >
-              {fieldConfig.allowAll !== false && <MenuItem value={0}>All</MenuItem>}
-              {terminals.length === 0 ? (
-                <MenuItem value="">No Terminals Available</MenuItem>
-              ) : (
-                terminals.map((terminal) => (
-                  <MenuItem key={terminal.id} value={terminal.id}>
-                    {terminal.name} ({terminal.code})
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </Grid>
-        );
+        {
+          const terminalOptions = withAllOption(
+            terminals.map((t) => ({ id: t.id, label: `${t.name || ""} (${t.code || ""})`.trim() || String(t.id) })),
+            fieldConfig.allowAll
+          );
+          const value = terminalOptions.find((o) => o.id === terminalId) || null;
+
+          return (
+            <Grid item {...gridSize} key={fieldName}>
+              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                {fieldConfig.label || "Select Terminal"}
+              </Typography>
+              <Autocomplete
+                disableCloseOnSelect
+                fullWidth
+                size="small"
+                options={terminalOptions}
+                value={value}
+                onChange={(_, opt) => {
+                  if (opt?.__loadMore) {
+                    incLimit(fieldName);
+                    return;
+                  }
+                  setTerminalId(opt?.id ?? 0);
+                }}
+                isOptionEqualToValue={(option, val) => option.id === val.id}
+                filterOptions={(options, state) =>
+                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
+                }
+                renderOption={renderAutocompleteOption}
+                noOptionsText="No matches"
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Type to search..." />
+                )}
+              />
+            </Grid>
+          );
+        }
 
       case "reservation":
-        return (
-          <Grid item {...gridSize} key={fieldName}>
-            <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-              {fieldConfig.label || "Select Reservation"}
-            </Typography>
-            <Select
-              fullWidth
-              size="small"
-              value={reservationId}
-              onChange={(e) => setReservationId(e.target.value)}
-            >
-              {fieldConfig.allowAll !== false && <MenuItem value={0}>All</MenuItem>}
-              {reservations.length === 0 ? (
-                <MenuItem value="">No Reservations Available</MenuItem>
-              ) : (
-                reservations.map((reservation) => (
-                  <MenuItem key={reservation.id} value={reservation.id}>
-                    {reservation.documentNo || reservation.id} - {reservation.customerName || ""}
-                  </MenuItem>
-                ))
-              )}
-            </Select>
-          </Grid>
-        );
+        {
+          const reservationOptions = withAllOption(
+            reservations.map((r) => ({
+              id: r.id,
+              label: `${r.documentNo || r.id} - ${r.customerName || ""}`.trim(),
+            })),
+            fieldConfig.allowAll
+          );
+          const value = reservationOptions.find((o) => o.id === reservationId) || null;
+
+          return (
+            <Grid item {...gridSize} key={fieldName}>
+              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                {fieldConfig.label || "Select Reservation"}
+              </Typography>
+              <Autocomplete
+                disableCloseOnSelect
+                fullWidth
+                size="small"
+                options={reservationOptions}
+                value={value}
+                onChange={(_, opt) => {
+                  if (opt?.__loadMore) {
+                    incLimit(fieldName);
+                    return;
+                  }
+                  setReservationId(opt?.id ?? 0);
+                }}
+                isOptionEqualToValue={(option, val) => option.id === val.id}
+                filterOptions={(options, state) =>
+                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
+                }
+                renderOption={renderAutocompleteOption}
+                noOptionsText="No matches"
+                renderInput={(params) => (
+                  <TextField {...params} placeholder="Type to search..." />
+                )}
+              />
+            </Grid>
+          );
+        }
 
       default:
         return null;

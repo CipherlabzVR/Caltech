@@ -24,10 +24,14 @@ const style = {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: { lg: 400, xs: 350 },
+  width: { xs: "94vw", sm: "80vw", md: 520, lg: 600 },
+  maxWidth: 720,
+  maxHeight: "90vh",
+  overflowY: "auto",
   bgcolor: "background.paper",
   boxShadow: 24,
-  p: 2,
+  borderRadius: 2,
+  p: { xs: 2, sm: 3 },
 };
 
 export default function SalesSummaryReport({ docName, reportName }) {

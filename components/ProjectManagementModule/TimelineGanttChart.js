@@ -17,29 +17,167 @@ const colorPalette = [
   "#A855F7",
 ];
 
+const hashString = (value) => {
+  const str = String(value ?? "");
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0; // eslint-disable-line no-bitwise
+  }
+  return Math.abs(hash);
+};
+
+const getPhaseColorIndex = (phaseName) =>
+  hashString(phaseName) % colorPalette.length;
+
+const SDLC_PHASES = [
+  "Planning",
+  "Analysis",
+  "Design",
+  "Development",
+  "Testing",
+  "Deployment",
+  "Maintenance",
+];
+
+const SDLC_ROWS = [...SDLC_PHASES, "Unassigned"];
+
+const normalizeSdlcStage = (phaseType, phaseName) => {
+  const candidate = String(phaseType || "").trim();
+  if (candidate) return candidate;
+
+  const fallback = String(phaseName || "").trim();
+  if (!fallback) return "Unassigned";
+
+  const match = SDLC_PHASES.find(
+    (p) => p.toLowerCase() === fallback.toLowerCase()
+  );
+  return match || "Unassigned";
+};
+
+const buildPhaseRowLabel = (sdlcStage) => {
+  const s = String(sdlcStage || "").trim();
+  return s || "Unassigned";
+};
+
 const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
   const chartRef = useRef(null);
   const [chartId] = useState(() => `gantt-chart-${Math.random().toString(36).substr(2, 9)}`);
+
+  const markOverdueSegments = () => {
+    // Tag overdue segments after ApexCharts renders them.
+    const root = typeof document !== "undefined" ? document.getElementById(chartId) : null;
+    if (!root) return;
+
+    const svg = root.querySelector("svg");
+    if (!svg) return;
+
+    // Ensure a reusable SVG filter exists for glow (more reliable than CSS drop-shadow on SVG).
+    const filterId = `pmOverdueGlowFilter-${chartId}`;
+    const ensureFilter = () => {
+      let defs = svg.querySelector("defs");
+      if (!defs) {
+        defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+        svg.insertBefore(defs, svg.firstChild);
+      }
+
+      const existing = defs.querySelector(`#${CSS.escape(filterId)}`);
+      if (existing) return;
+
+      const filter = document.createElementNS("http://www.w3.org/2000/svg", "filter");
+      filter.setAttribute("id", filterId);
+      filter.setAttribute("x", "-50%");
+      filter.setAttribute("y", "-50%");
+      filter.setAttribute("width", "200%");
+      filter.setAttribute("height", "200%");
+
+      const blur = document.createElementNS("http://www.w3.org/2000/svg", "feGaussianBlur");
+      blur.setAttribute("in", "SourceGraphic");
+      blur.setAttribute("stdDeviation", "3.5");
+      blur.setAttribute("result", "blur");
+
+      const merge = document.createElementNS("http://www.w3.org/2000/svg", "feMerge");
+      const m1 = document.createElementNS("http://www.w3.org/2000/svg", "feMergeNode");
+      m1.setAttribute("in", "blur");
+      const m2 = document.createElementNS("http://www.w3.org/2000/svg", "feMergeNode");
+      m2.setAttribute("in", "SourceGraphic");
+      merge.appendChild(m1);
+      merge.appendChild(m2);
+
+      filter.appendChild(blur);
+      filter.appendChild(merge);
+      defs.appendChild(filter);
+    };
+
+    ensureFilter();
+
+    const els = root.querySelectorAll("svg .apexcharts-series path, svg .apexcharts-series rect");
+
+    els.forEach((el) => {
+      el.classList.remove("pm-overdue-segment");
+
+      const attrFill = (el.getAttribute("fill") || "").toLowerCase();
+      const styleFill = (el.getAttribute("style") || "").toLowerCase();
+
+      // Match our overdue fillColor "#EF4444" regardless of whether Apex uses attribute or inline style.
+      const isRed =
+        attrFill === "#ef4444" ||
+        attrFill === "rgb(239, 68, 68)" ||
+        attrFill === "rgba(239, 68, 68, 1)" ||
+        styleFill.includes("#ef4444") ||
+        styleFill.includes("239, 68, 68");
+
+      if (isRed) {
+        el.classList.add("pm-overdue-segment");
+        // Force true red + apply SVG glow filter for consistent visuals.
+        el.setAttribute("fill", "#EF4444");
+        el.setAttribute("stroke", "#FF5A5A");
+        el.setAttribute("stroke-width", "2");
+        el.setAttribute("filter", `url(#${filterId})`);
+      } else {
+        // Clean up any previous filter/stroke from outdated renders.
+        if (el.getAttribute("filter") === `url(#${filterId})`) el.removeAttribute("filter");
+        if (el.getAttribute("stroke") === "#FF5A5A") el.removeAttribute("stroke");
+        if (el.getAttribute("stroke-width") === "2") el.removeAttribute("stroke-width");
+      }
+    });
+  };
 
   // Normalize data to handle both camelCase and PascalCase
   const normalizedData = useMemo(() => {
     if (!data || !Array.isArray(data)) return [];
     
     return data.map((item) => {
-      const members = item.members || item.Members || [];
+      const members =
+        item.members ||
+        item.Members ||
+        item.assignees ||
+        item.Assignees ||
+        [];
+
       const memberNames = members.length > 0
         ? members.map((m) => m.name || m.Name || "").filter(Boolean).join(", ")
         : item.assignedToName || item.AssignedToName || "";
+
+      const taskTitle =
+        item.title ||
+        item.Title ||
+        item.taskTitle ||
+        item.TaskTitle ||
+        "";
       
       return {
         phaseName: item.phaseName || item.PhaseName || "",
         startDate: item.startDate || item.StartDate,
-        endDate: item.endDate || item.EndDate,
+        // When feeding tasks, end date is task due date
+        endDate: item.endDate || item.EndDate || item.dueDate || item.DueDate,
         assignedToName: memberNames || "Unassigned",
         assignedToMemberId: item.assignedToMemberId || item.AssignedToMemberId,
         members: members,
         phaseType: item.phaseType || item.PhaseType,
         notes: item.notes || item.Notes,
+        taskTitle,
+        isCompleted: Boolean(item.isCompleted ?? item.IsCompleted),
       };
     });
   }, [data]);
@@ -54,30 +192,78 @@ const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
       ];
     }
 
-    const transformed = normalizedData
-      .filter((item) => item && item.phaseName && item.startDate && item.endDate)
-      .map((item, index) => ({
-        x: item.phaseName || "Unknown Phase",
-        y: [
-          new Date(item.startDate).getTime(),
-          new Date(item.endDate).getTime(),
-        ],
-        fillColor: colorPalette[index % colorPalette.length],
-        goals: item.assignedToName
-          ? [
-              {
-                name: item.assignedToName,
-                value: new Date(item.endDate).getTime(),
-                strokeColor: "#0EA5E9",
-              },
-            ]
-          : undefined,
-      }));
+    const taskPoints = normalizedData
+      .filter((item) => item && item.startDate && item.endDate)
+      .map((item) => {
+        const stage = normalizeSdlcStage(item.phaseType, item.phaseName);
+        const rowLabel = buildPhaseRowLabel(stage);
+        const startMs = new Date(item.startDate).getTime();
+        const endMs = new Date(item.endDate).getTime();
+        const nowMs = Date.now();
+
+        const baseColorIndex = getPhaseColorIndex(stage);
+        const base = {
+          // Phase row label on Y axis
+          x: rowLabel,
+          // planned window (task bar)
+          y: [startMs, endMs],
+          fillColor: colorPalette[baseColorIndex],
+          meta: {
+            kind: "task",
+            stage,
+            rowLabel,
+            taskTitle: item.taskTitle || "Untitled Task",
+            phaseName: item.phaseName || "",
+            assignedToName: item.assignedToName,
+            members: item.members ?? [],
+            startDate: item.startDate,
+            endDate: item.endDate,
+            isCompleted: item.isCompleted,
+          },
+        };
+
+        const points = [base];
+
+        // Overdue extension: if task is past due and not completed/end-column yet, show extra segment in red.
+        if (!item.isCompleted && Number.isFinite(endMs) && nowMs > endMs) {
+          points.push({
+            x: rowLabel,
+            y: [endMs, nowMs],
+            fillColor: "#EF4444",
+            meta: {
+              ...base.meta,
+              kind: "overdue",
+            },
+          });
+        }
+
+        return points;
+      })
+      .flat();
+
+    // Force Y-axis row ordering to always match SDLC order.
+    // ApexCharts derives row order from first occurrence of each category in series.data.
+    // So we seed one invisible placeholder per SDLC row (in order) BEFORE adding any tasks.
+    const minDateMs = (() => {
+      const ms = taskPoints
+        .map((t) => t?.y?.[0])
+        .filter((v) => Number.isFinite(v));
+      return ms.length ? Math.min(...ms) : Date.now();
+    })();
+
+    const ordered = SDLC_ROWS.map((stage) => ({
+      x: stage,
+      y: [minDateMs, minDateMs],
+      fillColor: "rgba(0,0,0,0)",
+      meta: { kind: "placeholder", stage, rowLabel: stage },
+    }));
+
+    ordered.push(...taskPoints);
 
     return [
       {
         name: "Phases",
-        data: transformed,
+        data: ordered,
       },
     ];
   }, [normalizedData]);
@@ -92,8 +278,15 @@ const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
           show: false,
         },
         events: {
-          mounted: (chartContext, config) => {
-            // Chart is mounted and ready
+          mounted: () => {
+            // Run twice to catch initial paint + animations.
+            requestAnimationFrame(() => {
+              markOverdueSegments();
+              requestAnimationFrame(markOverdueSegments);
+            });
+          },
+          updated: () => {
+            requestAnimationFrame(markOverdueSegments);
           },
         },
       },
@@ -104,6 +297,11 @@ const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
           rangeBarGroupRows: true,
         },
       },
+      fill: {
+        type: "solid",
+      },
+      colors: colorPalette,
+      stroke: { width: 0 },
       xaxis: {
         type: "datetime",
         labels: {
@@ -114,6 +312,19 @@ const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
       },
       yaxis: {
         labels: {
+          formatter: (val, index) => {
+            // Apex sometimes renders numeric ticks for rangeBar grouped rows.
+            // Map them to stable SDLC rows so the Y axis shows phase names.
+            if (Number.isFinite(Number(index))) {
+              return SDLC_ROWS[index] ?? val;
+            }
+            const n = Number(val);
+            if (Number.isFinite(n)) {
+              const idx = Math.floor(n) - 1; // ticks usually start at 1
+              return SDLC_ROWS[idx] ?? val;
+            }
+            return val;
+          },
           style: {
             colors: "#64748B",
             fontWeight: 600,
@@ -123,9 +334,10 @@ const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
       dataLabels: {
         enabled: true,
         formatter: (value, opts) => {
-          const entry = normalizedData?.[opts.dataPointIndex];
-          const assigned = entry?.assignedToName ?? "Unassigned";
-          return `${assigned}`;
+          const point = opts?.w?.config?.series?.[opts.seriesIndex]?.data?.[opts.dataPointIndex];
+          const kind = point?.meta?.kind;
+          if (kind === "placeholder" || kind === "overdue") return "";
+          return point?.meta?.taskTitle || "";
         },
         style: {
           colors: ["#0F172A"],
@@ -134,20 +346,30 @@ const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
       },
       tooltip: {
         shared: false,
-        custom: ({ dataPointIndex }) => {
-          const entry = normalizedData?.[dataPointIndex];
-          if (!entry) {
+        custom: ({ seriesIndex, dataPointIndex, w }) => {
+          const point = w?.config?.series?.[seriesIndex]?.data?.[dataPointIndex];
+          const meta = point?.meta;
+          if (!meta || meta.kind === "placeholder") {
             return `<div style="padding:12px;">No data available</div>`;
           }
-          const members = entry?.members || [];
+
+          const members = meta?.members || [];
           const memberNames = members.length > 0
             ? members.map((m) => m.name || m.Name || "").filter(Boolean).join(", ")
-            : entry?.assignedToName ?? "Unassigned";
+            : meta?.assignedToName ?? "Unassigned";
           
+          const isOverdue = meta.kind === "overdue";
+          const stage = meta.stage || "—";
+          const phaseName = meta.phaseName || "—";
+          const rowLabel = meta.rowLabel || "—";
+
           return `<div style="padding:12px;">
-            <strong>${entry?.phaseName || "Unknown Phase"}</strong><br/>
-            ${entry?.startDate ? new Date(entry.startDate).toLocaleDateString() : "N/A"} → ${entry?.endDate ? new Date(
-            entry.endDate
+            <strong>${meta?.taskTitle || "Untitled Task"}</strong>${isOverdue ? ' <span style="color:#EF4444;font-weight:700;">(Overdue)</span>' : ""}<br/>
+            <span style="color:#64748B;"><strong>Row:</strong> ${rowLabel}</span><br/>
+            <span style="color:#64748B;"><strong>SDLC:</strong> ${stage}</span><br/>
+            <span style="color:#64748B;"><strong>Phase:</strong> ${phaseName}</span><br/>
+            ${meta?.startDate ? new Date(meta.startDate).toLocaleDateString() : "N/A"} → ${meta?.endDate ? new Date(
+            meta.endDate
           ).toLocaleDateString() : "N/A"}<br/>
             <strong>Members:</strong> ${memberNames}
           </div>`;
@@ -373,6 +595,29 @@ const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
       <Box id={chartId}>
         <Chart ref={chartRef} options={options} series={series} type="rangeBar" height={420} />
       </Box>
+
+      <style jsx global>{`
+        @keyframes pmOverdueGlow {
+          0% {
+            opacity: 0.9;
+            stroke-width: 1.5;
+          }
+          50% {
+            opacity: 1;
+            stroke-width: 3;
+          }
+          100% {
+            opacity: 1;
+            stroke-width: 3.5;
+          }
+        }
+
+        /* Overdue segments are rendered with fillColor "#EF4444". Animate only those bars. */
+        #${chartId} .pm-overdue-segment {
+          animation: pmOverdueGlow 1.1s ease-in-out infinite alternate;
+          will-change: opacity, stroke-width;
+        }
+      `}</style>
     </Box>
   );
 };

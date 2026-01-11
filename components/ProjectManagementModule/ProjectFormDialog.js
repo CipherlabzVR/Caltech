@@ -17,6 +17,7 @@ import { Formik } from "formik";
 import * as Yup from "yup";
 import dayjs from "dayjs";
 
+
 const normalizeToArray = (data) => {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.result)) return data.result;
@@ -332,6 +333,8 @@ const ProjectFormDialog = ({
                   .filter((id) => Number.isInteger(id) && id > 0)
               : [];
 
+            const normalizedCustomerId = toNumericId(values.customerId);
+
             const payload = {
               ...values,
               name: sanitizedName,
@@ -347,6 +350,7 @@ const ProjectFormDialog = ({
               budgetAmount: safeBudget,
               startDate: dayjs(values.startDate).toISOString(),
               endDate: dayjs(values.endDate).toISOString(),
+              customerId: normalizedCustomerId,
             };
 
             await onSubmit(payload);
@@ -417,7 +421,9 @@ const ProjectFormDialog = ({
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <Autocomplete
+                      freeSolo
                       options={customerOptions}
+                      inputValue={values.clientName ?? ""}
                       value={
                         customerOptions.find(
                           (customer) =>
@@ -425,10 +431,14 @@ const ProjectFormDialog = ({
                         ) || null
                       }
                       onChange={(_, newValue) => {
-                        setFieldValue(
-                          "customerId",
-                          newValue ? toNumericId(newValue.id) : null
-                        );
+                        // newValue can be an option object or a string (freeSolo)
+                        if (typeof newValue === "string") {
+                          setFieldValue("customerId", null);
+                          setFieldValue("clientName", newValue);
+                          return;
+                        }
+
+                        setFieldValue("customerId", newValue ? toNumericId(newValue.id) : null);
                         if (newValue) {
                           setFieldValue("clientName", newValue.label || "");
                           const { phone, email } = extractCustomerContact(newValue);
@@ -440,18 +450,33 @@ const ProjectFormDialog = ({
                           }
                         }
                       }}
-                      getOptionLabel={(option) => option?.label ?? ""}
+                      onInputChange={(_, newInputValue, reason) => {
+                        // When typing, treat it as a new customer name candidate
+                        if (reason === "input") {
+                          setFieldValue("clientName", newInputValue ?? "");
+                          setFieldValue("customerId", null);
+                        }
+                      }}
+                      getOptionLabel={(option) =>
+                        typeof option === "string" ? option : option?.label ?? ""
+                      }
                       isOptionEqualToValue={(option, value) =>
                         toNumericId(option?.id) === toNumericId(value?.id)
                       }
                       loading={customersLoading}
                       loadingText="Loading customers..."
-                      noOptionsText={customersLoading ? "Loading..." : "No customers found"}
+                      noOptionsText={
+                        customersLoading
+                          ? "Loading..."
+                          : values.clientName
+                          ? "No match. Type to add a new customer."
+                          : "No customers found"
+                      }
                       renderInput={(params) => (
                         <TextField
                           {...params}
                           label="Customer"
-                          placeholder="Select customer"
+                          placeholder="Search or type a new customer"
                         />
                       )}
                     />

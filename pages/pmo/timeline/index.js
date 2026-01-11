@@ -1,40 +1,26 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   Alert,
   Autocomplete,
   Box,
-  Button,
-  IconButton,
   Paper,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
-import AddIcon from "@mui/icons-material/Add";
-import EditIcon from "@mui/icons-material/EditOutlined";
-import DeleteIcon from "@mui/icons-material/DeleteOutline";
 import PageHeader from "@/components/ProjectManagementModule/PageHeader";
 import TimelineGanttChart from "@/components/ProjectManagementModule/TimelineGanttChart";
-import TimelineEntryFormDialog from "@/components/ProjectManagementModule/TimelineEntryFormDialog";
 import {
-  createTimelineEntry,
-  deleteTimelineEntry,
   getProjects,
-  getTeamMembers,
-  getTimeline,
-  updateTimelineEntry,
+  getTaskBoard,
 } from "@/Services/projectManagementService";
-import dayjs from "dayjs";
 
 const TimelinePage = () => {
   const [projects, setProjects] = useState([]);
-  const [teamMembers, setTeamMembers] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
-  const [timeline, setTimeline] = useState([]);
+  const [tasks, setTasks] = useState([]);
   const [error, setError] = useState(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editEntry, setEditEntry] = useState(null);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -48,21 +34,27 @@ const TimelinePage = () => {
     }
   }, [selectedProject]);
 
-  const loadTeamMembers = useCallback(async () => {
-    try {
-      const data = await getTeamMembers();
-      setTeamMembers(data ?? []);
-    } catch (err) {
-      console.error(err);
-    }
-  }, []);
-
-  const loadTimeline = useCallback(
+  const loadTasks = useCallback(
     async (projectId) => {
       if (!projectId) return;
       try {
-        const data = await getTimeline(projectId);
-        setTimeline(data ?? []);
+        const data = await getTaskBoard(projectId);
+        const columns = data?.columns ?? [];
+        const flattened = columns.flatMap((col) => (col?.cards ?? []).map((card) => ({
+          ...card,
+          columnId: col.columnId,
+          columnTitle: col.title,
+        })));
+
+        // Only tasks with dates should appear on the timeline.
+        // SDLC row assignment is handled in the chart (uses phaseType, falls back to phaseName).
+        const timelineTasks = flattened.filter((t) => {
+          const start = t.startDate || t.StartDate;
+          const due = t.dueDate || t.DueDate;
+          return Boolean(start) && Boolean(due);
+        });
+
+        setTasks(timelineTasks);
         setError(null);
       } catch (err) {
         setError(err.message);
@@ -73,56 +65,59 @@ const TimelinePage = () => {
 
   useEffect(() => {
     loadProjects();
-    loadTeamMembers();
-  }, [loadProjects, loadTeamMembers]);
+  }, [loadProjects]);
 
   useEffect(() => {
     if (selectedProject?.projectId) {
-      loadTimeline(selectedProject.projectId);
+      loadTasks(selectedProject.projectId);
     }
-  }, [selectedProject, loadTimeline]);
+  }, [selectedProject, loadTasks]);
 
-  const handleSubmitEntry = async (values) => {
-    if (!selectedProject) return;
-    if (editEntry) {
-      await updateTimelineEntry(editEntry.timelineEntryId, {
-        ...values,
-        projectId: selectedProject.projectId,
-      });
-    } else {
-      await createTimelineEntry({
-        ...values,
-        projectId: selectedProject.projectId,
-      });
-    }
-    setDialogOpen(false);
-    setEditEntry(null);
-    await loadTimeline(selectedProject.projectId);
-  };
+  const phasesLedger = useMemo(() => {
+    const groups = new Map();
 
-  const handleDeleteEntry = async (entryId) => {
-    await deleteTimelineEntry(entryId);
-    await loadTimeline(selectedProject.projectId);
-  };
+    tasks.forEach((t) => {
+      const phaseName = t.phaseName || t.PhaseName || "Unassigned";
+      const phaseType = t.phaseType || t.PhaseType || "";
+      const start = t.startDate || t.StartDate;
+      const end = t.dueDate || t.DueDate || t.endDate || t.EndDate;
+      const key = String(phaseName).toLowerCase();
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          phaseName,
+          phaseType,
+          startDate: start,
+          endDate: end,
+          taskTitles: [],
+        });
+      }
+
+      const g = groups.get(key);
+      g.phaseType = g.phaseType || phaseType;
+
+      const s = start ? new Date(start) : null;
+      const e = end ? new Date(end) : null;
+      const gs = g.startDate ? new Date(g.startDate) : null;
+      const ge = g.endDate ? new Date(g.endDate) : null;
+      if (s && (!gs || s < gs)) g.startDate = start;
+      if (e && (!ge || e > ge)) g.endDate = end;
+
+      if (t.title) g.taskTitles.push(t.title);
+    });
+
+    return Array.from(groups.values()).sort((a, b) => {
+      const aS = a.startDate ? new Date(a.startDate).getTime() : 0;
+      const bS = b.startDate ? new Date(b.startDate).getTime() : 0;
+      return aS - bS;
+    });
+  }, [tasks]);
 
   return (
     <>
       <PageHeader
         title="Project Timeline"
-        subtitle="Plan SDLC milestones, dependencies and deliverable dates."
-        actions={
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => {
-              setEditEntry(null);
-              setDialogOpen(true);
-            }}
-            disabled={!selectedProject}
-          >
-            Add Phase
-          </Button>
-        }
+        subtitle="Timeline is generated automatically from tasks grouped by phase."
       />
 
       {error ? <Alert severity="error">{error}</Alert> : null}
@@ -150,7 +145,7 @@ const TimelinePage = () => {
 
       {selectedProject ? (
         <>
-          <TimelineGanttChart data={timeline} />
+          <TimelineGanttChart data={tasks} />
 
           <Paper
             elevation={0}
@@ -165,27 +160,9 @@ const TimelinePage = () => {
               Phase Ledger
             </Typography>
             <Stack spacing={2}>
-              {timeline.map((entry) => {
-                // Normalize entry to handle both camelCase and PascalCase
-                const members = entry.members || entry.Members || [];
-                const memberNames = members.length > 0
-                  ? members.map((m) => m.name || m.Name || "").filter(Boolean).join(", ")
-                  : entry.assignedToName || entry.AssignedToName || "Unassigned";
-                
-                const normalizedEntry = {
-                  timelineEntryId: entry.timelineEntryId || entry.TimelineEntryId,
-                  phaseName: entry.phaseName || entry.PhaseName || "",
-                  phaseType: entry.phaseType || entry.PhaseType || "",
-                  startDate: entry.startDate || entry.StartDate,
-                  endDate: entry.endDate || entry.EndDate,
-                  assignedToMemberId: entry.assignedToMemberId || entry.AssignedToMemberId || null,
-                  assignedToName: memberNames,
-                  members: members,
-                  notes: entry.notes || entry.Notes || "",
-                };
-                return (
+              {phasesLedger.map((entry) => (
                 <Box
-                  key={normalizedEntry.timelineEntryId}
+                  key={entry.phaseName}
                   sx={{
                     p: 2,
                     borderRadius: 2,
@@ -199,41 +176,22 @@ const TimelinePage = () => {
                 >
                   <Box>
                     <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                      {normalizedEntry.phaseName}
+                      {entry.phaseName}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {normalizedEntry.startDate ? new Date(normalizedEntry.startDate).toLocaleDateString() : "N/A"} →{" "}
-                      {normalizedEntry.endDate ? new Date(normalizedEntry.endDate).toLocaleDateString() : "N/A"}
+                      {entry.startDate ? new Date(entry.startDate).toLocaleDateString() : "N/A"} →{" "}
+                      {entry.endDate ? new Date(entry.endDate).toLocaleDateString() : "N/A"}
                     </Typography>
-                    <Typography variant="body2">
-                      {normalizedEntry.assignedToName ?? "Unassigned"}
-                    </Typography>
-                    {normalizedEntry.notes ? (
+                    {entry.taskTitles?.length ? (
                       <Typography variant="body2" color="text.secondary">
-                        {normalizedEntry.notes}
+                        {entry.taskTitles.slice(0, 6).join(", ")}
+                        {entry.taskTitles.length > 6 ? " …" : ""}
                       </Typography>
                     ) : null}
                   </Box>
-                  <Stack direction="row" spacing={1}>
-                    <IconButton
-                      onClick={() => {
-                        setEditEntry(normalizedEntry);
-                        setDialogOpen(true);
-                      }}
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton
-                      color="error"
-                      onClick={() => handleDeleteEntry(normalizedEntry.timelineEntryId)}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </Stack>
                 </Box>
-              );
-              })}
-              {!timeline.length ? (
+              ))}
+              {!phasesLedger.length ? (
                 <Box
                   sx={{
                     p: 4,
@@ -243,8 +201,8 @@ const TimelinePage = () => {
                     color: "text.secondary",
                   }}
                 >
-                  No timeline entries yet. Start with planning, design and dev
-                  checkpoints.
+                  No timeline tasks yet. Create tasks with Phase + Start/Due dates to
+                  generate the timeline.
                 </Box>
               ) : null}
             </Stack>
@@ -263,34 +221,6 @@ const TimelinePage = () => {
           Select a project to manage timeline.
         </Box>
       )}
-
-      <TimelineEntryFormDialog
-        open={dialogOpen}
-        onClose={() => {
-          setDialogOpen(false);
-          setEditEntry(null);
-        }}
-        onSubmit={handleSubmitEntry}
-        initialValues={
-          editEntry
-            ? {
-                phaseName: editEntry.phaseName || "",
-                phaseType: editEntry.phaseType || "Planning",
-                startDate: editEntry.startDate ? dayjs(editEntry.startDate) : dayjs(),
-                endDate: editEntry.endDate ? dayjs(editEntry.endDate) : dayjs().add(3, "day"),
-                assignedToMemberId: editEntry.assignedToMemberId || null,
-                memberIds: editEntry.members && editEntry.members.length > 0
-                  ? editEntry.members.map((m) => m.memberId)
-                  : editEntry.assignedToMemberId
-                  ? [editEntry.assignedToMemberId]
-                  : [],
-                notes: editEntry.notes || "",
-              }
-            : undefined
-        }
-        title={editEntry ? "Update Phase" : "Add Phase"}
-        teamMembers={teamMembers}
-      />
     </>
   );
 };

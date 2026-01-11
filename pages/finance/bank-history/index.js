@@ -9,13 +9,15 @@ import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import CreateBankHistory from "./create";
 import EditBankHistory from "./edit";
-import { FormControl, InputLabel, MenuItem, Pagination, Paper, Select, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from "@mui/material";
-import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
+import { FormControl, InputLabel, MenuItem, Pagination, Paper, Select, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Button, Modal, Box, TextField, CircularProgress, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from "@mui/material";
+import { formatCurrency, formatDate, formatDateWithTime } from "@/components/utils/formatHelper";
 import useApi from "@/components/utils/useApi";
+import { toast } from "react-toastify";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 export default function BankHistory() {
   const cId = sessionStorage.getItem("category");
-  const { navigate, print, create, update } = IsPermissionEnabled(cId);
+  const { navigate, print, create, update, remove } = IsPermissionEnabled(cId);
   const [bankHistory, setBankHistory] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
@@ -24,6 +26,12 @@ export default function BankHistory() {
   const [bankId, setBankId] = useState(null);
   const { data: bankList } = useApi("/Bank/GetAllBanks");
   const [banks, setBanks] = useState([]);
+  const [openRecalculateModal, setOpenRecalculateModal] = useState(false);
+  const [recalculateDate, setRecalculateDate] = useState(new Date().toISOString().split('T')[0]);
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (bankList) {
@@ -84,6 +92,102 @@ export default function BankHistory() {
     setBankId(id);
     fetchBankHistory(1, searchTerm, pageSize, id)
   }
+
+  const handleOpenRecalculateModal = () => {
+    setRecalculateDate(new Date().toISOString().split('T')[0]);
+    setOpenRecalculateModal(true);
+  }
+
+  const handleCloseRecalculateModal = () => {
+    if (!isRecalculating) {
+      setOpenRecalculateModal(false);
+    }
+  }
+
+  const handleRecalculateBalance = async () => {
+    if (!bankId) {
+      toast.error("Please select a bank");
+      return;
+    }
+    if (!recalculateDate) {
+      toast.error("Please select a date");
+      return;
+    }
+
+    setIsRecalculating(true);
+    try {
+      const token = localStorage.getItem("token");
+      const query = `${BASE_URL}/BankHistory/RecalculateRemainingBalanceFromDate?fromDate=${recalculateDate}&bankId=${bankId}`;
+      const response = await fetch(query, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.statusCode === 200) {
+        toast.success(data.message || "Remaining balance recalculated successfully");
+        setOpenRecalculateModal(false);
+        // Refresh the bank history
+        fetchBankHistory(page, searchTerm, pageSize, bankId);
+      } else {
+        toast.error(data.message || "Failed to recalculate balance");
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error(error.message || "An error occurred while recalculating balance");
+    } finally {
+      setIsRecalculating(false);
+    }
+  }
+
+  const handleOpenDeleteDialog = (item) => {
+    setItemToDelete(item);
+    setDeleteDialogOpen(true);
+  }
+
+  const handleCloseDeleteDialog = () => {
+    if (!isDeleting) {
+      setDeleteDialogOpen(false);
+      setItemToDelete(null);
+    }
+  }
+
+  const handleDeleteBankHistory = async () => {
+    if (!itemToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${BASE_URL}/BankHistory/DeleteBankHistory/${itemToDelete.id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.statusCode === 200) {
+        toast.success(data.message || "Bank history deleted successfully");
+        setDeleteDialogOpen(false);
+        setItemToDelete(null);
+        fetchBankHistory(page, searchTerm, pageSize, bankId);
+      } else {
+        toast.error(data.message || "Failed to delete bank history");
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error(error.message || "An error occurred while deleting");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   return (
     <>
       <ToastContainer />
@@ -113,8 +217,15 @@ export default function BankHistory() {
               )))}
           </Select>
         </Grid>
-        <Grid item xs={12} lg={4} mb={1} display="flex" justifyContent="end" order={{ xs: 1, lg: 2 }}>
-          {create ? <CreateBankHistory banks={banks} fetchItems={fetchBankHistory} /> : ""}
+        <Grid item xs={12} lg={4} mb={1} display="flex" justifyContent="end" gap={1} order={{ xs: 1, lg: 2 }}>
+          <Button 
+            variant="outlined" 
+            onClick={handleOpenRecalculateModal}
+            disabled={!bankId}
+          >
+            Generate Remaining Balance
+          </Button>
+          {create ? <CreateBankHistory banks={banks} fetchItems={() => fetchBankHistory(page, searchTerm, pageSize, bankId)} /> : ""}
         </Grid>
         <Grid item xs={12} order={{ xs: 3, lg: 3 }}>
           <TableContainer component={Paper}>
@@ -145,7 +256,7 @@ export default function BankHistory() {
                       <TableCell>
                         {item.documentNo}
                       </TableCell>
-                      <TableCell>{formatDate(item.createdOn)}</TableCell>
+                      <TableCell>{formatDateWithTime(item.createdOn)}</TableCell>
                       <TableCell>{item.description}</TableCell>
                       <TableCell>{item.cashFlowTypeName || "-"}</TableCell>
                       <TableCell >
@@ -159,7 +270,19 @@ export default function BankHistory() {
                       <TableCell>{formatCurrency(item.transactionType === 2 ? item.amount : "")}</TableCell>
                       <TableCell>{formatCurrency(item.remainingBalance)}</TableCell>
                       <TableCell align="right">
-                        {update ? <EditBankHistory item={item} fetchItems={() => fetchBankHistory(page, searchTerm, pageSize, bankId)} /> : ""}
+                        {update ? <EditBankHistory item={item} banks={banks} fetchItems={() => fetchBankHistory(page, searchTerm, pageSize, bankId)} /> : ""}
+                        {remove ? (
+                          <Tooltip title="Delete" placement="top">
+                            <IconButton
+                              onClick={() => handleOpenDeleteDialog(item)}
+                              aria-label="delete"
+                              size="small"
+                              color="error"
+                            >
+                              <DeleteIcon fontSize="inherit" />
+                            </IconButton>
+                          </Tooltip>
+                        ) : ""}
                       </TableCell>
                     </TableRow>
                   ))
@@ -186,6 +309,125 @@ export default function BankHistory() {
           </TableContainer>
         </Grid>
       </Grid>
+
+      {/* Recalculate Remaining Balance Modal */}
+      <Modal
+        open={openRecalculateModal}
+        onClose={handleCloseRecalculateModal}
+        aria-labelledby="recalculate-modal-title"
+        aria-describedby="recalculate-modal-description"
+      >
+        <Box
+          sx={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: { lg: 400, xs: 350 },
+            bgcolor: "background.paper",
+            boxShadow: 24,
+            p: 3,
+            borderRadius: 1,
+          }}
+          className="bg-black"
+        >
+          <Typography
+            variant="h5"
+            sx={{
+              fontWeight: "500",
+              mb: 3,
+            }}
+          >
+            Generate Remaining Balance
+          </Typography>
+          
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <Typography
+                sx={{
+                  fontWeight: "500",
+                  mb: "5px",
+                }}
+              >
+                From Date
+              </Typography>
+              <TextField
+                fullWidth
+                type="date"
+                value={recalculateDate}
+                onChange={(e) => setRecalculateDate(e.target.value)}
+                InputLabelProps={{
+                  shrink: true,
+                }}
+                disabled={isRecalculating}
+              />
+            </Grid>
+          </Grid>
+
+          <Box display="flex" justifyContent="space-between" mt={3}>
+            <Button
+              variant="contained"
+              color="error"
+              onClick={handleCloseRecalculateModal}
+              size="small"
+              disabled={isRecalculating}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleRecalculateBalance}
+              size="small"
+              disabled={isRecalculating || !recalculateDate}
+              startIcon={isRecalculating ? <CircularProgress size={16} /> : null}
+            >
+              {isRecalculating ? "Generating..." : "Generate"}
+            </Button>
+          </Box>
+        </Box>
+      </Modal>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={handleCloseDeleteDialog}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Confirm Delete
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="delete-dialog-description">
+            Are you sure you want to delete this bank history record?
+            {itemToDelete && (
+              <>
+                <br /><br />
+                <strong>Document No:</strong> {itemToDelete.documentNo}<br />
+                <strong>Description:</strong> {itemToDelete.description}<br />
+                <strong>Amount:</strong> {formatCurrency(itemToDelete.amount)}
+              </>
+            )}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={handleCloseDeleteDialog}
+            disabled={isDeleting}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleDeleteBankHistory}
+            color="error"
+            variant="contained"
+            disabled={isDeleting}
+            startIcon={isDeleting ? <CircularProgress size={16} /> : null}
+          >
+            {isDeleting ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

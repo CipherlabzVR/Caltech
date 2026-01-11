@@ -17,10 +17,25 @@ import Stack from "@mui/material/Stack";
 import CircularProgress from "@mui/material/CircularProgress";
 import FormHelperText from "@mui/material/FormHelperText";
 import Chip from "@mui/material/Chip";
+import Autocomplete from "@mui/material/Autocomplete";
+import InputAdornment from "@mui/material/InputAdornment";
+import SearchIcon from "@mui/icons-material/Search";
 import BASE_URL from "Base/api";
 import { toast } from "react-toastify";
-import useCRMAccounts from "hooks/useCRMAccounts";
 import useContactsByAccount from "hooks/useContactsByAccount";
+
+// Debounce helper function
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
 
 const getAccountValue = (account) => String(account.id);
 
@@ -34,7 +49,14 @@ export default function CreateLead({ onLeadCreated }) {
   const [sourceOptions, setSourceOptions] = React.useState([]);
   const [loadingSources, setLoadingSources] = React.useState(false);
   const [sourceError, setSourceError] = React.useState(null);
-  const { accounts, isLoading: accountsLoading, error: accountsError } = useCRMAccounts();
+
+  // Account search state
+  const [accounts, setAccounts] = React.useState([]);
+  const [accountsLoading, setAccountsLoading] = React.useState(false);
+  const [accountsError, setAccountsError] = React.useState(null);
+  const [accountSearchTerm, setAccountSearchTerm] = React.useState("");
+  const [selectedAccount, setSelectedAccount] = React.useState(null);
+
   const [formValues, setFormValues] = React.useState({
     leadName: "",
     company: "",
@@ -116,6 +138,53 @@ export default function CreateLead({ onLeadCreated }) {
     }
   }, []);
 
+  // Debounced account search function
+  const searchAccounts = React.useCallback(async (searchTerm) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setAccounts([]);
+      return;
+    }
+
+    try {
+      setAccountsLoading(true);
+      setAccountsError(null);
+
+      const response = await fetch(
+        `${BASE_URL}/CRMAccounts/SearchAccounts?searchTerm=${encodeURIComponent(searchTerm)}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to search accounts");
+      }
+
+      const data = await response.json();
+      setAccounts(data?.result || []);
+    } catch (error) {
+      setAccountsError(error.message || "Unable to search accounts");
+      setAccounts([]);
+    } finally {
+      setAccountsLoading(false);
+    }
+  }, []);
+
+  // Create debounced version of search (300ms delay)
+  const debouncedSearchAccounts = React.useMemo(
+    () => debounce(searchAccounts, 300),
+    [searchAccounts]
+  );
+
+  // Trigger search when search term changes
+  React.useEffect(() => {
+    debouncedSearchAccounts(accountSearchTerm);
+  }, [accountSearchTerm, debouncedSearchAccounts]);
+
   React.useEffect(() => {
     if (open) {
       if (statusOptions.length === 0 && !loadingStatuses && !statusError) {
@@ -150,6 +219,9 @@ export default function CreateLead({ onLeadCreated }) {
       contactId: ""
     });
     setLeadScore(50);
+    setSelectedAccount(null);
+    setAccountSearchTerm("");
+    setAccounts([]);
   };
 
   const handleClose = () => {
@@ -157,31 +229,37 @@ export default function CreateLead({ onLeadCreated }) {
     resetForm();
   };
 
-  const handleChange = (field) => (event) => {
-    setFormValues((prev) => {
-      const newValues = {
+  const handleAccountSelect = (event, account) => {
+    setSelectedAccount(account);
+    if (account) {
+      const fullName = [account.firstName, account.lastName].filter(Boolean).join(" ");
+      setFormValues((prev) => ({
         ...prev,
-        [field]: event.target.value,
-      };
-      if (field === "accountId") {
-        const selectedAccount = accounts.find(acc => getAccountValue(acc) === event.target.value);
-        if (selectedAccount) {
-          newValues.contactId = selectedAccount.contactId ? String(selectedAccount.contactId) : "";
-          const fullName = [selectedAccount.firstName, selectedAccount.lastName].filter(Boolean).join(" ");
-          newValues.leadName = fullName;
-          newValues.company = selectedAccount.accountName || "";
-          newValues.email = selectedAccount.email || "";
-          newValues.mobileNo = selectedAccount.mobileNo || "";
-        } else {
-          newValues.contactId = "";
-          newValues.leadName = "";
-          newValues.company = "";
-          newValues.email = "";
-          newValues.mobileNo = "";
-        }
-      }
-      return newValues;
-    });
+        accountId: String(account.id),
+        contactId: account.contactId ? String(account.contactId) : "",
+        leadName: fullName || account.accountName || "",
+        company: account.accountName || "",
+        email: account.email || "",
+        mobileNo: account.mobileNo || "",
+      }));
+    } else {
+      setFormValues((prev) => ({
+        ...prev,
+        accountId: "",
+        contactId: "",
+        leadName: "",
+        company: "",
+        email: "",
+        mobileNo: "",
+      }));
+    }
+  };
+
+  const handleChange = (field) => (event) => {
+    setFormValues((prev) => ({
+      ...prev,
+      [field]: event.target.value,
+    }));
   };
 
   const handleSubmit = async (event) => {
@@ -205,9 +283,10 @@ export default function CreateLead({ onLeadCreated }) {
       return;
     }
 
-    const selectedAccount = accounts.find(acc => getAccountValue(acc) === formValues.accountId);
     const contactId = selectedAccount?.contactId || null;
-    const fullName = selectedAccount ? [selectedAccount.firstName, selectedAccount.lastName].filter(Boolean).join(" ") : formValues.leadName.trim();
+    const fullName = selectedAccount
+      ? [selectedAccount.firstName, selectedAccount.lastName].filter(Boolean).join(" ") || selectedAccount.accountName
+      : formValues.leadName.trim();
 
     const payload = {
       LeadName: fullName,
@@ -269,40 +348,76 @@ export default function CreateLead({ onLeadCreated }) {
                 </Typography>
               </Grid>
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Account</InputLabel>
-                  <Select
-                    value={formValues.accountId}
-                    label="Account"
-                    onChange={handleChange("accountId")}
-                    disabled={accountsLoading || accounts.length === 0}
-                  >
-                    {accounts.map((account) => (
-                      <MenuItem key={account.id} value={getAccountValue(account)}>
-                        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-                          <Typography variant="body2">
-                            {account.accountName || account.accountId || getAccountValue(account)}
+                <Autocomplete
+                  fullWidth
+                  size="small"
+                  options={accounts}
+                  value={selectedAccount}
+                  onChange={handleAccountSelect}
+                  onInputChange={(event, newInputValue) => {
+                    setAccountSearchTerm(newInputValue);
+                  }}
+                  getOptionLabel={(option) => option?.accountName || ""}
+                  isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                  loading={accountsLoading}
+                  noOptionsText={accountSearchTerm.length < 2 ? "Type at least 2 characters to search" : "No accounts found"}
+                  renderOption={(props, option) => (
+                    <Box component="li" {...props} key={option.id}>
+                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                        <Box>
+                          <Typography variant="body2" fontWeight={500}>
+                            {option.accountName}
                           </Typography>
-                          {account.emailVerified === true || account.isEmailVerified === true ? (
-                            <Chip
-                              label="Verified"
-                              color="success"
-                              size="small"
-                              variant="outlined"
-                              sx={{
-                                height: 20,
-                                fontSize: "0.7rem",
-                                fontWeight: 600,
-                                ml: 1,
-                              }}
-                            />
-                          ) : null}
+                          {option.email && (
+                            <Typography variant="caption" color="text.secondary">
+                              {option.email}
+                            </Typography>
+                          )}
                         </Box>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                  {accountsError && <FormHelperText error>{accountsError}</FormHelperText>}
-                </FormControl>
+                        {(option.emailVerified === true || option.isEmailVerified === true) && (
+                          <Chip
+                            label="Verified"
+                            color="success"
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              height: 20,
+                              fontSize: "0.7rem",
+                              fontWeight: 600,
+                              ml: 1,
+                            }}
+                          />
+                        )}
+                      </Box>
+                    </Box>
+                  )}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Search Account"
+                      placeholder="Type to search accounts..."
+                      InputProps={{
+                        ...params.InputProps,
+                        startAdornment: (
+                          <>
+                            <InputAdornment position="start">
+                              <SearchIcon fontSize="small" color="action" />
+                            </InputAdornment>
+                            {params.InputProps.startAdornment}
+                          </>
+                        ),
+                        endAdornment: (
+                          <>
+                            {accountsLoading ? <CircularProgress color="inherit" size={20} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                      error={!!accountsError}
+                      helperText={accountsError}
+                    />
+                  )}
+                />
               </Grid>
               <Grid item xs={12} md={6}>
                 <TextField

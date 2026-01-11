@@ -11,10 +11,20 @@ import {
   MenuItem,
   TextField,
 } from "@mui/material";
-import { DatePicker, LocalizationProvider } from "@mui/x-date-pickers";
+import { DatePicker, LocalizationProvider, TimePicker } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
 import * as Yup from "yup";
+
+const sdlcPhases = [
+  "Planning",
+  "Analysis",
+  "Design",
+  "Development",
+  "Testing",
+  "Deployment",
+  "Maintenance",
+];
 
 const validationSchema = Yup.object().shape({
   projectId: Yup.number()
@@ -31,6 +41,10 @@ const validationSchema = Yup.object().shape({
   description: Yup.string()
     .nullable()
     .max(2048, "Description cannot exceed 2048 characters"),
+  estimatedHours: Yup.number()
+    .typeError("Estimated hours must be a number")
+    .required("Estimated hours is required")
+    .moreThan(0, "Estimated hours must be greater than 0"),
   startDate: Yup.date()
     .nullable()
     .typeError("Please select a valid start date")
@@ -47,6 +61,23 @@ const validationSchema = Yup.object().shape({
       if (!value || !startDate) return true;
       return dayjs(value).isAfter(dayjs(startDate)) || dayjs(value).isSame(dayjs(startDate), "day");
     }),
+  phaseName: Yup.string()
+    .nullable()
+    .transform((value) => (typeof value === "string" ? value.trim() : value))
+    .max(128, "Phase name cannot exceed 128 characters"),
+  phaseType: Yup.string()
+    .nullable()
+    .oneOf(sdlcPhases, "Please select a valid SDLC stage"),
+  // If a phase is selected, we need dates to generate the timeline automatically.
+  _phaseDatesGate: Yup.mixed().test(
+    "phase-requires-dates",
+    "Start date and Due date are required when selecting a phase",
+    function () {
+      const { phaseName, startDate, dueDate } = this.parent;
+      if (!phaseName || !String(phaseName).trim()) return true;
+      return Boolean(startDate) && Boolean(dueDate);
+    }
+  ),
   assignedMemberIds: Yup.array().of(Yup.number()).nullable(),
 });
 
@@ -57,9 +88,19 @@ const TaskFormDialog = ({
   initialValues,
   teamMembers = [],
   columns = [],
+  phases = [],
   title = "New Task",
 }) => {
   const columnLocked = Boolean(initialValues?.columnLocked);
+  const normalizedPhases = Array.isArray(phases)
+    ? phases
+        .map((p) => ({
+          phaseName: p.phaseName || p.PhaseName || "",
+          phaseType: p.phaseType || p.PhaseType || "",
+        }))
+        .filter((p) => p.phaseName)
+    : [];
+
   const defaults = {
     projectId: initialValues?.projectId ?? null,
     boardColumnId:
@@ -71,6 +112,10 @@ const TaskFormDialog = ({
         : "",
     title: initialValues?.title ?? "",
     description: initialValues?.description ?? "",
+    estimatedHours:
+      initialValues?.estimatedHours ??
+      initialValues?.EstimatedHours ??
+      "",
     assignedMemberIds: Array.isArray(initialValues?.assignees)
       ? initialValues.assignees.map((a) => a.memberId)
       : initialValues?.assignedToMemberId != null
@@ -78,9 +123,25 @@ const TaskFormDialog = ({
       : [],
     startDate: initialValues?.startDate ? dayjs(initialValues.startDate) : null,
     dueDate: initialValues?.dueDate ? dayjs(initialValues.dueDate) : null,
+    phaseName:
+      initialValues?.phaseName ||
+      initialValues?.PhaseName ||
+      initialValues?.phase ||
+      "",
+    phaseType:
+      initialValues?.phaseType ||
+      initialValues?.PhaseType ||
+      "",
     checklist: initialValues?.checklist
       ? initialValues.checklist.map((item) => ({ title: item.title }))
       : [],
+  };
+
+  const mergeTime = (baseDate, timeValue) => {
+    if (!timeValue) return baseDate;
+    const base = baseDate ? dayjs(baseDate) : dayjs();
+    const time = dayjs(timeValue);
+    return base.hour(time.hour()).minute(time.minute()).second(0).millisecond(0);
   };
 
   return (
@@ -107,10 +168,16 @@ const TaskFormDialog = ({
               ...values,
               projectId: values.projectId ? Number(values.projectId) : null,
               status: statusToSend,
+              estimatedHours:
+                values.estimatedHours === "" || values.estimatedHours == null
+                  ? null
+                  : Number(values.estimatedHours),
               assignedMemberIds: values.assignedMemberIds?.filter((id) => id != null) ?? [],
               checklist: values.checklist?.filter((item) => item.title.trim()),
               startDate: values.startDate ? values.startDate.toISOString() : null,
               dueDate: values.dueDate ? values.dueDate.toISOString() : null,
+              phaseName: values.phaseName ? String(values.phaseName).trim() : null,
+              phaseType: values.phaseType ? String(values.phaseType).trim() : null,
             };
 
             await onSubmit(payload);
@@ -195,6 +262,19 @@ const TaskFormDialog = ({
                       helperText={touched.description && errors.description}
                     />
                   </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      name="estimatedHours"
+                      label="Estimated Hours"
+                      fullWidth
+                      type="number"
+                      inputProps={{ min: 0, step: 0.25 }}
+                      value={values.estimatedHours}
+                      onChange={handleChange}
+                      error={touched.estimatedHours && Boolean(errors.estimatedHours)}
+                      helperText={touched.estimatedHours && errors.estimatedHours}
+                    />
+                  </Grid>
                   <Grid item xs={12}>
                     <Autocomplete
                       multiple
@@ -232,6 +312,16 @@ const TaskFormDialog = ({
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
+                    <TimePicker
+                      label="Start Time"
+                      value={values.startDate}
+                      onChange={(time) =>
+                        setFieldValue("startDate", mergeTime(values.startDate, time))
+                      }
+                      renderInput={(params) => <TextField {...params} fullWidth />}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
                     <DatePicker
                       label="Due Date"
                       value={values.dueDate}
@@ -245,6 +335,64 @@ const TaskFormDialog = ({
                         />
                       )}
                     />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TimePicker
+                      label="End Time"
+                      value={values.dueDate}
+                      onChange={(time) =>
+                        setFieldValue("dueDate", mergeTime(values.dueDate, time))
+                      }
+                      renderInput={(params) => <TextField {...params} fullWidth />}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Autocomplete
+                      freeSolo
+                      options={normalizedPhases.map((p) => p.phaseName)}
+                      value={values.phaseName || ""}
+                      onChange={(_, newValue) => {
+                        const name = typeof newValue === "string" ? newValue : (newValue ?? "");
+                        setFieldValue("phaseName", name);
+
+                        const match = normalizedPhases.find(
+                          (p) => p.phaseName.toLowerCase() === String(name).toLowerCase()
+                        );
+                        if (match?.phaseType) {
+                          setFieldValue("phaseType", match.phaseType);
+                        }
+                      }}
+                      onInputChange={(_, newInputValue) => {
+                        setFieldValue("phaseName", newInputValue);
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Phase"
+                          placeholder="Select or type a new phase"
+                        />
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      select
+                      name="phaseType"
+                      label="SDLC Stage"
+                      fullWidth
+                      value={values.phaseType || ""}
+                      onChange={handleChange}
+                      helperText="Optional (used for reporting)"
+                    >
+                      <MenuItem value="">
+                        None
+                      </MenuItem>
+                      {sdlcPhases.map((phase) => (
+                        <MenuItem key={phase} value={phase}>
+                          {phase}
+                        </MenuItem>
+                      ))}
+                    </TextField>
                   </Grid>
                 </Grid>
               </LocalizationProvider>

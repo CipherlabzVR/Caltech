@@ -5,6 +5,10 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Grid,
   MenuItem,
   Paper,
@@ -13,6 +17,7 @@ import {
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
@@ -24,6 +29,7 @@ import StatusPill from "@/components/ProjectManagementModule/StatusPill";
 import {
   assignProjectMembers,
   createProject,
+  deleteProject,
   getProjectDetails,
   getProjects,
   getTeamMembers,
@@ -46,13 +52,16 @@ const Projects = () => {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [projects, setProjects] = useState([]);
+  const [allProjects, setAllProjects] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [filters, setFilters] = useState({
-    status: "",
+    // Default filter: In Progress
+    status: 2,
     search: "",
   });
   const {
@@ -76,18 +85,17 @@ const Projects = () => {
   const loadProjects = useCallback(async () => {
     try {
       setLoading(true);
-      const payload = {};
-      if (filters.status) payload.status = filters.status;
-      if (filters.search) payload.searchTerm = filters.search;
-      const response = await getProjects(payload);
-      setProjects(response ?? []);
+      // Always load the full project list so totals & status chips reflect all projects.
+      // Filtering (status/search) is applied client-side for display.
+      const response = await getProjects({});
+      setAllProjects(response ?? []);
       setError(null);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, []);
 
   useEffect(() => {
     loadTeamMembers();
@@ -96,6 +104,21 @@ const Projects = () => {
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+  const visibleProjects = useMemo(() => {
+    const statusFilter = filters.status === "" ? "" : Number(filters.status);
+    const term = (filters.search ?? "").trim().toLowerCase();
+
+    return (allProjects ?? []).filter((p) => {
+      const matchesStatus = statusFilter ? Number(p.status) === statusFilter : true;
+      if (!term) return matchesStatus;
+
+      const name = (p.name ?? "").toString().toLowerCase();
+      const client = (p.clientName ?? "").toString().toLowerCase();
+      const code = (p.code ?? "").toString().toLowerCase();
+      return matchesStatus && (name.includes(term) || client.includes(term) || code.includes(term));
+    });
+  }, [allProjects, filters.status, filters.search]);
 
   const handleCreateProject = async (values) => {
     await createProject(values);
@@ -147,6 +170,23 @@ const Projects = () => {
     await loadProjects();
   };
 
+  const handleDeleteProject = async () => {
+    if (!deleteTarget) return;
+    try {
+      setDeleting(true);
+      await deleteProject(deleteTarget.projectId);
+      if (selectedProject?.projectId === deleteTarget.projectId) {
+        setSelectedProject(null);
+      }
+      setDeleteTarget(null);
+      await loadProjects();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleCreateTaskFromProject = () => {
     if (!selectedProject) return;
     setSelectedProject(null);
@@ -157,8 +197,8 @@ const Projects = () => {
   };
 
   const analytics = useMemo(() => {
-    const total = projects.length;
-    const byStatus = projects.reduce(
+    const total = allProjects.length;
+    const byStatus = allProjects.reduce(
       (acc, project) => {
         const key = project.statusName ?? "Unknown";
         acc[key] = (acc[key] ?? 0) + 1;
@@ -167,7 +207,17 @@ const Projects = () => {
       {}
     );
     return { total, byStatus };
-  }, [projects]);
+  }, [allProjects]);
+
+  const statusChips = useMemo(
+    () => [
+      { label: "Completed", value: 4, color: "success" },
+      { label: "On Hold", value: 3, color: "warning" },
+      { label: "In Progress", value: 2, color: "primary" },
+      { label: "Planned", value: 1, color: "info" },
+    ],
+    []
+  );
 
   return (
     <>
@@ -256,14 +306,39 @@ const Projects = () => {
                   gap: 1,
                 }}
               >
-                {Object.entries(analytics.byStatus).map(([statusName, count]) => (
-                  <Chip key={statusName} label={`${statusName}: ${count}`} />
-                ))}
+                {statusChips.map((chip) => {
+                  const selected = Number(filters.status) === chip.value;
+                  const count =
+                    allProjects.filter((p) => Number(p.status) === chip.value).length ||
+                    (analytics.byStatus?.[chip.label] ?? 0);
+
+                  const isCompleted = chip.value === 4;
+
+                  return (
+                    <Chip
+                      key={chip.value}
+                      clickable
+                      label={`${chip.label}: ${count}`}
+                      color={chip.color}
+                      variant={isCompleted ? "filled" : selected ? "filled" : "outlined"}
+                      onClick={() =>
+                        setFilters((prev) => ({
+                          ...prev,
+                          status: chip.value,
+                        }))
+                      }
+                      sx={{
+                        ...(isCompleted ? { color: "#fff" } : {}),
+                        ...(selected ? { fontWeight: 700 } : {}),
+                      }}
+                    />
+                  );
+                })}
               </Paper>
             </Grid>
           </Grid>
           <Grid container spacing={3}>
-            {projects.map((project) => (
+            {visibleProjects.map((project) => (
               <Grid item xs={12} md={6} lg={4} key={project.projectId}>
                 <Paper
                   elevation={0}
@@ -305,6 +380,46 @@ const Projects = () => {
                             <EditIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
+                      <Tooltip
+                        title={
+                          (project.statusName ?? "").toLowerCase() === "planned" ||
+                          project.status === 1
+                            ? "Delete Project"
+                            : "Delete is only allowed when status is Planned"
+                        }
+                      >
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={
+                              !(
+                                (project.statusName ?? "").toLowerCase() ===
+                                  "planned" || project.status === 1
+                              )
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (
+                                !(
+                                  (project.statusName ?? "").toLowerCase() ===
+                                    "planned" || project.status === 1
+                                )
+                              ) {
+                                return;
+                              }
+                              setDeleteTarget(project);
+                            }}
+                            sx={{
+                              color: "error.main",
+                              "&:hover": {
+                                bgcolor: "action.hover",
+                              },
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                         <StatusPill label={project.statusName} />
                       </Stack>
                     </Stack>
@@ -332,7 +447,7 @@ const Projects = () => {
                 </Paper>
               </Grid>
             ))}
-            {!projects.length ? (
+            {!visibleProjects.length ? (
               <Grid item xs={12}>
                 <Paper
                   elevation={0}
@@ -393,6 +508,36 @@ const Projects = () => {
         onCreateTask={handleCreateTaskFromProject}
         onStatusChange={handleStatusChange}
       />
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onClose={() => {
+          if (!deleting) setDeleteTarget(null);
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 600 }}>Delete project?</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary">
+            This will remove <strong>{deleteTarget?.name}</strong> and its related
+            project-management data from active views.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setDeleteTarget(null)} color="inherit" disabled={deleting}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleDeleteProject}
+            disabled={deleting}
+          >
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

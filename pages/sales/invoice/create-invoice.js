@@ -42,6 +42,7 @@ import { Report } from "Base/report";
 import { Catelogue } from "Base/catelogue";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
 import AddCustomerDialog from "@/components/UIElements/Modal/AddCustomerDialog";
+import GetAllSalesPersons from "@/components/utils/GetAllSalesPerson";
 
 const InvoiceCreate = () => {
   const today = new Date();
@@ -175,11 +176,12 @@ const InvoiceCreate = () => {
     }
   };
 
-  const {
-    data: salesPersonList,
-    loading: salesPersonLoading,
-    error: salesPersonError,
-  } = useApi("/SalesPerson/GetAllSalesPerson");
+  const { data: salesPersonList } = GetAllSalesPersons();
+  
+  // Debug: Log salesperson data
+  useEffect(() => {
+    console.log("SalesPerson List:", salesPersonList);
+  }, [salesPersonList]);
 
 
   const searchRef = useRef(null);
@@ -913,7 +915,8 @@ const InvoiceCreate = () => {
                     <Autocomplete
                       sx={{ width: "60%" }}
                       options={salesPersonList || []}
-                      getOptionLabel={(option) => option.name || ""}
+                      getOptionLabel={(option) => option?.name || option?.Name || ""}
+                      isOptionEqualToValue={(option, value) => option?.id === value?.id}
                       value={salesPerson}
                       onChange={(event, newValue) => {
                         setSalesPerson(newValue);
@@ -924,7 +927,6 @@ const InvoiceCreate = () => {
                           size="small"
                           fullWidth
                           placeholder="Select Salesperson"
-                          error={salesPersonError}
                         />
                       )}
                     />

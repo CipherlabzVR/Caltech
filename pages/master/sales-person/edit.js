@@ -58,11 +58,18 @@ export default function EditSalesPerson({ item, fetchItems, isSupplierSalesRef, 
       return;
     }
     const token = localStorage.getItem("token");
+    const formData = new FormData();
+
+    Object.keys(values).forEach((key) => {
+      if (values[key] !== null && values[key] !== undefined) {
+        formData.append(key, values[key]);
+      }
+    });
+
     fetch(`${BASE_URL}/SalesPerson/UpdateSalesPerson`, {
       method: "POST",
-      body: JSON.stringify(values),
+      body: formData,
       headers: {
-        "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
     })

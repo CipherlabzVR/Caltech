@@ -13,6 +13,14 @@ import {
   Divider,
   Avatar,
   Chip,
+  Tabs,
+  Tab,
+  Stack,
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -82,6 +90,7 @@ const validationSchema = Yup.object().shape({
 
 export default function EditTicketModal({ fetchItems, item, currentPage = 1, currentSearch = "", currentPageSize = 10, open: externalOpen, onClose: externalOnClose }) {
   const [internalOpen, setInternalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState(null);
@@ -89,8 +98,36 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
   const [timeUpdateTrigger, setTimeUpdateTrigger] = useState(0);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [isHelpDeskCustomer, setIsHelpDeskCustomer] = useState(false);
+  const [roleName, setRoleName] = useState("");
+  const [canClockIn, setCanClockIn] = useState(false);
   const [ticketProject, setTicketProject] = useState(null);
   const [checklist, setChecklist] = useState([]);
+
+  // Clock in/out state
+  const [clockEntries, setClockEntries] = useState([]);
+  const [clockLoading, setClockLoading] = useState(false);
+  const [clockError, setClockError] = useState("");
+  const [clockInAt, setClockInAt] = useState("");
+  const [clockOutAt, setClockOutAt] = useState("");
+  const [geoStatus, setGeoStatus] = useState("");
+  const [geo, setGeo] = useState(null); // { lat, lng, accuracy, timestamp }
+  const [geoPlaceName, setGeoPlaceName] = useState("");
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState("");
+  const [cameraError, setCameraError] = useState("");
+  const [cameraStream, setCameraStream] = useState(null);
+  const videoRef = React.useRef(null);
+  const canvasRef = React.useRef(null);
+  const [clockDetailsOpen, setClockDetailsOpen] = useState(false);
+  const [selectedClockEntry, setSelectedClockEntry] = useState(null);
+  const [clockInPlaceName, setClockInPlaceName] = useState("");
+  const [clockOutPlaceName, setClockOutPlaceName] = useState("");
+  const fileInputRef = React.useRef(null);
+  const geocodeCacheRef = React.useRef(new Map());
+
+  // Ticket logs (stored as internal comments via existing API)
+  const [logText, setLogText] = useState("");
+  const [logSubmitting, setLogSubmitting] = useState(false);
   
   // Get permissions
   const cId = typeof window !== 'undefined' ? sessionStorage.getItem("category") : null;
@@ -113,6 +150,8 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
       externalOnClose();
     }
   };
+
+  const currentUserId = typeof window !== "undefined" ? Number(localStorage.getItem("userid")) || null : null;
 
   // Auto-open when item is set and modal is controlled externally
   useEffect(() => {
@@ -149,22 +188,38 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
           },
         });
 
+        let resolvedRoleName = "";
         if (response.ok) {
           const data = await response.json();
           const roles = data?.result?.items || data?.items || [];
           const currentRole = roles.find((r) => r.id === parseInt(roleId));
           if (currentRole && (currentRole.name === "SuperAdmin" || currentRole.displayName === "SuperAdmin")) {
             setIsSuperAdmin(true);
+            resolvedRoleName = currentRole.name || currentRole.displayName || "";
+            setRoleName(resolvedRoleName);
           } else {
             setIsSuperAdmin(false);
+            resolvedRoleName = currentRole?.name || currentRole?.displayName || "";
+            setRoleName(resolvedRoleName);
           }
         } else {
           setIsSuperAdmin(false);
+          setRoleName("");
         }
+
+        const isHelpDeskSupport = userType === "14" || userType === 14;
+        const isAdminType = userType === "1" || userType === 1 || userType === "0" || userType === 0;
+        const isAdminRole =
+          (resolvedRoleName || "").toLowerCase() === "admin" ||
+          (resolvedRoleName || "").toLowerCase() === "superadmin";
+
+        setCanClockIn(Boolean(isHelpDeskSupport || isAdminType || isAdminRole));
       } catch (error) {
         console.error("Error checking user type:", error);
         setIsSuperAdmin(false);
         setIsHelpDeskCustomer(false);
+        setRoleName("");
+        setCanClockIn(false);
       }
     };
 
@@ -172,6 +227,378 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
       checkUserType();
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!canClockIn && activeTab === 1) {
+      setActiveTab(0);
+    }
+  }, [canClockIn, activeTab]);
+
+  const toLocalDateTimeInputValue = (date) => {
+    // returns yyyy-MM-ddTHH:mm (for datetime-local input)
+    const pad = (n) => String(n).padStart(2, "0");
+    const d = date instanceof Date ? date : new Date(date);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const loadClockEntries = async () => {
+    if (!item?.id) return;
+    try {
+      setClockLoading(true);
+      setClockError("");
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${BASE_URL}/HelpDesk/GetTicketClockEntries?ticketId=${item.id}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await response.json();
+      const list = data?.result ?? data ?? [];
+      setClockEntries(Array.isArray(list) ? list : []);
+    } catch (err) {
+      console.error("Error loading clock entries:", err);
+      setClockError(err?.message || "Failed to load clock entries");
+    } finally {
+      setClockLoading(false);
+    }
+  };
+
+  const getActiveClockEntry = React.useMemo(() => {
+    if (!currentUserId) return null;
+    return (clockEntries ?? []).find((e) => (e.userId ?? e.UserId) === currentUserId && !(e.clockOutAt ?? e.ClockOutAt));
+  }, [clockEntries, currentUserId]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!canClockIn) return;
+    if (!item?.id) return;
+
+    // initialize datetime inputs when opening
+    setClockInAt(toLocalDateTimeInputValue(new Date()));
+    setClockOutAt(toLocalDateTimeInputValue(new Date()));
+
+    // If user switches to clock tab, load entries and start geolocation watch
+    if (activeTab !== 1) return;
+
+    loadClockEntries();
+
+    if (!navigator?.geolocation) {
+      setGeoStatus("Geolocation is not supported by this browser.");
+      return;
+    }
+
+    setGeoStatus("Fetching live location…");
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        setGeo({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          timestamp: pos.timestamp,
+        });
+        setGeoStatus("Live location ready");
+      },
+      (error) => {
+        console.error("Geolocation error:", error);
+        setGeoStatus(error?.message || "Failed to get location");
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+    );
+
+    return () => {
+      if (watchId != null) navigator.geolocation.clearWatch(watchId);
+    };
+  }, [open, activeTab, canClockIn, item?.id]);
+
+  const stopCamera = () => {
+    try {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((t) => t.stop());
+      }
+    } catch (e) {
+      // ignore
+    } finally {
+      setCameraStream(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!open || activeTab !== 1) return;
+    return () => {
+      stopCamera();
+      if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+    };
+  }, [open, activeTab]);
+
+  const startCamera = async () => {
+    try {
+      setCameraError("");
+      if (!navigator?.mediaDevices?.getUserMedia) {
+        setCameraError("Camera is not supported in this browser. Use the upload button instead.");
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setCameraStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+    } catch (err) {
+      console.error("Camera error:", err);
+      setCameraError(err?.message || "Failed to access camera");
+    }
+  };
+
+  const takePhoto = async () => {
+    try {
+      setCameraError("");
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (!video || !canvas) return;
+
+      const width = video.videoWidth || 1280;
+      const height = video.videoHeight || 720;
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, width, height);
+
+      await new Promise((resolve) => {
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            setCameraError("Failed to capture photo.");
+            resolve();
+            return;
+          }
+          const file = new File([blob], `clock_${Date.now()}.jpg`, { type: "image/jpeg" });
+          setPhotoFile(file);
+          if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+          setPhotoPreviewUrl(URL.createObjectURL(file));
+          resolve();
+        }, "image/jpeg", 0.92);
+      });
+    } catch (err) {
+      console.error("Take photo error:", err);
+      setCameraError(err?.message || "Failed to take photo");
+    }
+  };
+
+  const onPhotoPicked = (file) => {
+    if (!file) return;
+    setPhotoFile(file);
+    if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+    setPhotoPreviewUrl(URL.createObjectURL(file));
+  };
+
+  const clearSelectedPhoto = () => {
+    setPhotoFile(null);
+    setCameraError("");
+    if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+    setPhotoPreviewUrl("");
+    if (fileInputRef.current) {
+      // allow re-selecting the same file again
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const submitClockIn = async () => {
+    if (!item?.id) return;
+    try {
+      setClockLoading(true);
+      setClockError("");
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Authentication token missing");
+
+      if (!photoFile) {
+        setClockError("Clock-in photo is required.");
+        return;
+      }
+
+      const fd = new FormData();
+      fd.append("TicketId", String(item.id));
+      fd.append("ClockInAt", clockInAt ? new Date(clockInAt).toISOString() : "");
+      if (geo?.lat != null) fd.append("Latitude", String(geo.lat));
+      if (geo?.lng != null) fd.append("Longitude", String(geo.lng));
+      if (geo?.accuracy != null) fd.append("AccuracyMeters", String(geo.accuracy));
+      fd.append("photo", photoFile);
+
+      const response = await fetch(`${BASE_URL}/HelpDesk/ClockIn`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: fd,
+      });
+
+      const data = await response.json();
+      const ok = response.ok && (data?.statusCode === 200 || data?.status === "SUCCESS" || data?.status === 200 || data?.statusCode === "SUCCESS");
+      if (!ok) throw new Error(data?.message || "Clock-in failed");
+
+      toast.success("Clocked in successfully");
+      clearSelectedPhoto();
+      await loadClockEntries();
+    } catch (err) {
+      console.error("Clock-in error:", err);
+      setClockError(err?.message || "Clock-in failed");
+    } finally {
+      setClockLoading(false);
+    }
+  };
+
+  const submitClockOut = async () => {
+    if (!item?.id) return;
+    try {
+      setClockLoading(true);
+      setClockError("");
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Authentication token missing");
+
+      if (!photoFile) {
+        setClockError("Clock-out photo is required.");
+        return;
+      }
+
+      const fd = new FormData();
+      fd.append("TicketId", String(item.id));
+      fd.append("ClockOutAt", clockOutAt ? new Date(clockOutAt).toISOString() : "");
+      if (geo?.lat != null) fd.append("Latitude", String(geo.lat));
+      if (geo?.lng != null) fd.append("Longitude", String(geo.lng));
+      if (geo?.accuracy != null) fd.append("AccuracyMeters", String(geo.accuracy));
+      fd.append("photo", photoFile);
+
+      const response = await fetch(`${BASE_URL}/HelpDesk/ClockOut`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: fd,
+      });
+
+      const data = await response.json();
+      const ok = response.ok && (data?.statusCode === 200 || data?.status === "SUCCESS" || data?.status === 200 || data?.statusCode === "SUCCESS");
+      if (!ok) throw new Error(data?.message || "Clock-out failed");
+
+      toast.success("Clocked out successfully");
+      clearSelectedPhoto();
+      await loadClockEntries();
+    } catch (err) {
+      console.error("Clock-out error:", err);
+      setClockError(err?.message || "Clock-out failed");
+    } finally {
+      setClockLoading(false);
+    }
+  };
+
+  const openClockEntryDetails = (entry) => {
+    setSelectedClockEntry(entry);
+    setClockDetailsOpen(true);
+  };
+
+  const closeClockEntryDetails = () => {
+    setClockDetailsOpen(false);
+    setSelectedClockEntry(null);
+    setClockInPlaceName("");
+    setClockOutPlaceName("");
+    setLogText("");
+  };
+
+  const buildMapsLink = (lat, lng) => {
+    if (lat == null || lng == null) return null;
+    return `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}`;
+  };
+
+  const reverseGeocode = async (lat, lng, signal) => {
+    if (lat == null || lng == null) return "";
+
+    const key = `${Number(lat).toFixed(5)},${Number(lng).toFixed(5)}`;
+    const cache = geocodeCacheRef.current;
+    if (cache.has(key)) return cache.get(key) || "";
+
+    // OpenStreetMap Nominatim reverse geocoding (no API key).
+    // We debounce + cache to avoid excessive requests.
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(
+      lat
+    )}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1`;
+
+    const res = await fetch(url, {
+      method: "GET",
+      signal,
+      headers: { Accept: "application/json" },
+    });
+
+    if (!res.ok) throw new Error(`Reverse geocode failed (${res.status})`);
+
+    const data = await res.json();
+    const name = data?.display_name || "";
+    cache.set(key, name);
+    return name;
+  };
+
+  // Live location name (debounced)
+  useEffect(() => {
+    if (!geo?.lat || !geo?.lng) {
+      setGeoPlaceName("");
+      return;
+    }
+
+    const controller = new AbortController();
+    const t = setTimeout(async () => {
+      try {
+        const name = await reverseGeocode(geo.lat, geo.lng, controller.signal);
+        setGeoPlaceName(name);
+      } catch (e) {
+        if (e?.name === "AbortError") return;
+        setGeoPlaceName("");
+      }
+    }, 900);
+
+    return () => {
+      controller.abort();
+      clearTimeout(t);
+    };
+  }, [geo?.lat, geo?.lng]);
+
+  // Selected entry location names (debounced)
+  useEffect(() => {
+    if (!clockDetailsOpen || !selectedClockEntry) return;
+
+    const inLat = selectedClockEntry.clockInLatitude ?? selectedClockEntry.ClockInLatitude;
+    const inLng = selectedClockEntry.clockInLongitude ?? selectedClockEntry.ClockInLongitude;
+    const outLat = selectedClockEntry.clockOutLatitude ?? selectedClockEntry.ClockOutLatitude;
+    const outLng = selectedClockEntry.clockOutLongitude ?? selectedClockEntry.ClockOutLongitude;
+
+    const controller = new AbortController();
+    const t = setTimeout(async () => {
+      try {
+        if (inLat != null && inLng != null) {
+          const inName = await reverseGeocode(inLat, inLng, controller.signal);
+          setClockInPlaceName(inName);
+        } else {
+          setClockInPlaceName("");
+        }
+      } catch (e) {
+        if (e?.name !== "AbortError") setClockInPlaceName("");
+      }
+
+      try {
+        if (outLat != null && outLng != null) {
+          const outName = await reverseGeocode(outLat, outLng, controller.signal);
+          setClockOutPlaceName(outName);
+        } else {
+          setClockOutPlaceName("");
+        }
+      } catch (e) {
+        if (e?.name !== "AbortError") setClockOutPlaceName("");
+      }
+    }, 500);
+
+    return () => {
+      controller.abort();
+      clearTimeout(t);
+    };
+  }, [clockDetailsOpen, selectedClockEntry]);
 
   // Fetch the ticket's project if it exists and is not in the normalizedProjects list
   useEffect(() => {
@@ -398,6 +825,69 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
     } catch (error) {
       console.error("Error fetching comments:", error);
       // Don't crash the app - just log the error
+    }
+  };
+
+  const addTicketLog = async () => {
+    try {
+      if (!item?.id) {
+        toast.error("Ticket ID is missing");
+        return;
+      }
+
+      const text = (logText || "").trim();
+      if (!text) {
+        toast.error("Log message is required");
+        return;
+      }
+
+      setLogSubmitting(true);
+      const token = localStorage.getItem("token");
+      if (!token) {
+        toast.error("Authentication token is missing. Please log in again.");
+        return;
+      }
+
+      const response = await fetch(`${BASE_URL}/HelpDesk/CreateComment`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ticketId: item.id,
+          comment: text,
+          isInternal: true,
+        }),
+      });
+
+      // Some endpoints return non-standard shapes; treat HTTP 200 as success unless explicitly FAILED
+      const responseText = await response.text().catch(() => "");
+      let data = {};
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        data = {};
+      }
+
+      const ok =
+        response.ok &&
+        !(
+          data?.statusCode === -99 ||
+          data?.statusCode === "FAILED" ||
+          data?.status === "FAILED"
+        );
+
+      if (!ok) throw new Error(data?.message || "Failed to add log");
+
+      toast.success(data?.message || "Log added");
+      setLogText("");
+      await fetchComments();
+    } catch (err) {
+      console.error("Add log error:", err);
+      toast.error(err?.message || "Failed to add log");
+    } finally {
+      setLogSubmitting(false);
     }
   };
 
@@ -1137,15 +1627,17 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
               Edit Ticket
             </Typography>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-              <Button
-                type="submit"
-                form="edit-ticket-form"
-                variant="contained"
-                size="small"
-                sx={{ bgcolor: "#2196F3", "&:hover": { bgcolor: "#1976D2" } }}
-              >
-                Save
-              </Button>
+              {activeTab === 0 ? (
+                <Button
+                  type="submit"
+                  form="edit-ticket-form"
+                  variant="contained"
+                  size="small"
+                  sx={{ bgcolor: "#2196F3", "&:hover": { bgcolor: "#1976D2" } }}
+                >
+                  Save
+                </Button>
+              ) : null}
               <IconButton
                 onClick={handleClose}
                 sx={{
@@ -1158,59 +1650,71 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
             </Box>
           </Box>
 
-          <Formik
-            initialValues={{
-              subject: item.subject || "",
-              description: item.description || "",
-              status: item.status || 1,
-              priority: item.priority || 2,
-              categoryId: item.categoryId || "",
-              assignedToUserId: item.assignedToUserId || null,
-              resolutionNotes: item.resolutionNotes || "",
-              projectIds: initialProjectIds,
-              startDate: item.startDate ? new Date(item.startDate).toISOString().split("T")[0] : "",
-              startTime: item.startDate ? new Date(item.startDate).toTimeString().slice(0, 5) : "",
-              dueDate: item.dueDate ? new Date(item.dueDate).toISOString().split("T")[0] : "",
-              dueTime: item.dueDate ? new Date(item.dueDate).toTimeString().slice(0, 5) : "",
-              customerName:
-                item.customerName ||
-                item.customer?.displayName ||
-                item.customer?.name ||
-                [item.customer?.firstName, item.customer?.lastName].filter(Boolean).join(" ").trim() ||
-                "",
-              customerId: initialCustomerId,
-              feedbackRating: item.feedbackRating || null,
-              feedbackComment: item.feedbackComment || "",
-            }}
-            validationSchema={validationSchema}
-            onSubmit={handleSubmit}
-            enableReinitialize
-          >
-            {({ values, errors, touched, setFieldValue, isSubmitting }) => (
-              <Form id="edit-ticket-form" style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-                <Box
-                  sx={{
-                    display: "flex",
-                    flex: 1,
-                    height: "100%",
-                    minHeight: 0,
-                    overflow: "hidden",
-                    flexDirection: { xs: "column", md: "row" },
-                  }}
-                >
-                  {/* Left Panel - Form Fields */}
+          <Box sx={{ bgcolor: "white", borderBottom: "1px solid #E2E8F0", px: 2 }}>
+            <Tabs
+              value={activeTab}
+              onChange={(_, v) => setActiveTab(v)}
+              sx={{ minHeight: 44 }}
+            >
+              <Tab label="Details" sx={{ minHeight: 44 }} />
+              {canClockIn ? <Tab label="Clock In" sx={{ minHeight: 44 }} /> : null}
+            </Tabs>
+          </Box>
+
+          {activeTab === 0 ? (
+            <Formik
+              initialValues={{
+                subject: item.subject || "",
+                description: item.description || "",
+                status: item.status || 1,
+                priority: item.priority || 2,
+                categoryId: item.categoryId || "",
+                assignedToUserId: item.assignedToUserId || null,
+                resolutionNotes: item.resolutionNotes || "",
+                projectIds: initialProjectIds,
+                startDate: item.startDate ? new Date(item.startDate).toISOString().split("T")[0] : "",
+                startTime: item.startDate ? new Date(item.startDate).toTimeString().slice(0, 5) : "",
+                dueDate: item.dueDate ? new Date(item.dueDate).toISOString().split("T")[0] : "",
+                dueTime: item.dueDate ? new Date(item.dueDate).toTimeString().slice(0, 5) : "",
+                customerName:
+                  item.customerName ||
+                  item.customer?.displayName ||
+                  item.customer?.name ||
+                  [item.customer?.firstName, item.customer?.lastName].filter(Boolean).join(" ").trim() ||
+                  "",
+                customerId: initialCustomerId,
+                feedbackRating: item.feedbackRating || null,
+                feedbackComment: item.feedbackComment || "",
+              }}
+              validationSchema={validationSchema}
+              onSubmit={handleSubmit}
+              enableReinitialize
+            >
+              {({ values, errors, touched, setFieldValue, isSubmitting }) => (
+                <Form id="edit-ticket-form" style={{ height: "100%", display: "flex", flexDirection: "column" }}>
                   <Box
                     sx={{
+                      display: "flex",
                       flex: 1,
+                      height: "100%",
                       minHeight: 0,
-                      overflowY: "auto",
-                      p: { xs: 2, sm: 3 },
-                      bgcolor: "white",
-                      borderRight: { xs: "none", md: "1px solid #E2E8F0" },
-                      borderBottom: { xs: "1px solid #E2E8F0", md: "none" },
-                      maxHeight: { xs: "50vh", md: "none" },
+                      overflow: "hidden",
+                      flexDirection: { xs: "column", md: "row" },
                     }}
                   >
+                    {/* Left Panel - Form Fields */}
+                    <Box
+                      sx={{
+                        flex: 1,
+                        minHeight: 0,
+                        overflowY: "auto",
+                        p: { xs: 2, sm: 3 },
+                        bgcolor: "white",
+                        borderRight: { xs: "none", md: "1px solid #E2E8F0" },
+                        borderBottom: { xs: "1px solid #E2E8F0", md: "none" },
+                        maxHeight: { xs: "50vh", md: "none" },
+                      }}
+                    >
                     <Grid container spacing={2}>
                       <Grid item xs={12}>
                         <Field
@@ -1765,19 +2269,19 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                         </Box>
                       </Grid>
                     </Grid>
-                  </Box>
+                    </Box>
 
-                  {/* Right Panel - Comments */}
-                  <Box
-                    sx={{
-                      width: { xs: "100%", md: "400px" },
-                      minHeight: 0,
-                      display: "flex",
-                      flexDirection: "column",
-                      bgcolor: "#F7FAFC",
-                      maxHeight: { xs: "50vh", md: "none" },
-                    }}
-                  >
+                    {/* Right Panel - Comments */}
+                    <Box
+                      sx={{
+                        width: { xs: "100%", md: "400px" },
+                        minHeight: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                        bgcolor: "#F7FAFC",
+                        maxHeight: { xs: "50vh", md: "none" },
+                      }}
+                    >
                     <Box sx={{ p: { xs: 2, sm: 3 }, pb: 1, flexShrink: 0 }}>
                       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
                         <Typography variant="h6" sx={{ color: "#1A202C" }}>
@@ -2029,13 +2533,530 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                         })
                       )}
                     </Box>
+                    </Box>
                   </Box>
-                </Box>
-              </Form>
-            )}
-          </Formik>
+                </Form>
+              )}
+            </Formik>
+          ) : (
+            <Box sx={{ flex: 1, overflowY: "auto", p: { xs: 2, sm: 3 }, bgcolor: "white" }}>
+              {!canClockIn ? (
+                <Alert severity="info">
+                  Clock In is only available for HelpDesk Support users and Admins.
+                </Alert>
+              ) : (
+                <Stack spacing={2}>
+                  <Typography variant="h6" sx={{ fontWeight: 700, color: "#1A202C" }}>
+                    Clock In / Clock Out
+                  </Typography>
+
+                  {clockError ? <Alert severity="error">{clockError}</Alert> : null}
+
+                  <Box sx={{ p: 2, border: "1px solid #E2E8F0", borderRadius: 2, bgcolor: "#F8FAFC" }}>
+                    <Typography variant="subtitle2" sx={{ color: "#64748B", mb: 1 }}>
+                      Live Location
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: "#0F172A" }}>
+                      {geoStatus || "—"}
+                    </Typography>
+                    {geoPlaceName ? (
+                      <Typography variant="caption" sx={{ color: "#475569", display: "block", mt: 0.5 }}>
+                        {geoPlaceName}
+                      </Typography>
+                    ) : geo ? (
+                      <Typography variant="caption" sx={{ color: "#475569", display: "block", mt: 0.5 }}>
+                        Lat: {geo.lat}, Lng: {geo.lng} (±{Math.round(geo.accuracy || 0)}m)
+                      </Typography>
+                    ) : null}
+                  </Box>
+
+                  <Box sx={{ p: 2, border: "1px solid #E2E8F0", borderRadius: 2 }}>
+                    <Typography variant="subtitle2" sx={{ color: "#64748B", mb: 1 }}>
+                      Live Photo
+                    </Typography>
+
+                    {cameraError ? <Alert severity="warning" sx={{ mb: 1 }}>{cameraError}</Alert> : null}
+
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 1 }}>
+                      <Button variant="outlined" onClick={startCamera}>
+                        Start Camera
+                      </Button>
+                      <Button variant="contained" onClick={takePhoto} disabled={!cameraStream}>
+                        Take Photo
+                      </Button>
+                      <Button variant="text" color="inherit" onClick={stopCamera} disabled={!cameraStream}>
+                        Stop
+                      </Button>
+                      <Button variant="outlined" component="label">
+                        Upload Photo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          hidden
+                          ref={fileInputRef}
+                          onChange={(e) => onPhotoPicked(e.target.files?.[0])}
+                        />
+                      </Button>
+                      <Button
+                        variant="text"
+                        color="error"
+                        onClick={clearSelectedPhoto}
+                        disabled={!photoFile && !photoPreviewUrl}
+                      >
+                        Remove Photo
+                      </Button>
+                    </Stack>
+
+                    <Box sx={{ display: "flex", gap: 2, flexDirection: { xs: "column", md: "row" } }}>
+                      <Box sx={{ flex: 1 }}>
+                        <video
+                          ref={videoRef}
+                          style={{ width: "100%", borderRadius: 8, background: "#0B1220" }}
+                          playsInline
+                          muted
+                        />
+                        <canvas ref={canvasRef} style={{ display: "none" }} />
+                      </Box>
+                      <Box sx={{ width: { xs: "100%", md: 280 } }}>
+                        <Typography variant="caption" sx={{ color: "#64748B" }}>
+                          Preview
+                        </Typography>
+                        <Box
+                          sx={{
+                            mt: 0.5,
+                            width: "100%",
+                            height: 200,
+                            borderRadius: 2,
+                            border: "1px dashed #CBD5E1",
+                            overflow: "hidden",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            bgcolor: "#F1F5F9",
+                          }}
+                        >
+                          {photoPreviewUrl ? (
+                            <img
+                              src={photoPreviewUrl}
+                              alt="Clock photo preview"
+                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            />
+                          ) : (
+                            <Typography variant="body2" sx={{ color: "#64748B" }}>
+                              No photo selected
+                            </Typography>
+                          )}
+                        </Box>
+                        <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            onClick={clearSelectedPhoto}
+                            disabled={!photoFile && !photoPreviewUrl}
+                            fullWidth
+                          >
+                            Delete photo
+                          </Button>
+                        </Stack>
+                      </Box>
+                    </Box>
+                  </Box>
+
+                  {getActiveClockEntry ? (
+                    <Box sx={{ p: 2, border: "1px solid #E2E8F0", borderRadius: 2 }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1, color: "#0F172A" }}>
+                        You are currently clocked in (since{" "}
+                        {formatDate(getActiveClockEntry.clockInAt ?? getActiveClockEntry.ClockInAt)})
+                      </Typography>
+                      <TextField
+                        label="Clock Out Time"
+                        type="datetime-local"
+                        value={clockOutAt}
+                        onChange={(e) => setClockOutAt(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                        sx={{ maxWidth: 320, mb: 2 }}
+                      />
+                      <Box>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          onClick={submitClockOut}
+                          disabled={clockLoading || !photoFile}
+                        >
+                          {clockLoading ? "Clocking out..." : "Clock Out"}
+                        </Button>
+                      </Box>
+                      {!photoFile ? (
+                        <Typography variant="caption" sx={{ color: "#B91C1C", display: "block", mt: 1 }}>
+                          Photo is required to clock out.
+                        </Typography>
+                      ) : null}
+                    </Box>
+                  ) : (
+                    <Box sx={{ p: 2, border: "1px solid #E2E8F0", borderRadius: 2 }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1, color: "#0F172A" }}>
+                        Clock In
+                      </Typography>
+                      <TextField
+                        label="Clock In Time"
+                        type="datetime-local"
+                        value={clockInAt}
+                        onChange={(e) => setClockInAt(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                        sx={{ maxWidth: 320, mb: 2 }}
+                      />
+                      <Box>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          onClick={submitClockIn}
+                          disabled={clockLoading || !photoFile}
+                        >
+                          {clockLoading ? "Clocking in..." : "Clock In"}
+                        </Button>
+                      </Box>
+                      <Typography variant="caption" sx={{ color: "#64748B", display: "block", mt: 1 }}>
+                        Note: Photo is required. Location is captured if you allow it in the browser.
+                      </Typography>
+                    </Box>
+                  )}
+
+                  <Divider />
+
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      Clock History
+                    </Typography>
+                    <Button variant="outlined" onClick={loadClockEntries} disabled={clockLoading}>
+                      Refresh
+                    </Button>
+                  </Box>
+
+                  {clockLoading ? (
+                    <Typography variant="body2" color="text.secondary">
+                      Loading...
+                    </Typography>
+                  ) : (clockEntries?.length ?? 0) === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      No clock entries yet.
+                    </Typography>
+                  ) : (
+                    <Box sx={{ display: "grid", gap: 1 }}>
+                      {(clockEntries ?? []).map((e) => (
+                        <Box
+                          key={e.id ?? e.Id}
+                          sx={{
+                            p: 1.5,
+                            border: "1px solid #E2E8F0",
+                            borderRadius: 2,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 2,
+                            flexWrap: "wrap",
+                            cursor: "pointer",
+                            "&:hover": { bgcolor: "#F8FAFC" },
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => openClockEntryDetails(e)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              openClockEntryDetails(e);
+                            }
+                          }}
+                        >
+                          <Box sx={{ minWidth: 260 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                              {(e.userName ?? e.UserName) || "User"}
+                            </Typography>
+                            <Typography variant="body2" sx={{ color: "#334155" }}>
+                              In: {formatDate(e.clockInAt ?? e.ClockInAt)}{" "}
+                              {e.clockOutAt || e.ClockOutAt ? `• Out: ${formatDate(e.clockOutAt ?? e.ClockOutAt)}` : "• (active)"}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: "#64748B", display: "block", mt: 0.25 }}>
+                              Click to view details
+                            </Typography>
+                          </Box>
+                          <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}>
+                            {(e.clockInImageUrl ?? e.ClockInImageUrl) ? (
+                              <a href={e.clockInImageUrl ?? e.ClockInImageUrl} target="_blank" rel="noreferrer">
+                                <Chip label="Clock-in photo" size="small" />
+                              </a>
+                            ) : null}
+                            {(e.clockOutImageUrl ?? e.ClockOutImageUrl) ? (
+                              <a href={e.clockOutImageUrl ?? e.ClockOutImageUrl} target="_blank" rel="noreferrer">
+                                <Chip label="Clock-out photo" size="small" />
+                              </a>
+                            ) : null}
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={(ev) => {
+                                ev.preventDefault();
+                                ev.stopPropagation();
+                                openClockEntryDetails(e);
+                              }}
+                            >
+                              Details
+                            </Button>
+                          </Box>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                </Stack>
+              )}
+            </Box>
+          )}
         </Box>
       </Modal>
+
+      <Dialog open={clockDetailsOpen} onClose={closeClockEntryDetails} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Clocking Details</DialogTitle>
+        <DialogContent dividers>
+          {selectedClockEntry ? (
+            <Stack spacing={2}>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary">
+                  User
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 700 }}>
+                  {(selectedClockEntry.userName ?? selectedClockEntry.UserName) || "—"}
+                </Typography>
+              </Box>
+
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
+                <Box sx={{ p: 2, border: "1px solid #E2E8F0", borderRadius: 2 }}>
+                  <Typography variant="subtitle2" sx={{ color: "#0F172A", fontWeight: 700 }}>
+                    Clock In
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: "#334155", mt: 0.5 }}>
+                    Time: {formatDate(selectedClockEntry.clockInAt ?? selectedClockEntry.ClockInAt)}
+                  </Typography>
+                  {(() => {
+                    const lat = selectedClockEntry.clockInLatitude ?? selectedClockEntry.ClockInLatitude;
+                    const lng = selectedClockEntry.clockInLongitude ?? selectedClockEntry.ClockInLongitude;
+                    const acc = selectedClockEntry.clockInAccuracyMeters ?? selectedClockEntry.ClockInAccuracyMeters;
+                    const link = buildMapsLink(lat, lng);
+                    if (lat == null || lng == null) return null;
+                    return (
+                      <Typography variant="body2" sx={{ color: "#334155", mt: 0.5 }}>
+                        Location:{" "}
+                        {clockInPlaceName
+                          ? clockInPlaceName
+                          : `${lat}, ${lng} ${acc != null ? `(±${Math.round(Number(acc))}m)` : ""}`}{" "}
+                        {link ? (
+                          <a href={link} target="_blank" rel="noreferrer" style={{ marginLeft: 8 }}>
+                            View on map
+                          </a>
+                        ) : null}
+                      </Typography>
+                    );
+                  })()}
+                </Box>
+
+                <Box sx={{ p: 2, border: "1px solid #E2E8F0", borderRadius: 2 }}>
+                  <Typography variant="subtitle2" sx={{ color: "#0F172A", fontWeight: 700 }}>
+                    Clock Out
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: "#334155", mt: 0.5 }}>
+                    Time:{" "}
+                    {selectedClockEntry.clockOutAt || selectedClockEntry.ClockOutAt
+                      ? formatDate(selectedClockEntry.clockOutAt ?? selectedClockEntry.ClockOutAt)
+                      : "—"}
+                  </Typography>
+                  {(() => {
+                    const lat = selectedClockEntry.clockOutLatitude ?? selectedClockEntry.ClockOutLatitude;
+                    const lng = selectedClockEntry.clockOutLongitude ?? selectedClockEntry.ClockOutLongitude;
+                    const acc = selectedClockEntry.clockOutAccuracyMeters ?? selectedClockEntry.ClockOutAccuracyMeters;
+                    const link = buildMapsLink(lat, lng);
+                    if (lat == null || lng == null) return null;
+                    return (
+                      <Typography variant="body2" sx={{ color: "#334155", mt: 0.5 }}>
+                        Location:{" "}
+                        {clockOutPlaceName
+                          ? clockOutPlaceName
+                          : `${lat}, ${lng} ${acc != null ? `(±${Math.round(Number(acc))}m)` : ""}`}{" "}
+                        {link ? (
+                          <a href={link} target="_blank" rel="noreferrer" style={{ marginLeft: 8 }}>
+                            View on map
+                          </a>
+                        ) : null}
+                      </Typography>
+                    );
+                  })()}
+                </Box>
+              </Box>
+
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
+                <Box sx={{ p: 2, border: "1px solid #E2E8F0", borderRadius: 2 }}>
+                  <Typography variant="subtitle2" sx={{ color: "#0F172A", fontWeight: 700, mb: 1 }}>
+                    Clock-in Photo
+                  </Typography>
+                  {(selectedClockEntry.clockInImageUrl ?? selectedClockEntry.ClockInImageUrl) ? (
+                    <a
+                      href={selectedClockEntry.clockInImageUrl ?? selectedClockEntry.ClockInImageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <img
+                        src={selectedClockEntry.clockInImageUrl ?? selectedClockEntry.ClockInImageUrl}
+                        alt="Clock-in"
+                        style={{ width: "100%", maxHeight: 260, objectFit: "cover", borderRadius: 8 }}
+                      />
+                    </a>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      —
+                    </Typography>
+                  )}
+                </Box>
+
+                <Box sx={{ p: 2, border: "1px solid #E2E8F0", borderRadius: 2 }}>
+                  <Typography variant="subtitle2" sx={{ color: "#0F172A", fontWeight: 700, mb: 1 }}>
+                    Clock-out Photo
+                  </Typography>
+                  {(selectedClockEntry.clockOutImageUrl ?? selectedClockEntry.ClockOutImageUrl) ? (
+                    <a
+                      href={selectedClockEntry.clockOutImageUrl ?? selectedClockEntry.ClockOutImageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <img
+                        src={selectedClockEntry.clockOutImageUrl ?? selectedClockEntry.ClockOutImageUrl}
+                        alt="Clock-out"
+                        style={{ width: "100%", maxHeight: 260, objectFit: "cover", borderRadius: 8 }}
+                      />
+                    </a>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      —
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+
+              <Divider />
+
+              <Box>
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 800, color: "#0F172A" }}>
+                    Ticket Logs
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: "#64748B" }}>
+                    Latest comments/activity
+                  </Typography>
+                </Box>
+
+                {update ? (
+                  <Box sx={{ mb: 1.5 }}>
+                    <TextField
+                      fullWidth
+                      multiline
+                      minRows={2}
+                      maxRows={5}
+                      value={logText}
+                      onChange={(e) => setLogText(e.target.value)}
+                      placeholder="Add a log..."
+                      sx={{ bgcolor: "white" }}
+                    />
+                    <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
+                      <Button
+                        variant="contained"
+                        onClick={addTicketLog}
+                        disabled={logSubmitting || !logText.trim()}
+                        sx={{ bgcolor: "#2196F3", "&:hover": { bgcolor: "#1976D2" } }}
+                      >
+                        {logSubmitting ? "Adding..." : "Add Log"}
+                      </Button>
+                    </Box>
+                    <Typography variant="caption" sx={{ color: "#64748B", display: "block", mt: 0.5 }}>
+                      Logs are saved as internal ticket notes.
+                    </Typography>
+                  </Box>
+                ) : null}
+
+                {(comments?.length ?? 0) === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    No logs found.
+                  </Typography>
+                ) : (
+                  <Box
+                    sx={{
+                      border: "1px solid #E2E8F0",
+                      borderRadius: 2,
+                      bgcolor: "#F8FAFC",
+                      maxHeight: 260,
+                      overflowY: "auto",
+                      p: 1,
+                    }}
+                  >
+                    {comments.map((c) => (
+                      <Box
+                        key={c.id ?? c.Id ?? `${c.createdOn ?? c.CreatedOn}-${c.comment ?? c.Comment}`}
+                        sx={{
+                          p: 1.25,
+                          borderRadius: 2,
+                          bgcolor: "white",
+                          border: "1px solid #E2E8F0",
+                          mb: 1,
+                        }}
+                      >
+                        <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
+                          <Avatar
+                            sx={{
+                              width: 28,
+                              height: 28,
+                              bgcolor: "#2196F3",
+                              fontSize: "0.8rem",
+                            }}
+                          >
+                            {c.user?.firstName?.[0] || c.user?.email?.[0] || "U"}
+                          </Avatar>
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
+                              <Typography variant="body2" sx={{ fontWeight: 700, color: "#0F172A" }}>
+                                {c.user?.firstName && c.user?.lastName
+                                  ? `${c.user.firstName} ${c.user.lastName}`
+                                  : c.user?.email || c.user?.userName || "User"}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: "#64748B" }}>
+                                {formatDate(c.createdOn ?? c.CreatedOn)}
+                              </Typography>
+                              {(c.isInternal ?? c.IsInternal) ? (
+                                <Chip label="Internal" size="small" sx={{ height: 18, fontSize: "0.65rem" }} />
+                              ) : null}
+                            </Box>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                color: "#334155",
+                                mt: 0.5,
+                                whiteSpace: "pre-wrap",
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {c.comment ?? c.Comment ?? ""}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            </Stack>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeClockEntryDetails} color="inherit">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

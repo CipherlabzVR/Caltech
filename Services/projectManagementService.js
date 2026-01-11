@@ -81,9 +81,20 @@ export const updateProject = async (projectId, payload) => {
   const response = await fetch(
     `${BASE_URL}/ProjectManagementModule/projects/${projectId}`,
     {
-      method: "PUT",
+      method: "POST",
       headers: authHeaders(),
       body: JSON.stringify(payload),
+    }
+  );
+  return handleResponse(response);
+};
+
+export const deleteProject = async (projectId) => {
+  const response = await fetch(
+    `${BASE_URL}/ProjectManagementModule/projects/${projectId}/delete`,
+    {
+      method: "POST",
+      headers: authHeaders(),
     }
   );
   return handleResponse(response);
@@ -129,7 +140,7 @@ export const updateBoardColumn = async (columnId, payload) => {
   const response = await fetch(
     `${BASE_URL}/ProjectManagementModule/columns/${columnId}`,
     {
-      method: "PUT",
+      method: "POST",
       headers: authHeaders(),
       body: JSON.stringify(payload),
     }
@@ -151,9 +162,9 @@ export const reorderBoardColumns = async (projectId, columns) => {
 
 export const deleteBoardColumn = async (columnId) => {
   const response = await fetch(
-    `${BASE_URL}/ProjectManagementModule/columns/${columnId}`,
+    `${BASE_URL}/ProjectManagementModule/columns/${columnId}/delete`,
     {
-      method: "DELETE",
+      method: "POST",
       headers: authHeaders(),
     }
   );
@@ -181,9 +192,20 @@ export const updateTeamMember = async (memberId, payload) => {
   const response = await fetch(
     `${BASE_URL}/ProjectManagementModule/team/${memberId}`,
     {
-      method: "PUT",
+      method: "POST",
       headers: authHeaders(),
       body: JSON.stringify(payload),
+    }
+  );
+  return handleResponse(response);
+};
+
+export const deleteTeamMember = async (memberId) => {
+  const response = await fetch(
+    `${BASE_URL}/ProjectManagementModule/team/${memberId}/delete`,
+    {
+      method: "POST",
+      headers: authHeaders(),
     }
   );
   return handleResponse(response);
@@ -192,6 +214,22 @@ export const updateTeamMember = async (memberId, payload) => {
 export const getTaskBoard = async (projectId) => {
   const response = await fetch(
     `${BASE_URL}/ProjectManagementModule/projects/${projectId}/tasks`,
+    {
+      method: "GET",
+      headers: authHeaders(),
+    }
+  );
+  return handleResponse(response);
+};
+
+export const getTaskHistory = async ({ projectId, memberId, unassigned } = {}) => {
+  const query = buildQueryString({
+    projectId,
+    memberId,
+    unassigned: unassigned ? true : "",
+  });
+  const response = await fetch(
+    `${BASE_URL}/ProjectManagementModule/tasks/history${query}`,
     {
       method: "GET",
       headers: authHeaders(),
@@ -213,7 +251,7 @@ export const updateTask = async (taskId, payload) => {
   const response = await fetch(
     `${BASE_URL}/ProjectManagementModule/tasks/${taskId}`,
     {
-      method: "PUT",
+      method: "POST",
       headers: authHeaders(),
       body: JSON.stringify(payload),
     }
@@ -235,9 +273,9 @@ export const moveTask = async (taskId, payload) => {
 
 export const deleteTask = async (taskId) => {
   const response = await fetch(
-    `${BASE_URL}/ProjectManagementModule/tasks/${taskId}`,
+    `${BASE_URL}/ProjectManagementModule/tasks/${taskId}/delete`,
     {
-      method: "DELETE",
+      method: "POST",
       headers: authHeaders(),
     }
   );
@@ -270,9 +308,9 @@ export const updateChecklistItem = async (checklistItemId, payload) => {
 
 export const deleteChecklistItem = async (checklistItemId) => {
   const response = await fetch(
-    `${BASE_URL}/ProjectManagementModule/checklist/${checklistItemId}`,
+    `${BASE_URL}/ProjectManagementModule/checklist/${checklistItemId}/delete`,
     {
-      method: "DELETE",
+      method: "POST",
       headers: authHeaders(),
     }
   );
@@ -306,7 +344,7 @@ export const updateTimelineEntry = async (entryId, payload) => {
   const response = await fetch(
     `${BASE_URL}/ProjectManagementModule/timeline/${entryId}`,
     {
-      method: "PUT",
+      method: "POST",
       headers: authHeaders(),
       body: JSON.stringify(payload),
     }
@@ -316,9 +354,9 @@ export const updateTimelineEntry = async (entryId, payload) => {
 
 export const deleteTimelineEntry = async (entryId) => {
   const response = await fetch(
-    `${BASE_URL}/ProjectManagementModule/timeline/${entryId}`,
+    `${BASE_URL}/ProjectManagementModule/timeline/${entryId}/delete`,
     {
-      method: "DELETE",
+      method: "POST",
       headers: authHeaders(),
     }
   );
@@ -336,9 +374,31 @@ export const getFinancialSummary = async (projectId) => {
   return handleResponse(response);
 };
 
+export const getAllFinancialSummary = async () => {
+  const response = await fetch(
+    `${BASE_URL}/ProjectManagementModule/financials/summary`,
+    {
+      method: "GET",
+      headers: authHeaders(),
+    }
+  );
+  return handleResponse(response);
+};
+
 export const getFinancialRecords = async (projectId) => {
   const response = await fetch(
     `${BASE_URL}/ProjectManagementModule/projects/${projectId}/financials`,
+    {
+      method: "GET",
+      headers: authHeaders(),
+    }
+  );
+  return handleResponse(response);
+};
+
+export const getAllFinancialRecords = async () => {
+  const response = await fetch(
+    `${BASE_URL}/ProjectManagementModule/financials`,
     {
       method: "GET",
       headers: authHeaders(),
@@ -363,7 +423,7 @@ export const updateFinancialRecord = async (recordId, payload) => {
   const response = await fetch(
     `${BASE_URL}/ProjectManagementModule/financials/${recordId}`,
     {
-      method: "PUT",
+      method: "POST",
       headers: authHeaders(),
       body: JSON.stringify(payload),
     }
@@ -373,9 +433,9 @@ export const updateFinancialRecord = async (recordId, payload) => {
 
 export const deleteFinancialRecord = async (recordId) => {
   const response = await fetch(
-    `${BASE_URL}/ProjectManagementModule/financials/${recordId}`,
+    `${BASE_URL}/ProjectManagementModule/financials/${recordId}/delete`,
     {
-      method: "DELETE",
+      method: "POST",
       headers: authHeaders(),
     }
   );

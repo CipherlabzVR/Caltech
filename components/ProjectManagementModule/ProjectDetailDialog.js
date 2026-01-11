@@ -373,24 +373,88 @@ const ProjectDetailDialog = ({
                       <Box
                         key={column.columnId}
                         sx={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
                           p: 1.5,
                           borderRadius: 2,
                           bgcolor: "background.default",
                           border: (theme) => `1px solid ${theme.palette.divider}`,
                         }}
                       >
-                        <Typography variant="subtitle2">{column.name}</Typography>
-                        <Chip
-                          label={
-                            column.workInProgressLimit
-                              ? `${column.cards.length}/${column.workInProgressLimit}`
-                              : `${column.cards.length} tasks`
-                          }
-                          size="small"
-                        />
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          sx={{ mb: 1 }}
+                        >
+                          <Typography variant="subtitle2">
+                            {column.title || "Untitled Column"}
+                          </Typography>
+                          <Chip
+                            label={`${(column.cards || []).length} tasks`}
+                            size="small"
+                          />
+                        </Stack>
+
+                        {(column.cards || []).length ? (
+                          <List dense disablePadding>
+                            {column.cards.map((task) => (
+                              <ListItem
+                                key={task.taskId}
+                                disableGutters
+                                sx={{
+                                  py: 0.5,
+                                  borderTop: (theme) =>
+                                    `1px dashed ${theme.palette.divider}`,
+                                }}
+                              >
+                                <ListItemText
+                                  primary={
+                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                      {task.title}
+                                    </Typography>
+                                  }
+                                  secondary={
+                                    <Stack
+                                      direction="row"
+                                      spacing={1}
+                                      flexWrap="wrap"
+                                      sx={{ mt: 0.25 }}
+                                    >
+                                      {task.assignedToName ? (
+                                        <Typography
+                                          variant="caption"
+                                          color="text.secondary"
+                                        >
+                                          {task.assignedToName}
+                                        </Typography>
+                                      ) : null}
+                                      {task.dueDate ? (
+                                        <Typography
+                                          variant="caption"
+                                          color="text.secondary"
+                                        >
+                                          Due:{" "}
+                                          {new Date(task.dueDate).toLocaleDateString()}
+                                        </Typography>
+                                      ) : null}
+                                      {typeof task.progressPercentage === "number" ? (
+                                        <Typography
+                                          variant="caption"
+                                          color="text.secondary"
+                                        >
+                                          {Math.round(task.progressPercentage)}%
+                                        </Typography>
+                                      ) : null}
+                                    </Stack>
+                                  }
+                                />
+                              </ListItem>
+                            ))}
+                          </List>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            No tasks in this column.
+                          </Typography>
+                        )}
                       </Box>
                     ))}
                   </Stack>

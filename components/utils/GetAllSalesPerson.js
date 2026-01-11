@@ -20,9 +20,12 @@ const GetAllSalesPersons = () => {
         }
 
         const result = await response.json();
-        setData(result.result);
+        // Handle different response structures
+        const salesPersons = result.result || result.data || result || [];
+        setData(Array.isArray(salesPersons) ? salesPersons : []);
       } catch (err) {
-      //
+        console.error('Error fetching salespersons:', err);
+        setData([]);
       }
     };
 

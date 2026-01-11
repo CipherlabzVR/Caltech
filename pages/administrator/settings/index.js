@@ -149,6 +149,8 @@ export default function Settings() {
                   <TableCell>#</TableCell>
                   <TableCell>Setting Name</TableCell>
                   <TableCell>Value</TableCell>
+                  <TableCell>Description</TableCell>
+                  <TableCell>Document Link</TableCell>
                   <TableCell>Enable</TableCell>
                   <TableCell align="right">Action</TableCell>
                 </TableRow>
@@ -158,7 +160,7 @@ export default function Settings() {
                   <TableRow
                     sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                   >
-                    <TableCell component="th" scope="row" colSpan={4}>
+                    <TableCell component="th" scope="row" colSpan={7}>
                       <Typography color="error">
                         No Settings Available
                       </Typography>
@@ -175,6 +177,16 @@ export default function Settings() {
                       </TableCell>
                       <TableCell>{setting.settingName}</TableCell>
                       <TableCell>{setting.value}</TableCell>
+                      <TableCell>{setting.description || "-"}</TableCell>
+                      <TableCell>
+                        {setting.documentLink ? (
+                          <a href={setting.documentLink} target="_blank" rel="noopener noreferrer" style={{ color: '#1976d2', textDecoration: 'underline' }}>
+                            View Document
+                          </a>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
                       <TableCell>
                         <FormControlLabel control={<Switch checked={setting.isEnabled} onChange={(e) => handleChangeSwitch(e.target.checked, setting)} />} />
                       </TableCell>

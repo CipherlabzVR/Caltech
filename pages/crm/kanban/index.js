@@ -19,6 +19,7 @@ import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
 import FilterAltOutlinedIcon from "@mui/icons-material/FilterAltOutlined";
 import KanbanColumn from "./column";
+import LeadDetailDrawer from "./LeadDetailDrawer";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import BASE_URL from "Base/api";
 import AddLeadModal from "../leads/create";
@@ -53,6 +54,8 @@ export default function KanbanBoard() {
   const [recordsError, setRecordsError] = React.useState(null);
   const [confirmDialogOpen, setConfirmDialogOpen] = React.useState(false);
   const [pendingMove, setPendingMove] = React.useState(null);
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [selectedLead, setSelectedLead] = React.useState(null);
   const [filterOptions, setFilterOptions] = React.useState({
     stages: [],
     owners: [],
@@ -591,6 +594,22 @@ export default function KanbanBoard() {
     setDraggedItem(null);
   };
 
+  const handleCardClick = React.useCallback((card) => {
+    if (card?.raw) {
+      setSelectedLead(card.raw);
+      setDrawerOpen(true);
+    }
+  }, []);
+
+  const handleDrawerClose = React.useCallback(() => {
+    setDrawerOpen(false);
+    setSelectedLead(null);
+  }, []);
+
+  const handleLeadUpdated = React.useCallback(() => {
+    fetchRecords();
+  }, [fetchRecords]);
+
   return (
     <>
       <ToastContainer />
@@ -716,6 +735,7 @@ export default function KanbanBoard() {
               onDragStart={handleDragStart}
               onDropCard={handleDropCard}
               onDragEnd={handleDragEnd}
+              onCardClick={handleCardClick}
             />
           ))
         )}
@@ -845,6 +865,13 @@ export default function KanbanBoard() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <LeadDetailDrawer
+        open={drawerOpen}
+        onClose={handleDrawerClose}
+        lead={selectedLead}
+        onLeadUpdated={handleLeadUpdated}
+      />
 
       <ToastContainer />
     </>

@@ -12,6 +12,7 @@ export default function KanbanColumn({
   onDragStart,
   onDropCard,
   onDragEnd,
+  onCardClick,
 }) {
   const [isDragOver, setIsDragOver] = React.useState(false);
 
@@ -107,6 +108,7 @@ export default function KanbanColumn({
                 handleDragLeave();
                 onDragEnd?.();
               }}
+              onCardClick={onCardClick}
             />
           ))
         )}

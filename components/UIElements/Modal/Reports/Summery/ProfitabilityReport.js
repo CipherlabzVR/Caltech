@@ -3,12 +3,11 @@ import {
   Button,
   Grid,
   IconButton,
-  MenuItem,
-  Select,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Modal from "@mui/material/Modal";
 import "react-toastify/dist/ReactToastify.css";
@@ -18,16 +17,23 @@ import { Report } from "Base/report";
 import useApi from "@/components/utils/useApi";
 import { Catelogue } from "Base/catelogue";
 import BASE_URL from "Base/api";
+import { DEFAULT_PAGE_SIZE, filterTopMatchesWithLoadMore, withAllOption } from "@/components/utils/autocompleteTopMatches";
 
 const style = {
   position: "absolute",
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: { lg: 400, xs: 350 },
+  width: { xs: "94vw", sm: "86vw", md: 600 },
+  maxWidth: 720,
+  maxHeight: "90vh",
+  overflowY: "auto",
+  overflowX: "hidden",
   bgcolor: "background.paper",
   boxShadow: 24,
-  p: 2,
+  borderRadius: 2,
+  p: { xs: 2, sm: 3 },
+  outline: "none",
 };
 
 export default function ProfitabilityReport({ docName, reportName }) {
@@ -48,7 +54,20 @@ export default function ProfitabilityReport({ docName, reportName }) {
   const [suppliers, setSuppliers] = useState([]);
   const [supplierId, setSupplierId] = useState(0);
 
-  const handleOpen = () => setOpen(true);
+  const [customerLimit, setCustomerLimit] = useState(DEFAULT_PAGE_SIZE);
+  const [supplierLimit, setSupplierLimit] = useState(DEFAULT_PAGE_SIZE);
+  const [categoryLimit, setCategoryLimit] = useState(DEFAULT_PAGE_SIZE);
+  const [subCategoryLimit, setSubCategoryLimit] = useState(DEFAULT_PAGE_SIZE);
+  const [itemLimit, setItemLimit] = useState(DEFAULT_PAGE_SIZE);
+
+  const handleOpen = () => {
+    setCustomerLimit(DEFAULT_PAGE_SIZE);
+    setSupplierLimit(DEFAULT_PAGE_SIZE);
+    setCategoryLimit(DEFAULT_PAGE_SIZE);
+    setSubCategoryLimit(DEFAULT_PAGE_SIZE);
+    setItemLimit(DEFAULT_PAGE_SIZE);
+    setOpen(true);
+  };
   const handleClose = () => setOpen(false);
 
 
@@ -175,95 +194,220 @@ export default function ProfitabilityReport({ docName, reportName }) {
                 <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
                   Select Customer
                 </Typography>
-                <Select
+                <Autocomplete
+                disableCloseOnSelect
                   fullWidth
                   size="small"
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                >
-                  <MenuItem value={0}>All</MenuItem>
-                  {customers.length === 0 ? <MenuItem value="">No Customers Available</MenuItem>
-                    : (customers.map((customer) => (
-                      <MenuItem key={customer.id} value={customer.id}>{customer.firstName} {customer.lastName}</MenuItem>
-                    )))}
-                </Select>
+                  options={withAllOption(
+                    customers.map((c) => ({
+                      id: c.id,
+                      label: `${c.firstName || ""} ${c.lastName || ""}`.trim() || String(c.id),
+                    }))
+                  )}
+                  value={
+                    withAllOption(
+                      customers.map((c) => ({
+                        id: c.id,
+                        label: `${c.firstName || ""} ${c.lastName || ""}`.trim() || String(c.id),
+                      }))
+                    ).find((o) => o.id === customerId) || null
+                  }
+                  onChange={(_, opt) => {
+                    if (opt?.__loadMore) {
+                      setCustomerLimit((v) => v + DEFAULT_PAGE_SIZE);
+                      return;
+                    }
+                    setCustomerId(opt?.id ?? 0);
+                  }}
+                  isOptionEqualToValue={(option, val) => option.id === val.id}
+                  filterOptions={(options, state) =>
+                    filterTopMatchesWithLoadMore(options, state.inputValue, customerLimit)
+                  }
+                  renderOption={(props, option) => (
+                    <li
+                      {...props}
+                      style={
+                        option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
+                      }
+                    >
+                      {option.label}
+                    </li>
+                  )}
+                  noOptionsText="No matches"
+                  renderInput={(params) => (
+                    <TextField {...params} placeholder="Type to search..." />
+                  )}
+                />
               </Grid>
               <Grid item xs={12}>
                 <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
                   Select Supplier
                 </Typography>
-                <Select
+                <Autocomplete
+                disableCloseOnSelect
                   fullWidth
                   size="small"
-                  value={supplierId}
-                  onChange={(e) => {
-                    setSupplierId(e.target.value);
-                    handleGetSupplierItems(e.target.value);
+                  options={withAllOption(suppliers.map((s) => ({ id: s.id, label: s.name || String(s.id) })))}
+                  value={
+                    withAllOption(suppliers.map((s) => ({ id: s.id, label: s.name || String(s.id) }))).find(
+                      (o) => o.id === supplierId
+                    ) || null
+                  }
+                  onChange={(_, opt) => {
+                    if (opt?.__loadMore) {
+                      setSupplierLimit((v) => v + DEFAULT_PAGE_SIZE);
+                      return;
+                    }
+                    const id = opt?.id ?? 0;
+                    setSupplierId(id);
+                    handleGetSupplierItems(id);
                   }}
-                >
-                  <MenuItem value={0}>All</MenuItem>
-                  {suppliers.length === 0 ? <MenuItem disabled value="">No Suppliers Available</MenuItem>
-                    : (suppliers.map((supplier) => (
-                      <MenuItem key={supplier.id} value={supplier.id}>{supplier.name}</MenuItem>
-                    )))}
-                </Select>
+                  isOptionEqualToValue={(option, val) => option.id === val.id}
+                  filterOptions={(options, state) =>
+                    filterTopMatchesWithLoadMore(options, state.inputValue, supplierLimit)
+                  }
+                  renderOption={(props, option) => (
+                    <li
+                      {...props}
+                      style={
+                        option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
+                      }
+                    >
+                      {option.label}
+                    </li>
+                  )}
+                  noOptionsText="No matches"
+                  renderInput={(params) => (
+                    <TextField {...params} placeholder="Type to search..." />
+                  )}
+                />
               </Grid>
               <Grid item xs={12} lg={6}>
                 <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
                   Select Category
                 </Typography>
-                <Select
+                <Autocomplete
+                disableCloseOnSelect
                   fullWidth
                   size="small"
-                  value={categoryId}
-                  onChange={(e) => {
-                    setCategoryId(e.target.value);
-                    handleGetSubCategories(e.target.value);
+                  options={withAllOption(categories.map((c) => ({ id: c.id, label: c.name || String(c.id) })))}
+                  value={
+                    withAllOption(categories.map((c) => ({ id: c.id, label: c.name || String(c.id) }))).find(
+                      (o) => o.id === categoryId
+                    ) || null
+                  }
+                  onChange={(_, opt) => {
+                    if (opt?.__loadMore) {
+                      setCategoryLimit((v) => v + DEFAULT_PAGE_SIZE);
+                      return;
+                    }
+                    const id = opt?.id ?? 0;
+                    setCategoryId(id);
+                    handleGetSubCategories(id);
                   }}
-                >
-                  <MenuItem value={0}>All</MenuItem>
-                  {categories.length === 0 ? <MenuItem disabled value="">No Categories Available</MenuItem>
-                    : (categories.map((category) => (
-                      <MenuItem key={category.id} value={category.id}>{category.name}</MenuItem>
-                    )))}
-                </Select>
+                  isOptionEqualToValue={(option, val) => option.id === val.id}
+                  filterOptions={(options, state) =>
+                    filterTopMatchesWithLoadMore(options, state.inputValue, categoryLimit)
+                  }
+                  renderOption={(props, option) => (
+                    <li
+                      {...props}
+                      style={
+                        option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
+                      }
+                    >
+                      {option.label}
+                    </li>
+                  )}
+                  noOptionsText="No matches"
+                  renderInput={(params) => (
+                    <TextField {...params} placeholder="Type to search..." />
+                  )}
+                />
               </Grid>
               <Grid item xs={12} lg={6}>
                 <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
                   Select Sub Category
                 </Typography>
-                <Select
+                <Autocomplete
+                disableCloseOnSelect
                   fullWidth
                   size="small"
-                  value={subCategoryId}
-                  onChange={(e) => {
-                    setSubCategoryId(e.target.value);
-                    handleGetFilteredItems(supplierId, categoryId, e.target.value);
+                  options={withAllOption(subCategories.map((c) => ({ id: c.id, label: c.name || String(c.id) })))}
+                  value={
+                    withAllOption(subCategories.map((c) => ({ id: c.id, label: c.name || String(c.id) }))).find(
+                      (o) => o.id === subCategoryId
+                    ) || null
+                  }
+                  onChange={(_, opt) => {
+                    if (opt?.__loadMore) {
+                      setSubCategoryLimit((v) => v + DEFAULT_PAGE_SIZE);
+                      return;
+                    }
+                    const id = opt?.id ?? 0;
+                    setSubCategoryId(id);
+                    handleGetFilteredItems(supplierId, categoryId, id);
                   }}
-                >
-                  <MenuItem value={0}>All</MenuItem>
-                  {subCategories.length === 0 ? <MenuItem disabled value="">No Sub Categories Available</MenuItem>
-                    : (subCategories.map((category) => (
-                      <MenuItem key={category.id} value={category.id}>{category.name}</MenuItem>
-                    )))}
-                </Select>
+                  isOptionEqualToValue={(option, val) => option.id === val.id}
+                  filterOptions={(options, state) =>
+                    filterTopMatchesWithLoadMore(options, state.inputValue, subCategoryLimit)
+                  }
+                  renderOption={(props, option) => (
+                    <li
+                      {...props}
+                      style={
+                        option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
+                      }
+                    >
+                      {option.label}
+                    </li>
+                  )}
+                  noOptionsText="No matches"
+                  renderInput={(params) => (
+                    <TextField {...params} placeholder="Type to search..." />
+                  )}
+                />
               </Grid>
               <Grid item xs={12}>
                 <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
                   Select Item
                 </Typography>
-                <Select
+                <Autocomplete
+                disableCloseOnSelect
                   fullWidth
                   size="small"
-                  value={itemId}
-                  onChange={(e) => setItemId(e.target.value)}
-                >
-                  <MenuItem value={0}>All</MenuItem>
-                  {items.length === 0 ? <MenuItem value="">No Items Available</MenuItem>
-                    : (items.map((item) => (
-                      <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
-                    )))}
-                </Select>
+                  options={withAllOption(items.map((i) => ({ id: i.id, label: i.name || String(i.id) })))}
+                  value={
+                    withAllOption(items.map((i) => ({ id: i.id, label: i.name || String(i.id) }))).find(
+                      (o) => o.id === itemId
+                    ) || null
+                  }
+                  onChange={(_, opt) => {
+                    if (opt?.__loadMore) {
+                      setItemLimit((v) => v + DEFAULT_PAGE_SIZE);
+                      return;
+                    }
+                    setItemId(opt?.id ?? 0);
+                  }}
+                  isOptionEqualToValue={(option, val) => option.id === val.id}
+                  filterOptions={(options, state) =>
+                    filterTopMatchesWithLoadMore(options, state.inputValue, itemLimit)
+                  }
+                  renderOption={(props, option) => (
+                    <li
+                      {...props}
+                      style={
+                        option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
+                      }
+                    >
+                      {option.label}
+                    </li>
+                  )}
+                  noOptionsText="No matches"
+                  renderInput={(params) => (
+                    <TextField {...params} placeholder="Type to search..." />
+                  )}
+                />
               </Grid>
               <Grid item xs={12} display="flex" justifyContent="space-between" mt={2}>
                 <Button onClick={handleClose} variant="contained" color="error">

@@ -19,11 +19,12 @@ const stagePalette = {
   Lost: "error",
 };
 
-export default function KanbanCard({ item, stageId, onDragStart, onDragEnd }) {
+export default function KanbanCard({ item, stageId, onDragStart, onDragEnd, onCardClick }) {
   const [anchorEl, setAnchorEl] = React.useState(null);
   const open = Boolean(anchorEl);
 
   const handleMenuOpen = (event) => {
+    event.stopPropagation();
     setAnchorEl(event.currentTarget);
   };
 
@@ -31,10 +32,17 @@ export default function KanbanCard({ item, stageId, onDragStart, onDragEnd }) {
     setAnchorEl(null);
   };
 
+  const handleCardClick = (event) => {
+    // Prevent click when dragging
+    if (event.defaultPrevented) return;
+    onCardClick?.(item);
+  };
+
   return (
     <Paper
       variant="outlined"
       draggable
+      onClick={handleCardClick}
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("application/json", JSON.stringify({ stageId, itemId: item.id }));
@@ -45,7 +53,7 @@ export default function KanbanCard({ item, stageId, onDragStart, onDragEnd }) {
         p: 2,
         borderRadius: 2,
         boxShadow: "0px 6px 18px rgba(15, 23, 42, 0.08)",
-        cursor: "grab",
+        cursor: "pointer",
         transition: "transform 0.15s ease, box-shadow 0.15s ease",
         "&:hover": {
           transform: "translateY(-3px)",

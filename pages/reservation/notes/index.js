@@ -46,7 +46,7 @@ export default function PencilNotes() {
     const handleTabChange = (event, newValue) => {
         setTabIndex(newValue);
         setPage(1);
-        fetchResList(1, searchTerm, pageSize);
+        fetchResList(1, searchTerm, pageSize, newValue);
     };
 
     const handleSearchChange = (event) => {
@@ -68,11 +68,12 @@ export default function PencilNotes() {
         fetchResList(1, searchTerm, newSize);
     };
 
-    const fetchResList = async (pg = 1, search = "", size = pageSize) => {
+    const fetchResList = async (pg = 1, search = "", size = pageSize, tab = tabIndex) => {
         try {
             const token = localStorage.getItem("token");
             const skip = (pg - 1) * size;
-            const query = `${BASE_URL}/Reservation/GetAllNotes?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}`;
+            const tabId = tab + 1;
+            const query = `${BASE_URL}/Reservation/GetAllNotes?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}&tabId=${tabId}`;
 
             const response = await fetch(query, {
                 method: "GET",
@@ -95,13 +96,6 @@ export default function PencilNotes() {
     useEffect(() => {
         fetchResList(page, searchTerm, pageSize);
     }, []);
-
-    const filteredData = resList.filter((item) => {
-        if (tabIndex === 0) return !item.isDeleted && !item.isExpired;
-        if (tabIndex === 1) return !item.isDeleted && item.isExpired;
-        if (tabIndex === 2) return item.isDeleted && !item.isExpired;
-        return false;
-    });    
 
     if (!navigate) return <AccessDenied />;
 
@@ -146,14 +140,14 @@ export default function PencilNotes() {
                                 </TableRow>
                             </TableHead>
                             <TableBody>
-                                {filteredData.length === 0 ? (
+                                {resList.length === 0 ? (
                                     <TableRow>
                                         <TableCell colSpan={9} align="center">
                                             <Typography color="error">No Notes Available</Typography>
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    filteredData.map((item, index) => (
+                                    resList.map((item, index) => (
                                         <TableRow
                                             key={index}
                                             sx={{

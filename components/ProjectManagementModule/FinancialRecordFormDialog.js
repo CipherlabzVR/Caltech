@@ -65,10 +65,18 @@ const validationSchema = Yup.object().shape({
       if (!value) return false;
       return value <= 999999999.99;
     }),
-  recordDate: Yup.date()
+  recordDate: Yup.string()
     .required("Record date is required")
-    .typeError("Please select a valid date")
-    .max(new Date(), "Record date cannot be in the future"),
+    .test("valid-date", "Please select a valid date", (value) => {
+      if (!value) return false;
+      return dayjs(value, "YYYY-MM-DD", true).isValid();
+    })
+    .test("not-future", "Record date cannot be in the future", (value) => {
+      if (!value) return false;
+      const selected = dayjs(value, "YYYY-MM-DD", true);
+      if (!selected.isValid()) return false;
+      return !selected.isAfter(dayjs(), "day");
+    }),
   reference: Yup.string()
     .nullable()
     .max(200, "Reference cannot exceed 200 characters"),
@@ -90,7 +98,7 @@ const FinancialRecordFormDialog = ({
     recordType: 2,
     category: 1,
     amount: 0,
-    recordDate: dayjs().toISOString(),
+    recordDate: dayjs().format("YYYY-MM-DD"),
     reference: "",
     notes: "",
     relatedMemberId: null,
@@ -106,9 +114,17 @@ const FinancialRecordFormDialog = ({
         enableReinitialize
         onSubmit={async (values, helpers) => {
           try {
+            const parsedRecordDate = dayjs(values.recordDate, "YYYY-MM-DD", true);
+            if (!parsedRecordDate.isValid()) {
+              throw new Error("Please select a valid date");
+            }
+
             // Convert empty string to null for optional fields
             const payload = {
               ...values,
+              // Keep a stable, timezone-safe datetime string for the API.
+              // (Avoids JS Date parsing quirks with YYYY-MM-DD across timezones)
+              recordDate: parsedRecordDate.format("YYYY-MM-DDT00:00:00"),
               relatedMemberId: values.relatedMemberId === "" || values.relatedMemberId === null || values.relatedMemberId === undefined 
                 ? null 
                 : Number(values.relatedMemberId),
@@ -190,7 +206,7 @@ const FinancialRecordFormDialog = ({
                     type="date"
                     fullWidth
                     InputLabelProps={{ shrink: true }}
-                    value={dayjs(values.recordDate).format("YYYY-MM-DD")}
+                    value={values.recordDate}
                     onChange={(event) =>
                       setFieldValue("recordDate", event.target.value)
                     }

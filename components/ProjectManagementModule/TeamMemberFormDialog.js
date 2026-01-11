@@ -31,6 +31,12 @@ const validationSchema = Yup.object().shape({
   employeeId: Yup.string()
     .nullable()
     .max(50, "Employee ID cannot exceed 50 characters"),
+  hourlyRate: Yup.number()
+    .nullable()
+    .transform((value, originalValue) =>
+      originalValue === "" || originalValue == null ? null : value
+    )
+    .min(0, "Hourly rate must be 0 or greater"),
 });
 
 const TeamMemberFormDialog = ({
@@ -46,6 +52,7 @@ const TeamMemberFormDialog = ({
     email: "",
     mobileNumber: "",
     employeeId: "",
+    hourlyRate: "",
     isActive: true,
     ...(initialValues || {}),
   };
@@ -59,7 +66,15 @@ const TeamMemberFormDialog = ({
         enableReinitialize
         onSubmit={async (values, helpers) => {
           try {
-            await onSubmit(values);
+            const hourlyRate =
+              values.hourlyRate === "" || values.hourlyRate == null
+                ? null
+                : Number(values.hourlyRate);
+
+            await onSubmit({
+              ...values,
+              hourlyRate: Number.isFinite(hourlyRate) ? hourlyRate : null,
+            });
             helpers.setSubmitting(false);
           } catch (error) {
             helpers.setSubmitting(false);
@@ -132,6 +147,19 @@ const TeamMemberFormDialog = ({
                     onChange={handleChange}
                     error={touched.employeeId && Boolean(errors.employeeId)}
                     helperText={touched.employeeId && errors.employeeId}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    name="hourlyRate"
+                    label="Hourly Rate"
+                    fullWidth
+                    type="number"
+                    value={values.hourlyRate}
+                    onChange={handleChange}
+                    error={touched.hourlyRate && Boolean(errors.hourlyRate)}
+                    helperText={touched.hourlyRate && errors.hourlyRate}
+                    inputProps={{ min: 0, step: "0.01" }}
                   />
                 </Grid>
               </Grid>

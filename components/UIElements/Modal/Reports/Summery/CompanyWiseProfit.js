@@ -9,6 +9,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Modal from "@mui/material/Modal";
 import "react-toastify/dist/ReactToastify.css";
@@ -19,16 +20,23 @@ import useApi from "@/components/utils/useApi";
 import { Catelogue } from "Base/catelogue";
 import BASE_URL from "Base/api";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
+import { DEFAULT_PAGE_SIZE, filterTopMatchesWithLoadMore } from "@/components/utils/autocompleteTopMatches";
 
 const style = {
   position: "absolute",
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: { lg: 400, xs: 350 },
+  width: { xs: "94vw", sm: "86vw", md: 600 },
+  maxWidth: 720,
+  maxHeight: "90vh",
+  overflowY: "auto",
+  overflowX: "hidden",
   bgcolor: "background.paper",
   boxShadow: 24,
-  p: 2,
+  borderRadius: 2,
+  p: { xs: 2, sm: 3 },
+  outline: "none",
 };
 
 export default function CompanyWiseProfit({ docName, reportName }) {
@@ -42,13 +50,19 @@ export default function CompanyWiseProfit({ docName, reportName }) {
   const [persons, setPersons] = useState([]);
   const [personId, setPersonId] = useState(0);
   const [itemType, setItemType] = useState(null);
+  const [supplierLimit, setSupplierLimit] = useState(DEFAULT_PAGE_SIZE);
+  const [personLimit, setPersonLimit] = useState(DEFAULT_PAGE_SIZE);
   const { data: CompanyWiseProfit } = GetReportSettingValueByName(reportName);
   const { data: CompanyWiseProfitItem } = GetReportSettingValueByName("CompanyWiseProfitItem");
   const { data: CompanyWiseProfitOutlet } = GetReportSettingValueByName("CompanyWiseProfitOutlet");
   const { data: CompanyWiseProfitDBR } = GetReportSettingValueByName("CompanyWiseProfitDBR");
   const { data: enableItemTypeFilter } = IsAppSettingEnabled("EnableItemTypeFilter");
 
-  const handleOpen = () => setOpen(true);
+  const handleOpen = () => {
+    setSupplierLimit(DEFAULT_PAGE_SIZE);
+    setPersonLimit(DEFAULT_PAGE_SIZE);
+    setOpen(true);
+  };
   const handleClose = () => setOpen(false);
 
   const isFormValid = fromDate && toDate && supplierId;
@@ -83,6 +97,12 @@ export default function CompanyWiseProfit({ docName, reportName }) {
       setSuppliers(supplierList);
     }
   }, [supplierList]);
+
+  const supplierOptions = suppliers.map((s) => ({ id: s.id, label: s.name || String(s.id) }));
+  const supplierValue = supplierOptions.find((o) => o.id === supplierId) || null;
+
+  const personOptions = [{ id: 0, label: "All" }, ...(persons || []).map((p) => ({ id: p.id, label: p.name || String(p.id) }))];
+  const personValue = personOptions.find((o) => o.id === personId) || null;
 
   return (
     <>
@@ -134,38 +154,78 @@ export default function CompanyWiseProfit({ docName, reportName }) {
                 <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
                   Select Supplier
                 </Typography>
-                <Select
+                <Autocomplete
+                disableCloseOnSelect
                   fullWidth
                   size="small"
-                  value={supplierId}
-                  onChange={(e) => {
-                    setSupplierId(e.target.value);
-                    fetchSalesPerson(e.target.value);
+                  options={supplierOptions}
+                  value={supplierValue}
+                  onChange={(_, opt) => {
+                    if (opt?.__loadMore) {
+                      setSupplierLimit((v) => v + DEFAULT_PAGE_SIZE);
+                      return;
+                    }
+                    const id = opt?.id;
+                    setSupplierId(id);
+                    setPersonId(0);
+                    if (id) fetchSalesPerson(id);
                   }}
-                >
-                  {/* <MenuItem value={0}>All</MenuItem> */}
-                  {suppliers.length === 0 ? <MenuItem value="">No Suppliers Available</MenuItem>
-                    : (suppliers.map((supplier) => (
-                      <MenuItem key={supplier.id} value={supplier.id}>{supplier.name}</MenuItem>
-                    )))}
-                </Select>
+                  isOptionEqualToValue={(option, val) => option.id === val.id}
+                  filterOptions={(options, state) =>
+                    filterTopMatchesWithLoadMore(options, state.inputValue, supplierLimit)
+                  }
+                  renderOption={(props, option) => (
+                    <li
+                      {...props}
+                      style={
+                        option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
+                      }
+                    >
+                      {option.label}
+                    </li>
+                  )}
+                  noOptionsText="No matches"
+                  renderInput={(params) => (
+                    <TextField {...params} placeholder="Type to search..." />
+                  )}
+                />
               </Grid>
               <Grid item xs={12}>
                 <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
                   Select Sales Person
                 </Typography>
-                <Select
+                <Autocomplete
+                disableCloseOnSelect
                   fullWidth
                   size="small"
-                  value={personId}
-                  onChange={(e) => setPersonId(e.target.value)}
-                >
-                  <MenuItem value={0}>All</MenuItem>
-                  {persons.length === 0 ? <MenuItem value="">No Sales Persons Available</MenuItem>
-                    : (persons.map((persons) => (
-                      <MenuItem key={persons.id} value={persons.id}>{persons.name}</MenuItem>
-                    )))}
-                </Select>
+                  options={personOptions}
+                  value={personValue}
+                  onChange={(_, opt) => {
+                    if (opt?.__loadMore) {
+                      setPersonLimit((v) => v + DEFAULT_PAGE_SIZE);
+                      return;
+                    }
+                    setPersonId(opt?.id ?? 0);
+                  }}
+                  isOptionEqualToValue={(option, val) => option.id === val.id}
+                  filterOptions={(options, state) =>
+                    filterTopMatchesWithLoadMore(options, state.inputValue, personLimit)
+                  }
+                  renderOption={(props, option) => (
+                    <li
+                      {...props}
+                      style={
+                        option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
+                      }
+                    >
+                      {option.label}
+                    </li>
+                  )}
+                  noOptionsText="No matches"
+                  renderInput={(params) => (
+                    <TextField {...params} placeholder="Type to search..." />
+                  )}
+                />
               </Grid>
               {enableItemTypeFilter && (
                 <Grid item xs={12}>
