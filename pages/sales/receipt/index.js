@@ -91,7 +91,7 @@ export default function Receipt() {
         <Grid item xs={12} lg={4} order={{ xs: 2, lg: 1 }}>
           <Search className="search-form">
             <StyledInputBase
-              placeholder="Search here.."
+              placeholder="Search by Receipt No or Customer.."
               inputProps={{ "aria-label": "search" }}
               value={search}
               onChange={handleSearchChange}

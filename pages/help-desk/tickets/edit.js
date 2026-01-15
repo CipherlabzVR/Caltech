@@ -21,6 +21,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  CircularProgress,
+  createFilterOptions,
 } from "@mui/material";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -35,11 +37,14 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import SaveIcon from "@mui/icons-material/Save";
 import CancelIcon from "@mui/icons-material/Cancel";
+import AddIcon from "@mui/icons-material/Add";
 import useApi from "@/components/utils/useApi";
 import RichTextEditor from "@/components/help-desk/RichTextEditor";
 import TicketChecklist from "@/components/help-desk/TicketChecklist";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { formatDate } from "@/components/utils/formatHelper";
+
+const filter = createFilterOptions();
 
 const style = {
   position: "absolute",
@@ -153,6 +158,18 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
 
   const currentUserId = typeof window !== "undefined" ? Number(localStorage.getItem("userid")) || null : null;
 
+  // Check if current user is Admin or HelpDeskSupport (for Assign To dropdown visibility)
+  const userType = typeof window !== "undefined" ? localStorage.getItem("type") : null;
+  const userTypeNum = userType ? Number(userType) : null;
+  const isAdmin = userTypeNum === 1 || userTypeNum === 0; // ADMIN = 1, SuperAdmin = 0
+  const isHelpDeskSupportUser = userTypeNum === 14; // HelpDeskSupport = 14
+  const canAssignTicket = isAdmin || isHelpDeskSupportUser;
+
+  // State for Assign To
+  const [helpDeskUsers, setHelpDeskUsers] = useState([]);
+  const [loadingHelpDeskUsers, setLoadingHelpDeskUsers] = useState(false);
+  const [customAssigneeNames, setCustomAssigneeNames] = useState([]); // Store custom names entered by user
+
   // Auto-open when item is set and modal is controlled externally
   useEffect(() => {
     if (externalOpen !== undefined && item && !open) {
@@ -213,13 +230,15 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
           (resolvedRoleName || "").toLowerCase() === "admin" ||
           (resolvedRoleName || "").toLowerCase() === "superadmin";
 
-        setCanClockIn(Boolean(isHelpDeskSupport || isAdminType || isAdminRole));
+        // Clock In tab is now available to all users
+        setCanClockIn(true);
       } catch (error) {
         console.error("Error checking user type:", error);
         setIsSuperAdmin(false);
         setIsHelpDeskCustomer(false);
         setRoleName("");
-        setCanClockIn(false);
+        // Clock In tab is now available to all users
+        setCanClockIn(true);
       }
     };
 
@@ -228,11 +247,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
     }
   }, [open]);
 
-  useEffect(() => {
-    if (!canClockIn && activeTab === 1) {
-      setActiveTab(0);
-    }
-  }, [canClockIn, activeTab]);
+  // Clock In tab is now available to all users, so no need to switch tabs
 
   const toLocalDateTimeInputValue = (date) => {
     // returns yyyy-MM-ddTHH:mm (for datetime-local input)
@@ -272,7 +287,6 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
 
   useEffect(() => {
     if (!open) return;
-    if (!canClockIn) return;
     if (!item?.id) return;
 
     // initialize datetime inputs when opening
@@ -310,7 +324,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
     return () => {
       if (watchId != null) navigator.geolocation.clearWatch(watchId);
     };
-  }, [open, activeTab, canClockIn, item?.id]);
+  }, [open, activeTab, item?.id]);
 
   const stopCamera = () => {
     try {
@@ -1192,8 +1206,6 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
   };
 
   const { data: categoriesData } = useApi("/HelpDesk/GetAllCategories?SkipCount=0&MaxResultCount=1000&Search=null");
-  // Use GetUsersByUserType endpoint to fetch only HelpDeskSupport users (UserType = 14)
-  const { data: helpDeskSupportUsersData } = useApi("/User/GetUsersByUserType?userType=14");
   // Fetch projects from Project Management module instead of regular Project module
   const [projectsData, setProjectsData] = useState(null);
   
@@ -1232,38 +1244,84 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
 
   const categories = categoriesData?.items || [];
   
-  // Process HelpDeskSupport users from the API response
-  const helpDeskUsers = React.useMemo(() => {
-    if (!helpDeskSupportUsersData) {
-      return [];
-    }
-    
-    const users = Array.isArray(helpDeskSupportUsersData) 
-      ? helpDeskSupportUsersData 
-      : Array.isArray(helpDeskSupportUsersData?.result) 
-        ? helpDeskSupportUsersData.result 
-        : Array.isArray(helpDeskSupportUsersData?.data)
-          ? helpDeskSupportUsersData.data
-          : [];
-    
-    if (!Array.isArray(users) || users.length === 0) {
-      return [];
-    }
-
-    // Deduplicate users by ID
-    const deduped = new Map();
-    users.forEach((user) => {
-      if (!user) return;
-      const key = user?.id ?? user?.userId ?? null;
-      if (key === null || key === undefined) return;
-      if (!deduped.has(key)) {
-        deduped.set(key, user);
+  // Fetch HelpDeskSupport users
+  const fetchHelpDeskSupportUsers = async () => {
+    try {
+      setLoadingHelpDeskUsers(true);
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${BASE_URL}/User/GetUsersByUserType?userType=14`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const users = Array.isArray(data) 
+          ? data 
+          : Array.isArray(data?.result) 
+            ? data.result 
+            : Array.isArray(data?.data)
+              ? data.data
+              : [];
+        
+        // Deduplicate users by ID
+        const deduped = new Map();
+        users.forEach((user) => {
+          if (!user) return;
+          const key = user?.id ?? user?.userId ?? null;
+          if (key === null || key === undefined) return;
+          if (!deduped.has(key)) {
+            deduped.set(key, user);
+          }
+        });
+        
+        const uniqueUsers = Array.from(deduped.values());
+        setHelpDeskUsers(uniqueUsers);
+        console.log(`EditTicket: Found ${deduped.size} HelpDeskSupport users`);
+        return uniqueUsers; // Return users for immediate use
       }
-    });
+      return [];
+    } catch (error) {
+      console.error("Error fetching HelpDeskSupport users:", error);
+      return [];
+    } finally {
+      setLoadingHelpDeskUsers(false);
+    }
+  };
 
-    console.log(`EditTicket: Found ${deduped.size} HelpDeskSupport users`);
-    return Array.from(deduped.values());
-  }, [helpDeskSupportUsersData]);
+  // Fetch HelpDeskSupport users when modal opens
+  useEffect(() => {
+    if (open) {
+      fetchHelpDeskSupportUsers();
+      // Load existing custom assignee name if ticket has one
+      if (item?.assignedToName) {
+        setCustomAssigneeNames([item.assignedToName]);
+      }
+    }
+  }, [open, item]);
+
+  // Handle adding new assignee name (just store the name, no user creation)
+  const handleAddNewAssigneeName = (assigneeName, setFieldValue) => {
+    if (!assigneeName || !assigneeName.trim()) {
+      toast.error("Name is required");
+      return;
+    }
+
+    const trimmedName = assigneeName.trim();
+    
+    // Add to custom names list if not already present
+    if (!customAssigneeNames.includes(trimmedName)) {
+      setCustomAssigneeNames([...customAssigneeNames, trimmedName]);
+    }
+    
+    // Set the name directly (will be stored in AssignedToName field)
+    setFieldValue("assignedToName", trimmedName);
+    setFieldValue("assignedToUserId", null); // Clear user ID when using custom name
+    
+    toast.success(`Assignee "${trimmedName}" will be saved with the ticket`);
+  };
 
   const normalizeProjectSource = React.useMemo(() => {
     if (!projectsData) return [];
@@ -1447,6 +1505,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
           priority: values.priority,
           categoryId: values.categoryId,
           assignedToUserId: values.assignedToUserId || null,
+          assignedToName: values.assignedToName || null,
           resolutionNotes: values.resolutionNotes || "",
           project: primaryProjectName,
           projectId: primaryProjectId,
@@ -1657,7 +1716,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
               sx={{ minHeight: 44 }}
             >
               <Tab label="Details" sx={{ minHeight: 44 }} />
-              {canClockIn ? <Tab label="Clock In" sx={{ minHeight: 44 }} /> : null}
+              <Tab label="Clock In" sx={{ minHeight: 44 }} />
             </Tabs>
           </Box>
 
@@ -1670,6 +1729,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                 priority: item.priority || 2,
                 categoryId: item.categoryId || "",
                 assignedToUserId: item.assignedToUserId || null,
+                assignedToName: item.assignedToName || null,
                 resolutionNotes: item.resolutionNotes || "",
                 projectIds: initialProjectIds,
                 startDate: item.startDate ? new Date(item.startDate).toISOString().split("T")[0] : "",
@@ -1716,15 +1776,20 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                       }}
                     >
                     <Grid container spacing={2}>
-                      <Grid item xs={12}>
+                      {/* Customer Name and Project fields at the top */}
+                      <Grid item xs={12} md={6}>
                         <Field
                           as={TextField}
                           fullWidth
-                          name="subject"
-                          label="Subject"
-                          disabled={!isSuperAdmin}
-                          error={touched.subject && !!errors.subject}
-                          helperText={touched.subject ? errors.subject : (!isSuperAdmin ? "Only SuperAdmin can change subject" : "")}
+                          name="customerName"
+                          label="Customer Name"
+                          value={values.customerName}
+                          size="small"
+                          disabled={true}
+                          onChange={(e) => {
+                            setFieldValue("customerName", e.target.value);
+                            setFieldValue("customerId", null);
+                          }}
                           sx={{
                             "& .MuiOutlinedInput-root": {
                               bgcolor: "white",
@@ -1877,19 +1942,15 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                         />
                       </Grid>
 
-                      <Grid item xs={12} md={6}>
+                      <Grid item xs={12}>
                         <Field
                           as={TextField}
                           fullWidth
-                          name="customerName"
-                          label="Customer Name"
-                          value={values.customerName}
-                          size="small"
-                          disabled={true}
-                          onChange={(e) => {
-                            setFieldValue("customerName", e.target.value);
-                            setFieldValue("customerId", null);
-                          }}
+                          name="subject"
+                          label="Subject"
+                          disabled={!isSuperAdmin}
+                          error={touched.subject && !!errors.subject}
+                          helperText={touched.subject ? errors.subject : (!isSuperAdmin ? "Only SuperAdmin can change subject" : "")}
                           sx={{
                             "& .MuiOutlinedInput-root": {
                               bgcolor: "white",
@@ -1907,44 +1968,150 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                         />
                       </Grid>
 
-                      <Grid item xs={12} md={6}>
-                        <Autocomplete
-                          disabled={!isSuperAdmin}
-                          options={helpDeskUsers}
-                          getOptionLabel={(option) => {
-                            if (!option) return "";
-                            const name = `${option.firstName || ""} ${option.lastName || ""}`.trim();
-                            return name || option.email || option.userName || "Unknown";
-                          }}
-                          isOptionEqualToValue={(option, value) => option?.id === value?.id}
-                          value={
-                            helpDeskUsers.find((u) => u?.id === values.assignedToUserId) ||
-                            null
-                          }
-                          onChange={(event, newValue) => {
-                            setFieldValue("assignedToUserId", newValue?.id || null);
-                          }}
-                          renderInput={(params) => (
-                            <TextField
-                              {...params}
-                              label="Assign To (Optional)"
-                              size="small"
-                              disabled={!isSuperAdmin}
-                              helperText={!isSuperAdmin ? "Only SuperAdmin can change assignment" : ""}
-                              sx={{
-                                "& .MuiOutlinedInput-root": {
-                                  bgcolor: "white",
-                                  "& fieldset": { borderColor: "#E2E8F0" },
-                                  "&:hover fieldset": { borderColor: "#CBD5E0" },
-                                  "&.Mui-focused fieldset": { borderColor: "#2196F3" },
+                      {/* Assign To dropdown - Only visible to Admin and HelpDeskSupport */}
+                      {canAssignTicket && (
+                        <Grid item xs={12} md={6}>
+                          <Autocomplete
+                            disabled={!isSuperAdmin}
+                            options={[
+                              ...helpDeskUsers,
+                              ...customAssigneeNames.map(name => ({ id: null, firstName: name, lastName: "", isCustomName: true }))
+                            ]}
+                            loading={loadingHelpDeskUsers}
+                            getOptionLabel={(option) => {
+                              if (!option) return "";
+                              // Handle the "Add new" option
+                              if (option.inputValue) {
+                                return option.inputValue;
+                              }
+                              // Handle custom names
+                              if (option.isCustomName) {
+                                return option.firstName || "";
+                              }
+                              const name = `${option.firstName || ""} ${option.lastName || ""}`.trim();
+                              return name || option.email || option.userName || "Unknown";
+                            }}
+                            filterOptions={(options, params) => {
+                              const filtered = filter(options, {
+                                ...params,
+                                getOptionLabel: (option) => {
+                                  if (option.isCustomName) {
+                                    return option.firstName || "";
+                                  }
+                                  const name = `${option.firstName || ""} ${option.lastName || ""}`.trim();
+                                  return name || option.email || option.userName || "";
                                 },
-                              }}
-                            />
-                          )}
-                          noOptionsText="No help desk support users found"
-                          loadingText="Loading help desk support users..."
-                        />
-                      </Grid>
+                              });
+
+                              const { inputValue } = params;
+                              // Check if input matches existing option
+                              const isExisting = options.some((option) => {
+                                if (option.isCustomName) {
+                                  return (option.firstName || "").toLowerCase() === inputValue.toLowerCase();
+                                }
+                                const name = `${option.firstName || ""} ${option.lastName || ""}`.trim();
+                                return name.toLowerCase() === inputValue.toLowerCase();
+                              });
+
+                              // Suggest adding a new value if it doesn't exist
+                              if (inputValue !== "" && !isExisting && inputValue.trim().length > 0 && isSuperAdmin) {
+                                filtered.push({
+                                  inputValue: inputValue.trim(),
+                                  isNewOption: true,
+                                  firstName: `Add "${inputValue.trim()}"`,
+                                });
+                              }
+
+                              return filtered;
+                            }}
+                            isOptionEqualToValue={(option, value) => {
+                              if (option.isCustomName && value?.isCustomName) {
+                                return option.firstName === value.firstName;
+                              }
+                              return option?.id === value?.id;
+                            }}
+                            value={
+                              values.assignedToName 
+                                ? { id: null, firstName: values.assignedToName, lastName: "", isCustomName: true }
+                                : helpDeskUsers.find((u) => u?.id === values.assignedToUserId) || null
+                            }
+                            onChange={(event, newValue) => {
+                              if (newValue && newValue.isNewOption) {
+                                // Add new custom name
+                                handleAddNewAssigneeName(newValue.inputValue, setFieldValue);
+                              } else if (newValue && newValue.isCustomName) {
+                                // Selected a custom name
+                                setFieldValue("assignedToName", newValue.firstName);
+                                setFieldValue("assignedToUserId", null);
+                              } else if (newValue) {
+                                // Selected an existing user
+                                setFieldValue("assignedToUserId", newValue.id);
+                                setFieldValue("assignedToName", null);
+                              } else {
+                                // Cleared selection
+                                setFieldValue("assignedToUserId", null);
+                                setFieldValue("assignedToName", null);
+                              }
+                            }}
+                            selectOnFocus
+                            clearOnBlur
+                            handleHomeEndKeys
+                            freeSolo
+                            renderOption={(props, option) => {
+                              if (option.isNewOption) {
+                                return (
+                                  <li {...props} style={{ color: "#1976d2", fontWeight: 500 }}>
+                                    <AddIcon sx={{ mr: 1, fontSize: 18 }} />
+                                    {option.firstName}
+                                  </li>
+                                );
+                              }
+                              if (option.isCustomName) {
+                                return (
+                                  <li {...props} style={{ color: "#28a745", fontWeight: 500 }}>
+                                    {option.firstName}
+                                  </li>
+                                );
+                              }
+                              const name = `${option.firstName || ""} ${option.lastName || ""}`.trim();
+                              return (
+                                <li {...props}>
+                                  {name || option.email || option.userName || "Unknown"}
+                                </li>
+                              );
+                            }}
+                            renderInput={(params) => (
+                              <TextField
+                                {...params}
+                                label="Assign To (Optional)"
+                                size="small"
+                                disabled={!isSuperAdmin}
+                                placeholder={isSuperAdmin ? "Select user or type name to add..." : ""}
+                                helperText={!isSuperAdmin ? "Only SuperAdmin can change assignment" : ""}
+                                sx={{
+                                  "& .MuiOutlinedInput-root": {
+                                    bgcolor: "white",
+                                    "& fieldset": { borderColor: "#E2E8F0" },
+                                    "&:hover fieldset": { borderColor: "#CBD5E0" },
+                                    "&.Mui-focused fieldset": { borderColor: "#2196F3" },
+                                  },
+                                }}
+                                InputProps={{
+                                  ...params.InputProps,
+                                  endAdornment: (
+                                    <>
+                                      {loadingHelpDeskUsers ? <CircularProgress color="inherit" size={20} /> : null}
+                                      {params.InputProps.endAdornment}
+                                    </>
+                                  ),
+                                }}
+                              />
+                            )}
+                            noOptionsText={isSuperAdmin ? "No users found. Type a name to add new." : "No help desk support users found"}
+                            loadingText="Loading help desk support users..."
+                          />
+                        </Grid>
+                      )}
 
                       {/* Category aligned with Assign To */}
                       <Grid item xs={12} md={6}>
@@ -2027,41 +2194,68 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                       <Grid item xs={12} md={6}>
                         <FormControl fullWidth error={touched.priority && !!errors.priority} size="small">
                           <InputLabel size="small">Priority</InputLabel>
-                          <Field
-                            as={Select}
-                            name="priority"
-                            label="Priority"
-                            value={values.priority}
-                            size="small"
-                            sx={{
-                              bgcolor: "white",
-                              "& .MuiOutlinedInput-notchedOutline": { borderColor: "#E2E8F0" },
-                              "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#CBD5E0" },
-                              "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#2196F3" },
-                            }}
-                          >
-                            {Array.isArray(prioritySettings) && prioritySettings.length > 0
-                              ? prioritySettings.map((priority) => (
-                                  <MenuItem key={priority.priority} value={priority.priority}>
-                                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                      <Box
-                                        sx={{
-                                          width: 12,
-                                          height: 12,
-                                          borderRadius: "50%",
-                                          bgcolor: priority.colorHex || "#2563EB",
-                                        }}
-                                      />
-                                      {priority.displayName || priority.priority}
-                                    </Box>
-                                  </MenuItem>
-                                ))
-                              : [
-                                  <MenuItem key="low" value={1}>Low</MenuItem>,
-                                  <MenuItem key="medium" value={2}>Medium</MenuItem>,
-                                  <MenuItem key="high" value={3}>High</MenuItem>,
-                                  <MenuItem key="critical" value={4}>Critical</MenuItem>,
-                                ]}
+                          <Field name="priority">
+                            {({ field, form }) => (
+                              <Select
+                                {...field}
+                                label="Priority"
+                                size="small"
+                                sx={{
+                                  bgcolor: "white",
+                                  "& .MuiOutlinedInput-notchedOutline": { borderColor: "#E2E8F0" },
+                                  "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: "#CBD5E0" },
+                                  "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#2196F3" },
+                                }}
+                                onChange={(e) => {
+                                  const newPriority = e.target.value;
+                                  form.setFieldValue("priority", newPriority);
+                                  
+                                  // Check if the selected priority is Critical
+                                  const isCritical = (() => {
+                                    if (Array.isArray(prioritySettings) && prioritySettings.length > 0) {
+                                      const selectedPrioritySetting = prioritySettings.find(
+                                        (p) => p.priority === newPriority
+                                      );
+                                      if (selectedPrioritySetting) {
+                                        const displayName = (selectedPrioritySetting.displayName || "").toLowerCase();
+                                        return displayName.includes("critical");
+                                      }
+                                    }
+                                    // Fallback: check if value is 4 (Critical)
+                                    return newPriority === 4;
+                                  })();
+                                  
+                                  // If Critical, set Start Date to today
+                                  if (isCritical) {
+                                    const today = new Date().toISOString().split("T")[0];
+                                    form.setFieldValue("startDate", today);
+                                  }
+                                }}
+                              >
+                                {Array.isArray(prioritySettings) && prioritySettings.length > 0
+                                  ? prioritySettings.map((priority) => (
+                                      <MenuItem key={priority.priority} value={priority.priority}>
+                                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                          <Box
+                                            sx={{
+                                              width: 12,
+                                              height: 12,
+                                              borderRadius: "50%",
+                                              bgcolor: priority.colorHex || "#2563EB",
+                                            }}
+                                          />
+                                          {priority.displayName || priority.priority}
+                                        </Box>
+                                      </MenuItem>
+                                    ))
+                                  : [
+                                      <MenuItem key="low" value={1}>Low</MenuItem>,
+                                      <MenuItem key="medium" value={2}>Medium</MenuItem>,
+                                      <MenuItem key="high" value={3}>High</MenuItem>,
+                                      <MenuItem key="critical" value={4}>Critical</MenuItem>,
+                                    ]}
+                              </Select>
+                            )}
                           </Field>
                         </FormControl>
                       </Grid>
@@ -2076,7 +2270,38 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                           InputLabelProps={{ shrink: true }}
                           value={values.startDate}
                           size="small"
-                          onChange={(e) => setFieldValue("startDate", e.target.value)}
+                          disabled={(() => {
+                            // Check if current priority is Critical
+                            if (Array.isArray(prioritySettings) && prioritySettings.length > 0) {
+                              const selectedPrioritySetting = prioritySettings.find(
+                                (p) => p.priority === values.priority
+                              );
+                              if (selectedPrioritySetting) {
+                                const displayName = (selectedPrioritySetting.displayName || "").toLowerCase();
+                                return displayName.includes("critical");
+                              }
+                            }
+                            // Fallback: check if value is 4 (Critical)
+                            return values.priority === 4;
+                          })()}
+                          onChange={(e) => {
+                            // Only allow change if priority is not Critical
+                            const isCritical = (() => {
+                              if (Array.isArray(prioritySettings) && prioritySettings.length > 0) {
+                                const selectedPrioritySetting = prioritySettings.find(
+                                  (p) => p.priority === values.priority
+                                );
+                                if (selectedPrioritySetting) {
+                                  const displayName = (selectedPrioritySetting.displayName || "").toLowerCase();
+                                  return displayName.includes("critical");
+                                }
+                              }
+                              return values.priority === 4;
+                            })();
+                            if (!isCritical) {
+                              setFieldValue("startDate", e.target.value);
+                            }
+                          }}
                           sx={{
                             "& .MuiOutlinedInput-root": {
                               bgcolor: "white",
@@ -2540,12 +2765,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
             </Formik>
           ) : (
             <Box sx={{ flex: 1, overflowY: "auto", p: { xs: 2, sm: 3 }, bgcolor: "white" }}>
-              {!canClockIn ? (
-                <Alert severity="info">
-                  Clock In is only available for HelpDesk Support users and Admins.
-                </Alert>
-              ) : (
-                <Stack spacing={2}>
+              <Stack spacing={2}>
                   <Typography variant="h6" sx={{ fontWeight: 700, color: "#1A202C" }}>
                     Clock In / Clock Out
                   </Typography>
@@ -2808,7 +3028,6 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                     </Box>
                   )}
                 </Stack>
-              )}
             </Box>
           )}
         </Box>

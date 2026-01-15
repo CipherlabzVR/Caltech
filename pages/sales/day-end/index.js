@@ -52,7 +52,8 @@ export default function DayEnd() {
     try {
       const token = localStorage.getItem("token");
       const skip = (page - 1) * size;
-      const query = `${BASE_URL}/DayEnd/GetAllDayEnd?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}`;
+      const searchParam = search ? encodeURIComponent(search) : "null";
+      const query = `${BASE_URL}/DayEnd/GetAllDayEnd?SkipCount=${skip}&MaxResultCount=${size}&Search=${searchParam}`;
 
       const response = await fetch(query, {
         method: "GET",
@@ -95,7 +96,7 @@ export default function DayEnd() {
         <Grid item xs={12} lg={4} order={{ xs: 2, lg: 1 }}>
           <Search className="search-form">
             <StyledInputBase
-              placeholder="Search here.."
+              placeholder="Search by Code, Warehouse or User.."
               inputProps={{ "aria-label": "search" }}
               value={searchTerm}
               onChange={handleSearchChange}

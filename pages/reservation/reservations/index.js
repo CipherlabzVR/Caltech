@@ -37,38 +37,46 @@ export default function Reservation() {
   const [totalCount, setTotalCount] = useState(0);
   const [tabIndex, setTabIndex] = useState(0);
   const [appointmentType, setAppointmentType] = useState(0);
+  const [bridalType, setBridalType] = useState(0);
   const { data: docnumber } = getNext("14");
 
   const handleTabChange = (event, newValue) => {
     setTabIndex(newValue);
     setPage(1);
-    fetchResList(1, searchTerm, pageSize, newValue, appointmentType);
+    fetchResList(1, searchTerm, pageSize, newValue, appointmentType, bridalType);
   };
 
   const handleAppointmentTypeChange = (event) => {
     const value = event.target.value;
     setAppointmentType(value);
     setPage(1);
-    fetchResList(1, searchTerm, pageSize, tabIndex, value);
+    fetchResList(1, searchTerm, pageSize, tabIndex, value, bridalType);
+  };
+
+  const handleBridalTypeChange = (event) => {
+    const value = event.target.value;
+    setBridalType(value);
+    setPage(1);
+    fetchResList(1, searchTerm, pageSize, tabIndex, appointmentType, value);
   };
 
   const handleSearchChange = (event) => {
     const value = event.target.value;
     setSearchTerm(value);
     setPage(1);
-    fetchResList(1, value, pageSize, tabIndex, appointmentType);
+    fetchResList(1, value, pageSize, tabIndex, appointmentType, bridalType);
   };
 
   const handlePageChange = (event, value) => {
     setPage(value);
-    fetchResList(value, searchTerm, pageSize, tabIndex, appointmentType);
+    fetchResList(value, searchTerm, pageSize, tabIndex, appointmentType, bridalType);
   };
 
   const handlePageSizeChange = (event) => {
     const newSize = event.target.value;
     setPageSize(newSize);
     setPage(1);
-    fetchResList(1, searchTerm, newSize, tabIndex, appointmentType);
+    fetchResList(1, searchTerm, newSize, tabIndex, appointmentType, bridalType);
   };
 
   const getReservationTypeByTab = (tab) => {
@@ -77,12 +85,12 @@ export default function Reservation() {
     return 5;
   };
 
-  const fetchResList = async (page = 1, search = "", size = pageSize, tab = tabIndex, appointment = appointmentType) => {
+  const fetchResList = async (page = 1, search = "", size = pageSize, tab = tabIndex, appointment = appointmentType, bridal = bridalType) => {
     try {
       const token = localStorage.getItem("token");
       const skip = (page - 1) * size;
       const reservationType = getReservationTypeByTab(tab);
-      const query = `${BASE_URL}/Reservation/GetAllReservationSkipAndTake?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}&reservationType=${reservationType}&appointmentType=${appointment}`;
+      const query = `${BASE_URL}/Reservation/GetAllReservationSkipAndTake?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}&reservationType=${reservationType}&appointmentType=${appointment}&bridalType=${bridal}`;
 
       const response = await fetch(query, {
         method: "GET",
@@ -168,7 +176,23 @@ export default function Reservation() {
             </Select>
           </FormControl>
         </Grid>
-        <Grid item xs={6} lg={6} mb={1} display="flex" justifyContent="end" order={{ xs: 1, lg: 3 }}>
+        <Grid item xs={6} lg={2} order={{ xs: 4, lg: 3 }}>
+          <FormControl fullWidth size="small">
+            <InputLabel>Bridal Type</InputLabel>
+            <Select
+              value={bridalType}
+              label="Bridal Type"
+              onChange={handleBridalTypeChange}
+            >
+              <MenuItem value={0}>All</MenuItem>
+              <MenuItem value={1}>Kandyan</MenuItem>
+              <MenuItem value={2}>Indian</MenuItem>
+              <MenuItem value={3}>Western</MenuItem>
+              <MenuItem value={4}>Hindu</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+        <Grid item xs={6} lg={4} mb={1} display="flex" justifyContent="end" order={{ xs: 1, lg: 3 }}>
           {create ? <AddReservation fetchItems={fetchResList} documentNo={docnumber} approve1={approve1} /> : ""}
         </Grid>
         <Grid item xs={12} order={{ xs: 3, lg: 3 }}>

@@ -55,37 +55,71 @@ export default function EditApproval({ item, fetchItems }) {
 
   const handleSubmit = async (values) => {
     try {
-      setIsSubmitting(true);
+      setIsSubmitting(true);      
 
       if (values.PaymentMethod === 3) {
         values.PaidAmount = Number(values.CashAmount || 0) + Number(values.CardAmount || 0);
       }
 
-      if(values.ReservationFunctionType === 3 && values.HomeComingDate === null){
+      if (values.ReservationFunctionType === 3 && values.HomeComingDate === null) {
         toast.info("Please Enter Home Coming Details");
+        setIsSubmitting(false);
         return;
       }
-      const response = await fetch(
-        `${BASE_URL}/ReservationApproval/UpdateReservationApproval`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(values),
-        }
-      );
 
-      const data = await response.json();
-
-      if (data.statusCode == 200) {
-        toast.success(data.result.message);
-        setOpen(false);
-        fetchItems();
-      } else {
-        toast.error(data.message);
+      // Check if file is required for payment types 2, 3, or 4 (only if no existing slip)
+      if ([2, 3, 4].includes(values.PaymentMethod) && !values.File && !item.paySlipURL) {
+        toast.info("Please Upload Receipt");
+        setIsSubmitting(false);
+        return;
       }
+
+        const formData = new FormData();
+        formData.append("File", values.File);
+        formData.append("FileName", values.File ? values.File.name : "");
+        formData.append("ApprovalId", values.ApprovalId);
+        formData.append("ReservationFunctionType", values.ReservationFunctionType);
+        formData.append("ReservationDate", values.ReservationDate);
+        formData.append("PaymentDate", values.PaymentDate);
+        formData.append("HomeComingDate", values.HomeComingDate || "");
+        formData.append("CustomerName", values.CustomerName);
+        formData.append("MobileNo", values.MobileNo);
+        formData.append("PreferdTime", values.PreferdTime);
+        formData.append("BridleType", values.BridleType);
+        formData.append("Location", values.Location);
+        formData.append("HomeComingPreferredTime", values.HomeComingPreferredTime || "");
+        formData.append("HomeComingBridleType", values.HomeComingBridleType || "");
+        formData.append("HomeComingLocation", values.HomeComingLocation || "");
+        formData.append("PaymentCode", values.PaymentCode || "");
+        formData.append("Description", values.Description || "");
+        formData.append("NIC", values.NIC);
+        formData.append("PaymentMethod", values.PaymentMethod);
+        formData.append("PaidAmount", values.PaidAmount);
+        formData.append("CardAmount", values.CardAmount || 0);
+        formData.append("CashAmount", values.CashAmount || 0);
+        formData.append("PaymentDescription", values.PaymentDescription || "");
+        formData.append("ReservationId", values.ReservationId);
+
+        const response = await fetch(
+          `${BASE_URL}/ReservationApproval/UpdateReservationApproval`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+            },
+            body: formData,
+          }
+        );
+
+        const data = await response.json();
+
+        if (data.statusCode == 200) {
+          toast.success(data.result.message);
+          setOpen(false);
+          fetchItems();
+        } else {
+          toast.error(data.message);
+        }
 
     } catch (error) {
       console.error(error);
@@ -134,12 +168,14 @@ export default function EditApproval({ item, fetchItems }) {
               CardAmount: item.cardAmount,
               CashAmount: item.cashAmount,
               PaymentDescription: item.paymentDescription,
-              ReservationId: item.reservationId
+              ReservationId: item.reservationId,
+              File: null,
+              FileName: ""
             }}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
-            {({ values, handleChange, errors, touched }) => (
+            {({ values, handleChange, errors, touched, setFieldValue }) => (
               <Form>
                 <Box sx={{ maxHeight: "50vh", overflowY: "auto", mt: 2 }}>
                   {tab === 0 && (
@@ -430,6 +466,29 @@ export default function EditApproval({ item, fetchItems }) {
                           fullWidth
                         />
                       </Grid>
+                      {[2, 3, 4].includes(values.PaymentMethod) && (
+                        <Grid item xs={12}>
+                          <Typography>Upload Receipt</Typography>
+                          <input
+                            type="file"
+                            onChange={(event) => {
+                              const file = event.target.files[0];
+                              setFieldValue("File", file);
+                              setFieldValue("FileName", file ? file.name : "");
+                            }}
+                          />
+                          {values.FileName && (
+                            <Typography variant="body2" mt={1}>
+                              Selected File: <strong>{values.FileName}</strong>
+                            </Typography>
+                          )}
+                          {item.paySlipURL && !values.File && (
+                            <Typography variant="body2" mt={1} color="text.secondary">
+                              Current: <a href={item.paySlipURL} target="_blank" rel="noopener noreferrer">View existing slip</a>
+                            </Typography>
+                          )}
+                        </Grid>
+                      )}
                     </Grid>
                   )}
                 </Box>

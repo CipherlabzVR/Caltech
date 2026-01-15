@@ -61,7 +61,7 @@ export default function Items() {
     try {
       const token = localStorage.getItem("token");
       const skip = (page - 1) * size;
-      const query = `${BASE_URL}/Reservation/GetAllReservationSkipAndTake?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}&reservationType=5&appointmentType=0`;
+      const query = `${BASE_URL}/Reservation/GetAllReservationSkipAndTake?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}&reservationType=5&appointmentType=0&bridalType=0`;
 
       const response = await fetch(query, {
         method: "GET",

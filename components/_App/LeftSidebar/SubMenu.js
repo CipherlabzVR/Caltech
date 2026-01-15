@@ -10,9 +10,9 @@ const SidebarLabel = styled("span")(({ theme }) => ({
   top: "-3px",
 }));
 
-const SubMenu = ({ item, allItems,onCheckPermission }) => {
+const SubMenu = ({ item, allItems, onCheckPermission, hoverMode = false }) => {
   const [subnav, setSubnav] = useState(false);  
-  const [cat, setCat] = useState(null);  
+  const [cat, setCat] = useState(null);
   const router = useRouter();
   const role = localStorage.getItem("role");
 
@@ -21,6 +21,9 @@ const SubMenu = ({ item, allItems,onCheckPermission }) => {
   const showSubnav = () => {
     setSubnav(!subnav);
   };
+
+  // Removed hover functionality for submenu items
+  // Hover mode only affects Menu icon in header, not submenu items
 
 
   const fetchPermission = async (cId) => {
@@ -81,7 +84,9 @@ const SubMenu = ({ item, allItems,onCheckPermission }) => {
 
   const handleMainClick = (e) => {
     if (item.subNav) {
+      // Always prevent default navigation for items with subNav
       e.preventDefault();
+      // Toggle submenu on click
       showSubnav();
       return;
     }
@@ -90,7 +95,7 @@ const SubMenu = ({ item, allItems,onCheckPermission }) => {
   };
 
   return (
-    <>
+    <div style={{ position: "relative", width: "100%" }}>
       <Link
         href={item.subNav ? "#" : item.path || "#"}
         onClick={handleMainClick}
@@ -109,27 +114,30 @@ const SubMenu = ({ item, allItems,onCheckPermission }) => {
         </div>
       </Link>
 
-      {subnav &&
-        availableSubNav.map((subItem, index) => (
-          <div key={index} className={styles.subMenu}>
-            <Link
-              href={subItem.path}
-              className={styles.sidebarLink}
-              onClick={() => {
-                sessionStorage.setItem("moduleid", item.ModuleId);
-                sessionStorage.setItem("category", subItem.categoryId);
-              }}
-            >
-              <div>
-                {subItem.icon}
-                <SidebarLabel className="ml-1">
-                  {subItem.title} {subItem.categoryId === 60 ? "(POS)" : ""}
-                </SidebarLabel>
-              </div>
-            </Link>
-          </div>
-        ))}
-    </>
+      {subnav && (
+        <div style={{ position: "relative", width: "100%" }}>
+          {availableSubNav.map((subItem, index) => (
+            <div key={index} className={styles.subMenu}>
+              <Link
+                href={subItem.path}
+                className={styles.sidebarLink}
+                onClick={() => {
+                  sessionStorage.setItem("moduleid", item.ModuleId);
+                  sessionStorage.setItem("category", subItem.categoryId);
+                }}
+              >
+                <div>
+                  {subItem.icon}
+                  <SidebarLabel className="ml-1">
+                    {subItem.title} {subItem.categoryId === 60 ? "(POS)" : ""}
+                  </SidebarLabel>
+                </div>
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 };
 

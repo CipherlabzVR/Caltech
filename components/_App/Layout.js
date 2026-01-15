@@ -22,6 +22,7 @@ const Layout = ({ children }) => {
   const [active, setActive] = useState(true);
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
   const [activeTopbarButton, setActiveTopbarButton] = useState("quick-access");
+  const [hoverMode, setHoverMode] = useState(false);
 
   const showSidebar = useCallback(() => {
     // In desktop: active = false shows sidebar (no active class = visible)
@@ -175,7 +176,7 @@ const Layout = ({ children }) => {
 
   return (
     <CurrencyProvider>
-      <TopbarContext.Provider value={{ activeButton: activeTopbarButton, setActiveButton: setActiveTopbarButton }}>
+      <TopbarContext.Provider value={{ activeButton: activeTopbarButton, setActiveButton: setActiveTopbarButton, hoverMode, setHoverMode }}>
       <>
         <Head>
           <title>CBASS-AI</title>
@@ -204,7 +205,7 @@ const Layout = ({ children }) => {
                 onActiveChange={setActiveTopbarButton}
               />
 
-              <LeftSidebar toogleActive={hideSidebar} onGrantedCheck={handleCheckGranted} />
+              <LeftSidebar toogleActive={hideSidebar} onGrantedCheck={handleCheckGranted} hoverMode={hoverMode} />
             </>
           )}
 

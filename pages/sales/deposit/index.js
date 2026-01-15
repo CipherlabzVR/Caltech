@@ -71,7 +71,8 @@ export default function DailyDeposits() {
     try {
       const token = localStorage.getItem("token");
       const skip = (page - 1) * size;
-      const query = `${BASE_URL}/DailyDeposit/GetAllDailyDeposits?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}`;
+      const searchParam = search ? encodeURIComponent(search) : "null";
+      const query = `${BASE_URL}/DailyDeposit/GetAllDailyDeposits?SkipCount=${skip}&MaxResultCount=${size}&Search=${searchParam}`;
 
       const response = await fetch(query, {
         method: "GET",
@@ -127,7 +128,7 @@ export default function DailyDeposits() {
         <Grid item xs={12} lg={4} order={{ xs: 2, lg: 1 }}>
           <Search className="search-form">
             <StyledInputBase
-              placeholder="Search here.."
+              placeholder="Search by Document No.."
               inputProps={{ "aria-label": "search" }}
               value={searchTerm}
               onChange={handleSearchChange}

@@ -171,27 +171,38 @@ const Calendar = () => {
 
     if (notesForDay.length > 0) {
       const bookedCount = notesForDay.filter((note) => note.type === type).length;
+      const expiredNotes = notesForDay.filter((note) => note.type === type && note.isNoteExpired);
 
       return (
-        <Typography
-          className={`text-start ${bookedCount > 0
-            ? type === 1
-              ? "text-pencil-note"
-              : type === 2
-                ? "other-note"
-                : type === 3
-                  ? "text-pending"
-                  : "text-booked"
-            : ""
-            }`}
-          sx={{ padding: 0, fontSize: "14px" }}
-        >
-          {bookedCount !== 0 && (
-            <>
-              {bookedCount} {getLabel(type)}
-            </>
+        <Box display="flex" alignItems="center" gap={0.5}>
+          <Typography
+            className={`text-start ${bookedCount > 0
+              ? type === 1
+                ? "text-pencil-note"
+                : type === 2
+                  ? "other-note"
+                  : type === 3
+                    ? "text-pending"
+                    : "text-booked"
+              : ""
+              }`}
+            sx={{ padding: 0, fontSize: "14px" }}
+          >
+            {bookedCount !== 0 && (
+              <>
+                {bookedCount} {getLabel(type)}
+              </>
+            )}
+          </Typography>
+          {expiredNotes.length > 0 && (
+            <Chip
+              size="small"
+              label="Expired"
+              color="error"
+              sx={{ height: "18px", fontSize: "10px", "& .MuiChip-label": { px: 0.5 } }}
+            />
           )}
-        </Typography>
+        </Box>
       );
     }
 
@@ -234,13 +245,22 @@ const Calendar = () => {
                   primary={
                     <React.Fragment>
                       <Box display="flex" justifyContent="space-between">
-                        <Typography
-                          component="span"
-                          variant="h6"
-                          sx={{ fontWeight: "bold" }}
-                        >
-                          {note.customerName}
-                        </Typography>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography
+                            component="span"
+                            variant="h6"
+                            sx={{ fontWeight: "bold" }}
+                          >
+                            {note.customerName}
+                          </Typography>
+                          {note.isNoteExpired && (
+                            <Chip
+                              size="small"
+                              label="Expired"
+                              color="error"
+                            />
+                          )}
+                        </Box>
                         {type === 5 && (
                           <ViewReservation reservationId={note.id} />)}
                         {note.type === 1 ? (

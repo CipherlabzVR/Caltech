@@ -61,9 +61,10 @@ export default function Invoice() {
   } = usePaginatedFetch("SalesInvoice/GetAll");
 
   const handleSearchChange = (event) => {
-    setSearch(event.target.value);
+    const searchValue = event.target.value;
+    setSearch(searchValue);
     setPage(1);
-    fetchInvoiceList(1, search, pageSize, isCurrentDate);
+    fetchInvoiceList(1, searchValue, pageSize, isCurrentDate);
   };
 
   const handlePageChange = (event, value) => {
@@ -113,7 +114,7 @@ export default function Invoice() {
         <Grid item xs={12} lg={4} order={{ xs: 2, lg: 1 }}>
           <Search className="search-form">
             <StyledInputBase
-              placeholder="Search here.."
+              placeholder="Search by Invoice No or Warehouse.."
               inputProps={{ "aria-label": "search" }}
               value={search}
               onChange={handleSearchChange}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Box } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import { getSidebarData, SidebarData } from "./SidebarData";
@@ -30,7 +30,7 @@ const SidebarWrap = styled("div")(({ theme }) => ({
   width: "100%",
 }));
 
-const Sidebar = ({ toogleActive, onGrantedCheck }) => {
+const Sidebar = ({ toogleActive, onGrantedCheck, hoverMode = false }) => {
   const { data: IsGarmentSystem } = IsAppSettingEnabled("IsGarmentSystem");
   const [sidebarItems, setSidebarItems] = useState([]);
   const [allItems, setAllItems] = useState([]);
@@ -38,6 +38,7 @@ const Sidebar = ({ toogleActive, onGrantedCheck }) => {
   const [companyLogo, setCompanyLogo] = useState("");
   const [permission, setPermission] = useState(true);
   const availableItems = sidebarItems.filter((item) => item.IsAvailable);
+  const leaveTimeoutRef = useRef(null);
 
   const warehouse = localStorage.getItem("warehouse");
 
@@ -179,10 +180,40 @@ const Sidebar = ({ toogleActive, onGrantedCheck }) => {
     }
   }, [permission]);
 
+  const handleMouseLeave = () => {
+    // When hover mode is ON and mouse leaves sidebar, close it
+    if (hoverMode && toogleActive) {
+      // Add a small delay to prevent accidental closing
+      leaveTimeoutRef.current = setTimeout(() => {
+        toogleActive();
+      }, 200);
+    }
+  };
+
+  const handleMouseEnter = () => {
+    // Clear any pending close timeout when mouse enters sidebar
+    if (leaveTimeoutRef.current) {
+      clearTimeout(leaveTimeoutRef.current);
+      leaveTimeoutRef.current = null;
+    }
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (leaveTimeoutRef.current) {
+        clearTimeout(leaveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <>
-      <div className="leftSidebarDark">
+      <div 
+        className="leftSidebarDark"
+        onMouseLeave={handleMouseLeave}
+        onMouseEnter={handleMouseEnter}
+      >
         <SidebarNav className="LeftSidebarNav">
           <SidebarWrap>
             <Box
@@ -284,7 +315,7 @@ const Sidebar = ({ toogleActive, onGrantedCheck }) => {
 
 
             {availableItems.map((item, index) => (
-              <SubMenu item={item} allItems={allItems} key={index} onCheckPermission={handleSetPermission} />
+              <SubMenu item={item} allItems={allItems} key={index} onCheckPermission={handleSetPermission} hoverMode={hoverMode} />
             ))}
           </SidebarWrap>
         </SidebarNav>

@@ -479,7 +479,7 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
   const fetchReservations = async () => {
     try {
       const token = localStorage.getItem("token");
-      const query = `${BASE_URL}/Reservation/GetAllReservationSkipAndTake?SkipCount=0&MaxResultCount=1000&Search=null&appointmentType=0`;
+      const query = `${BASE_URL}/Reservation/GetAllReservationSkipAndTake?SkipCount=0&MaxResultCount=1000&Search=null&appointmentType=0&bridalType=0`;
       const response = await fetch(query, {
         method: "GET",
         headers: {
