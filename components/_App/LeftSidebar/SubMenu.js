@@ -76,7 +76,7 @@ const SubMenu = ({ item, allItems, onCheckPermission, hoverMode = false }) => {
 
   const availableSubNav = item.subNav?.filter((subItem) => subItem.isAvailable) || [];
 
-  if ((item.title.toLowerCase() === "dashboard"||item.title.toLowerCase() === "contact") && availableSubNav.length === 1) {
+  if ((item.title.toLowerCase() === "dashboard"||item.title.toLowerCase() === "contact" || item.title.toLowerCase() === "versions"|| item.title.toLowerCase() === "calendar") && availableSubNav.length === 1) {
     const onlySubItem = availableSubNav[0];
     item.path = onlySubItem.path;
     item.subNav = null;

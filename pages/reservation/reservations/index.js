@@ -176,7 +176,7 @@ export default function Reservation() {
             </Select>
           </FormControl>
         </Grid>
-        <Grid item xs={6} lg={2} order={{ xs: 4, lg: 3 }}>
+        <Grid item xs={6} lg={2} order={{ xs: 3, lg: 3 }}>
           <FormControl fullWidth size="small">
             <InputLabel>Bridal Type</InputLabel>
             <Select
@@ -192,7 +192,7 @@ export default function Reservation() {
             </Select>
           </FormControl>
         </Grid>
-        <Grid item xs={6} lg={4} mb={1} display="flex" justifyContent="end" order={{ xs: 1, lg: 3 }}>
+        <Grid item xs={12} lg={4} mb={1} display="flex" justifyContent="end" order={{ xs: 1, lg: 3 }}>
           {create ? <AddReservation fetchItems={fetchResList} documentNo={docnumber} approve1={approve1} /> : ""}
         </Grid>
         <Grid item xs={12} order={{ xs: 3, lg: 3 }}>

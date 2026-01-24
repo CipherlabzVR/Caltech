@@ -57,11 +57,35 @@ const validationSchema = Yup.object().shape({
   ContactNumber: Yup.string()
     .required("Mobile No is required")
     .matches(/^\d{10}$/, "Mobile number must be exactly 10 digits"),
+  RenewalDate: Yup.number()
+    .nullable()
+    .when("HostingFee", {
+      is: (hostingFee) => {
+        const fee = Number(hostingFee);
+        return !isNaN(fee) && fee > 0;
+      },
+      then: (schema) => schema
+        .required("Renewal Date is required when Hosting Fee is entered")
+        .min(1, "Date must be between 1 and 31")
+        .max(31, "Date must be between 1 and 31"),
+    }),
+  RenewalMonth: Yup.number()
+    .nullable()
+    .when(["HostingFee", "BillingType"], {
+      is: (hostingFee, billingType) => {
+        const fee = Number(hostingFee);
+        return !isNaN(fee) && fee > 0 && billingType === "2";
+      },
+      then: (schema) => schema
+        .required("Renewal Month is required.")
+        .min(1, "Month must be between 1 and 12")
+        .max(12, "Month must be between 1 and 12"),
+    }),
 });
 
 export default function EditCompany({ item, fetchItems }) {
   const { data: code } = getNext(`12`);
-  const [image,setImage] = useState("");
+  const [image, setImage] = useState("");
   const [open, setOpen] = useState(false);
   const [warehouseCode, setWarehouseCode] = useState(null);
   const [tabIndex, setTabIndex] = useState(0);
@@ -98,13 +122,13 @@ export default function EditCompany({ item, fetchItems }) {
   useEffect(() => {
     if (code) setWarehouseCode(code);
 
-    if(item){
+    if (item) {
       setImage(item.companyLogo);
       setLetterheadImage(item.letterHeadImage || "");
       setDeleteLetterhead(false);
       setLetterheadFile(null);
     }
-  }, [code,item]);
+  }, [code, item]);
 
   const validateA4Size = (file) => {
     return new Promise((resolve, reject) => {
@@ -117,7 +141,7 @@ export default function EditCompany({ item, fetchItems }) {
         const aspectRatio = width / height;
         const a4Ratio = 210 / 297; // 0.707
         const tolerance = 0.05;
-        
+
         if (Math.abs(aspectRatio - a4Ratio) <= tolerance) {
           resolve(true);
         } else {
@@ -172,6 +196,10 @@ export default function EditCompany({ item, fetchItems }) {
       formData.append("LetterHeadImage", letterheadFile ? letterheadFile : null);
     }
     formData.append("LandingPage", values.LandingPage);
+    formData.append("RenewalDate", values.RenewalDate ? Number(values.RenewalDate) : "");
+    formData.append("RenewalMonth", values.BillingType === "2" && values.RenewalMonth ? Number(values.RenewalMonth) : "");
+    formData.append("HostingFee", values.HostingFee || null);
+    formData.append("BillingType", values.BillingType || 1);
     // append fields
     try {
       setLoading(true);
@@ -209,10 +237,22 @@ export default function EditCompany({ item, fetchItems }) {
 
       <Modal open={open} onClose={handleClose}>
         <Box sx={style}>
+          <Box>
+            <Typography
+              variant="h5"
+              sx={{
+                fontWeight: "500",
+                mb: "12px",
+              }}
+            >
+              Edit Company
+            </Typography>
+          </Box>
           <Tabs value={tabIndex} onChange={handleTabChange}>
             <Tab label="Basic" />
             <Tab label="Modules" />
-            <Tab label="Letterhead" />
+            <Tab label="Logo & Letterhead" />
+            <Tab label="Hosting" />
           </Tabs>
 
           <Formik
@@ -227,11 +267,23 @@ export default function EditCompany({ item, fetchItems }) {
                 item.landingPage === null || item.landingPage === undefined
                   ? "1"
                   : String(item.landingPage),
+              RenewalDate: item.renewalDate || "",
+              RenewalMonth: item.renewalMonth || "",
+              HostingFee: item.hostingFee || "",
+              BillingType: item.billingType !== null && item.billingType !== undefined ? String(item.billingType) : "",
             }}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
-            {({ errors, touched }) => (
+            {({ errors, touched, values, setFieldValue }) => {
+              // Reset RenewalMonth when BillingType changes to Monthly
+              useEffect(() => {
+                if (values.BillingType === "1" && values.RenewalMonth) {
+                  setFieldValue("RenewalMonth", "");
+                }
+              }, [values.BillingType, values.RenewalMonth, setFieldValue]);
+              
+              return (
               <Form>
                 {tabIndex === 0 && (
                   <Box sx={{ maxHeight: "55vh", overflowY: "auto", my: 2 }}>
@@ -310,34 +362,6 @@ export default function EditCompany({ item, fetchItems }) {
                         </Field>
                       </Grid>
                     </Grid>
-                    <Grid item xs={12} my={1}> 
-                       <Typography>Logo Upload</Typography>
-                      <Button
-                        component="label"
-                        role={undefined}
-                        variant="contained"
-                        fullWidth
-                        tabIndex={-1}
-                        startIcon={<CloudUploadIcon />}
-                      >
-                        Upload files
-                        <VisuallyHiddenInput
-                          type="file"
-                          onChange={(event) => {
-                            var file = event.target.files[0]
-                            setLogo(file);
-                            setImage(URL.createObjectURL(file));
-                          }}
-                          multiple
-                        />
-                      </Button>
-                    </Grid>
-                      <Grid item xs={12} my={1}>
-                      {image != "" ?
-                      <Box sx={{width: "100%",height: 200,backgroundSize: 'cover', backgroundImage: `url(${image})`}}></Box>
-                       : ""}
-                      
-                    </Grid>
                   </Box>
                 )}
 
@@ -348,6 +372,34 @@ export default function EditCompany({ item, fetchItems }) {
                 {tabIndex === 2 && (
                   <Box sx={{ maxHeight: "55vh", overflowY: "auto", my: 2 }}>
                     <Grid container spacing={2}>
+                      <Grid item xs={12}>
+                        <Typography>Logo Upload</Typography>
+                        <Button
+                          component="label"
+                          role={undefined}
+                          variant="contained"
+                          fullWidth
+                          tabIndex={-1}
+                          startIcon={<CloudUploadIcon />}
+                          sx={{ mt: 1 }}
+                        >
+                          Upload Logo
+                          <VisuallyHiddenInput
+                            type="file"
+                            onChange={(event) => {
+                              var file = event.target.files[0]
+                              setLogo(file);
+                              setImage(URL.createObjectURL(file));
+                            }}
+                            multiple
+                          />
+                        </Button>
+                      </Grid>
+                      <Grid item xs={12}>
+                        {image != "" ?
+                          <Box sx={{ width: "100%", height: 200, backgroundSize: 'cover', backgroundImage: `url(${image})` }}></Box>
+                          : ""}
+                      </Grid>
                       <Grid item xs={12}>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                           Upload Letterhead Image (A4 size: 210mm x 297mm / 2480 x 3508 px at 300 DPI)
@@ -371,7 +423,7 @@ export default function EditCompany({ item, fetchItems }) {
                       <Grid item xs={12}>
                         {letterheadImage && (
                           <Box sx={{ position: "relative" }}>
-                            <Box 
+                            <Box
                               sx={{
                                 width: "100%",
                                 height: 400,
@@ -406,7 +458,79 @@ export default function EditCompany({ item, fetchItems }) {
                   </Box>
                 )}
 
-                {(tabIndex === 0 || tabIndex === 2) && (
+                {tabIndex === 3 && (
+                  <Box sx={{ maxHeight: "55vh", overflowY: "auto", my: 2 }}>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12}>
+                        <Typography>Billing Type</Typography>
+                        <Field
+                          as={TextField}
+                          select
+                          fullWidth
+                          name="BillingType"
+                          size="small"
+                        >
+                          <MenuItem value="1">Monthly</MenuItem>
+                          <MenuItem value="2">Yearly</MenuItem>
+                        </Field>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Typography>Hosting Fee</Typography>
+                        <Field
+                          as={TextField}
+                          fullWidth
+                          name="HostingFee"
+                          type="number"
+                          size="small"
+                          inputProps={{ min: 0, step: "0.01" }}
+                        />
+                      </Grid>
+                      {values.BillingType === "2" && (
+                        <Grid item xs={12} md={6}>
+                          <Typography>Renewal Month</Typography>
+                          <Field
+                            as={TextField}
+                            select
+                            fullWidth
+                            name="RenewalMonth"
+                            size="small"
+                            error={touched.RenewalMonth && !!errors.RenewalMonth}
+                            helperText={touched.RenewalMonth && errors.RenewalMonth}
+                          >
+                            <MenuItem value="1">January</MenuItem>
+                            <MenuItem value="2">February</MenuItem>
+                            <MenuItem value="3">March</MenuItem>
+                            <MenuItem value="4">April</MenuItem>
+                            <MenuItem value="5">May</MenuItem>
+                            <MenuItem value="6">June</MenuItem>
+                            <MenuItem value="7">July</MenuItem>
+                            <MenuItem value="8">August</MenuItem>
+                            <MenuItem value="9">September</MenuItem>
+                            <MenuItem value="10">October</MenuItem>
+                            <MenuItem value="11">November</MenuItem>
+                            <MenuItem value="12">December</MenuItem>
+                          </Field>
+                        </Grid>
+                      )}
+                      <Grid item xs={12} md={values.BillingType === "2" ? 6 : 12}>
+                        <Typography>Renewal Date</Typography>
+                        <Field
+                          as={TextField}
+                          fullWidth
+                          name="RenewalDate"
+                          type="number"
+                          size="small"
+                          inputProps={{ min: 1, max: 31 }}
+                          placeholder="Enter day (1-31)"
+                          error={touched.RenewalDate && !!errors.RenewalDate}
+                          helperText={touched.RenewalDate && errors.RenewalDate}
+                        />
+                      </Grid>
+                    </Grid>
+                  </Box>
+                )}
+
+                {(tabIndex === 0 || tabIndex === 2 || tabIndex === 3) && (
                   <Box display="flex" justifyContent="space-between" mt={2}>
                     <Button
                       variant="outlined"
@@ -417,9 +541,9 @@ export default function EditCompany({ item, fetchItems }) {
                     >
                       Cancel
                     </Button>
-                    <Button 
-                      type="submit" 
-                      variant="contained" 
+                    <Button
+                      type="submit"
+                      variant="contained"
                       size="small"
                       disabled={loading}
                       startIcon={loading ? <CircularProgress size={16} /> : null}
@@ -429,7 +553,8 @@ export default function EditCompany({ item, fetchItems }) {
                   </Box>
                 )}
               </Form>
-            )}
+            );
+            }}
           </Formik>
         </Box>
       </Modal>

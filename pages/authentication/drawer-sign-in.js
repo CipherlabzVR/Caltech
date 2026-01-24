@@ -72,6 +72,15 @@ const DrawerSignIn = () => {
         localStorage.setItem("warehouse", warehouse);
         localStorage.setItem("company", company);
         localStorage.setItem("role", responseData.result.userRole);
+
+        fetch(`${BASE_URL}/Company/CreateCompanyHostingFeeIfDue`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }).catch(() => {});
+
         window.location.href = "/dashboard/reservation/";
       } catch (error) {
         toast.error(error.message);

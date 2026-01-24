@@ -44,6 +44,8 @@ export const getModule = (type) => {
       return "Project Management";
     case 22:
       return "Manufacture";
+    case 23:
+      return "Versions";
     default:
       return "N/A";
   }

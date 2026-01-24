@@ -27,6 +27,7 @@ import AddCompany from "./AddCompany";
 import EditCompany from "./EditCompany";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
+import { formatCurrency } from "@/components/utils/formatHelper";
 
 export default function Company() {
   const cId = sessionStorage.getItem("category")
@@ -91,6 +92,50 @@ export default function Company() {
     item.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const getBillingTypeName = (billingType) => {
+    if (billingType === null || billingType === undefined) return "-";
+    const type = Number(billingType);
+    switch (type) {
+      case 1:
+        return "Monthly";
+      case 2:
+        return "Yearly";
+      default:
+        return "-";
+    }
+  };
+
+  const getMonthName = (month) => {
+    const months = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const monthNum = Number(month);
+    if (monthNum >= 1 && monthNum <= 12) {
+      return months[monthNum - 1];
+    }
+    return "";
+  };
+
+  const formatBillingDate = (company) => {
+    if (!company.renewalDate) return "-";
+    
+    const billingType = Number(company.billingType);
+    const renewalDate = Number(company.renewalDate);
+    
+    if (billingType === 1) {
+      return `Every month ${renewalDate}`;
+    } else if (billingType === 2) {
+      const monthName = getMonthName(company.renewalMonth);
+      if (monthName) {
+        return `${monthName} ${renewalDate}`;
+      }
+      return `${renewalDate}`;
+    }
+    
+    return "-";
+  };
+
   const paginatedData = filteredData.slice(
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
@@ -150,6 +195,9 @@ export default function Company() {
                   <TableCell>Code</TableCell>
                   <TableCell>Contact Person</TableCell>
                   <TableCell>Contact No</TableCell>
+                  <TableCell>Hosting Fee</TableCell>
+                  <TableCell>Billing Date</TableCell>
+                  <TableCell>Billing Type</TableCell>
                   <TableCell>Description</TableCell>
                   <TableCell>Letter Head</TableCell>
                   <TableCell align="right">Action</TableCell>
@@ -181,6 +229,9 @@ export default function Company() {
                       <TableCell>
                         {company.contactNumber}
                       </TableCell>
+                      <TableCell>{formatCurrency(company.hostingFee)}</TableCell>
+                      <TableCell>{formatBillingDate(company)}</TableCell>
+                      <TableCell>{getBillingTypeName(company.billingType)}</TableCell>
                       <TableCell>{company.description}</TableCell>
                       <TableCell>
                         {company.letterHeadImage ? (
