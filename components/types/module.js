@@ -46,6 +46,8 @@ export const getModule = (type) => {
       return "Manufacture";
     case 23:
       return "Versions";
+    case 24:
+      return "Work Track";
     default:
       return "N/A";
   }

@@ -26,6 +26,7 @@ import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import StorefrontIcon from '@mui/icons-material/Storefront';
 import WorkIcon from '@mui/icons-material/Work';
 import FactoryIcon from '@mui/icons-material/Factory';
+import TrackChangesIcon from '@mui/icons-material/TrackChanges';
 
 
 export const getSidebarData = (IsGarmentSystem) => {
@@ -409,6 +410,18 @@ export const getSidebarData = (IsGarmentSystem) => {
             IsAvailable: true,
             subNav: [
                 { title: "Versions", path: "/version/version", categoryId: 149, isAvailable: true }
+            ],
+        },
+        {
+            title: "Work Track",
+            path: "/work-track/",
+            icon: <TrackChangesIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 24,
+            IsAvailable: true,
+            subNav: [
+                { title: "Work Track", path: "/work-track/", categoryId: 153, isAvailable: true }
             ],
         },{
             title: "Administrator",
