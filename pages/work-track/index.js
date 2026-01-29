@@ -85,17 +85,19 @@ export default function WorkTrackList() {
         },
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.message || "Failed to delete work track");
-      }
-
       const data = await response.json();
-      toast.success(data?.message || "Work Track deleted successfully.");
-      handleCloseDialog();
-      fetchWorkTracks(page, search, pageSize, false);
+      
+      // Check if the response indicates success
+      // ApiResponse has statusCode (200 = SUCCESS, -99 = FAILED) and message
+      if (response.ok && (data?.statusCode === 200 || data?.statusCode === "SUCCESS" || data?.message?.toLowerCase().includes("success"))) {
+        toast.success(data?.message || "Work Track deleted successfully.", { type: "success" });
+        handleCloseDialog();
+        fetchWorkTracks(page, search, pageSize, false);
+      } else {
+        throw new Error(data?.message || "Failed to delete work track");
+      }
     } catch (error) {
-      toast.error(error.message || "Unable to delete work track");
+      toast.error(error.message || "Unable to delete work track", { type: "error" });
     } finally {
       setDeleteLoading(false);
     }

@@ -19,8 +19,10 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
-import Tabs from "@mui/material/Tabs";
-import Tab from "@mui/material/Tab";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -46,11 +48,21 @@ import ErrorIcon from "@mui/icons-material/Error";
 import WarningIcon from "@mui/icons-material/Warning";
 import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
 import Checkbox from "@mui/material/Checkbox";
+import LinearProgress from "@mui/material/LinearProgress";
+import AssignmentIcon from "@mui/icons-material/Assignment";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import PendingActionsIcon from "@mui/icons-material/PendingActions";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import DescriptionIcon from "@mui/icons-material/Description";
+import TableChartIcon from "@mui/icons-material/TableChart";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import FormGroup from "@mui/material/FormGroup";
 import BASE_URL from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
+import { Search, StyledInputBase } from "@/styles/main/search-styles";
 
 export default function EditWorkTrack() {
   const router = useRouter();
@@ -67,7 +79,7 @@ export default function EditWorkTrack() {
   const [detailToDelete, setDetailToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
+  const [sourceFilter, setSourceFilter] = useState("All"); // "All", "Manual", "Excel"
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [previewData, setPreviewData] = useState(null);
   const [previewTab, setPreviewTab] = useState(0);
@@ -75,6 +87,7 @@ export default function EditWorkTrack() {
   const [confirmingUpload, setConfirmingUpload] = useState(false);
   const [replaceDuplicates, setReplaceDuplicates] = useState(false);
   const [showErrorEntries, setShowErrorEntries] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const fileInputRef = useRef(null);
 
   // Debug: Log when dialog state changes
@@ -229,6 +242,8 @@ export default function EditWorkTrack() {
         ssid: values.ssid || null,
         wifiKey: values.wifiKey || null,
         notes: values.notes || null,
+        assignee: values.assignee || null,
+        taskCompletePercentage: values.taskCompletePercentage ? parseFloat(values.taskCompletePercentage) : null,
       };
 
       let url = `${BASE_URL}/WorkTrackDetail/CreateWorkTrackDetail`;
@@ -400,8 +415,8 @@ export default function EditWorkTrack() {
         setReplaceDuplicates(false);
         setShowErrorEntries(false);
         
-        // Switch to Excel Imports tab to show the imported data
-        setActiveTab(1);
+        // Switch to Excel filter to show the imported data
+        setSourceFilter("Excel");
         
         // Refresh the details list to show newly imported data
         try {
@@ -461,12 +476,62 @@ export default function EditWorkTrack() {
     ssid: editingDetail?.ssid || "",
     wifiKey: editingDetail?.wifiKey || "",
     notes: editingDetail?.notes || "",
+    assignee: editingDetail?.assignee || "",
+    taskCompletePercentage: editingDetail?.taskCompletePercentage || "",
   };
 
-  // Filter details based on active tab
+  // Filter details based on source filter
+  const allForms = details;
   const manualForms = details.filter((d) => d.source === "Manual" || !d.source);
   const excelForms = details.filter((d) => d.source === "Excel");
-  const currentTabForms = activeTab === 0 ? manualForms : excelForms;
+  
+  // Get forms based on source filter
+  const getFilteredBySource = () => {
+    if (sourceFilter === "Manual") return manualForms;
+    if (sourceFilter === "Excel") return excelForms;
+    return allForms; // "All"
+  };
+  
+  // Filter by search term
+  const filterBySearch = (forms) => {
+    if (!searchTerm.trim()) return forms;
+    const term = searchTerm.toLowerCase().trim();
+    return forms.filter((form) => {
+      return (
+        (form.trackId && form.trackId.toLowerCase().includes(term)) ||
+        (form.manufacturerId && form.manufacturerId.toLowerCase().includes(term)) ||
+        (form.modelYear && form.modelYear.toLowerCase().includes(term)) ||
+        (form.modelId && form.modelId.toLowerCase().includes(term)) ||
+        (form.equipmentDescription && form.equipmentDescription.toLowerCase().includes(term)) ||
+        (form.licenseNumber && form.licenseNumber.toLowerCase().includes(term)) ||
+        (form.serialNumber && form.serialNumber.toLowerCase().includes(term)) ||
+        (form.status && form.status.toLowerCase().includes(term)) ||
+        (form.statusCode && form.statusCode.toLowerCase().includes(term)) ||
+        (form.mac && form.mac.toLowerCase().includes(term)) ||
+        (form.sim && form.sim.toLowerCase().includes(term)) ||
+        (form.ssid && form.ssid.toLowerCase().includes(term)) ||
+        (form.wifiKey && form.wifiKey.toLowerCase().includes(term)) ||
+        (form.notes && form.notes.toLowerCase().includes(term))
+      );
+    });
+  };
+  
+  const displayedForms = filterBySearch(getFilteredBySource());
+
+  // Dashboard Statistics
+  const totalItems = details.length;
+  const completedItems = details.filter(d => d.taskCompletePercentage === 100).length;
+  const pendingItems = details.filter(d => d.taskCompletePercentage !== 100).length;
+  const inProgressItems = details.filter(d => d.taskCompletePercentage > 0 && d.taskCompletePercentage < 100).length;
+  const notStartedItems = details.filter(d => !d.taskCompletePercentage || d.taskCompletePercentage === 0).length;
+  
+  // Calculate overall completion percentage
+  const overallCompletion = totalItems > 0 
+    ? Math.round(details.reduce((sum, d) => sum + (d.taskCompletePercentage || 0), 0) / totalItems) 
+    : 0;
+  
+  // Calculate completion rate (completed / total * 100)
+  const completionRate = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
 
   if (loading) {
     return (
@@ -573,87 +638,452 @@ export default function EditWorkTrack() {
         </CardContent>
       </Card>
 
-      {/* Forms Table with Tabs */}
+      {/* Summary Dashboard */}
+      <Card sx={{ mb: 3, background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "white" }}>
+        <CardContent>
+          <Box display="flex" alignItems="center" gap={1} mb={3}>
+            <TrendingUpIcon sx={{ fontSize: 28 }} />
+            <Typography variant="h6" fontWeight="bold">
+              Dashboard Summary
+            </Typography>
+          </Box>
+          
+          <Grid container spacing={3}>
+            {/* Total Items */}
+            <Grid item xs={6} sm={4} md={2}>
+              <Paper 
+                elevation={0}
+                sx={{ 
+                  p: 2.5, 
+                  textAlign: "center", 
+                  background: "rgba(255,255,255,0.15)", 
+                  backdropFilter: "blur(10px)",
+                  borderRadius: 3,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  transition: "transform 0.2s, box-shadow 0.2s",
+                  "&:hover": {
+                    transform: "translateY(-4px)",
+                    boxShadow: "0 8px 25px rgba(0,0,0,0.2)"
+                  }
+                }}
+              >
+                <Box 
+                  sx={{ 
+                    width: 50, 
+                    height: 50, 
+                    borderRadius: "50%", 
+                    background: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)", 
+                    display: "flex", 
+                    alignItems: "center", 
+                    justifyContent: "center",
+                    mx: "auto",
+                    mb: 1.5,
+                    boxShadow: "0 4px 15px rgba(59,130,246,0.4)"
+                  }}
+                >
+                  <AssignmentIcon sx={{ color: "white", fontSize: 26 }} />
+                </Box>
+                <Typography variant="h3" fontWeight="bold" sx={{ color: "white", lineHeight: 1 }}>
+                  {totalItems}
+                </Typography>
+                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.85)", mt: 0.5, fontWeight: 500 }}>
+                  Total Items
+                </Typography>
+              </Paper>
+            </Grid>
+
+            {/* Completed Items */}
+            <Grid item xs={6} sm={4} md={2}>
+              <Paper 
+                elevation={0}
+                sx={{ 
+                  p: 2.5, 
+                  textAlign: "center", 
+                  background: "rgba(255,255,255,0.15)", 
+                  backdropFilter: "blur(10px)",
+                  borderRadius: 3,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  transition: "transform 0.2s, box-shadow 0.2s",
+                  "&:hover": {
+                    transform: "translateY(-4px)",
+                    boxShadow: "0 8px 25px rgba(0,0,0,0.2)"
+                  }
+                }}
+              >
+                <Box 
+                  sx={{ 
+                    width: 50, 
+                    height: 50, 
+                    borderRadius: "50%", 
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)", 
+                    display: "flex", 
+                    alignItems: "center", 
+                    justifyContent: "center",
+                    mx: "auto",
+                    mb: 1.5,
+                    boxShadow: "0 4px 15px rgba(16,185,129,0.4)"
+                  }}
+                >
+                  <CheckCircleOutlineIcon sx={{ color: "white", fontSize: 26 }} />
+                </Box>
+                <Typography variant="h3" fontWeight="bold" sx={{ color: "#4ade80", lineHeight: 1 }}>
+                  {completedItems}
+                </Typography>
+                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.85)", mt: 0.5, fontWeight: 500 }}>
+                  Completed
+                </Typography>
+              </Paper>
+            </Grid>
+
+            {/* In Progress Items */}
+            <Grid item xs={6} sm={4} md={2}>
+              <Paper 
+                elevation={0}
+                sx={{ 
+                  p: 2.5, 
+                  textAlign: "center", 
+                  background: "rgba(255,255,255,0.15)", 
+                  backdropFilter: "blur(10px)",
+                  borderRadius: 3,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  transition: "transform 0.2s, box-shadow 0.2s",
+                  "&:hover": {
+                    transform: "translateY(-4px)",
+                    boxShadow: "0 8px 25px rgba(0,0,0,0.2)"
+                  }
+                }}
+              >
+                <Box 
+                  sx={{ 
+                    width: 50, 
+                    height: 50, 
+                    borderRadius: "50%", 
+                    background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)", 
+                    display: "flex", 
+                    alignItems: "center", 
+                    justifyContent: "center",
+                    mx: "auto",
+                    mb: 1.5,
+                    boxShadow: "0 4px 15px rgba(245,158,11,0.4)"
+                  }}
+                >
+                  <PendingActionsIcon sx={{ color: "white", fontSize: 26 }} />
+                </Box>
+                <Typography variant="h3" fontWeight="bold" sx={{ color: "#fbbf24", lineHeight: 1 }}>
+                  {inProgressItems}
+                </Typography>
+                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.85)", mt: 0.5, fontWeight: 500 }}>
+                  In Progress
+                </Typography>
+              </Paper>
+            </Grid>
+
+            {/* Not Started Items */}
+            <Grid item xs={6} sm={4} md={2}>
+              <Paper 
+                elevation={0}
+                sx={{ 
+                  p: 2.5, 
+                  textAlign: "center", 
+                  background: "rgba(255,255,255,0.15)", 
+                  backdropFilter: "blur(10px)",
+                  borderRadius: 3,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  transition: "transform 0.2s, box-shadow 0.2s",
+                  "&:hover": {
+                    transform: "translateY(-4px)",
+                    boxShadow: "0 8px 25px rgba(0,0,0,0.2)"
+                  }
+                }}
+              >
+                <Box 
+                  sx={{ 
+                    width: 50, 
+                    height: 50, 
+                    borderRadius: "50%", 
+                    background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", 
+                    display: "flex", 
+                    alignItems: "center", 
+                    justifyContent: "center",
+                    mx: "auto",
+                    mb: 1.5,
+                    boxShadow: "0 4px 15px rgba(239,68,68,0.4)"
+                  }}
+                >
+                  <DescriptionIcon sx={{ color: "white", fontSize: 26 }} />
+                </Box>
+                <Typography variant="h3" fontWeight="bold" sx={{ color: "#f87171", lineHeight: 1 }}>
+                  {notStartedItems}
+                </Typography>
+                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.85)", mt: 0.5, fontWeight: 500 }}>
+                  Not Started
+                </Typography>
+              </Paper>
+            </Grid>
+
+            {/* Manual Forms */}
+            <Grid item xs={6} sm={4} md={2}>
+              <Paper 
+                elevation={0}
+                sx={{ 
+                  p: 2.5, 
+                  textAlign: "center", 
+                  background: "rgba(255,255,255,0.15)", 
+                  backdropFilter: "blur(10px)",
+                  borderRadius: 3,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  transition: "transform 0.2s, box-shadow 0.2s",
+                  "&:hover": {
+                    transform: "translateY(-4px)",
+                    boxShadow: "0 8px 25px rgba(0,0,0,0.2)"
+                  }
+                }}
+              >
+                <Box 
+                  sx={{ 
+                    width: 50, 
+                    height: 50, 
+                    borderRadius: "50%", 
+                    background: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)", 
+                    display: "flex", 
+                    alignItems: "center", 
+                    justifyContent: "center",
+                    mx: "auto",
+                    mb: 1.5,
+                    boxShadow: "0 4px 15px rgba(139,92,246,0.4)"
+                  }}
+                >
+                  <EditIcon sx={{ color: "white", fontSize: 26 }} />
+                </Box>
+                <Typography variant="h3" fontWeight="bold" sx={{ color: "#a78bfa", lineHeight: 1 }}>
+                  {manualForms.length}
+                </Typography>
+                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.85)", mt: 0.5, fontWeight: 500 }}>
+                  Manual
+                </Typography>
+              </Paper>
+            </Grid>
+
+            {/* Excel Forms */}
+            <Grid item xs={6} sm={4} md={2}>
+              <Paper 
+                elevation={0}
+                sx={{ 
+                  p: 2.5, 
+                  textAlign: "center", 
+                  background: "rgba(255,255,255,0.15)", 
+                  backdropFilter: "blur(10px)",
+                  borderRadius: 3,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  transition: "transform 0.2s, box-shadow 0.2s",
+                  "&:hover": {
+                    transform: "translateY(-4px)",
+                    boxShadow: "0 8px 25px rgba(0,0,0,0.2)"
+                  }
+                }}
+              >
+                <Box 
+                  sx={{ 
+                    width: 50, 
+                    height: 50, 
+                    borderRadius: "50%", 
+                    background: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)", 
+                    display: "flex", 
+                    alignItems: "center", 
+                    justifyContent: "center",
+                    mx: "auto",
+                    mb: 1.5,
+                    boxShadow: "0 4px 15px rgba(6,182,212,0.4)"
+                  }}
+                >
+                  <TableChartIcon sx={{ color: "white", fontSize: 26 }} />
+                </Box>
+                <Typography variant="h3" fontWeight="bold" sx={{ color: "#22d3ee", lineHeight: 1 }}>
+                  {excelForms.length}
+                </Typography>
+                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.85)", mt: 0.5, fontWeight: 500 }}>
+                  Excel Import
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+
+          {/* Overall Progress Section */}
+          <Box 
+            sx={{ 
+              mt: 3, 
+              p: 3, 
+              background: "rgba(255,255,255,0.1)", 
+              borderRadius: 3,
+              border: "1px solid rgba(255,255,255,0.15)"
+            }}
+          >
+            <Grid container spacing={3} alignItems="center">
+              <Grid item xs={12} md={6}>
+                <Typography variant="subtitle1" sx={{ color: "rgba(255,255,255,0.9)", mb: 1.5, fontWeight: 600 }}>
+                  Overall Task Completion
+                </Typography>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  <Box sx={{ flexGrow: 1 }}>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={overallCompletion} 
+                      sx={{ 
+                        height: 12, 
+                        borderRadius: 6,
+                        backgroundColor: "rgba(255,255,255,0.2)",
+                        "& .MuiLinearProgress-bar": {
+                          borderRadius: 6,
+                          background: overallCompletion === 100 
+                            ? "linear-gradient(90deg, #10b981 0%, #34d399 100%)"
+                            : overallCompletion >= 50 
+                              ? "linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)"
+                              : "linear-gradient(90deg, #ef4444 0%, #f87171 100%)"
+                        }
+                      }}
+                    />
+                  </Box>
+                  <Typography variant="h5" fontWeight="bold" sx={{ color: "white", minWidth: 60 }}>
+                    {overallCompletion}%
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Typography variant="subtitle1" sx={{ color: "rgba(255,255,255,0.9)", mb: 1.5, fontWeight: 600 }}>
+                  Completion Rate
+                </Typography>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  <Box sx={{ flexGrow: 1 }}>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={completionRate} 
+                      sx={{ 
+                        height: 12, 
+                        borderRadius: 6,
+                        backgroundColor: "rgba(255,255,255,0.2)",
+                        "& .MuiLinearProgress-bar": {
+                          borderRadius: 6,
+                          background: completionRate === 100 
+                            ? "linear-gradient(90deg, #10b981 0%, #34d399 100%)"
+                            : completionRate >= 50 
+                              ? "linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%)"
+                              : "linear-gradient(90deg, #8b5cf6 0%, #a78bfa 100%)"
+                        }
+                      }}
+                    />
+                  </Box>
+                  <Typography variant="h5" fontWeight="bold" sx={{ color: "white", minWidth: 60 }}>
+                    {completionRate}%
+                  </Typography>
+                </Box>
+                <Typography variant="caption" sx={{ color: "rgba(255,255,255,0.7)", mt: 0.5, display: "block" }}>
+                  {completedItems} of {totalItems} items completed
+                </Typography>
+              </Grid>
+            </Grid>
+          </Box>
+        </CardContent>
+      </Card>
+
+      {/* Forms Table */}
       <Card>
         <CardContent>
-          <Typography variant="h6" gutterBottom>Saved Forms</Typography>
-          
-          <Box sx={{ borderBottom: 1, borderColor: "divider", mb: 2 }}>
-            <Tabs 
-              value={activeTab} 
-              onChange={(e, newValue) => setActiveTab(newValue)}
-              aria-label="form source tabs"
-            >
-              <Tab 
-                label={`Manual Forms (${manualForms.length})`} 
-                id="tab-0"
-                aria-controls="tabpanel-0"
-              />
-              <Tab 
-                label={`Excel Imports (${excelForms.length})`} 
-                id="tab-1"
-                aria-controls="tabpanel-1"
-              />
-            </Tabs>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={2}>
+            <Typography variant="h6">Saved Forms ({displayedForms.length})</Typography>
+            <Box display="flex" gap={2} alignItems="center">
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel>Filter by Source</InputLabel>
+                <Select
+                  value={sourceFilter}
+                  label="Filter by Source"
+                  onChange={(e) => setSourceFilter(e.target.value)}
+                >
+                  <MenuItem value="All">All ({allForms.length})</MenuItem>
+                  <MenuItem value="Manual">Manual ({manualForms.length})</MenuItem>
+                  <MenuItem value="Excel">Excel ({excelForms.length})</MenuItem>
+                </Select>
+              </FormControl>
+              <Box sx={{ width: 300 }}>
+                <Search className="search-form">
+                  <StyledInputBase
+                    placeholder="Search forms..."
+                    inputProps={{ "aria-label": "search" }}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </Search>
+              </Box>
+            </Box>
           </Box>
           
           <TableContainer component={Paper} variant="outlined">
             <Table size="small" sx={{ minWidth: 1200 }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: "#f5f5f5" }}>
+                  <TableCell>Source</TableCell>
                   <TableCell>Track ID</TableCell>
-                  <TableCell>Manufacturer ID</TableCell>
                   <TableCell>Model Year</TableCell>
+                  <TableCell>Manufacturer ID</TableCell>
                   <TableCell>Model ID</TableCell>
                   <TableCell>Equipment Desc</TableCell>
                   <TableCell>License No</TableCell>
                   <TableCell>Meter Reading</TableCell>
                   <TableCell>Serial No</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Date Completed</TableCell>
-                  <TableCell>MAC</TableCell>
-                  <TableCell>SIM</TableCell>
-                  <TableCell>SSID</TableCell>
-                  <TableCell>Wifi Key</TableCell>
+                  <TableCell>Assignee</TableCell>
+                  <TableCell>Task Complete %</TableCell>
                   <TableCell>Created Date</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {currentTabForms.length === 0 ? (
+                {displayedForms.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={16} align="center">
+                    <TableCell colSpan={13} align="center">
                       <Typography color="textSecondary" py={3}>
-                        {activeTab === 0 
-                          ? 'No manual forms created yet. Click "New Work Track Form" to add one.'
-                          : 'No forms imported from Excel yet. Click "Upload Excel" to import.'}
+                        {sourceFilter === "Manual" 
+                          ? 'No manual forms found. Click "New Work Track Form" to add one.'
+                          : sourceFilter === "Excel"
+                          ? 'No forms imported from Excel found. Click "Upload Excel" to import.'
+                          : 'No forms found. Click "New Work Track Form" to add one or "Upload Excel" to import.'}
                       </Typography>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  currentTabForms.map((detail) => (
-                    <TableRow key={detail.id} hover>
+                  displayedForms.map((detail) => (
+                    <TableRow 
+                      key={detail.id} 
+                      hover 
+                      onClick={() => router.push(`/work-track/detail/${detail.id}`)}
+                      sx={{ cursor: "pointer" }}
+                    >
+                      <TableCell>
+                        <Chip 
+                          label={detail.source === "Excel" ? "Excel" : "Manual"} 
+                          size="small"
+                          color={detail.source === "Excel" ? "primary" : "default"}
+                          variant="outlined"
+                        />
+                      </TableCell>
                       <TableCell>{detail.trackId || "-"}</TableCell>
-                      <TableCell>{detail.manufacturerId || "-"}</TableCell>
                       <TableCell>{detail.modelYear || "-"}</TableCell>
+                      <TableCell>{detail.manufacturerId || "-"}</TableCell>
                       <TableCell>{detail.modelId || "-"}</TableCell>
                       <TableCell>{detail.equipmentDescription || "-"}</TableCell>
                       <TableCell>{detail.licenseNumber || "-"}</TableCell>
                       <TableCell>{detail.latestMeter1Reading || "-"}</TableCell>
                       <TableCell>{detail.serialNumber || "-"}</TableCell>
-                      <TableCell>{detail.status || "-"}</TableCell>
-                      <TableCell>{detail.dateCompleted ? formatDate(detail.dateCompleted) : "-"}</TableCell>
-                      <TableCell>{detail.mac || "-"}</TableCell>
-                      <TableCell>{detail.sim || "-"}</TableCell>
-                      <TableCell>{detail.ssid || "-"}</TableCell>
-                      <TableCell>{detail.wifiKey || "-"}</TableCell>
+                      <TableCell>{detail.assignee || "-"}</TableCell>
+                      <TableCell>{detail.taskCompletePercentage != null ? `${detail.taskCompletePercentage}%` : "-"}</TableCell>
                       <TableCell>{formatDate(detail.createdOn)}</TableCell>
-                      <TableCell align="right">
+                      <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                         <Tooltip title="Edit">
                           <IconButton
                             size="small"
                             color="primary"
-                            onClick={() => handleOpenForm(detail)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenForm(detail);
+                            }}
                           >
                             <EditIcon fontSize="inherit" />
                           </IconButton>
@@ -662,7 +1092,10 @@ export default function EditWorkTrack() {
                           <IconButton
                             size="small"
                             color="error"
-                            onClick={() => handleDeleteClick(detail)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteClick(detail);
+                            }}
                           >
                             <DeleteOutlineIcon fontSize="inherit" />
                           </IconButton>
@@ -854,6 +1287,28 @@ export default function EditWorkTrack() {
                       name="wifiKey"
                       variant="outlined"
                       size="small"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Field
+                      as={TextField}
+                      fullWidth
+                      label="Assignee"
+                      name="assignee"
+                      variant="outlined"
+                      size="small"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Field
+                      as={TextField}
+                      fullWidth
+                      label="Task Complete %"
+                      name="taskCompletePercentage"
+                      variant="outlined"
+                      size="small"
+                      type="number"
+                      inputProps={{ min: 0, max: 100 }}
                     />
                   </Grid>
                   <Grid item xs={12}>
