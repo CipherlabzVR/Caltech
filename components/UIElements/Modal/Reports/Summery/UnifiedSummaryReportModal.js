@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   Button,
   Grid,
@@ -263,10 +263,10 @@ const reportConfigs = {
   StockMovementReport: {
     title: "Stock Movement Summary Report",
     fields: {
-      supplier: { enabled: true, required: false, label: "Select Supplier", paramName: "supplier", allowAll: true },
-      category: { enabled: true, required: false, label: "Select Category", paramName: "category", allowAll: true },
-      subCategory: { enabled: true, required: false, label: "Select Sub Category", paramName: "subCategory", allowAll: true },
-      item: { enabled: true, required: false, label: "Select Item", paramName: "item", allowAll: true },
+      supplier: { enabled: true, required: false, label: "Select Supplier", paramName: "supplier", allowAll: false },
+      category: { enabled: true, required: false, label: "Select Category", paramName: "category", allowAll: false },
+      subCategory: { enabled: true, required: false, label: "Select Sub Category", paramName: "subCategory", allowAll: false },
+      item: { enabled: true, required: false, label: "Select Item", paramName: "item", allowAll: false },
     },
   },
 };
@@ -281,15 +281,24 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
   const name = localStorage.getItem("name");
 
   const [customers, setCustomers] = useState([]);
-  const [customerId, setCustomerId] = useState(config.fields.customer?.defaultValue || 0);
+  const [customerId, setCustomerId] = useState(config.fields.customer?.defaultValue || null);
   const [suppliers, setSuppliers] = useState([]);
-  const [supplierId, setSupplierId] = useState(config.fields.supplier?.defaultValue || 0);
+  const [supplierId, setSupplierId] = useState(config.fields.supplier?.defaultValue || null);
+  const [supplierSearchInput, setSupplierSearchInput] = useState("");
+  const supplierSearchDebounceRef = useRef(null);
   const [categories, setCategories] = useState([]);
-  const [categoryId, setCategoryId] = useState(config.fields.category?.defaultValue || 0);
+  const [categoryId, setCategoryId] = useState(config.fields.category?.defaultValue || null);
+  const [categorySearchInput, setCategorySearchInput] = useState("");
+  const categorySearchDebounceRef = useRef(null);
   const [subCategories, setSubCategories] = useState([]);
-  const [subCategoryId, setSubCategoryId] = useState(config.fields.subCategory?.defaultValue || 0);
+  const [subCategoryId, setSubCategoryId] = useState(config.fields.subCategory?.defaultValue || null);
+  const [subCategorySearchInput, setSubCategorySearchInput] = useState("");
+  const subCategorySearchDebounceRef = useRef(null);
   const [items, setItems] = useState([]);
-  const [itemId, setItemId] = useState(config.fields.item?.defaultValue || 0);
+  const [itemId, setItemId] = useState(config.fields.item?.defaultValue || null);
+  const [itemSearchInput, setItemSearchInput] = useState("");
+  const itemSearchDebounceRef = useRef(null);
+  const itemFilterDebounceRef = useRef(null);
   const [invoices, setInvoices] = useState([]);
   const [invoiceId, setInvoiceId] = useState(config.fields.invoice?.defaultValue || 0);
   const [paymentType, setPaymentType] = useState(config.fields.paymentType?.defaultValue || 0);
@@ -322,6 +331,27 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
 
   const handleOpen = () => {
     setOptionLimits({});
+    // Clear all fields and search when opening modal
+    setItems([]);
+    setItemSearchInput("");
+    setSuppliers([]);
+    setSupplierSearchInput("");
+    setCategories([]);
+    setCategorySearchInput("");
+    setSubCategories([]);
+    setSubCategorySearchInput("");
+    if (itemSearchDebounceRef.current) {
+      clearTimeout(itemSearchDebounceRef.current);
+    }
+    if (supplierSearchDebounceRef.current) {
+      clearTimeout(supplierSearchDebounceRef.current);
+    }
+    if (categorySearchDebounceRef.current) {
+      clearTimeout(categorySearchDebounceRef.current);
+    }
+    if (subCategorySearchDebounceRef.current) {
+      clearTimeout(subCategorySearchDebounceRef.current);
+    }
     setOpen(true);
   };
   const handleClose = () => {
@@ -329,11 +359,34 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
     setOptionLimits({});
     setFromDate("");
     setToDate("");
-    setCustomerId(config.fields.customer?.defaultValue || 0);
-    setSupplierId(config.fields.supplier?.defaultValue || 0);
-    setCategoryId(config.fields.category?.defaultValue || 0);
-    setSubCategoryId(config.fields.subCategory?.defaultValue || 0);
-    setItemId(config.fields.item?.defaultValue || 0);
+    setCustomerId(config.fields.customer?.defaultValue || null);
+    setSupplierId(config.fields.supplier?.defaultValue || null);
+    setSupplierSearchInput("");
+    setSuppliers([]);
+    setCategoryId(config.fields.category?.defaultValue || null);
+    setCategorySearchInput("");
+    setCategories([]);
+    setSubCategoryId(config.fields.subCategory?.defaultValue || null);
+    setSubCategorySearchInput("");
+    setSubCategories([]);
+    setItemId(config.fields.item?.defaultValue || null);
+    setItemSearchInput("");
+    setItems([]);
+    if (itemSearchDebounceRef.current) {
+      clearTimeout(itemSearchDebounceRef.current);
+    }
+    if (itemFilterDebounceRef.current) {
+      clearTimeout(itemFilterDebounceRef.current);
+    }
+    if (supplierSearchDebounceRef.current) {
+      clearTimeout(supplierSearchDebounceRef.current);
+    }
+    if (categorySearchDebounceRef.current) {
+      clearTimeout(categorySearchDebounceRef.current);
+    }
+    if (subCategorySearchDebounceRef.current) {
+      clearTimeout(subCategorySearchDebounceRef.current);
+    }
     setInvoiceId(config.fields.invoice?.defaultValue || 0);
     setPaymentType(config.fields.paymentType?.defaultValue || 0);
     setStatus(config.fields.status?.defaultValue || 0);
@@ -350,7 +403,6 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
   };
 
   const { data: customerList } = useApi("/Customer/GetAllCustomer");
-  const { data: itemList } = useApi("/Items/GetAllItems");
   const { data: supplierList } = useApi("/Supplier/GetAllSupplier");
   const { data: categoryList } = useApi("/Category/GetAllCategory");
   const { data: doctorList } = useApi("/Doctors/GetAll");
@@ -364,13 +416,12 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
     if (customerList && config.fields.customer?.enabled) {
       setCustomers(customerList);
     }
-    if (itemList && config.fields.item?.enabled) {
-      setItems(itemList);
-    }
-    if (supplierList && config.fields.supplier?.enabled) {
+    // Only load suppliers automatically if allowAll is true (not for StockMovementReport)
+    if (supplierList && config.fields.supplier?.enabled && config.fields.supplier?.allowAll !== false) {
       setSuppliers(supplierList);
     }
-    if (categoryList && config.fields.category?.enabled) {
+    // Only load categories automatically if allowAll is true (not for StockMovementReport)
+    if (categoryList && config.fields.category?.enabled && config.fields.category?.allowAll !== false) {
       setCategories(categoryList);
     }
     if (doctorList && config.fields.doctor?.enabled) {
@@ -402,42 +453,54 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
     if (config.fields.reservation?.enabled) {
       fetchReservations();
     }
-  }, [terminalList, customerList, itemList, supplierList, categoryList, doctorList, bankList, fiscalPeriodList, userList, cashFlowTypeList, config]);
+  }, [terminalList, customerList, supplierList, categoryList, doctorList, bankList, fiscalPeriodList, userList, cashFlowTypeList, config]);
 
   const handleGetSupplierItems = async (id) => {
-    setItemId(0);
-    handleGetFilteredItems(id, categoryId, subCategoryId);
+    setItemId(null);
+    handleGetFilteredItems(id || 0, categoryId || 0, subCategoryId || 0);
   };
 
   const handleGetSubCategories = async (id) => {
-    setItemId(0);
-    setSubCategoryId(0);
-    handleGetFilteredItems(supplierId, id, subCategoryId);
-    try {
-      const token = localStorage.getItem("token");
-      const query = `${BASE_URL}/SubCategory/GetAllSubCategoriesByCategoryId?categoryId=${id}`;
-      const response = await fetch(query, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
+    setItemId(null);
+    setSubCategoryId(null);
+    handleGetFilteredItems(supplierId || 0, id || 0, 0);
+    // Only auto-load subcategories if allowAll is true
+    if (config.fields.subCategory?.allowAll !== false) {
+      try {
+        const token = localStorage.getItem("token");
+        const query = `${BASE_URL}/SubCategory/GetAllSubCategoriesByCategoryId?categoryId=${id}`;
+        const response = await fetch(query, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
 
-      if (!response.ok) throw new Error("Failed to fetch items");
+        if (!response.ok) throw new Error("Failed to fetch items");
 
-      const data = await response.json();
-      setSubCategories(data.result);
-    } catch (error) {
-      console.error("Error:", error);
+        const data = await response.json();
+        setSubCategories(data.result);
+      } catch (error) {
+        console.error("Error:", error);
+      }
     }
   };
 
   const handleGetFilteredItems = async (supplier, category, subCategory) => {
-    setItemId(0);
+    setItemId(null);
+    setItems([]);
+    // Clear any pending search
+    if (itemSearchDebounceRef.current) {
+      clearTimeout(itemSearchDebounceRef.current);
+    }
+    setItemSearchInput("");
+  };
+
+  const fetchSuppliersWithSearch = async (searchTerm) => {
     try {
       const token = localStorage.getItem("token");
-      const query = `${BASE_URL}/Items/GetFilteredItems?supplier=${supplier}&category=${category}&subCategory=${subCategory}`;
+      const query = `${BASE_URL}/Supplier/GetAllSupplier?Search=${encodeURIComponent(searchTerm || "")}`;
       const response = await fetch(query, {
         method: "GET",
         headers: {
@@ -446,14 +509,187 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
         },
       });
 
-      if (!response.ok) throw new Error("Failed to fetch items");
-
+      if (!response.ok) throw new Error("Failed to fetch suppliers");
       const data = await response.json();
-      setItems(data.result);
+      setSuppliers(data.result || []);
     } catch (error) {
       console.error("Error:", error);
+      setSuppliers([]);
     }
   };
+
+  const fetchCategoriesWithSearch = async (searchTerm) => {
+    try {
+      const token = localStorage.getItem("token");
+      const query = `${BASE_URL}/Category/GetAllCategory?Search=${encodeURIComponent(searchTerm || "")}`;
+      const response = await fetch(query, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) throw new Error("Failed to fetch categories");
+      const data = await response.json();
+      setCategories(data.result || []);
+    } catch (error) {
+      console.error("Error:", error);
+      setCategories([]);
+    }
+  };
+
+  const fetchSubCategoriesWithSearch = async (searchTerm, categoryIdParam) => {
+    try {
+      const token = localStorage.getItem("token");
+      let query;
+      if (categoryIdParam) {
+        query = `${BASE_URL}/SubCategory/GetAllSubCategoriesByCategoryId?categoryId=${categoryIdParam}`;
+      } else {
+        query = `${BASE_URL}/SubCategory/GetAllSubCategory`;
+      }
+      const response = await fetch(query, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) throw new Error("Failed to fetch sub categories");
+      const data = await response.json();
+      let fetchedSubCategories = data.result || [];
+      // Filter by category if provided
+      if (categoryIdParam) {
+        fetchedSubCategories = fetchedSubCategories.filter(sc => sc.categoryId === categoryIdParam);
+      }
+      // Client-side filtering by search term
+      if (searchTerm && searchTerm.trim()) {
+        const searchLower = searchTerm.toLowerCase().trim();
+        fetchedSubCategories = fetchedSubCategories.filter(sc => 
+          (sc.name || "").toLowerCase().includes(searchLower)
+        );
+      }
+      setSubCategories(fetchedSubCategories);
+    } catch (error) {
+      console.error("Error:", error);
+      setSubCategories([]);
+    }
+  };
+
+  const fetchItemsWithSearch = async (searchTerm) => {
+    try {
+      const token = localStorage.getItem("token");
+      let query;
+      let fetchedItems = [];
+      
+      // Optimize API selection based on filters and search term
+      if (searchTerm && searchTerm.trim()) {
+        // If search term exists and supplier is set, use optimized API
+        if (supplierId) {
+          query = `${BASE_URL}/Items/GetAllItemsBySupplierIdAndName?supplierId=${supplierId}&keyword=${encodeURIComponent(searchTerm.trim())}`;
+        } else {
+          // Use GetAllItemsByName for search (returns 5 items, but faster)
+          query = `${BASE_URL}/Items/GetAllItemsByName?keyword=${encodeURIComponent(searchTerm.trim())}`;
+        }
+        
+        const response = await fetch(query, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) throw new Error("Failed to fetch items");
+        const data = await response.json();
+        fetchedItems = data.result || [];
+        
+        // Apply additional filters client-side if needed (category, subCategory)
+        if (categoryId) {
+          fetchedItems = fetchedItems.filter(item => item.categoryId === categoryId || item.CategoryId === categoryId);
+        }
+        if (subCategoryId) {
+          fetchedItems = fetchedItems.filter(item => item.subCategoryId === subCategoryId || item.SubCategoryId === subCategoryId);
+        }
+      } else {
+        // No search term - use GetFilteredItems for better performance when filters are set
+        if (supplierId || categoryId || subCategoryId) {
+          query = `${BASE_URL}/Items/GetFilteredItems?supplier=${supplierId || 0}&category=${categoryId || 0}&subCategory=${subCategoryId || 0}`;
+          const response = await fetch(query, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          });
+
+          if (!response.ok) throw new Error("Failed to fetch items");
+          const data = await response.json();
+          fetchedItems = data.result || [];
+        } else {
+          // No filters and no search - don't load anything
+          setItems([]);
+          return;
+        }
+      }
+      
+      setItems(fetchedItems);
+    } catch (error) {
+      console.error("Error:", error);
+      setItems([]);
+    }
+  };
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (itemSearchDebounceRef.current) {
+        clearTimeout(itemSearchDebounceRef.current);
+      }
+      if (itemFilterDebounceRef.current) {
+        clearTimeout(itemFilterDebounceRef.current);
+      }
+      if (supplierSearchDebounceRef.current) {
+        clearTimeout(supplierSearchDebounceRef.current);
+      }
+      if (categorySearchDebounceRef.current) {
+        clearTimeout(categorySearchDebounceRef.current);
+      }
+      if (subCategorySearchDebounceRef.current) {
+        clearTimeout(subCategorySearchDebounceRef.current);
+      }
+    };
+  }, []);
+
+  // Clear items when filters change - items will load only when user types (with debounce)
+  useEffect(() => {
+    if (config.fields.item?.enabled) {
+      // Clear items and search input when filters change
+      setItems([]);
+      setItemSearchInput("");
+      // Clear any pending search debounce
+      if (itemSearchDebounceRef.current) {
+        clearTimeout(itemSearchDebounceRef.current);
+      }
+      // Clear any pending filter debounce
+      if (itemFilterDebounceRef.current) {
+        clearTimeout(itemFilterDebounceRef.current);
+      }
+    }
+  }, [supplierId, categoryId, subCategoryId]);
+
+  // Clear subCategories when category changes
+  useEffect(() => {
+    if (config.fields.subCategory?.enabled && config.fields.subCategory?.allowAll === false) {
+      setSubCategories([]);
+      setSubCategorySearchInput("");
+      setSubCategoryId(null);
+      if (subCategorySearchDebounceRef.current) {
+        clearTimeout(subCategorySearchDebounceRef.current);
+      }
+    }
+  }, [categoryId]);
 
   const fetchInvoices = async (customerId) => {
     try {
@@ -538,16 +774,16 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
       params.append(config.fields.customer.paramName || "customer", customerId);
     }
     if (config.fields.supplier?.enabled) {
-      params.append(config.fields.supplier.paramName || "supplier", supplierId);
+      params.append(config.fields.supplier.paramName || "supplier", supplierId || 0);
     }
     if (config.fields.category?.enabled) {
-      params.append(config.fields.category.paramName || "category", categoryId);
+      params.append(config.fields.category.paramName || "category", categoryId || 0);
     }
     if (config.fields.subCategory?.enabled) {
-      params.append(config.fields.subCategory.paramName || "subCategory", subCategoryId);
+      params.append(config.fields.subCategory.paramName || "subCategory", subCategoryId || 0);
     }
     if (config.fields.item?.enabled) {
-      params.append(config.fields.item.paramName || "item", itemId);
+      params.append(config.fields.item.paramName || "item", itemId || 0);
     }
     if (config.fields.invoice?.enabled) {
       params.append(config.fields.invoice.paramName || "invoiceId", invoiceId);
@@ -677,28 +913,52 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
                 {fieldConfig.label || "Select Supplier"}
               </Typography>
               <Autocomplete
-                disableCloseOnSelect
+                disableCloseOnSelect={fieldConfig.allowAll !== false}
                 fullWidth
                 size="small"
                 options={supplierOptions}
                 value={value}
+                onInputChange={(_, newInputValue, reason) => {
+                  if (fieldConfig.allowAll === false) {
+                    // Only trigger search on user input, not when clearing, resetting, or selecting
+                    if (reason === "input") {
+                      // Clear previous debounce
+                      if (supplierSearchDebounceRef.current) {
+                        clearTimeout(supplierSearchDebounceRef.current);
+                      }
+                      // Set new debounce
+                      supplierSearchDebounceRef.current = setTimeout(() => {
+                        fetchSuppliersWithSearch(newInputValue);
+                      }, 300);
+                    } else if (reason === "clear") {
+                      setSuppliers([]);
+                      setSupplierId(null);
+                      if (supplierSearchDebounceRef.current) {
+                        clearTimeout(supplierSearchDebounceRef.current);
+                      }
+                    }
+                  }
+                }}
                 onChange={(_, opt) => {
                   if (opt?.__loadMore) {
                     incLimit(fieldName);
                     return;
                   }
-                  const id = opt?.id ?? 0;
+                  const id = opt?.id ?? null;
                   setSupplierId(id);
-                  if (config.fields.item?.enabled) handleGetSupplierItems(id);
+                  if (config.fields.item?.enabled) handleGetSupplierItems(id || 0);
                 }}
-                isOptionEqualToValue={(option, val) => option.id === val.id}
-                filterOptions={(options, state) =>
+                isOptionEqualToValue={(option, val) => {
+                  if (!option || !val) return false;
+                  return option.id === val.id;
+                }}
+                filterOptions={fieldConfig.allowAll === false ? (options) => options : (options, state) =>
                   filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
                 }
                 renderOption={renderAutocompleteOption}
-                noOptionsText="No matches"
+                noOptionsText={fieldConfig.allowAll === false ? "Type supplier name to search" : "No matches"}
                 renderInput={(params) => (
-                  <TextField {...params} placeholder="Type to search..." />
+                  <TextField {...params} placeholder="Type supplier name to search" />
                 )}
               />
             </Grid>
@@ -719,29 +979,53 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
                 {fieldConfig.label || "Select Category"}
               </Typography>
               <Autocomplete
-                disableCloseOnSelect
+                disableCloseOnSelect={fieldConfig.allowAll !== false}
                 fullWidth
                 size="small"
                 options={categoryOptions}
                 value={value}
+                onInputChange={(_, newInputValue, reason) => {
+                  if (fieldConfig.allowAll === false) {
+                    // Only trigger search on user input, not when clearing, resetting, or selecting
+                    if (reason === "input") {
+                      // Clear previous debounce
+                      if (categorySearchDebounceRef.current) {
+                        clearTimeout(categorySearchDebounceRef.current);
+                      }
+                      // Set new debounce
+                      categorySearchDebounceRef.current = setTimeout(() => {
+                        fetchCategoriesWithSearch(newInputValue);
+                      }, 300);
+                    } else if (reason === "clear") {
+                      setCategories([]);
+                      setCategoryId(null);
+                      if (categorySearchDebounceRef.current) {
+                        clearTimeout(categorySearchDebounceRef.current);
+                      }
+                    }
+                  }
+                }}
                 onChange={(_, opt) => {
                   if (opt?.__loadMore) {
                     incLimit(fieldName);
                     return;
                   }
-                  const id = opt?.id ?? 0;
+                  const id = opt?.id ?? null;
                   setCategoryId(id);
-                  if (config.fields.subCategory?.enabled) handleGetSubCategories(id);
-                  if (config.fields.item?.enabled) handleGetFilteredItems(supplierId, id, subCategoryId);
+                  if (config.fields.subCategory?.enabled) handleGetSubCategories(id || 0);
+                  if (config.fields.item?.enabled) handleGetFilteredItems(supplierId || 0, id || 0, subCategoryId || 0);
                 }}
-                isOptionEqualToValue={(option, val) => option.id === val.id}
-                filterOptions={(options, state) =>
+                isOptionEqualToValue={(option, val) => {
+                  if (!option || !val) return false;
+                  return option.id === val.id;
+                }}
+                filterOptions={fieldConfig.allowAll === false ? (options) => options : (options, state) =>
                   filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
                 }
                 renderOption={renderAutocompleteOption}
-                noOptionsText="No matches"
+                noOptionsText={fieldConfig.allowAll === false ? "Type category name to search" : "No matches"}
                 renderInput={(params) => (
-                  <TextField {...params} placeholder="Type to search..." />
+                  <TextField {...params} placeholder="Type category name to search" />
                 )}
               />
             </Grid>
@@ -762,28 +1046,52 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
                 {fieldConfig.label || "Select Sub Category"}
               </Typography>
               <Autocomplete
-                disableCloseOnSelect
+                disableCloseOnSelect={fieldConfig.allowAll !== false}
                 fullWidth
                 size="small"
                 options={subCategoryOptions}
                 value={value}
+                onInputChange={(_, newInputValue, reason) => {
+                  if (fieldConfig.allowAll === false) {
+                    // Only trigger search on user input, not when clearing, resetting, or selecting
+                    if (reason === "input") {
+                      // Clear previous debounce
+                      if (subCategorySearchDebounceRef.current) {
+                        clearTimeout(subCategorySearchDebounceRef.current);
+                      }
+                      // Set new debounce
+                      subCategorySearchDebounceRef.current = setTimeout(() => {
+                        fetchSubCategoriesWithSearch(newInputValue, categoryId);
+                      }, 300);
+                    } else if (reason === "clear") {
+                      setSubCategories([]);
+                      setSubCategoryId(null);
+                      if (subCategorySearchDebounceRef.current) {
+                        clearTimeout(subCategorySearchDebounceRef.current);
+                      }
+                    }
+                  }
+                }}
                 onChange={(_, opt) => {
                   if (opt?.__loadMore) {
                     incLimit(fieldName);
                     return;
                   }
-                  const id = opt?.id ?? 0;
+                  const id = opt?.id ?? null;
                   setSubCategoryId(id);
-                  if (config.fields.item?.enabled) handleGetFilteredItems(supplierId, categoryId, id);
+                  if (config.fields.item?.enabled) handleGetFilteredItems(supplierId || 0, categoryId || 0, id || 0);
                 }}
-                isOptionEqualToValue={(option, val) => option.id === val.id}
-                filterOptions={(options, state) =>
+                isOptionEqualToValue={(option, val) => {
+                  if (!option || !val) return false;
+                  return option.id === val.id;
+                }}
+                filterOptions={fieldConfig.allowAll === false ? (options) => options : (options, state) =>
                   filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
                 }
                 renderOption={renderAutocompleteOption}
-                noOptionsText="No matches"
+                noOptionsText={fieldConfig.allowAll === false ? "Type sub category name to search" : "No matches"}
                 renderInput={(params) => (
-                  <TextField {...params} placeholder="Type to search..." />
+                  <TextField {...params} placeholder="Type sub category name to search" />
                 )}
               />
             </Grid>
@@ -796,6 +1104,7 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
             items.map((i) => ({ id: i.id, label: i.name || String(i.id) })),
             fieldConfig.allowAll
           );
+          
           const value = itemOptions.find((o) => o.id === itemId) || null;
 
           return (
@@ -804,26 +1113,52 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
                 {fieldConfig.label || "Select Item"}
               </Typography>
               <Autocomplete
-                disableCloseOnSelect
+                disableCloseOnSelect={fieldConfig.allowAll !== false}
                 fullWidth
                 size="small"
                 options={itemOptions}
                 value={value}
-                onChange={(_, opt) => {
+                onInputChange={(_, newInputValue, reason) => {
+                  // Only trigger search on user input, not when clearing, resetting, or selecting
+                  if (reason === "input") {
+                    // Clear previous debounce
+                    if (itemSearchDebounceRef.current) {
+                      clearTimeout(itemSearchDebounceRef.current);
+                    }
+                    // Set new debounce
+                    itemSearchDebounceRef.current = setTimeout(() => {
+                      fetchItemsWithSearch(newInputValue);
+                    }, 300);
+                  } else if (reason === "clear") {
+                    setItems([]);
+                    setItemId(null);
+                    if (itemSearchDebounceRef.current) {
+                      clearTimeout(itemSearchDebounceRef.current);
+                    }
+                  }
+                }}
+                onChange={(event, opt, reason) => {
                   if (opt?.__loadMore) {
                     incLimit(fieldName);
                     return;
                   }
-                  setItemId(opt?.id ?? 0);
+                  // Handle selection
+                  if (reason === "selectOption") {
+                    setItemId(opt?.id ?? null);
+                  } else if (reason === "clear") {
+                    setItemId(null);
+                    setItems([]);
+                  }
                 }}
-                isOptionEqualToValue={(option, val) => option.id === val.id}
-                filterOptions={(options, state) =>
-                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
-                }
+                isOptionEqualToValue={(option, val) => {
+                  if (!option || !val) return false;
+                  return option.id === val.id;
+                }}
+                filterOptions={(options) => options} // Disable client-side filtering since we're doing server-side search
                 renderOption={renderAutocompleteOption}
-                noOptionsText="No matches"
+                noOptionsText={fieldConfig.allowAll === false ? "Type item name to search" : "Type to search items..."}
                 renderInput={(params) => (
-                  <TextField {...params} placeholder="Type to search..." />
+                  <TextField {...params} placeholder={fieldConfig.allowAll === false ? "Type item name to search" : "Type to search..."} />
                 )}
               />
             </Grid>

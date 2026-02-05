@@ -17,6 +17,12 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
 import Checkbox from "@mui/material/Checkbox";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
@@ -37,7 +43,7 @@ import RadioGroup from "@mui/material/RadioGroup";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import FormLabel from "@mui/material/FormLabel";
 import ImageIcon from "@mui/icons-material/Image";
-import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import RadioButtonCheckedIcon from "@mui/icons-material/RadioButtonChecked";
 import ArrowDropDownCircleIcon from "@mui/icons-material/ArrowDropDownCircle";
 import { ToastContainer, toast } from "react-toastify";
@@ -64,11 +70,17 @@ import AssignmentIcon from "@mui/icons-material/Assignment";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import LocationOnIcon from "@mui/icons-material/LocationOn";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import ListAltIcon from "@mui/icons-material/ListAlt";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import FreeBreakfastIcon from "@mui/icons-material/FreeBreakfast";
+import RestaurantIcon from "@mui/icons-material/Restaurant";
+import CoffeeIcon from "@mui/icons-material/Coffee";
 import BASE_URL from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
 import SignatureCanvas from "react-signature-canvas";
+import CameraCaptureModal from "@/components/work-track/CameraCaptureModal";
 
 export default function WorkTrackDetailView() {
   const router = useRouter();
@@ -99,8 +111,10 @@ export default function WorkTrackDetailView() {
   const [itemIsRequired, setItemIsRequired] = useState(false);
   const [savingItem, setSavingItem] = useState(false);
   
-  // Image upload
+  // Image/Camera capture
   const imageInputRef = useRef(null);
+  const [cameraModalOpen, setCameraModalOpen] = useState(false);
+  const [cameraItemId, setCameraItemId] = useState(null);
 
   // Delete confirmation
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -108,25 +122,125 @@ export default function WorkTrackDetailView() {
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Duplicate checklist
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [duplicateChecklist, setDuplicateChecklist] = useState(null);
+  const [duplicateCount, setDuplicateCount] = useState(1);
+  const [duplicating, setDuplicating] = useState(false);
+
+  // Edit summary (for Manager on Duty before authorization)
+  const [editSummaryModalOpen, setEditSummaryModalOpen] = useState(false);
+  const [editSummaryData, setEditSummaryData] = useState({
+    notes: "",
+    managerNotes: "",
+    status: "",
+    meterReading: ""
+  });
+  const [savingSummary, setSavingSummary] = useState(false);
+
   // Work session state
   const [workSummary, setWorkSummary] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [liveTimer, setLiveTimer] = useState(0);
   const timerIntervalRef = useRef(null);
 
+  // Break state
+  const [breakActive, setBreakActive] = useState(false);
+  const [breakType, setBreakType] = useState(null); // "1st", "lunch", "2nd"
+  const [breakCountdown, setBreakCountdown] = useState(0);
+  const [pendingBreakSync, setPendingBreakSync] = useState(null);
+  const breakIntervalRef = useRef(null);
+  const [breaksTaken, setBreaksTaken] = useState({
+    first: { taken: false, duration: 0 },
+    lunch: { taken: false, duration: 0 },
+    second: { taken: false, duration: 0 }
+  });
+  const [workEndedSummary, setWorkEndedSummary] = useState(null);
+  const [sessionHistory, setSessionHistory] = useState([]);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+
+  // Break API functions - save to database for cross-browser sync
+  const saveBreaksToAPI = useCallback(async (breaks, currentBreakType = null) => {
+    if (!id) return;
+    try {
+      await fetch(`${BASE_URL}/WorkTrackDetail/SaveBreakData`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workTrackDetailId: parseInt(id),
+          firstBreakTaken: breaks.first?.taken || false,
+          firstBreakDuration: breaks.first?.duration || 0,
+          firstBreakStartTime: breaks.first?.startedAt ? new Date(breaks.first.startedAt).toISOString() : null,
+          lunchBreakTaken: breaks.lunch?.taken || false,
+          lunchBreakDuration: breaks.lunch?.duration || 0,
+          lunchBreakStartTime: breaks.lunch?.startedAt ? new Date(breaks.lunch.startedAt).toISOString() : null,
+          secondBreakTaken: breaks.second?.taken || false,
+          secondBreakDuration: breaks.second?.duration || 0,
+          secondBreakStartTime: breaks.second?.startedAt ? new Date(breaks.second.startedAt).toISOString() : null,
+          currentBreakType: currentBreakType,
+        }),
+      });
+    } catch (error) {
+      console.error("Error saving breaks to API:", error);
+    }
+  }, [id]);
+
+  const loadBreaksFromAPI = useCallback(async () => {
+    if (!id) return null;
+    try {
+      const response = await fetch(`${BASE_URL}/WorkTrackDetail/GetBreakData?workTrackDetailId=${id}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+      const result = await response.json();
+      const data = result?.data || result?.result;
+      if (data) {
+        return {
+          first: { 
+            taken: data.first?.taken || false, 
+            duration: data.first?.duration || 0,
+            startedAt: data.first?.startedAt ? data.first.startedAt : null
+          },
+          lunch: { 
+            taken: data.lunch?.taken || false, 
+            duration: data.lunch?.duration || 0,
+            startedAt: data.lunch?.startedAt ? data.lunch.startedAt : null
+          },
+          second: { 
+            taken: data.second?.taken || false, 
+            duration: data.second?.duration || 0,
+            startedAt: data.second?.startedAt ? data.second.startedAt : null
+          },
+          currentBreakType: data.currentBreakType
+        };
+      }
+    } catch (error) {
+      console.error("Error loading breaks from API:", error);
+    }
+    return {
+      first: { taken: false, duration: 0 },
+      lunch: { taken: false, duration: 0 },
+      second: { taken: false, duration: 0 }
+    };
+  }, [id]);
+
   // Technician assignment
   const [technicians, setTechnicians] = useState([]);
   const [selectedTechnician, setSelectedTechnician] = useState("");
   const [assigningTechnician, setAssigningTechnician] = useState(false);
 
-  // Submit to Admin modal
+  // Submit to Manager on Duty modal
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [submissionSummary, setSubmissionSummary] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Signature modal
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
-  const [signatureType, setSignatureType] = useState(""); // "Technician" or "Admin" (Admin displays as "Authorized Person")
+  const [signatureType, setSignatureType] = useState(""); // "Technician" or "Admin" (Admin displays as "Manager on Duty")
   const [savingSignature, setSavingSignature] = useState(false);
   const technicianSigRef = useRef(null);
   const adminSigRef = useRef(null);
@@ -178,6 +292,8 @@ export default function WorkTrackDetailView() {
       
       // Fetch work summary
       await fetchWorkSummary();
+      
+      // Note: Break sync is handled by the polling useEffect which syncs immediately on mount
     } catch (error) {
       console.error("Error fetching data:", error);
       toast("Failed to load data", { type: "error" });
@@ -223,25 +339,49 @@ export default function WorkTrackDetailView() {
       
       setWorkSummary(summaryData);
       
-      // Start live timer if work is in progress
-      if (summaryData?.currentStatus === "Started" || summaryData?.currentStatus === "Held") {
-        startLiveTimer(summaryData.totalDuration || 0);
-      } else {
+      // Start live timer ONLY if work is actively in progress (not on break/hold)
+      if (summaryData?.currentStatus === "Started") {
+        // Use totalWorkDuration (excludes break time)
+        startLiveTimer(summaryData.totalWorkDuration || 0);
+        // Note: Don't clear break state here - let syncBreaksFromAPI handle it
+        // This avoids race conditions where status updates before break data
+      } else if (summaryData?.currentStatus === "Held") {
+        // Stop work timer when on break
         stopLiveTimer();
-        setLiveTimer(summaryData?.totalDuration || 0);
+        setLiveTimer(summaryData?.totalWorkDuration || 0);
+        // Break countdown is handled by syncBreaksFromAPI
+      } else if (summaryData?.currentStatus === "Completed") {
+        // Work completed - show summary
+        stopLiveTimer();
+        setLiveTimer(summaryData?.totalWorkDuration || 0);
+        
+        // Set work ended summary from the work summary data and break data
+        const apiBreaks = await loadBreaksFromAPI();
+        if (apiBreaks) {
+          const totalBreakTime = 
+            (apiBreaks.first?.duration || 0) + 
+            (apiBreaks.lunch?.duration || 0) + 
+            (apiBreaks.second?.duration || 0);
+          
+          setWorkEndedSummary({
+            totalWorkTime: summaryData?.totalWorkDuration || 0,
+            firstBreak: apiBreaks.first?.duration || 0,
+            lunchBreak: apiBreaks.lunch?.duration || 0,
+            secondBreak: apiBreaks.second?.duration || 0,
+            totalBreakTime: totalBreakTime,
+            totalDuration: (summaryData?.totalWorkDuration || 0) + totalBreakTime
+          });
+        }
+      } else {
+        // Not started
+        stopLiveTimer();
+        setLiveTimer(summaryData?.totalWorkDuration || 0);
       }
+      // Break state is managed exclusively by syncBreaksFromAPI
     } catch (error) {
       console.error("Error fetching work summary:", error);
     }
   };
-
-  const startLiveTimer = useCallback((initialSeconds) => {
-    stopLiveTimer();
-    setLiveTimer(initialSeconds);
-    timerIntervalRef.current = setInterval(() => {
-      setLiveTimer(prev => prev + 1);
-    }, 1000);
-  }, []);
 
   const stopLiveTimer = useCallback(() => {
     if (timerIntervalRef.current) {
@@ -250,10 +390,347 @@ export default function WorkTrackDetailView() {
     }
   }, []);
 
+  const startLiveTimer = useCallback((initialSeconds) => {
+    stopLiveTimer();
+    setLiveTimer(initialSeconds);
+    timerIntervalRef.current = setInterval(() => {
+      setLiveTimer(prev => prev + 1);
+    }, 1000);
+  }, [stopLiveTimer]);
+
+  // Play notification sound when break ends
+  const playBreakEndSound = useCallback(() => {
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Play a pleasant notification melody
+      const playTone = (frequency, startTime, duration) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = frequency;
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, startTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+        
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+      };
+      
+      const now = audioContext.currentTime;
+      // Play a pleasant 3-note chime
+      playTone(523.25, now, 0.2);        // C5
+      playTone(659.25, now + 0.2, 0.2);  // E5
+      playTone(783.99, now + 0.4, 0.4);  // G5
+      
+      // Clean up audio context after sounds finish
+      setTimeout(() => {
+        audioContext.close();
+      }, 1000);
+    } catch (error) {
+      console.log("Could not play notification sound:", error);
+    }
+  }, []);
+
+  // Break duration constants (in seconds)
+  const BREAK_DURATIONS = {
+    first: 10 * 60,  // 10 minutes
+    lunch: 30 * 60,  // 30 minutes
+    second: 10 * 60  // 10 minutes
+  };
+
+  // Break timer functions
+  const stopBreakCountdown = useCallback(() => {
+    if (breakIntervalRef.current) {
+      clearInterval(breakIntervalRef.current);
+      breakIntervalRef.current = null;
+    }
+    setBreakActive(false);
+    setBreakType(null);
+    setBreakCountdown(0);
+  }, []);
+
+  const startBreakCountdown = useCallback((durationSeconds, type) => {
+    stopBreakCountdown();
+    setBreakActive(true);
+    setBreakType(type);
+    setBreakCountdown(durationSeconds);
+    
+    breakIntervalRef.current = setInterval(() => {
+      setBreakCountdown(prev => {
+        if (prev <= 1) {
+          // Break time finished - save final duration and resume work
+          const breakKey = type === "1st" ? "first" : type === "lunch" ? "lunch" : "second";
+          const fullDuration = BREAK_DURATIONS[breakKey];
+          const actualDuration = fullDuration; // Full duration since countdown reached 0
+          
+          setBreaksTaken(prevBreaks => {
+            const updatedBreaks = {
+              ...prevBreaks,
+              [breakKey]: { ...prevBreaks[breakKey], duration: actualDuration, startedAt: null }
+            };
+            saveBreaksToAPI(updatedBreaks, null); // null = no active break
+            return updatedBreaks;
+          });
+          
+          stopBreakCountdown();
+          playBreakEndSound();
+          
+          // Auto-resume work when break timer ends
+          fetch(`${BASE_URL}/WorkTrackWorkSession/ResumeWork?workTrackDetailId=${id}`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+            },
+          }).then(() => {
+            fetchWorkSummary();
+          }).catch(err => console.error("Error auto-resuming work:", err));
+          
+          toast(`${type === "1st" ? "1st Break" : type === "lunch" ? "Lunch Break" : "2nd Break"} time is over! Work resumed.`, { type: "info" });
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [id, playBreakEndSound, saveBreaksToAPI, fetchWorkSummary, stopBreakCountdown]);
+
+  // Handle pending break sync from API - matches technician page logic exactly
+  useEffect(() => {
+    if (!pendingBreakSync) return;
+    
+    if (pendingBreakSync.action === 'start' && !breakActive) {
+      startBreakCountdown(pendingBreakSync.remaining, pendingBreakSync.type);
+    } else if (pendingBreakSync.action === 'stop' && breakActive) {
+      stopBreakCountdown();
+    }
+    
+    setPendingBreakSync(null);
+  }, [pendingBreakSync, breakActive, startBreakCountdown, stopBreakCountdown]);
+
+  const handleStartBreak = async (type) => {
+    if (isReadOnly || breakActive || workSummary?.currentStatus !== "Started") return;
+    
+    let duration;
+    let breakKey;
+    
+    if (type === "1st") {
+      duration = BREAK_DURATIONS.first;
+      breakKey = "first";
+    } else if (type === "lunch") {
+      duration = BREAK_DURATIONS.lunch;
+      breakKey = "lunch";
+    } else {
+      duration = BREAK_DURATIONS.second;
+      breakKey = "second";
+    }
+    
+    try {
+      setSessionLoading(true);
+      
+      // Call HoldWork API to pause work timer on backend
+      const response = await fetch(`${BASE_URL}/WorkTrackWorkSession/HoldWork?workTrackDetailId=${id}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ notes: `${type === "1st" ? "1st Break" : type === "lunch" ? "Lunch Break" : "2nd Break"}` }),
+      });
+      const result = await response.json();
+      
+      if (result?.statusCode === 200) {
+        // Mark break as taken and save to API (database)
+        const updatedBreaks = {
+          ...breaksTaken,
+          [breakKey]: { taken: true, duration: duration, startedAt: Date.now() }
+        };
+        setBreaksTaken(updatedBreaks);
+        saveBreaksToAPI(updatedBreaks, breakKey);
+        
+        // Stop live work timer during break
+        stopLiveTimer();
+        
+        startBreakCountdown(duration, type);
+        toast(`${type === "1st" ? "1st Break" : type === "lunch" ? "Lunch Break" : "2nd Break"} started! Work timer paused.`, { type: "info" });
+        await fetchWorkSummary();
+      } else {
+        toast(result?.message || "Failed to start break", { type: "error" });
+      }
+    } catch (error) {
+      console.error("Error starting break:", error);
+      toast("Failed to start break", { type: "error" });
+    } finally {
+      setSessionLoading(false);
+    }
+  };
+
+  const handleEndBreak = async () => {
+    if (!breakActive) return;
+    
+    // Calculate actual break time taken
+    const type = breakType;
+    let breakKey = type === "1st" ? "first" : type === "lunch" ? "lunch" : "second";
+    let fullDuration = BREAK_DURATIONS[breakKey];
+    let actualDuration = fullDuration - breakCountdown;
+    
+    try {
+      setSessionLoading(true);
+      
+      // Call ResumeWork API to continue work timer on backend
+      const response = await fetch(`${BASE_URL}/WorkTrackWorkSession/ResumeWork?workTrackDetailId=${id}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+      const result = await response.json();
+      
+      if (result?.statusCode === 200) {
+        // Update breaks and save to API (database)
+        const updatedBreaks = {
+          ...breaksTaken,
+          [breakKey]: { ...breaksTaken[breakKey], duration: actualDuration, startedAt: null }
+        };
+        setBreaksTaken(updatedBreaks);
+        saveBreaksToAPI(updatedBreaks, null); // null = no active break
+        
+        stopBreakCountdown();
+        toast("Break ended. Work timer resumed!", { type: "info" });
+        await fetchWorkSummary();
+      } else {
+        toast(result?.message || "Failed to resume work", { type: "error" });
+      }
+    } catch (error) {
+      console.error("Error ending break:", error);
+      toast("Failed to end break", { type: "error" });
+    } finally {
+      setSessionLoading(false);
+    }
+  };
+
+  const formatBreakCountdown = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   // Cleanup timer on unmount
   useEffect(() => {
-    return () => stopLiveTimer();
-  }, [stopLiveTimer]);
+    return () => {
+      stopLiveTimer();
+      stopBreakCountdown();
+    };
+  }, [stopLiveTimer, stopBreakCountdown]);
+
+  // Sync breaks from API (database) - directly manages break state
+  const syncBreaksFromAPI = useCallback(async () => {
+    const apiBreaks = await loadBreaksFromAPI();
+    if (apiBreaks) {
+      setBreaksTaken(apiBreaks);
+      
+      // Check if there's an active break in the database that we need to sync locally
+      if (apiBreaks.currentBreakType) {
+        const breakKey = apiBreaks.currentBreakType;
+        const breakData = apiBreaks[breakKey];
+        if (breakData?.startedAt) {
+          const BREAK_DURATIONS_MAP = { first: 600, lunch: 1800, second: 600 };
+          const elapsed = Math.floor((Date.now() - breakData.startedAt) / 1000);
+          const remaining = BREAK_DURATIONS_MAP[breakKey] - elapsed;
+          
+          if (remaining > 0) {
+            const breakTypeMap = { first: "1st", lunch: "lunch", second: "2nd" };
+            const mappedType = breakTypeMap[breakKey];
+            
+            // Set break state directly
+            setBreakActive(true);
+            setBreakType(mappedType);
+            setBreakCountdown(remaining);
+            
+            // Start the countdown interval if not already running
+            if (!breakIntervalRef.current) {
+              breakIntervalRef.current = setInterval(() => {
+                setBreakCountdown(prev => {
+                  if (prev <= 1) {
+                    // Break time expired
+                    if (breakIntervalRef.current) {
+                      clearInterval(breakIntervalRef.current);
+                      breakIntervalRef.current = null;
+                    }
+                    setBreakActive(false);
+                    setBreakType(null);
+                    return 0;
+                  }
+                  return prev - 1;
+                });
+              }, 1000);
+            }
+          } else {
+            // Break expired - clear state
+            if (breakIntervalRef.current) {
+              clearInterval(breakIntervalRef.current);
+              breakIntervalRef.current = null;
+            }
+            setBreakActive(false);
+            setBreakType(null);
+            setBreakCountdown(0);
+          }
+        }
+      } else {
+        // No active break - clear state if we had one
+        if (breakIntervalRef.current) {
+          clearInterval(breakIntervalRef.current);
+          breakIntervalRef.current = null;
+          setBreakActive(false);
+          setBreakType(null);
+          setBreakCountdown(0);
+        }
+      }
+      return apiBreaks;
+    }
+    return null;
+  }, [loadBreaksFromAPI]);
+
+  // Periodically refresh work summary for real-time sync (every 2 seconds) - matches technician page
+  useEffect(() => {
+    if (!id) return;
+    
+    // Sync immediately on mount
+    syncBreaksFromAPI();
+    
+    const syncInterval = setInterval(async () => {
+      // Sync breaks from API first, then refresh work summary
+      await syncBreaksFromAPI();
+      // Refresh work summary to keep timer in sync with technician page
+      fetchWorkSummary();
+    }, 2000); // Refresh every 2 seconds for real-time sync
+    
+    return () => clearInterval(syncInterval);
+  }, [id, syncBreaksFromAPI]);
+
+  // Sync immediately when page gains focus
+  useEffect(() => {
+    const handleFocus = () => {
+      syncBreaksFromAPI();
+      fetchWorkSummary();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        handleFocus();
+      }
+    });
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [syncBreaksFromAPI]);
+
+  // Break data is now synced from database API via polling - no localStorage listener needed
 
   const formatDuration = (totalSeconds) => {
     const hours = Math.floor(totalSeconds / 3600);
@@ -283,6 +760,8 @@ export default function WorkTrackDetailView() {
       
       if (result?.statusCode === 200) {
         toast("Work started!", { type: "success" });
+        // Notify other pages of session update
+        localStorage.setItem(`workTrackSessionUpdate_${id}`, Date.now().toString());
         await fetchWorkSummary();
       } else {
         toast(result?.message || "Failed to start work", { type: "error" });
@@ -309,6 +788,8 @@ export default function WorkTrackDetailView() {
       
       if (result?.statusCode === 200) {
         toast("Work put on hold", { type: "info" });
+        // Notify other pages of session update
+        localStorage.setItem(`workTrackSessionUpdate_${id}`, Date.now().toString());
         stopLiveTimer();
         await fetchWorkSummary();
       } else {
@@ -326,6 +807,14 @@ export default function WorkTrackDetailView() {
     if (isReadOnly) return;
     try {
       setSessionLoading(true);
+      
+      // Clear break data in database first
+      const updatedBreaks = {
+        ...breaksTaken,
+        currentBreakType: null
+      };
+      await saveBreaksToAPI(updatedBreaks, null);
+      
       const response = await fetch(`${BASE_URL}/WorkTrackWorkSession/ResumeWork?workTrackDetailId=${id}`, {
         method: "POST",
         headers: {
@@ -336,6 +825,9 @@ export default function WorkTrackDetailView() {
       
       if (result?.statusCode === 200) {
         toast("Work resumed!", { type: "success" });
+        // Notify other pages of session update
+        localStorage.setItem(`workTrackSessionUpdate_${id}`, Date.now().toString());
+        stopBreakCountdown();
         await fetchWorkSummary();
       } else {
         toast(result?.message || "Failed to resume work", { type: "error" });
@@ -350,6 +842,12 @@ export default function WorkTrackDetailView() {
 
   const handleEndWork = async () => {
     if (isReadOnly) return;
+    
+    // Stop any active break
+    if (breakActive) {
+      handleEndBreak();
+    }
+    
     try {
       setSessionLoading(true);
       const response = await fetch(`${BASE_URL}/WorkTrackWorkSession/EndWork?workTrackDetailId=${id}`, {
@@ -362,7 +860,26 @@ export default function WorkTrackDetailView() {
       
       if (result?.statusCode === 200) {
         toast("Work completed!", { type: "success" });
+        // Notify other pages of session update
+        localStorage.setItem(`workTrackSessionUpdate_${id}`, Date.now().toString());
         stopLiveTimer();
+        
+        // Calculate total break time
+        const totalBreakTime = 
+          breaksTaken.first.duration + 
+          breaksTaken.lunch.duration + 
+          breaksTaken.second.duration;
+        
+        // Create work ended summary with break details
+        setWorkEndedSummary({
+          totalWorkTime: liveTimer,
+          firstBreak: breaksTaken.first.duration,
+          lunchBreak: breaksTaken.lunch.duration,
+          secondBreak: breaksTaken.second.duration,
+          totalBreakTime: totalBreakTime,
+          totalDuration: liveTimer + totalBreakTime
+        });
+        
         await fetchWorkSummary();
         await fetchChecklists(); // Refresh to update completion percentage
       } else {
@@ -489,7 +1006,7 @@ export default function WorkTrackDetailView() {
       const result = await response.json();
       
       if (result?.statusCode === 200) {
-        const displayType = signatureType === "Admin" ? "Authorized Person" : signatureType;
+        const displayType = signatureType === "Admin" ? "Manager on Duty" : signatureType;
         toast(`${displayType} signature added successfully!`, { type: "success" });
         setSignatureModalOpen(false);
         await fetchData();
@@ -532,6 +1049,21 @@ export default function WorkTrackDetailView() {
   };
 
   const isWorkActive = workSummary?.currentStatus === "Started" || workSummary?.currentStatus === "Held";
+
+  const fetchSessionHistory = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/WorkTrackWorkSession/GetSessionHistory?workTrackDetailId=${id}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+      const result = await response.json();
+      const history = result?.data || result?.result || [];
+      setSessionHistory(Array.isArray(history) ? history : []);
+    } catch (error) {
+      console.error("Error fetching session history:", error);
+    }
+  };
 
   const fetchChecklists = async () => {
     try {
@@ -648,6 +1180,152 @@ export default function WorkTrackDetailView() {
     }
   };
 
+  // Duplicate Checklist
+  const handleOpenDuplicateModal = (checklist) => {
+    if (isReadOnly) return;
+    setDuplicateChecklist(checklist);
+    setDuplicateCount(1);
+    setDuplicateModalOpen(true);
+  };
+
+  const handleCloseDuplicateModal = () => {
+    setDuplicateModalOpen(false);
+    setDuplicateChecklist(null);
+    setDuplicateCount(1);
+  };
+
+  const handleDuplicateChecklist = async () => {
+    if (!duplicateChecklist || duplicateCount < 1 || duplicateCount > 50) {
+      toast("Please enter a valid number (1-50)", { type: "warning" });
+      return;
+    }
+
+    try {
+      setDuplicating(true);
+      let successCount = 0;
+      
+      for (let i = 0; i < duplicateCount; i++) {
+        // Create the checklist copy
+        const checklistPayload = {
+          workTrackDetailId: parseInt(id),
+          title: `${duplicateChecklist.title} (Copy ${i + 1})`,
+          description: duplicateChecklist.description || "",
+          sortOrder: checklists.length + i,
+        };
+
+        const checklistResponse = await fetch(`${BASE_URL}/WorkTrackChecklist/CreateChecklist`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(checklistPayload),
+        });
+
+        const checklistResult = await checklistResponse.json();
+        
+        if (checklistResult?.statusCode === 200 || checklistResponse.ok) {
+          const newChecklistId = checklistResult?.data?.id || checklistResult?.result?.id;
+          
+          // If the original checklist has items, duplicate them too
+          if (newChecklistId && duplicateChecklist.items && duplicateChecklist.items.length > 0) {
+            for (const item of duplicateChecklist.items) {
+              const itemPayload = {
+                workTrackChecklistId: newChecklistId,
+                title: item.title,
+                description: item.description || null,
+                itemType: item.itemType || "Checkbox",
+                options: (item.itemType === "Radio" || item.itemType === "Dropdown") ? item.optionsList : null,
+                isRequired: item.isRequired || false,
+                sortOrder: item.sortOrder || 0,
+              };
+
+              await fetch(`${BASE_URL}/WorkTrackChecklist/CreateChecklistItem`, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${localStorage.getItem("token")}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(itemPayload),
+              });
+            }
+          }
+          successCount++;
+        }
+      }
+
+      handleCloseDuplicateModal();
+      await fetchChecklists();
+      toast(`Successfully created ${successCount} duplicate${successCount > 1 ? 's' : ''}!`, { type: "success" });
+    } catch (error) {
+      console.error("Error duplicating checklist:", error);
+      toast("Failed to duplicate checklist", { type: "error" });
+    } finally {
+      setDuplicating(false);
+    }
+  };
+
+  // Edit Summary (Manager on Duty)
+  const handleOpenEditSummaryModal = () => {
+    setEditSummaryData({
+      notes: detail?.notes || "",
+      managerNotes: detail?.managerNotes || "",
+      status: detail?.status || "",
+      meterReading: detail?.latestMeter1Reading || ""
+    });
+    setEditSummaryModalOpen(true);
+  };
+
+  const handleCloseEditSummaryModal = () => {
+    setEditSummaryModalOpen(false);
+  };
+
+  const handleSaveEditSummary = async () => {
+    try {
+      setSavingSummary(true);
+      const response = await fetch(`${BASE_URL}/WorkTrackDetail/UpdateWorkTrackDetail`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: parseInt(id),
+          workTrackId: detail?.workTrackId,
+          notes: editSummaryData.notes,
+          managerNotes: editSummaryData.managerNotes,
+          status: editSummaryData.status,
+          latestMeter1Reading: editSummaryData.meterReading ? parseFloat(editSummaryData.meterReading) : null,
+          // Preserve existing values
+          trackId: detail?.trackId,
+          manufacturerId: detail?.manufacturerId,
+          modelYear: detail?.modelYear,
+          modelId: detail?.modelId,
+          equipmentDescription: detail?.equipmentDescription,
+          licenseNumber: detail?.licenseNumber,
+          serialNumber: detail?.serialNumber,
+          statusCode: detail?.statusCode,
+          assignee: detail?.assignee,
+          taskCompletePercentage: detail?.taskCompletePercentage
+        }),
+      });
+      const result = await response.json();
+      
+      if (result?.statusCode === 200 || response.ok) {
+        toast("Summary updated successfully!", { type: "success" });
+        handleCloseEditSummaryModal();
+        await fetchData();
+      } else {
+        toast(result?.message || "Failed to update summary", { type: "error" });
+      }
+    } catch (error) {
+      console.error("Error updating summary:", error);
+      toast("Failed to update summary", { type: "error" });
+    } finally {
+      setSavingSummary(false);
+    }
+  };
+
   // Checklist Item CRUD
   const handleOpenItemModal = (checklistId, item = null) => {
     if (isReadOnly) return;
@@ -757,7 +1435,7 @@ export default function WorkTrackDetailView() {
   const handleUpdateItemValue = async (itemId, selectedValue) => {
     if (isReadOnly) return;
     
-    if (workSummary?.currentStatus !== "Started") {
+    if (!isPendingApproval && workSummary?.currentStatus !== "Started") {
       toast("Please start work before updating items", { type: "warning" });
       return;
     }
@@ -780,65 +1458,50 @@ export default function WorkTrackDetailView() {
     }
   };
 
-  // Handle image upload for Image type items
-  const handleImageUpload = async (itemId, event) => {
+  // Open camera modal for Image type items
+  const openCameraModal = (itemId) => {
     if (isReadOnly) return;
     
-    if (workSummary?.currentStatus !== "Started") {
-      toast("Please start work before uploading images", { type: "warning" });
+    if (!isPendingApproval && workSummary?.currentStatus !== "Started") {
+      toast("Please start work before capturing images", { type: "warning" });
       return;
     }
+    setCameraItemId(itemId);
+    setCameraModalOpen(true);
+  };
 
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type
-    if (!file.type.startsWith("image/")) {
-      toast("Please select an image file", { type: "error" });
-      return;
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast("Image size must be less than 5MB", { type: "error" });
-      return;
-    }
+  // Handle camera capture from modal
+  const handleCameraCapture = async (imageData) => {
+    if (!cameraItemId) return;
 
     try {
-      // Convert to base64
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const imageData = e.target.result;
-        
-        const response = await fetch(`${BASE_URL}/WorkTrackChecklist/UploadChecklistItemImage`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ id: itemId, imageData }),
-        });
+      const response = await fetch(`${BASE_URL}/WorkTrackChecklist/UploadChecklistItemImage`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id: cameraItemId, imageData }),
+      });
 
-        const result = await response.json();
-        if (result?.statusCode === 200 || response.ok) {
-          await fetchChecklists();
-          toast("Image uploaded successfully!", { type: "success" });
-        } else {
-          toast(result?.message || "Failed to upload image", { type: "error" });
-        }
-      };
-      reader.readAsDataURL(file);
+      const result = await response.json();
+      if (result?.statusCode === 200 || response.ok) {
+        await fetchChecklists();
+        toast("Photo captured and uploaded successfully!", { type: "success" });
+      } else {
+        toast(result?.message || "Failed to upload photo", { type: "error" });
+      }
     } catch (error) {
-      console.error("Error uploading image:", error);
-      toast("Failed to upload image", { type: "error" });
+      console.error("Error uploading photo:", error);
+      toast("Failed to upload photo", { type: "error" });
     }
   };
 
   const handleToggleItem = async (itemId, isCompleted) => {
     if (isReadOnly) return;
     
-    // Only allow toggling if work has started
-    if (workSummary?.currentStatus !== "Started") {
+    // Only allow toggling if work has started OR pending approval (Manager on Duty editing)
+    if (!isPendingApproval && workSummary?.currentStatus !== "Started") {
       toast("Please start work before ticking checklist items", { type: "warning" });
       return;
     }
@@ -972,6 +1635,88 @@ export default function WorkTrackDetailView() {
         pauseOnHover
       />
 
+      {/* Previous Clock In/Out History - Show when there was a clock out */}
+      {detail?.clockOutTime && (
+        <Card sx={{ mb: 3, bgcolor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+          <CardContent>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AccessTimeIcon color="primary" />
+                Clock In/Out Details
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => {
+                  fetchSessionHistory();
+                  setHistoryModalOpen(true);
+                }}
+              >
+                See Full History
+              </Button>
+            </Box>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <Paper sx={{ p: 2, bgcolor: '#dcfce7' }}>
+                  <Typography variant="body2" color="textSecondary">Clock In</Typography>
+                  <Typography variant="subtitle1" fontWeight="bold" color="success.main">
+                    {detail.clockInTime ? new Date(detail.clockInTime).toLocaleString() : '-'}
+                  </Typography>
+                  {detail.clockInSelfie && (
+                    <Box mt={1}>
+                      <img 
+                        src={detail.clockInSelfie} 
+                        alt="Clock In Selfie" 
+                        style={{ width: 60, height: 60, borderRadius: 8, objectFit: 'cover', cursor: 'pointer' }}
+                        onClick={() => window.open(detail.clockInSelfie, '_blank')}
+                      />
+                    </Box>
+                  )}
+                  {detail.clockInLatitude && detail.clockInLongitude && (
+                    <Button
+                      size="small"
+                      startIcon={<LocationOnIcon />}
+                      onClick={() => window.open(`https://www.google.com/maps?q=${detail.clockInLatitude},${detail.clockInLongitude}`, '_blank')}
+                      sx={{ mt: 1 }}
+                    >
+                      View Location
+                    </Button>
+                  )}
+                </Paper>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Paper sx={{ p: 2, bgcolor: '#fef2f2' }}>
+                  <Typography variant="body2" color="textSecondary">Clock Out</Typography>
+                  <Typography variant="subtitle1" fontWeight="bold" color="error.main">
+                    {detail.clockOutTime ? new Date(detail.clockOutTime).toLocaleString() : '-'}
+                  </Typography>
+                  {detail.clockOutSelfie && (
+                    <Box mt={1}>
+                      <img 
+                        src={detail.clockOutSelfie} 
+                        alt="Clock Out Selfie" 
+                        style={{ width: 60, height: 60, borderRadius: 8, objectFit: 'cover', cursor: 'pointer' }}
+                        onClick={() => window.open(detail.clockOutSelfie, '_blank')}
+                      />
+                    </Box>
+                  )}
+                  {detail.clockOutLatitude && detail.clockOutLongitude && (
+                    <Button
+                      size="small"
+                      startIcon={<LocationOnIcon />}
+                      onClick={() => window.open(`https://www.google.com/maps?q=${detail.clockOutLatitude},${detail.clockOutLongitude}`, '_blank')}
+                      sx={{ mt: 1 }}
+                    >
+                      View Location
+                    </Button>
+                  )}
+                </Paper>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Completed Work Banner */}
       {isCompleted && (
         <Alert 
@@ -986,13 +1731,102 @@ export default function WorkTrackDetailView() {
         </Alert>
       )}
 
+      {/* Work Completed Summary Dashboard - Same as technician page */}
+      {(workEndedSummary || workSummary?.currentStatus === "Completed") && (
+        <Card sx={{ mb: 3, bgcolor: '#f0fdf4', border: '2px solid #22c55e' }}>
+          <CardContent>
+            <Box display="flex" alignItems="center" mb={2}>
+              <CheckCircleIcon sx={{ fontSize: 32, color: 'success.main', mr: 1 }} />
+              <Typography variant="h6" fontWeight="bold" color="success.main">
+                Work Completed Successfully!
+              </Typography>
+            </Box>
+            <Grid container spacing={2}>
+              <Grid item xs={6} sm={4}>
+                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#dcfce7' }}>
+                  <Typography variant="body2" color="textSecondary">Work Time</Typography>
+                  <Typography variant="h5" color="success.main" fontWeight="bold">
+                    {formatDuration(workEndedSummary?.totalWorkTime || workSummary?.totalWorkDuration || 0)}
+                  </Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#fef3c7' }}>
+                  <CoffeeIcon sx={{ color: '#f59e0b', mb: 0.5 }} />
+                  <Typography variant="body2" color="textSecondary">1st Break</Typography>
+                  <Typography variant="h6" sx={{ color: '#f59e0b' }} fontWeight="bold">
+                    {(workEndedSummary?.firstBreak || breaksTaken.first.duration) > 0 
+                      ? formatDuration(workEndedSummary?.firstBreak || breaksTaken.first.duration) 
+                      : "Not taken"}
+                  </Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#d1fae5' }}>
+                  <RestaurantIcon sx={{ color: '#10b981', mb: 0.5 }} />
+                  <Typography variant="body2" color="textSecondary">Lunch Break</Typography>
+                  <Typography variant="h6" sx={{ color: '#10b981' }} fontWeight="bold">
+                    {(workEndedSummary?.lunchBreak || breaksTaken.lunch.duration) > 0 
+                      ? formatDuration(workEndedSummary?.lunchBreak || breaksTaken.lunch.duration) 
+                      : "Not taken"}
+                  </Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#ede9fe' }}>
+                  <FreeBreakfastIcon sx={{ color: '#8b5cf6', mb: 0.5 }} />
+                  <Typography variant="body2" color="textSecondary">2nd Break</Typography>
+                  <Typography variant="h6" sx={{ color: '#8b5cf6' }} fontWeight="bold">
+                    {(workEndedSummary?.secondBreak || breaksTaken.second.duration) > 0 
+                      ? formatDuration(workEndedSummary?.secondBreak || breaksTaken.second.duration) 
+                      : "Not taken"}
+                  </Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#fef9c3' }}>
+                  <Typography variant="body2" color="textSecondary">Total Break Time</Typography>
+                  <Typography variant="h6" sx={{ color: '#ca8a04' }} fontWeight="bold">
+                    {formatDuration(
+                      workEndedSummary?.totalBreakTime || 
+                      (breaksTaken.first.duration + breaksTaken.lunch.duration + breaksTaken.second.duration)
+                    )}
+                  </Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#e0e7ff' }}>
+                  <Typography variant="body2" color="textSecondary">Total Duration</Typography>
+                  <Typography variant="h5" sx={{ color: '#4f46e5' }} fontWeight="bold">
+                    {formatDuration(
+                      workEndedSummary?.totalDuration || 
+                      ((workSummary?.totalWorkDuration || 0) + breaksTaken.first.duration + breaksTaken.lunch.duration + breaksTaken.second.duration)
+                    )}
+                  </Typography>
+                </Paper>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Pending Approval Banner */}
       {isPendingApproval && (
         <Alert 
           severity="warning" 
           sx={{ mb: 3 }}
+          action={
+            <Button 
+              color="inherit" 
+              size="small" 
+              startIcon={<EditIcon />}
+              onClick={handleOpenEditSummaryModal}
+            >
+              Edit Summary
+            </Button>
+          }
         >
-          <Typography variant="h6">Pending Admin Approval</Typography>
+          <Typography variant="h6">Pending Manager on Duty Approval</Typography>
           <Typography variant="body2">
             This work has been submitted and is awaiting signatures and final approval.
           </Typography>
@@ -1512,100 +2346,226 @@ export default function WorkTrackDetailView() {
                     {formatDuration(liveTimer)}
                   </Typography>
                   <Typography variant="body2" color="textSecondary">
-                    {workSummary?.currentStatus === "Started" && "Work in Progress..."}
-                    {workSummary?.currentStatus === "Held" && "Work on Hold"}
+                    {workSummary?.currentStatus === "Started" && !breakActive && "Work in Progress..."}
                     {workSummary?.currentStatus === "Completed" && "Work Completed"}
                     {(!workSummary?.currentStatus || workSummary?.currentStatus === "NotStarted") && "Not Started"}
                   </Typography>
                 </Box>
+                
+                {/* Break Countdown Display */}
+                {breakActive && (
+                  <Box 
+                    sx={{ 
+                      ml: 3, 
+                      p: 2, 
+                      borderRadius: 2, 
+                      bgcolor: breakType === "1st" ? '#fef3c7' : breakType === "lunch" ? '#d1fae5' : '#ede9fe',
+                      border: '2px solid',
+                      borderColor: breakType === "1st" ? '#f59e0b' : breakType === "lunch" ? '#10b981' : '#8b5cf6',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2
+                    }}
+                  >
+                    {breakType === "1st" && <CoffeeIcon sx={{ fontSize: 32, color: '#f59e0b' }} />}
+                    {breakType === "lunch" && <RestaurantIcon sx={{ fontSize: 32, color: '#10b981' }} />}
+                    {breakType === "2nd" && <FreeBreakfastIcon sx={{ fontSize: 32, color: '#8b5cf6' }} />}
+                    <Box>
+                      <Typography variant="body2" fontWeight="bold" sx={{ color: breakType === "1st" ? '#92400e' : breakType === "lunch" ? '#065f46' : '#5b21b6' }}>
+                        {breakType === "1st" ? "1st Break" : breakType === "lunch" ? "Lunch Break" : "2nd Break"}
+                      </Typography>
+                      <Typography variant="h4" fontWeight="bold" sx={{ color: breakType === "1st" ? '#f59e0b' : breakType === "lunch" ? '#10b981' : '#8b5cf6' }}>
+                        {formatBreakCountdown(breakCountdown)}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: breakType === "1st" ? '#92400e' : breakType === "lunch" ? '#065f46' : '#5b21b6' }}>
+                        remaining
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
               </Box>
 
-              <Box display="flex" gap={1} flexWrap="wrap">
-                {/* Start Button - Show when not started or completed */}
-                {(!workSummary?.currentStatus || workSummary?.currentStatus === "NotStarted" || workSummary?.currentStatus === "Completed") && !isPendingApproval && (
-                  <Button
-                    variant="contained"
-                    color="success"
-                    startIcon={<PlayArrowIcon />}
-                    onClick={handleStartWork}
-                    disabled={sessionLoading}
-                    size="large"
-                  >
-                    Start Work
-                  </Button>
-                )}
-
-                {/* Hold Button - Show when started */}
+              {/* Work controls are managed by technician only - this is view-only */}
+              <Box display="flex" gap={1} flexWrap="wrap" alignItems="center">
+                <Chip 
+                  icon={<PersonIcon />}
+                  label="Technician Controls Work Timer"
+                  sx={{ bgcolor: '#e0f2fe', color: '#0369a1' }}
+                />
                 {workSummary?.currentStatus === "Started" && (
-                  <Button
-                    variant="contained"
-                    color="warning"
-                    startIcon={<PauseIcon />}
-                    onClick={handleHoldWork}
-                    disabled={sessionLoading}
-                    size="large"
-                  >
-                    Hold
-                  </Button>
+                  <Chip label="Work In Progress" color="success" size="small" />
                 )}
-
-                {/* Resume Button - Show when held */}
                 {workSummary?.currentStatus === "Held" && (
-                  <Button
-                    variant="contained"
-                    color="success"
-                    startIcon={<PlayArrowIcon />}
-                    onClick={handleResumeWork}
-                    disabled={sessionLoading}
-                    size="large"
-                  >
-                    Resume
-                  </Button>
+                  <Chip label="On Break" color="warning" size="small" />
                 )}
-
-                {/* End Button - Show when started or held */}
-                {(workSummary?.currentStatus === "Started" || workSummary?.currentStatus === "Held") && (
-                  <Button
-                    variant="contained"
-                    color="error"
-                    startIcon={<StopIcon />}
-                    onClick={handleEndWork}
-                    disabled={sessionLoading}
-                    size="large"
-                  >
-                    End Work
-                  </Button>
+                {workSummary?.currentStatus === "Completed" && (
+                  <Chip label="Completed" color="success" size="small" />
+                )}
+                {(!workSummary?.currentStatus || workSummary?.currentStatus === "NotStarted") && (
+                  <Chip label="Not Started" color="default" size="small" />
                 )}
               </Box>
             </Box>
+
+            {/* Break Status Indicators */}
+            {workSummary?.currentStatus === "Started" && (
+              <Box mt={2} pt={2} borderTop="1px solid #eee">
+                <Typography variant="body2" color="textSecondary" mb={1}>Break Status</Typography>
+                <Box display="flex" gap={1} flexWrap="wrap">
+                  <Chip 
+                    icon={<CoffeeIcon />}
+                    label={breaksTaken.first.taken ? "1st Break ✓" : "1st Break"}
+                    sx={{ 
+                      bgcolor: breaksTaken.first.taken ? '#fef3c7' : '#f1f5f9',
+                      color: breaksTaken.first.taken ? '#92400e' : '#64748b',
+                      fontWeight: breaksTaken.first.taken ? 600 : 400
+                    }}
+                  />
+                  <Chip 
+                    icon={<RestaurantIcon />}
+                    label={breaksTaken.lunch.taken ? "Lunch ✓" : "Lunch"}
+                    sx={{ 
+                      bgcolor: breaksTaken.lunch.taken ? '#d1fae5' : '#f1f5f9',
+                      color: breaksTaken.lunch.taken ? '#065f46' : '#64748b',
+                      fontWeight: breaksTaken.lunch.taken ? 600 : 400
+                    }}
+                  />
+                  <Chip 
+                    icon={<FreeBreakfastIcon />}
+                    label={breaksTaken.second.taken ? "2nd Break ✓" : "2nd Break"}
+                    sx={{ 
+                      bgcolor: breaksTaken.second.taken ? '#ede9fe' : '#f1f5f9',
+                      color: breaksTaken.second.taken ? '#5b21b6' : '#64748b',
+                      fontWeight: breaksTaken.second.taken ? 600 : 400
+                    }}
+                  />
+                </Box>
+              </Box>
+            )}
 
             {/* Work Summary Stats */}
             {workSummary && (workSummary.totalWorkDuration > 0 || workSummary.totalHoldDuration > 0) && (
               <Box mt={2} pt={2} borderTop="1px solid #eee">
                 <Grid container spacing={2}>
-                  <Grid item xs={6} sm={3}>
+                  <Grid item xs={6} sm={2}>
                     <Typography variant="body2" color="textSecondary">Work Time</Typography>
-                    <Typography variant="h6" color="success.main">
+                    <Typography variant="h6" color="success.main" fontWeight="bold">
                       {workSummary.formattedWorkDuration || "0s"}
                     </Typography>
                   </Grid>
-                  <Grid item xs={6} sm={3}>
-                    <Typography variant="body2" color="textSecondary">Hold Time</Typography>
-                    <Typography variant="h6" color="warning.main">
-                      {workSummary.formattedHoldDuration || "0s"}
+                  <Grid item xs={4} sm={2}>
+                    <Box display="flex" alignItems="center" gap={0.5}>
+                      <CoffeeIcon sx={{ fontSize: 16, color: '#f59e0b' }} />
+                      <Typography variant="body2" color="textSecondary">1st Break</Typography>
+                    </Box>
+                    <Typography variant="h6" sx={{ color: '#f59e0b' }} fontWeight="bold">
+                      {breakActive && breakType === "1st" 
+                        ? formatBreakCountdown(breakCountdown)
+                        : breaksTaken.first.taken 
+                          ? formatDuration(breaksTaken.first.duration) 
+                          : "-"}
                     </Typography>
                   </Grid>
-                  <Grid item xs={6} sm={3}>
+                  <Grid item xs={4} sm={2}>
+                    <Box display="flex" alignItems="center" gap={0.5}>
+                      <RestaurantIcon sx={{ fontSize: 16, color: '#10b981' }} />
+                      <Typography variant="body2" color="textSecondary">Lunch</Typography>
+                    </Box>
+                    <Typography variant="h6" sx={{ color: '#10b981' }} fontWeight="bold">
+                      {breakActive && breakType === "lunch" 
+                        ? formatBreakCountdown(breakCountdown)
+                        : breaksTaken.lunch.taken 
+                          ? formatDuration(breaksTaken.lunch.duration) 
+                          : "-"}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={4} sm={2}>
+                    <Box display="flex" alignItems="center" gap={0.5}>
+                      <FreeBreakfastIcon sx={{ fontSize: 16, color: '#8b5cf6' }} />
+                      <Typography variant="body2" color="textSecondary">2nd Break</Typography>
+                    </Box>
+                    <Typography variant="h6" sx={{ color: '#8b5cf6' }} fontWeight="bold">
+                      {breakActive && breakType === "2nd" 
+                        ? formatBreakCountdown(breakCountdown)
+                        : breaksTaken.second.taken 
+                          ? formatDuration(breaksTaken.second.duration) 
+                          : "-"}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6} sm={2}>
                     <Typography variant="body2" color="textSecondary">Total Time</Typography>
-                    <Typography variant="h6">
-                      {workSummary.formattedTotalDuration || "0s"}
+                    <Typography variant="h6" fontWeight="bold">
+                      {formatDuration((workSummary.totalWorkDuration || 0) + breaksTaken.first.duration + breaksTaken.lunch.duration + breaksTaken.second.duration)}
                     </Typography>
                   </Grid>
-                  <Grid item xs={6} sm={3}>
+                  <Grid item xs={6} sm={2}>
                     <Typography variant="body2" color="textSecondary">Sessions</Typography>
-                    <Typography variant="h6">
+                    <Typography variant="h6" fontWeight="bold">
                       {workSummary.sessionCount || 0} ({workSummary.completedSessions || 0} completed)
                     </Typography>
+                  </Grid>
+                </Grid>
+              </Box>
+            )}
+
+            {/* Work Ended Summary - Show comprehensive summary after work ends */}
+            {workEndedSummary && (
+              <Box mt={3} p={3} sx={{ bgcolor: '#f0fdf4', borderRadius: 2, border: '2px solid #22c55e' }}>
+                <Typography variant="h6" fontWeight="bold" color="success.main" mb={2}>
+                  <CheckCircleIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                  Work Session Complete - Summary
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={6} sm={4}>
+                    <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#dcfce7' }}>
+                      <Typography variant="body2" color="textSecondary">Work Time</Typography>
+                      <Typography variant="h5" color="success.main" fontWeight="bold">
+                        {formatDuration(workEndedSummary.totalWorkTime)}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={6} sm={4}>
+                    <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#fef3c7' }}>
+                      <CoffeeIcon sx={{ color: '#f59e0b', mb: 0.5 }} />
+                      <Typography variant="body2" color="textSecondary">1st Break</Typography>
+                      <Typography variant="h6" sx={{ color: '#f59e0b' }} fontWeight="bold">
+                        {workEndedSummary.firstBreak > 0 ? formatDuration(workEndedSummary.firstBreak) : "Not taken"}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={6} sm={4}>
+                    <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#d1fae5' }}>
+                      <RestaurantIcon sx={{ color: '#10b981', mb: 0.5 }} />
+                      <Typography variant="body2" color="textSecondary">Lunch Break</Typography>
+                      <Typography variant="h6" sx={{ color: '#10b981' }} fontWeight="bold">
+                        {workEndedSummary.lunchBreak > 0 ? formatDuration(workEndedSummary.lunchBreak) : "Not taken"}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={6} sm={4}>
+                    <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#ede9fe' }}>
+                      <FreeBreakfastIcon sx={{ color: '#8b5cf6', mb: 0.5 }} />
+                      <Typography variant="body2" color="textSecondary">2nd Break</Typography>
+                      <Typography variant="h6" sx={{ color: '#8b5cf6' }} fontWeight="bold">
+                        {workEndedSummary.secondBreak > 0 ? formatDuration(workEndedSummary.secondBreak) : "Not taken"}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={6} sm={4}>
+                    <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#fef9c3' }}>
+                      <Typography variant="body2" color="textSecondary">Total Break Time</Typography>
+                      <Typography variant="h6" sx={{ color: '#ca8a04' }} fontWeight="bold">
+                        {formatDuration(workEndedSummary.totalBreakTime)}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={6} sm={4}>
+                    <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#e0e7ff' }}>
+                      <Typography variant="body2" color="textSecondary">Total Duration</Typography>
+                      <Typography variant="h5" sx={{ color: '#4f46e5' }} fontWeight="bold">
+                        {formatDuration(workEndedSummary.totalDuration)}
+                      </Typography>
+                    </Paper>
                   </Grid>
                 </Grid>
               </Box>
@@ -1614,7 +2574,7 @@ export default function WorkTrackDetailView() {
             {/* Alert when work not started */}
             {(!workSummary?.currentStatus || workSummary?.currentStatus === "NotStarted") && !isPendingApproval && (
               <Alert severity="info" sx={{ mt: 2 }}>
-                Click "Start Work" to begin. You can only tick checklist items after starting work.
+                Waiting for technician to start work. Checklist items can only be ticked after work starts.
               </Alert>
             )}
           </CardContent>
@@ -1759,9 +2719,15 @@ export default function WorkTrackDetailView() {
               <Typography variant="body1" fontWeight="medium">{formatDate(detail.createdOn)}</Typography>
             </Grid>
             {detail.notes && (
-              <Grid item xs={12}>
-                <Typography variant="body2" color="textSecondary">Notes</Typography>
+              <Grid item xs={12} md={6}>
+                <Typography variant="body2" color="textSecondary">Technician Notes</Typography>
                 <Typography variant="body1">{detail.notes}</Typography>
+              </Grid>
+            )}
+            {detail.managerNotes && (
+              <Grid item xs={12} md={6}>
+                <Typography variant="body2" color="textSecondary">Manager on Duty Notes</Typography>
+                <Typography variant="body1" sx={{ color: '#7c3aed', fontWeight: 500 }}>{detail.managerNotes}</Typography>
               </Grid>
             )}
           </Grid>
@@ -1875,7 +2841,7 @@ export default function WorkTrackDetailView() {
               {isReadOnly && <LockIcon sx={{ ml: 1, fontSize: 18, color: 'text.secondary' }} />}
             </Typography>
             <Box display="flex" gap={1}>
-              {!isReadOnly && !isPendingApproval && (
+              {!isReadOnly && (
                 <Button
                   variant="contained"
                   startIcon={<AddIcon />}
@@ -1884,7 +2850,7 @@ export default function WorkTrackDetailView() {
                   Add Checklist
                 </Button>
               )}
-              {/* Submit to Admin Button - Show when all items completed and status is Draft */}
+              {/* Submit to Manager on Duty Button - Show when all items completed and status is Draft */}
               {!isReadOnly && !isPendingApproval && getAllItemsCompleted() && checklists.length > 0 && detail.submissionStatus === "Draft" && (
                 <Button
                   variant="contained"
@@ -1892,7 +2858,7 @@ export default function WorkTrackDetailView() {
                   startIcon={<SendIcon />}
                   onClick={handleOpenSubmitModal}
                 >
-                  Submit to Admin
+                  Submit to Manager on Duty
                 </Button>
               )}
             </Box>
@@ -1948,7 +2914,7 @@ export default function WorkTrackDetailView() {
                           color={getChecklistProgress(checklist) === 100 ? "success" : "primary"}
                         />
                       </Box>
-                      {!isReadOnly && !isPendingApproval && (
+                      {!isReadOnly && (
                         <>
                           <Tooltip title="Add Item">
                             <IconButton
@@ -1965,6 +2931,15 @@ export default function WorkTrackDetailView() {
                               onClick={() => handleOpenChecklistModal(checklist)}
                             >
                               <EditIcon fontSize="inherit" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Duplicate Checklist">
+                            <IconButton
+                              size="small"
+                              sx={{ color: '#8b5cf6' }}
+                              onClick={() => handleOpenDuplicateModal(checklist)}
+                            >
+                              <ContentCopyIcon fontSize="inherit" />
                             </IconButton>
                           </Tooltip>
                           <Tooltip title="Delete Checklist">
@@ -2017,7 +2992,7 @@ export default function WorkTrackDetailView() {
                                         onChange={(e) => handleToggleItem(item.id, e.target.checked)}
                                         icon={<RadioButtonUncheckedIcon />}
                                         checkedIcon={<CheckCircleIcon color="success" />}
-                                        disabled={isReadOnly || isPendingApproval || workSummary?.currentStatus !== "Started"}
+                                        disabled={isReadOnly || (!isPendingApproval && workSummary?.currentStatus !== "Started")}
                                       />
                                     </span>
                                   </Tooltip>
@@ -2051,7 +3026,7 @@ export default function WorkTrackDetailView() {
                                 </Box>
                               </Box>
                               
-                              {!isReadOnly && !isPendingApproval && (
+                              {!isReadOnly && (
                                 <Box>
                                   <Tooltip title="Edit Item">
                                     <IconButton
@@ -2087,7 +3062,7 @@ export default function WorkTrackDetailView() {
                                       value={option}
                                       control={<Radio size="small" />}
                                       label={option}
-                                      disabled={isReadOnly || isPendingApproval || workSummary?.currentStatus !== "Started"}
+                                      disabled={isReadOnly || (!isPendingApproval && workSummary?.currentStatus !== "Started")}
                                     />
                                   ))}
                                 </RadioGroup>
@@ -2103,7 +3078,7 @@ export default function WorkTrackDetailView() {
                                     value={item.selectedValue || ""}
                                     label="Select an option"
                                     onChange={(e) => handleUpdateItemValue(item.id, e.target.value)}
-                                    disabled={isReadOnly || isPendingApproval || workSummary?.currentStatus !== "Started"}
+                                    disabled={isReadOnly || (!isPendingApproval && workSummary?.currentStatus !== "Started")}
                                   >
                                     <MenuItem value="">
                                       <em>None</em>
@@ -2133,21 +3108,15 @@ export default function WorkTrackDetailView() {
                                         border: "1px solid #ddd",
                                       }}
                                     />
-                                    {!isReadOnly && !isPendingApproval && workSummary?.currentStatus === "Started" && (
+                                    {!isReadOnly && (isPendingApproval || workSummary?.currentStatus === "Started") && (
                                       <Box mt={1}>
                                         <Button
                                           variant="outlined"
                                           size="small"
-                                          startIcon={<CloudUploadIcon />}
-                                          component="label"
+                                          startIcon={<CameraAltIcon />}
+                                          onClick={() => openCameraModal(item.id)}
                                         >
-                                          Replace Image
-                                          <input
-                                            type="file"
-                                            accept="image/*"
-                                            hidden
-                                            onChange={(e) => handleImageUpload(item.id, e)}
-                                          />
+                                          Retake Photo
                                         </Button>
                                       </Box>
                                     )}
@@ -2162,26 +3131,20 @@ export default function WorkTrackDetailView() {
                                       bgcolor: "#fafafa",
                                     }}
                                   >
-                                    <CloudUploadIcon sx={{ fontSize: 40, color: "#aaa", mb: 1 }} />
+                                    <CameraAltIcon sx={{ fontSize: 40, color: "#aaa", mb: 1 }} />
                                     <Typography variant="body2" color="textSecondary" gutterBottom>
-                                      {isReadOnly || isPendingApproval || workSummary?.currentStatus !== "Started"
-                                        ? "No image uploaded"
-                                        : "Click to upload an image"}
+                                      {isReadOnly || (!isPendingApproval && workSummary?.currentStatus !== "Started")
+                                        ? "No photo captured"
+                                        : "Tap to capture photo"}
                                     </Typography>
-                                    {!isReadOnly && !isPendingApproval && workSummary?.currentStatus === "Started" && (
+                                    {!isReadOnly && (isPendingApproval || workSummary?.currentStatus === "Started") && (
                                       <Button
                                         variant="contained"
                                         size="small"
-                                        startIcon={<CloudUploadIcon />}
-                                        component="label"
+                                        startIcon={<CameraAltIcon />}
+                                        onClick={() => openCameraModal(item.id)}
                                       >
-                                        Upload Image
-                                        <input
-                                          type="file"
-                                          accept="image/*"
-                                          hidden
-                                          onChange={(e) => handleImageUpload(item.id, e)}
-                                        />
+                                        Take Photo
                                       </Button>
                                     )}
                                   </Box>
@@ -2411,11 +3374,143 @@ export default function WorkTrackDetailView() {
         </DialogActions>
       </Dialog>
 
-      {/* Submit to Admin Modal */}
+      {/* Duplicate Checklist Modal */}
+      <Dialog open={duplicateModalOpen} onClose={handleCloseDuplicateModal} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box display="flex" alignItems="center" gap={1}>
+              <ContentCopyIcon sx={{ color: '#8b5cf6' }} />
+              <Typography variant="h6">Duplicate Checklist</Typography>
+            </Box>
+            <IconButton onClick={handleCloseDuplicateModal}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          {duplicateChecklist && (
+            <Box>
+              <Typography variant="body2" color="textSecondary" mb={2}>
+                Duplicating: <strong>{duplicateChecklist.title}</strong>
+                {duplicateChecklist.items?.length > 0 && (
+                  <span> ({duplicateChecklist.items.length} items)</span>
+                )}
+              </Typography>
+              <TextField
+                fullWidth
+                label="Number of copies"
+                type="number"
+                value={duplicateCount}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value) || 1;
+                  setDuplicateCount(Math.min(50, Math.max(1, value)));
+                }}
+                inputProps={{ min: 1, max: 50 }}
+                variant="outlined"
+                size="small"
+                helperText="Maximum 50 copies allowed"
+                autoFocus
+              />
+              {duplicateCount > 10 && (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  Creating {duplicateCount} copies may take a few moments.
+                </Alert>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDuplicateModal} color="inherit" disabled={duplicating}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleDuplicateChecklist} 
+            variant="contained" 
+            sx={{ bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' } }}
+            disabled={duplicating || duplicateCount < 1 || duplicateCount > 50}
+            startIcon={duplicating ? <CircularProgress size={16} color="inherit" /> : <ContentCopyIcon />}
+          >
+            {duplicating ? "Duplicating..." : `Duplicate (${duplicateCount})`}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Summary Modal (Manager on Duty) */}
+      <Dialog open={editSummaryModalOpen} onClose={handleCloseEditSummaryModal} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box display="flex" alignItems="center" gap={1}>
+              <EditIcon color="primary" />
+              <Typography variant="h6">Edit Summary</Typography>
+            </Box>
+            <IconButton onClick={handleCloseEditSummaryModal}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Box display="flex" flexDirection="column" gap={2}>
+            <TextField
+              fullWidth
+              label="Status"
+              value={editSummaryData.status}
+              onChange={(e) => setEditSummaryData(prev => ({ ...prev, status: e.target.value }))}
+              variant="outlined"
+              size="small"
+            />
+            <TextField
+              fullWidth
+              label="Meter Reading"
+              value={editSummaryData.meterReading}
+              onChange={(e) => setEditSummaryData(prev => ({ ...prev, meterReading: e.target.value }))}
+              variant="outlined"
+              size="small"
+            />
+            <TextField
+              fullWidth
+              label="Technician Notes"
+              value={editSummaryData.notes}
+              onChange={(e) => setEditSummaryData(prev => ({ ...prev, notes: e.target.value }))}
+              variant="outlined"
+              size="small"
+              multiline
+              rows={3}
+            />
+            <TextField
+              fullWidth
+              label="Manager on Duty Notes"
+              value={editSummaryData.managerNotes}
+              onChange={(e) => setEditSummaryData(prev => ({ ...prev, managerNotes: e.target.value }))}
+              variant="outlined"
+              size="small"
+              multiline
+              rows={3}
+              placeholder="Add any notes or comments before authorization..."
+              helperText="These notes will be included in the final report"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseEditSummaryModal} color="inherit" disabled={savingSummary}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSaveEditSummary} 
+            variant="contained" 
+            color="primary"
+            disabled={savingSummary}
+            startIcon={savingSummary ? <CircularProgress size={16} color="inherit" /> : null}
+          >
+            {savingSummary ? "Saving..." : "Save Changes"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Submit to Manager on Duty Modal */}
       <Dialog open={submitModalOpen} onClose={() => setSubmitModalOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>
           <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Typography variant="h6">Work Summary - Submit to Admin</Typography>
+            <Typography variant="h6">Work Summary - Submit to Manager on Duty</Typography>
             <IconButton onClick={() => setSubmitModalOpen(false)}>
               <CloseIcon />
             </IconButton>
@@ -2511,7 +3606,7 @@ export default function WorkTrackDetailView() {
             disabled={submitting}
             startIcon={<SendIcon />}
           >
-            {submitting ? "Submitting..." : "Submit to Admin"}
+            {submitting ? "Submitting..." : "Submit to Manager on Duty"}
           </Button>
         </DialogActions>
       </Dialog>
@@ -2520,7 +3615,7 @@ export default function WorkTrackDetailView() {
       <Dialog open={signatureModalOpen} onClose={() => setSignatureModalOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
           <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Typography variant="h6">{signatureType === "Admin" ? "Authorized Person" : signatureType} Signature</Typography>
+            <Typography variant="h6">{signatureType === "Admin" ? "Manager on Duty" : signatureType} Signature</Typography>
             <IconButton onClick={() => setSignatureModalOpen(false)}>
               <CloseIcon />
             </IconButton>
@@ -2573,6 +3668,132 @@ export default function WorkTrackDetailView() {
           >
             {savingSignature ? "Saving..." : "Save Signature"}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Camera Capture Modal */}
+      <CameraCaptureModal
+        open={cameraModalOpen}
+        onClose={() => {
+          setCameraModalOpen(false);
+          setCameraItemId(null);
+        }}
+        onCapture={handleCameraCapture}
+        title="Capture Work Photo"
+      />
+
+      {/* Session History Modal */}
+      <Dialog
+        open={historyModalOpen}
+        onClose={() => setHistoryModalOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="h6">Work Session History</Typography>
+            <IconButton onClick={() => setHistoryModalOpen(false)} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          {/* Clock In/Out from Detail */}
+          {detail?.clockInTime && (
+            <Box mb={3}>
+              <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                Clock In/Out Record
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <Paper sx={{ p: 2, bgcolor: '#dcfce7' }}>
+                    <Typography variant="body2" color="textSecondary">Clock In</Typography>
+                    <Typography variant="subtitle1" fontWeight="bold" color="success.main">
+                      {new Date(detail.clockInTime).toLocaleString()}
+                    </Typography>
+                    {detail.clockInSelfie && (
+                      <Box mt={1}>
+                        <img 
+                          src={detail.clockInSelfie} 
+                          alt="Clock In Selfie" 
+                          style={{ width: 50, height: 50, borderRadius: 8, objectFit: 'cover', cursor: 'pointer' }}
+                          onClick={() => window.open(detail.clockInSelfie, '_blank')}
+                        />
+                      </Box>
+                    )}
+                  </Paper>
+                </Grid>
+                {detail.clockOutTime && (
+                  <Grid item xs={12} sm={6}>
+                    <Paper sx={{ p: 2, bgcolor: '#fef2f2' }}>
+                      <Typography variant="body2" color="textSecondary">Clock Out</Typography>
+                      <Typography variant="subtitle1" fontWeight="bold" color="error.main">
+                        {new Date(detail.clockOutTime).toLocaleString()}
+                      </Typography>
+                      {detail.clockOutSelfie && (
+                        <Box mt={1}>
+                          <img 
+                            src={detail.clockOutSelfie} 
+                            alt="Clock Out Selfie" 
+                            style={{ width: 50, height: 50, borderRadius: 8, objectFit: 'cover', cursor: 'pointer' }}
+                            onClick={() => window.open(detail.clockOutSelfie, '_blank')}
+                          />
+                        </Box>
+                      )}
+                    </Paper>
+                  </Grid>
+                )}
+              </Grid>
+            </Box>
+          )}
+
+          {/* Work Sessions Table */}
+          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+            Work Sessions ({sessionHistory.length})
+          </Typography>
+          {sessionHistory.length === 0 ? (
+            <Alert severity="info">No work sessions recorded yet.</Alert>
+          ) : (
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: '#f1f5f9' }}>
+                    <TableCell><strong>Date</strong></TableCell>
+                    <TableCell><strong>Status</strong></TableCell>
+                    <TableCell><strong>Work Time</strong></TableCell>
+                    <TableCell><strong>Break Time</strong></TableCell>
+                    <TableCell><strong>User</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {sessionHistory.map((session, index) => (
+                    <TableRow key={session.id || index} sx={{ '&:nth-of-type(odd)': { bgcolor: '#fafafa' } }}>
+                      <TableCell>
+                        {session.createdOn ? new Date(session.createdOn).toLocaleDateString() : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={session.status || 'Unknown'} 
+                          size="small"
+                          color={
+                            session.status === 'Completed' ? 'success' :
+                            session.status === 'Started' ? 'primary' :
+                            session.status === 'Held' ? 'warning' : 'default'
+                          }
+                        />
+                      </TableCell>
+                      <TableCell>{session.formattedWorkDuration || '-'}</TableCell>
+                      <TableCell>{session.formattedHoldDuration || '-'}</TableCell>
+                      <TableCell>{session.userName || '-'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setHistoryModalOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
     </>

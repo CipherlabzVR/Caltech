@@ -112,6 +112,8 @@ export default function Customers() {
                   <TableCell>Organization</TableCell>
                   <TableCell>Contact No</TableCell>
                   <TableCell>Receivable Acc</TableCell>
+                  <TableCell align="right">Credit Limit</TableCell>
+                  <TableCell align="right" sx={{ color: "success.main", fontWeight: 600 }}>Available Balance</TableCell>
                   <TableCell>Details</TableCell>
                   <TableCell align="right">Action</TableCell>
                 </TableRow>
@@ -119,7 +121,7 @@ export default function Customers() {
               <TableBody>
                 {customerList.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6}>
+                    <TableCell colSpan={12}>
                       <Typography color="error">No Customers Available</Typography>
                     </TableCell>
                   </TableRow>
@@ -138,6 +140,8 @@ export default function Customers() {
                       <TableCell>{item.company || ""}</TableCell>
                       <TableCell>{item.customerContactDetails?.[0]?.contactNo || ""}</TableCell>
                       <TableCell>{chartOfAccInfo[item.receivableAccount]?.code || "-"} - {chartOfAccInfo[item.receivableAccount]?.description || "-"}</TableCell>
+                      <TableCell align="right">{item.creditLimit?.toLocaleString() || "0"}</TableCell>
+                      <TableCell align="right" sx={{ color: "success.main", fontWeight: 600 }}>{((item.creditLimit || 0) - (item.outstandingAmount || 0)).toLocaleString()}</TableCell>
                       <TableCell>
                         <ViewCustomerDialog customerId={item.id} />
                       </TableCell>

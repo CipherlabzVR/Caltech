@@ -22,7 +22,7 @@ import * as Yup from "yup";
 import BASE_URL from "Base/api";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 
-const getValidationSchema = (isCustomerNICRequired) => Yup.object().shape({
+const getValidationSchema = (isCustomerNICRequired, isCustomerCreditLimitRequired) => Yup.object().shape({
   Title: Yup.string().required("Title is required"),
   FirstName: Yup.string().required("First Name is required"),
   LastName: Yup.string(),
@@ -31,6 +31,11 @@ const getValidationSchema = (isCustomerNICRequired) => Yup.object().shape({
   AddressLine3: Yup.string(),
   Designation: Yup.string(),
   Company: Yup.string(),
+  CreditLimit: isCustomerCreditLimitRequired
+    ? Yup.number()
+        .required("Credit Limit is required")
+        .moreThan(0, "Credit Limit must be greater than 0")
+    : Yup.number().min(0, "Credit Limit must be a positive number").nullable(),
   NIC: Yup.string().test(
     "nic-format",
     function (value) {
@@ -72,7 +77,8 @@ const formatDate = (dateString) => {
 
 export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }) {
   const [open, setOpen] = React.useState(false);
-   const { data: isCustomerNICRequired } = IsAppSettingEnabled("IsCustomerNICRequired");
+  const { data: isCustomerNICRequired } = IsAppSettingEnabled("IsCustomerNICRequired");
+  const { data: isCustomerCreditLimit } = IsAppSettingEnabled("IsCustomerCreditLimit");
   const [scroll, setScroll] = React.useState("paper");
   const [titleList, setTitleList] = useState([]);
   const [currencyList, setCurrencyList] = useState([]);
@@ -296,6 +302,7 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
                 NIC: item.nic || "",
                 ReceivableAccount: item.receivableAccount || null,
                 CurrencyId: item.currencyId || null,
+                CreditLimit: item.creditLimit || 0,
                 DateOfBirth: formatDate(item.dateofBirth) || "",
                 CustomerContactDetails: contacts.map((contact) => ({
                   ContactName: contact.ContactName,
@@ -303,7 +310,7 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
                   ContactNo: contact.ContactNo,
                 })),
               }}
-              validationSchema={getValidationSchema(isCustomerNICRequired)}
+              validationSchema={getValidationSchema(isCustomerNICRequired, isCustomerCreditLimit)}
               onSubmit={handleSubmit}
             >
               {({ errors, touched, values, setFieldValue }) => (
@@ -614,6 +621,30 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
                           touched.Designation && Boolean(errors.Designation)
                         }
                         helperText={touched.Designation && errors.Designation}
+                      />
+                    </Grid>
+                    <Grid item lg={6} xs={12}>
+                      <Typography
+                        component="label"
+                        sx={{
+                          fontWeight: "500",
+                          fontSize: "14px",
+                          mb: "10px",
+                          display: "block",
+                        }}
+                      >
+                        Credit Limit {isCustomerCreditLimit && <span style={{ color: "red" }}>*</span>}
+                      </Typography>
+                      <Field
+                        as={TextField}
+                        fullWidth
+                        name="CreditLimit"
+                        type="number"
+                        inputProps={{ min: 0, step: "0.01" }}
+                        error={
+                          touched.CreditLimit && Boolean(errors.CreditLimit)
+                        }
+                        helperText={touched.CreditLimit && errors.CreditLimit}
                       />
                     </Grid>
 

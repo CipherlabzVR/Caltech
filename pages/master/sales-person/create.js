@@ -32,7 +32,7 @@ const validationSchema = Yup.object().shape({
   MobileNumber: Yup.string().required("Mobile Number is required"),
 });
 
-export default function AddSalesPerson({ fetchItems,isSupplierSalesRef,suppliers }) {
+export default function AddSalesPerson({ fetchItems, isSupplierSalesRef, suppliers, onCreated }) {
   const [open, setOpen] = useState(false);
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
@@ -75,7 +75,8 @@ export default function AddSalesPerson({ fetchItems,isSupplierSalesRef,suppliers
         if (data.statusCode == 200) {
           toast.success(data.message);
           setOpen(false);
-          fetchItems();
+          fetchItems?.();
+          onCreated?.(data.result);
         } else {
           toast.error(data.message);
         }

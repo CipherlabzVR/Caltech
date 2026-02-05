@@ -43,6 +43,8 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import CloseIcon from "@mui/icons-material/Close";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
+import DownloadIcon from "@mui/icons-material/Download";
+import * as XLSX from "xlsx";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
 import WarningIcon from "@mui/icons-material/Warning";
@@ -459,6 +461,73 @@ export default function EditWorkTrack() {
     setPreviewTab(0);
   };
 
+  const handleDownloadTemplate = () => {
+    // Define the template columns based on WorkTrackDetail fields
+    const templateHeaders = [
+      "Track ID",
+      "Manufacturer ID",
+      "Model Year",
+      "Model ID",
+      "Equipment Description",
+      "License Number",
+      "Latest Meter 1 Reading",
+      "Serial Number",
+      "Status Code",
+      "Status",
+      "Date Completed",
+      "MAC",
+      "SIM",
+      "SSID",
+      "Wifi Key",
+      "Notes",
+      "Assignee",
+      "Task Complete Percentage",
+    ];
+
+    // Create worksheet with headers and one example row
+    const worksheetData = [
+      templateHeaders,
+      // Example row with sample data
+      [
+        "TRK-001",
+        "MFR-001",
+        "2024",
+        "MDL-001",
+        "Equipment description here",
+        "LIC-12345",
+        "1000",
+        "SN-001",
+        "ACTIVE",
+        "In Progress",
+        "2024-12-31",
+        "AA:BB:CC:DD:EE:FF",
+        "1234567890",
+        "WiFi_Network",
+        "password123",
+        "Notes here",
+        "John Doe",
+        "50",
+      ],
+    ];
+
+    const worksheet = XLSX.utils.aoa_to_array ? 
+      XLSX.utils.aoa_to_sheet(worksheetData) : 
+      XLSX.utils.aoa_to_sheet(worksheetData);
+
+    // Set column widths for better readability
+    worksheet["!cols"] = templateHeaders.map((header) => ({
+      wch: Math.max(header.length + 5, 15),
+    }));
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "WorkTrack Template");
+
+    // Download the file
+    XLSX.writeFile(workbook, "WorkTrack_Upload_Template.xlsx");
+    
+    toast("Template downloaded successfully!", { type: "success", autoClose: 2000 });
+  };
+
   const formInitialValues = {
     trackId: editingDetail?.trackId || "",
     manufacturerId: editingDetail?.manufacturerId || "",
@@ -594,6 +663,14 @@ export default function EditWorkTrack() {
                 accept=".xlsx,.xls"
                 style={{ display: "none" }}
               />
+              <Button
+                variant="outlined"
+                startIcon={<DownloadIcon />}
+                onClick={handleDownloadTemplate}
+                color="success"
+              >
+                Download Template
+              </Button>
               <Button
                 variant="outlined"
                 startIcon={<UploadFileIcon />}

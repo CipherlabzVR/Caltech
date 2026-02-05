@@ -31,7 +31,23 @@ const LayoutContent = ({ children }) => {
   const [active, setActive] = useState(true);
   const [isSidebarHidden, setIsSidebarHidden] = useState(false);
   const [activeTopbarButton, setActiveTopbarButton] = useState("quick-access");
-  const [hoverMode, setHoverMode] = useState(false);
+  const [hoverMode, setHoverModeState] = useState(() => {
+    if (typeof window !== "undefined") {
+      const savedHoverMode = localStorage.getItem("sidebarHoverMode");
+      return savedHoverMode === "true";
+    }
+    return false;
+  });
+
+  // Wrapper function to save hoverMode to localStorage
+  const setHoverMode = useCallback((value) => {
+    const newValue = typeof value === "function" ? value(hoverMode) : value;
+    setHoverModeState(newValue);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sidebarHoverMode", String(newValue));
+    }
+  }, [hoverMode]);
+
   const [pendingHostingFee, setPendingHostingFee] = useState(null);
   const [hostingFeeDate, setHostingFeeDate] = useState(null);
   const [notificationOpen, setNotificationOpen] = useState(false);

@@ -35,7 +35,7 @@ const validationSchema = Yup.object().shape({
     .required("Mobile No is required")
 });
 
-export default function AddSupplier({ fetchItems, isPOSSystem, banks, isBankRequired, chartOfAccounts }) {
+export default function AddSupplier({ fetchItems, isPOSSystem, banks, isBankRequired, chartOfAccounts, onCreated }) {
   const [open, setOpen] = useState(false);
   const [selectedBank, setSelectedBank] = useState();
   const handleOpen = () => setOpen(true);
@@ -82,7 +82,8 @@ export default function AddSupplier({ fetchItems, isPOSSystem, banks, isBankRequ
         if (data.statusCode == 200) {
           toast.success(data.message);
           setOpen(false);
-          fetchItems();
+          fetchItems?.();
+          onCreated?.(data.result);
         } else {
           toast.error(data.message);
         }

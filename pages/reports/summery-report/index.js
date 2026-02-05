@@ -191,7 +191,6 @@ const SummeryReports = () => {
   }, [role]);
 
   const groupedReports = useMemo(() => {
-    const baseModules = ["Inventory", "Sales", "Finance", "Reservation"];
     const groups = reports.reduce((acc, report) => {
       const moduleName = getReportModuleName(report);
       if (!acc[moduleName]) acc[moduleName] = [];
@@ -201,7 +200,13 @@ const SummeryReports = () => {
 
     // Keep a consistent module ordering (as requested).
     const preferredOrder = ["Inventory", "Sales", "Finance", "Reservation"];
-    const sortedModuleNames = Array.from(new Set([...baseModules, ...Object.keys(groups)])).sort((a, b) => {
+    
+    // Only include modules that have at least 1 report
+    const modulesWithReports = Object.keys(groups).filter(
+      (moduleName) => groups[moduleName] && groups[moduleName].length > 0
+    );
+    
+    const sortedModuleNames = modulesWithReports.sort((a, b) => {
       const ai = preferredOrder.indexOf(a);
       const bi = preferredOrder.indexOf(b);
       if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
@@ -274,36 +279,26 @@ const SummeryReports = () => {
                   </AccordionSummary>
 
                   <AccordionDetails>
-                    {moduleReports.length === 0 ? (
-                      <Paper sx={{ p: 2 }}>
-                        <List dense>
-                          <ListItem>
-                            <ListItemText primary="No enabled reports in this module." />
-                          </ListItem>
-                        </List>
-                      </Paper>
-                    ) : (
-                      <TableContainer component={Paper}>
-                        <Table className="dark-table">
-                          <TableHead>
-                            <TableRow>
-                              <TableCell>#</TableCell>
-                              <TableCell>Report Name</TableCell>
-                              <TableCell align="right">View Report</TableCell>
+                    <TableContainer component={Paper}>
+                      <Table className="dark-table">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>#</TableCell>
+                            <TableCell>Report Name</TableCell>
+                            <TableCell align="right">View Report</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {moduleReports.map((report, index) => (
+                            <TableRow key={report.id || `${moduleName}-${index}`}>
+                              <TableCell>{index + 1}</TableCell>
+                              <TableCell>{report.title || report.name}</TableCell>
+                              <TableCell align="right">{report.component}</TableCell>
                             </TableRow>
-                          </TableHead>
-                          <TableBody>
-                            {moduleReports.map((report, index) => (
-                              <TableRow key={report.id || `${moduleName}-${index}`}>
-                                <TableCell>{index + 1}</TableCell>
-                                <TableCell>{report.title || report.name}</TableCell>
-                                <TableCell align="right">{report.component}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </TableContainer>
-                    )}
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
                   </AccordionDetails>
                 </Accordion>
               ))}

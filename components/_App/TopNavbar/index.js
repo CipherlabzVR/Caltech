@@ -139,18 +139,12 @@ const TopNavbar = ({
                   if (showSidebar) {
                     showSidebar();
                   }
-                  if (router.pathname !== "/") {
-                    router.push("/");
-                  }
                 }}
                 onMouseEnter={() => {
                   // When hover mode is ON, open sidebar on hover
                   if (hoverMode && showSidebar) {
                     setActiveButtonState("menu");
                     showSidebar();
-                    if (router.pathname !== "/") {
-                      router.push("/");
-                    }
                   }
                 }}
                 sx={{ ml: 0.5, width: 40, height: 40 }}

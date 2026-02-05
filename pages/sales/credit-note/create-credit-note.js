@@ -84,15 +84,20 @@ const CreateCreditNote = () => {
       return;
     }
 
-    if (
-      noteType === "Credit" &&
-      (parseFloat(amount) > (selectedInvoice?.totalInvoiceAmount || 0) ||
-        parseFloat(amount) < 0)
-    ) {
-      toast.error(
-        "Credit Amount must be less than the Invoice Outstanding Amount."
-      );
-      return;
+    // Validation for Credit Note: amount must be <= invoice outstanding amount
+    if (noteType === "Credit") {
+      if (parseFloat(amount) > (selectedInvoice?.totalInvoiceAmount || 0) || parseFloat(amount) <= 0) {
+        toast.error("Credit Amount must be less than or equal to the Invoice Outstanding Amount and greater than 0.");
+        return;
+      }
+    }
+    
+    // Validation for Debit Note: amount must be > 0
+    if (noteType === "Debit") {
+      if (parseFloat(amount) <= 0 || isNaN(parseFloat(amount))) {
+        toast.error("Debit Amount must be greater than 0.");
+        return;
+      }
     }
 
     const data = {
@@ -157,11 +162,18 @@ const CreateCreditNote = () => {
       const numericAmount = parseFloat(newAmount);
       if (
         !isNaN(numericAmount) &&
-        (numericAmount > (selectedInvoice?.totalInvoiceAmount || 0) || numericAmount < 0)
+        (numericAmount > (selectedInvoice?.totalInvoiceAmount || 0) || numericAmount <= 0)
       ) {
         setAmountError(
-          "Amount must be less than the Invoice Outstanding Amount."
+          "Amount must be less than or equal to the Invoice Outstanding Amount and greater than 0."
         );
+      } else {
+        setAmountError("");
+      }
+    } else if (noteType === "Debit") {
+      const numericAmount = parseFloat(newAmount);
+      if (!isNaN(numericAmount) && numericAmount <= 0) {
+        setAmountError("Debit Amount must be greater than 0.");
       } else {
         setAmountError("");
       }

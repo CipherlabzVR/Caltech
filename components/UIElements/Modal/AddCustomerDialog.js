@@ -18,8 +18,9 @@ import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import * as Yup from "yup";
 import BASE_URL from "Base/api";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 
-const validationSchema = Yup.object().shape({
+const getValidationSchema = (isCustomerCreditLimitRequired) => Yup.object().shape({
   Title: Yup.string().required("Title is required"),
   FirstName: Yup.string().required("First Name is required"),
   LastName: Yup.string(),
@@ -28,6 +29,11 @@ const validationSchema = Yup.object().shape({
   AddressLine3: Yup.string(),
   Designation: Yup.string(),
   Company: Yup.string(),
+  CreditLimit: isCustomerCreditLimitRequired 
+    ? Yup.number()
+        .required("Credit Limit is required")
+        .moreThan(0, "Credit Limit must be greater than 0")
+    : Yup.number().min(0, "Credit Limit must be a positive number").nullable(),
   NIC: Yup.string().matches(
     /^\d{9}(\d{3})?$/,
     "NIC must be either 9 or 12 digits long"
@@ -49,6 +55,7 @@ export default function AddCustomerDialog({ fetchItems, showIconOnly = false }) 
     { ContactName: "", ContactNo: "", EmailAddress: "" },
   ]);
   const [birthdate, setBirthdate] = useState("");
+  const { data: isCustomerCreditLimit } = IsAppSettingEnabled("IsCustomerCreditLimit");
 
   const fetchTitleList = async () => {
     try {
@@ -223,6 +230,7 @@ export default function AddCustomerDialog({ fetchItems, showIconOnly = false }) 
                 Company: "",
                 NIC: "",
                 DateOfBirth: "",
+                CreditLimit: 0,
                 IsManufacture: false,
                 CustomerContactDetails: contacts.map(() => ({
                   ContactName: "",
@@ -230,7 +238,7 @@ export default function AddCustomerDialog({ fetchItems, showIconOnly = false }) 
                   ContactNo: "",
                 })),
               }}
-              validationSchema={validationSchema}
+              validationSchema={getValidationSchema(isCustomerCreditLimit)}
               onSubmit={handleSubmit}
             >
               {({ errors, touched, values, setFieldValue }) => (
@@ -471,6 +479,28 @@ export default function AddCustomerDialog({ fetchItems, showIconOnly = false }) 
                         name="Company"
                         error={touched.Company && Boolean(errors.Company)}
                         helperText={touched.Company && errors.Company}
+                      />
+                    </Grid>
+                    <Grid item lg={6} xs={12}>
+                      <Typography
+                        component="label"
+                        sx={{
+                          fontWeight: "500",
+                          fontSize: "14px",
+                          mb: "10px",
+                          display: "block",
+                        }}
+                      >
+                        Credit Limit {isCustomerCreditLimit && <span style={{ color: "red" }}>*</span>}
+                      </Typography>
+                      <Field
+                        as={TextField}
+                        fullWidth
+                        name="CreditLimit"
+                        type="number"
+                        inputProps={{ min: 0, step: "0.01" }}
+                        error={touched.CreditLimit && Boolean(errors.CreditLimit)}
+                        helperText={touched.CreditLimit && errors.CreditLimit}
                       />
                     </Grid>
                     {contacts.map((contact, index) => (

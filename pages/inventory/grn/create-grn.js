@@ -35,10 +35,14 @@ import useApi from "@/components/utils/useApi";
 import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
 import LoadingButton from "@/components/UIElements/Buttons/LoadingButton";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
-import GetAllSalesPersons from "@/components/utils/GetAllSalesPerson";
 import SearchDropdown from "@/components/utils/SearchDropdown";
 import FormatListNumberedIcon from '@mui/icons-material/FormatListNumbered';
 import CloseIcon from '@mui/icons-material/Close';
+import AddIcon from '@mui/icons-material/Add';
+import AddSupplier from "@/pages/master/supplier/AddSupplier";
+import AddSalesPerson from "@/pages/master/sales-person/create";
+import AddItems from "@/pages/master/items/AddItems";
+import GetAllItemDetails from "@/components/utils/GetAllItemDetails";
 
 
 const style = {
@@ -53,7 +57,6 @@ const style = {
 };
 
 const GRNCreate = () => {
-  const { data: salesPersonList } = GetAllSalesPersons();
   const guidRef = useRef(uuidv4());
   const today = new Date();
   const [grossTotal, setGrossTotal] = useState(0);
@@ -62,7 +65,7 @@ const GRNCreate = () => {
   const [suppliers, setSuppliers] = useState([]);
   const [serialNumbers, setSerialNumbers] = useState([]);
   const [salesPersons, setSalesPersons] = useState([]);
-  const [salesPerson, setSalesPerson] = useState({});
+  const [salesPerson, setSalesPerson] = useState(null);
   const [items, setItems] = useState([]);
   const [selectedRows, setSelectedRows] = useState([]);
   const [editingRowIndex, setEditingRowIndex] = useState(null);
@@ -79,6 +82,10 @@ const GRNCreate = () => {
   const [grnNo, setGrnNo] = useState("");
   const [filteredItems, setFilteredItems] = useState([]);
   const [loadingItems, setLoadingItems] = useState(false);
+  const [loadingSalesPersons, setLoadingSalesPersons] = useState(false);
+  const supplierButtonRef = useRef(null);
+  const salesPersonButtonRef = useRef(null);
+  const itemButtonRef = useRef(null);
   const router = useRouter();
   const [isDisable, setIsDisable] = useState(false);
   const { data: goodsRNo } = getNext(`4`);
@@ -151,6 +158,15 @@ const GRNCreate = () => {
     error: supplierListError,
   } = useApi("/Supplier/GetAllSupplier");
 
+  const { data: banks } = useApi("/Bank/GetAllBanks");
+  const { data: chartOfAccounts } = useApi("/ChartOfAccounts/GetAllChartOfAccountsForDropdown");
+  const { data: IsPOSSystem } = IsAppSettingEnabled("IsPOSSystem");
+  const { data: IsBankRequired } = IsAppSettingEnabled("IsBankRequired");
+  const { data: IsGarmentSystem } = IsAppSettingEnabled("IsGarmentSystem");
+  const { data: IsBarcodeEnabled } = IsAppSettingEnabled("IsBarcodeEnabled");
+  const { data: IsEcommerceWebSiteAvailable } = IsAppSettingEnabled("IsEcommerceWebSiteAvailable");
+  const { uoms } = GetAllItemDetails();
+
 
   const handleSubmit = async () => {
     const data = {
@@ -205,10 +221,7 @@ const GRNCreate = () => {
       toast.error("At least one item must be added to the table.");
       return;
     }
-    if (
-      IsSupplierSalesRef &&
-      (!salesPerson || Object.keys(salesPerson).length === 0)
-    ) {
+    if (IsSupplierSalesRef && !salesPerson) {
       toast.warning("Please Select Sales Person");
       return;
     }
@@ -274,11 +287,79 @@ const GRNCreate = () => {
     }
   };
 
-  const handleSupplierChange = (supplierId) => {
-    const filteredSalespersons = salesPersonList.filter(
-      (person) => person.supplier === supplierId
-    );
-    setSalesPersons(filteredSalespersons);
+  const handleSupplierChange = () => {
+    setSalesPerson(null);
+    setSalesPersons([]);
+  };
+
+  // Refresh supplier list
+  const refreshSupplierList = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${BASE_URL}/Supplier/GetAllSupplier`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const json = await response.json();
+        const list = json?.result || json?.data || json || [];
+        setSuppliers(Array.isArray(list) ? list : []);
+      }
+    } catch (err) {
+      console.error("Error refreshing suppliers:", err);
+    }
+  };
+
+  // Refresh sales person list for the current supplier
+  const refreshSalesPersonList = async () => {
+    if (!supplier?.id) return;
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(
+        `${BASE_URL}/SalesPerson/GetSalesPersonsBySupplier?supplierId=${supplier.id}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (response.ok) {
+        const json = await response.json();
+        const list = Array.isArray(json) ? json : (json?.result || json?.data || []);
+        setSalesPersons(Array.isArray(list) ? list : []);
+      }
+    } catch (err) {
+      console.error("Error refreshing sales persons:", err);
+    }
+  };
+
+  // Trigger supplier modal
+  const handleOpenSupplierModal = () => {
+    if (supplierButtonRef.current) {
+      const button = supplierButtonRef.current.querySelector('button');
+      if (button) {
+        button.click();
+      }
+    }
+  };
+
+  // Trigger sales person modal
+  const handleOpenSalesPersonModal = () => {
+    if (!supplier?.id) {
+      toast.info("Please select a supplier first");
+      return;
+    }
+    if (salesPersonButtonRef.current) {
+      const button = salesPersonButtonRef.current.querySelector('button');
+      if (button) {
+        button.click();
+      }
+    }
+  };
+
+  // Trigger Add Item modal
+  const handleOpenItemModal = () => {
+    if (itemButtonRef.current) {
+      const button = itemButtonRef.current.querySelector('button');
+      if (button) {
+        button.click();
+      }
+    }
   };
 
   useEffect(() => {
@@ -304,6 +385,45 @@ const GRNCreate = () => {
       setSuppliers(supplierList);
     }
   }, [goodsRNo, itemList]);
+
+  // Fetch Sales Person list by supplier when supplier is selected
+  useEffect(() => {
+    if (!supplier?.id) {
+      setSalesPersons([]);
+      setSalesPerson(null);
+      return;
+    }
+
+    const fetchSalesPersonsBySupplier = async () => {
+      setLoadingSalesPersons(true);
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+
+        const response = await fetch(
+          `${BASE_URL}/SalesPerson/GetSalesPersonsBySupplier?supplierId=${supplier.id}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        if (response.ok) {
+          const json = await response.json();
+          const list = Array.isArray(json) ? json : (json?.result || json?.data || []);
+          setSalesPersons(Array.isArray(list) ? list : []);
+        } else {
+          setSalesPersons([]);
+        }
+      } catch (err) {
+        console.error("Error fetching sales persons:", err);
+        setSalesPersons([]);
+      } finally {
+        setLoadingSalesPersons(false);
+      }
+    };
+
+    fetchSalesPersonsBySupplier();
+  }, [supplier?.id]);
 
   useEffect(() => {
     if (supplier && supplier.id) {
@@ -537,14 +657,62 @@ const GRNCreate = () => {
               <Autocomplete
                 sx={{ width: "60%" }}
                 options={suppliers}
-                getOptionLabel={(option) => option.name || ""}
+                getOptionLabel={(option) => {
+                  if (option?.isCreateOption) return "";
+                  return option.name || "";
+                }}
                 value={supplier}
+                isOptionEqualToValue={(option, value) => option?.id === value?.id}
                 disableClearable
-                onChange={(event, newValue) => {
-                  setSupplier(newValue);
-                  if (newValue?.id) {
-                    handleSupplierChange(newValue.id);
+                filterOptions={(options, params) => {
+                  const hasInput = params.inputValue?.trim();
+                  let filtered;
+                  if (!hasInput) {
+                    filtered = options.slice(0, 5);
+                  } else {
+                    filtered = options.filter((option) =>
+                      option.name?.toLowerCase().includes(params.inputValue.toLowerCase())
+                    );
                   }
+                  return [...filtered, { isCreateOption: true, id: "create-supplier" }];
+                }}
+                ListboxProps={{
+                  sx: { maxHeight: 280, "& .create-option-sticky": { position: "sticky", bottom: 0, background: "background.paper", borderTop: "1px solid", borderColor: "divider", zIndex: 1 } },
+                }}
+                renderOption={(props, option) => {
+                  if (option.isCreateOption) {
+                    return (
+                      <Box
+                        component="li"
+                        {...props}
+                        className="create-option-sticky"
+                        sx={{
+                          color: "primary.main",
+                          fontWeight: 500,
+                          py: 1.25,
+                          px: 2,
+                          cursor: "pointer",
+                          "&:hover": { bgcolor: "action.hover" },
+                        }}
+                      >
+                        <AddIcon sx={{ mr: 1, fontSize: "1.2rem", verticalAlign: "middle" }} />
+                        Create Supplier
+                      </Box>
+                    );
+                  }
+                  return (
+                    <Box component="li" {...props}>
+                      {option.name}
+                    </Box>
+                  );
+                }}
+                onChange={(event, newValue) => {
+                  if (newValue?.isCreateOption) {
+                    handleOpenSupplierModal();
+                    return;
+                  }
+                  setSupplier(newValue || "");
+                  handleSupplierChange();
                 }}
                 renderInput={(params) => (
                   <TextField
@@ -606,27 +774,74 @@ const GRNCreate = () => {
                 >
                   Sales Person
                 </Typography>
-                <TextField
-                  select
+                <Autocomplete
                   sx={{ width: "60%" }}
-                  size="small"
-                  fullWidth
-                  value={salesPerson?.id || ""}
-                  onChange={(e) => {
-                    const selected = salesPersons.find(
-                      (p) => p.id === e.target.value
-                    );
-                    setSalesPerson(selected);
+                  options={salesPersons}
+                  getOptionLabel={(option) => {
+                    if (option?.isCreateOption) return "";
+                    return option.name || "";
                   }}
-                  placeholder="Search Sales Person"
-                >
-                  <MenuItem value="">Select Sales Person</MenuItem>
-                  {salesPersons.map((person) => (
-                    <MenuItem key={person.id} value={person.id}>
-                      {person.name}
-                    </MenuItem>
-                  ))}
-                </TextField>
+                  value={salesPerson}
+                  isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                  disabled={loadingSalesPersons}
+                  filterOptions={(options, params) => {
+                    const hasInput = params.inputValue?.trim();
+                    let filtered;
+                    if (!hasInput) {
+                      filtered = options.slice(0, 5);
+                    } else {
+                      filtered = options.filter((option) =>
+                        option.name?.toLowerCase().includes(params.inputValue.toLowerCase())
+                      );
+                    }
+                    return [...filtered, { isCreateOption: true, id: "create-salesperson" }];
+                  }}
+                  ListboxProps={{
+                    sx: { maxHeight: 280, "& .create-option-sticky": { position: "sticky", bottom: 0, background: "background.paper", borderTop: "1px solid", borderColor: "divider", zIndex: 1 } },
+                  }}
+                  renderOption={(props, option) => {
+                    if (option.isCreateOption) {
+                      return (
+                        <Box
+                          component="li"
+                          {...props}
+                          className="create-option-sticky"
+                          sx={{
+                            color: "primary.main",
+                            fontWeight: 500,
+                            py: 1.25,
+                            px: 2,
+                            cursor: "pointer",
+                            "&:hover": { bgcolor: "action.hover" },
+                          }}
+                        >
+                          <AddIcon sx={{ mr: 1, fontSize: "1.2rem", verticalAlign: "middle" }} />
+                          Create Sales Person
+                        </Box>
+                      );
+                    }
+                    return (
+                      <Box component="li" {...props}>
+                        {option.name}
+                      </Box>
+                    );
+                  }}
+                  onChange={(event, newValue) => {
+                    if (newValue?.isCreateOption) {
+                      handleOpenSalesPersonModal();
+                      return;
+                    }
+                    setSalesPerson(newValue || null);
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      size="small"
+                      fullWidth
+                      placeholder="Search Sales Person"
+                    />
+                  )}
+                />
               </Grid>
             )}
 
@@ -701,13 +916,25 @@ const GRNCreate = () => {
             </Grid> : ""}
 
             <Grid item xs={12} mt={3} mb={1}>
-              <SearchDropdown
-                label="Search"
-                placeholder="Search Items by name"
-                fetchUrl={`${BASE_URL}/Items/GetAllItemsBySupplierIdAndName`}
-                queryParams={{ supplierId: supplier?.id }}
-                onSelect={(item) => handleAddRow(item)}
-              />
+              <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
+                <Box sx={{ flex: 1, minWidth: 200 }}>
+                  <SearchDropdown
+                    label="Search"
+                    placeholder="Search Items by name"
+                    fetchUrl={`${BASE_URL}/Items/GetAllItemsBySupplierIdAndName`}
+                    queryParams={{ supplierId: supplier?.id }}
+                    onSelect={(item) => handleAddRow(item)}
+                  />
+                </Box>
+                <Button
+                  variant="outlined"
+                  onClick={handleOpenItemModal}
+                  startIcon={<AddIcon />}
+                  sx={{ flexShrink: 0 }}
+                >
+                  Add Item
+                </Button>
+              </Box>
             </Grid>
 
             <Grid item xs={12}>
@@ -1178,6 +1405,57 @@ const GRNCreate = () => {
           </Grid>
         </Box>
       </Modal>
+
+      {/* Original Add Items Component - Hidden button */}
+      <Box sx={{ display: "none" }}>
+        <div ref={itemButtonRef}>
+          <AddItems
+            fetchItems={() => {}}
+            isPOSSystem={IsPOSSystem}
+            uoms={uoms || []}
+            isGarmentSystem={IsGarmentSystem}
+            chartOfAccounts={chartOfAccounts || []}
+            barcodeEnabled={IsBarcodeEnabled}
+            IsEcommerceWebSiteAvailable={IsEcommerceWebSiteAvailable}
+          />
+        </div>
+      </Box>
+
+      {/* Original Add Supplier Component - Hidden button */}
+      <Box sx={{ display: "none" }}>
+        <div ref={supplierButtonRef}>
+          <AddSupplier
+            fetchItems={refreshSupplierList}
+            isPOSSystem={IsPOSSystem}
+            banks={banks || []}
+            isBankRequired={IsBankRequired}
+            chartOfAccounts={chartOfAccounts || []}
+            onCreated={(created) => {
+              if (created?.id != null) {
+                setSupplier(created);
+                refreshSupplierList();
+              }
+            }}
+          />
+        </div>
+      </Box>
+
+      {/* Original Add Sales Person Component - Hidden button */}
+      <Box sx={{ display: "none" }}>
+        <div ref={salesPersonButtonRef}>
+          <AddSalesPerson
+            fetchItems={refreshSalesPersonList}
+            isSupplierSalesRef={IsSupplierSalesRef}
+            suppliers={suppliers || []}
+            onCreated={(created) => {
+              if (created?.id != null) {
+                setSalesPerson(created);
+                refreshSalesPersonList();
+              }
+            }}
+          />
+        </div>
+      </Box>
     </>
   );
 };

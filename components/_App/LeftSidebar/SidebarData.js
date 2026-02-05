@@ -421,7 +421,8 @@ export const getSidebarData = (IsGarmentSystem) => {
             ModuleId: 24,
             IsAvailable: true,
             subNav: [
-                { title: "Work Track", path: "/work-track/", categoryId: 153, isAvailable: true }
+                { title: "Work Track", path: "/work-track/", categoryId: 153, isAvailable: true },
+                { title: "Technician", path: "/work-track/technician/", categoryId: 154, isAvailable: true }
             ],
         },{
             title: "Administrator",
