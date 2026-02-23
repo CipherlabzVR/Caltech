@@ -173,7 +173,7 @@ export default function Settings() {
                       sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                     >
                       <TableCell component="th" scope="row">
-                        {index + 1}
+                        {page * rowsPerPage + index + 1}
                       </TableCell>
                       <TableCell>{setting.settingName}</TableCell>
                       <TableCell>{setting.value}</TableCell>
@@ -204,7 +204,7 @@ export default function Settings() {
             <TablePagination
               rowsPerPageOptions={[5, 10, 25]}
               component="div"
-              count={paginatedData.length}
+              count={filteredData.length}
               rowsPerPage={rowsPerPage}
               page={page}
               onPageChange={handleChangePage}

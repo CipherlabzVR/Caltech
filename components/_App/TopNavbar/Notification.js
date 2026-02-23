@@ -26,7 +26,22 @@ const Notification = () => {
   const open = Boolean(anchorEl);
   const handleClick = (event) => {
     setAnchorEl(event.currentTarget);
-    fetchNotifications();
+    // Run cheque and stock expiry checks when opening the panel so notifications are created for current data (by ChequeDate/login date)
+    const token = localStorage.getItem("token");
+    if (token) {
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      };
+      Promise.all([
+        fetch(`${BASE_URL}/Notification/CheckStockExpiryNotifications`, { method: "POST", headers }),
+        fetch(`${BASE_URL}/Notification/CheckChequeExpiryNotifications`, { method: "POST", headers }),
+      ])
+        .then(() => fetchNotifications())
+        .catch(() => fetchNotifications());
+    } else {
+      fetchNotifications();
+    }
   };
   const handleClose = () => {
     setAnchorEl(null);
@@ -43,14 +58,15 @@ const Notification = () => {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to fetch usere");
+        console.error("Failed to fetch unread notifications. Status:", response.status);
+        throw new Error("Failed to fetch unread notifications");
       }
 
       const data = await response.json();
       setNewNote(data.result.isUnreadAvailable);
       setCount(data.result.count);
     } catch (error) {
-      console.error("Error fetching users:", error);
+      console.error("Error fetching unread notifications:", error);
     }
   };
 
@@ -66,13 +82,15 @@ const Notification = () => {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to fetch usere");
+        console.error("Failed to fetch notifications. Status:", response.status);
+        throw new Error("Failed to fetch notifications");
       }
 
       const data = await response.json();
-      setNotifications(data.result);
+      setNotifications(data.result || []);
     } catch (error) {
-      console.error("Error fetching users:", error);
+      console.error("Error fetching notifications:", error);
+      setNotifications([]);
     }
   };
 
@@ -116,11 +134,34 @@ const Notification = () => {
     }
   }
 
+  // On mount (e.g. after login), load notifications and run stock expiry check once per session
   useEffect(() => {
-    const interval = setInterval(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (token) {
       fetchUnreadNotifications();
-    }, 60000);
+      fetchNotifications(); // Load initial notifications (unread + previous + missed)
 
+      // Run stock and cheque expiry checks once per session per user/role
+      const userId = localStorage.getItem("userid") || localStorage.getItem("userId") || "unknown";
+      const roleId = localStorage.getItem("role") || "unknown";
+      const sessionKey = `reminderCheckRun:${userId}:${roleId}`;
+      if (typeof window !== "undefined" && !sessionStorage.getItem(sessionKey)) {
+        sessionStorage.setItem(sessionKey, "true");
+        const headers = {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        };
+        Promise.all([
+          fetch(`${BASE_URL}/Notification/CheckStockExpiryNotifications`, { method: "POST", headers }),
+          fetch(`${BASE_URL}/Notification/CheckChequeExpiryNotifications`, { method: "POST", headers }),
+        ])
+          .then(() => fetchUnreadNotifications())
+          .catch(() => {});
+      }
+    }
+    const interval = setInterval(() => {
+      if (localStorage.getItem("token")) fetchUnreadNotifications();
+    }, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -204,7 +245,7 @@ const Notification = () => {
                 mb: 1,
               }}
             >
-              No New Notifications
+              No Notifications
             </Typography>
           </div> : (notifications.map((note, index) => (
             <div key={index} className={styles.notificationList} onClick={() => handleViewNote(note)}>

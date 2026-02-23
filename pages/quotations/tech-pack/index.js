@@ -21,10 +21,12 @@ import { Catelogue } from "Base/catelogue";
 import ShareReports from "@/components/UIElements/Modal/Reports/ShareReports";
 import { Report } from "Base/report";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
-// import UpdateConfirmQuotation from "@/components/UIElements/Modal/UpdateConfirmQuotation";
+import BorderColorIcon from "@mui/icons-material/BorderColor";
+import { useRouter } from "next/router";
 import { projectStatusType } from "@/components/types/types";
 
 export default function TechPackList() {
+    const router = useRouter();
     const cId = sessionStorage.getItem("category")
     const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
     const [quotationList, setQuotationList] = useState([]);
@@ -35,6 +37,13 @@ export default function TechPackList() {
     const name = localStorage.getItem("name");
     const [tabValue, setTabValue] = useState(0);
     const { data: InvoiceReportName } = GetReportSettingValueByName("ProformaInvoiceReport");
+
+    const navigateToEdit = (inquiryId, optionId, sentQuotationId) => {
+        router.push({
+            pathname: "/quotations/tech-pack/edit",
+            query: { inquiryId, optionId, sentQuotationId }
+        });
+    };
 
 
     const handleTabChange = (event, newValue) => {
@@ -183,18 +192,17 @@ export default function TechPackList() {
                                                                         </IconButton>
                                                                     </a>
                                                                 </Tooltip></> : ""}
-                                                            {/* <UpdateConfirmQuotation
-                                                                fetchItems={fetchQuotationList}
-                                                                sentQuotId={item.id}
-                                                                type={7}
-                                                                isConfirm={false}
-                                                            />
-                                                            <UpdateConfirmQuotation
-                                                                fetchItems={fetchQuotationList}
-                                                                sentQuotId={item.id}
-                                                                type={4}
-                                                                isConfirm={true}
-                                                            /> */}
+                                                            {update ? (
+                                                                <Tooltip title="Edit Tech Pack" placement="top">
+                                                                    <IconButton 
+                                                                        aria-label="edit" 
+                                                                        size="small"
+                                                                        onClick={() => navigateToEdit(item.inquiryId, item.optionId, item.id)}
+                                                                    >
+                                                                        <BorderColorIcon color="primary" fontSize="medium" />
+                                                                    </IconButton>
+                                                                </Tooltip>
+                                                            ) : ""}
                                                         </Box>
                                                     </TableCell>
                                                 }

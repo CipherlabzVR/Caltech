@@ -107,12 +107,34 @@ const buildCustomerOptions = (customersData) => {
     .filter(Boolean);
 };
 
-export default function CreateProjectModal({ open, onClose, fetchItems }) {
+export default function CreateProjectModal({ open: externalOpen, onClose: externalOnClose, fetchItems, showButton = true }) {
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const [formKey, setFormKey] = React.useState(0);
+  
+  // Use external open if provided, otherwise use internal state
+  const open = externalOpen !== undefined ? externalOpen : internalOpen;
+  
   const {
     data: customersData,
     loading: customersLoading,
   } = useApi("/Customer/GetAllCustomer");
   const customerOptions = buildCustomerOptions(customersData);
+
+  // Fetch customers when modal opens externally
+  React.useEffect(() => {
+    if (open && externalOpen !== undefined) {
+      // Data will be fetched by useApi hook
+    }
+  }, [open, externalOpen]);
+
+  const handleClose = () => {
+    if (externalOnClose) {
+      externalOnClose();
+    } else if (externalOpen === undefined) {
+      setInternalOpen(false);
+    }
+    setFormKey(prev => prev + 1); // Reset form
+  };
 
   const handleSubmit = async (values, { setSubmitting, resetForm }) => {
     try {
@@ -156,8 +178,28 @@ export default function CreateProjectModal({ open, onClose, fetchItems }) {
       if (response.ok && (data.status === "SUCCESS" || data.statusCode === 200)) {
         toast.success("Project created successfully!");
         resetForm();
-        onClose();
-        fetchItems();
+        handleClose(); // Use unified close handler
+        
+        // Extract new project data from response
+        // API returns: { statusCode: 200, message: "...", result: { id, name, code, customerId, ... } }
+        const projectFromResponse = data.result || data.data || data;
+        const newProject = {
+          // Support both PascalCase and camelCase
+          id: projectFromResponse.id || projectFromResponse.Id || projectFromResponse.projectId,
+          Id: projectFromResponse.Id || projectFromResponse.id || projectFromResponse.projectId,
+          projectId: projectFromResponse.id || projectFromResponse.Id || projectFromResponse.projectId,
+          name: projectFromResponse.name || projectFromResponse.Name || values.name,
+          Name: projectFromResponse.Name || projectFromResponse.name || values.name,
+          code: projectFromResponse.code || projectFromResponse.Code || "",
+          Code: projectFromResponse.Code || projectFromResponse.code || "",
+          CustomerId: projectFromResponse.CustomerId || projectFromResponse.customerId || values.customerId,
+          customerId: projectFromResponse.customerId || projectFromResponse.CustomerId || values.customerId,
+          customerIdNormalized: projectFromResponse.customerId || projectFromResponse.CustomerId || values.customerId,
+        };
+        
+        if (fetchItems) {
+          fetchItems(newProject); // Pass new project to callback
+        }
       } else {
         const errorMessage = data.message || data.error || data.errorMessage || "Failed to create project";
         console.error("API Error Response:", data);
@@ -172,18 +214,20 @@ export default function CreateProjectModal({ open, onClose, fetchItems }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} aria-labelledby="create-project-modal">
+    <Modal open={open} onClose={handleClose} aria-labelledby="create-project-modal">
       <Box sx={style}>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
           <Typography id="create-project-modal" variant="h6" component="h2">
             Create New Project
           </Typography>
-          <IconButton onClick={onClose} size="small">
+          <IconButton onClick={handleClose} size="small">
             <CloseIcon />
           </IconButton>
         </Box>
 
         <Formik
+          key={formKey}
+          enableReinitialize
           initialValues={{
             name: "",
             description: "",
@@ -265,7 +309,7 @@ export default function CreateProjectModal({ open, onClose, fetchItems }) {
 
                 <Grid item xs={12}>
                   <Box sx={{ display: "flex", gap: 2, justifyContent: "flex-end", mt: 2 }}>
-                    <Button onClick={onClose} variant="outlined">
+                    <Button onClick={handleClose} variant="outlined">
                       Cancel
                     </Button>
                     <Button type="submit" variant="contained" disabled={isSubmitting}>

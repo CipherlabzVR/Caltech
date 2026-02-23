@@ -37,7 +37,7 @@ const style = {
   p: 3,
 };
 
-const denominations = [5000, 1000, 500, 100, 50, 20, 10, 5, 2, 1, 0.5];
+const denominations = [5000, 2000, 1000, 500, 100, 50, 20, 10, 5, 2, 1, 0.5];
 
 const validationSchema = Yup.object().shape({
   TerminalId: Yup.number().required("Terminal is required"),
@@ -136,6 +136,7 @@ export default function AddShift({ fetchItems }) {
 
     const denominationMap = {
       5000: "FiveThousand",
+      2000: "TwoThousand",
       1000: "Thousand",
       500: "FiveHundred",
       100: "Hundred",
@@ -157,6 +158,7 @@ export default function AddShift({ fetchItems }) {
       IsActive: true,
       WarehouseId: 1,
       FiveThousand: 0,
+      TwoThousand: 0,
       Thousand: 0,
       FiveHundred: 0,
       Hundred: 0,

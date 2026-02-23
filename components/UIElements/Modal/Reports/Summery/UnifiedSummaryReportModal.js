@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useState } from "react";
 import {
   Button,
   Grid,
@@ -9,22 +9,13 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Modal from "@mui/material/Modal";
 import { Visibility } from "@mui/icons-material";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
 import { Report } from "Base/report";
 import { Catelogue } from "Base/catelogue";
-import useApi from "@/components/utils/useApi";
-import BASE_URL from "Base/api";
-import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
-import {
-  DEFAULT_PAGE_SIZE,
-  filterTopMatches,
-  filterTopMatchesWithLoadMore,
-  withAllOption,
-} from "@/components/utils/autocompleteTopMatches";
+import ReportSearchField from "@/components/utils/ReportSearchField";
 
 const style = {
   position: "absolute",
@@ -40,17 +31,6 @@ const style = {
   borderRadius: 2,
   p: { xs: 2, sm: 3 },
 };
-
-const renderAutocompleteOption = (props, option) => (
-  <li
-    {...props}
-    style={
-      option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
-    }
-  >
-    {option.label}
-  </li>
-);
 
 const reportConfigs = {
   SalesSummaryReport: {
@@ -280,113 +260,35 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
   const { data: reportSetting } = GetReportSettingValueByName(reportName);
   const name = localStorage.getItem("name");
 
-  const [customers, setCustomers] = useState([]);
   const [customerId, setCustomerId] = useState(config.fields.customer?.defaultValue || null);
-  const [suppliers, setSuppliers] = useState([]);
   const [supplierId, setSupplierId] = useState(config.fields.supplier?.defaultValue || null);
-  const [supplierSearchInput, setSupplierSearchInput] = useState("");
-  const supplierSearchDebounceRef = useRef(null);
-  const [categories, setCategories] = useState([]);
   const [categoryId, setCategoryId] = useState(config.fields.category?.defaultValue || null);
-  const [categorySearchInput, setCategorySearchInput] = useState("");
-  const categorySearchDebounceRef = useRef(null);
-  const [subCategories, setSubCategories] = useState([]);
   const [subCategoryId, setSubCategoryId] = useState(config.fields.subCategory?.defaultValue || null);
-  const [subCategorySearchInput, setSubCategorySearchInput] = useState("");
-  const subCategorySearchDebounceRef = useRef(null);
-  const [items, setItems] = useState([]);
   const [itemId, setItemId] = useState(config.fields.item?.defaultValue || null);
-  const [itemSearchInput, setItemSearchInput] = useState("");
-  const itemSearchDebounceRef = useRef(null);
-  const itemFilterDebounceRef = useRef(null);
-  const [invoices, setInvoices] = useState([]);
   const [invoiceId, setInvoiceId] = useState(config.fields.invoice?.defaultValue || 0);
   const [paymentType, setPaymentType] = useState(config.fields.paymentType?.defaultValue || 0);
   const [status, setStatus] = useState(config.fields.status?.defaultValue || 0);
   const [fiscalPeriod, setFiscalPeriod] = useState(config.fields.fiscalPeriod?.defaultValue || 0);
-  const [fiscalPeriods, setFiscalPeriods] = useState([]);
-  const [doctors, setDoctors] = useState([]);
   const [doctorId, setDoctorId] = useState(config.fields.doctor?.defaultValue || 0);
-  const [banks, setBanks] = useState([]);
   const [bankId, setBankId] = useState(config.fields.bank?.defaultValue || 0);
   const [appointmentTypeId, setAppointmentTypeId] = useState(config.fields.appointmentType?.defaultValue || "");
   const [reservationTypeId, setReservationTypeId] = useState(config.fields.reservationType?.defaultValue || "");
-  const [users, setUsers] = useState([]);
   const [userId, setUserId] = useState(config.fields.user?.defaultValue || 0);
-  const [cashFlowTypes, setCashFlowTypes] = useState([]);
   const [cashFlowTypeId, setCashFlowTypeId] = useState(config.fields.cashFlowType?.defaultValue || 0);
   const [cashType, setCashType] = useState(config.fields.cashType?.defaultValue || 0);
-  const [terminals, setTerminals] = useState([]);
   const [terminalId, setTerminalId] = useState(config.fields.terminal?.defaultValue || 0);
-  const [reservations, setReservations] = useState([]);
   const [reservationId, setReservationId] = useState(config.fields.reservation?.defaultValue || 0);
-  const [optionLimits, setOptionLimits] = useState({});
 
-  const getLimit = (field) => optionLimits[field] || DEFAULT_PAGE_SIZE;
-  const incLimit = (field) =>
-    setOptionLimits((prev) => ({
-      ...prev,
-      [field]: (prev[field] || DEFAULT_PAGE_SIZE) + DEFAULT_PAGE_SIZE,
-    }));
-
-  const handleOpen = () => {
-    setOptionLimits({});
-    // Clear all fields and search when opening modal
-    setItems([]);
-    setItemSearchInput("");
-    setSuppliers([]);
-    setSupplierSearchInput("");
-    setCategories([]);
-    setCategorySearchInput("");
-    setSubCategories([]);
-    setSubCategorySearchInput("");
-    if (itemSearchDebounceRef.current) {
-      clearTimeout(itemSearchDebounceRef.current);
-    }
-    if (supplierSearchDebounceRef.current) {
-      clearTimeout(supplierSearchDebounceRef.current);
-    }
-    if (categorySearchDebounceRef.current) {
-      clearTimeout(categorySearchDebounceRef.current);
-    }
-    if (subCategorySearchDebounceRef.current) {
-      clearTimeout(subCategorySearchDebounceRef.current);
-    }
-    setOpen(true);
-  };
+  const handleOpen = () => setOpen(true);
   const handleClose = () => {
     setOpen(false);
-    setOptionLimits({});
     setFromDate("");
     setToDate("");
     setCustomerId(config.fields.customer?.defaultValue || null);
     setSupplierId(config.fields.supplier?.defaultValue || null);
-    setSupplierSearchInput("");
-    setSuppliers([]);
     setCategoryId(config.fields.category?.defaultValue || null);
-    setCategorySearchInput("");
-    setCategories([]);
     setSubCategoryId(config.fields.subCategory?.defaultValue || null);
-    setSubCategorySearchInput("");
-    setSubCategories([]);
     setItemId(config.fields.item?.defaultValue || null);
-    setItemSearchInput("");
-    setItems([]);
-    if (itemSearchDebounceRef.current) {
-      clearTimeout(itemSearchDebounceRef.current);
-    }
-    if (itemFilterDebounceRef.current) {
-      clearTimeout(itemFilterDebounceRef.current);
-    }
-    if (supplierSearchDebounceRef.current) {
-      clearTimeout(supplierSearchDebounceRef.current);
-    }
-    if (categorySearchDebounceRef.current) {
-      clearTimeout(categorySearchDebounceRef.current);
-    }
-    if (subCategorySearchDebounceRef.current) {
-      clearTimeout(subCategorySearchDebounceRef.current);
-    }
     setInvoiceId(config.fields.invoice?.defaultValue || 0);
     setPaymentType(config.fields.paymentType?.defaultValue || 0);
     setStatus(config.fields.status?.defaultValue || 0);
@@ -400,365 +302,6 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
     setCashType(config.fields.cashType?.defaultValue || 0);
     setTerminalId(config.fields.terminal?.defaultValue || 0);
     setReservationId(config.fields.reservation?.defaultValue || 0);
-  };
-
-  const { data: customerList } = useApi("/Customer/GetAllCustomer");
-  const { data: supplierList } = useApi("/Supplier/GetAllSupplier");
-  const { data: categoryList } = useApi("/Category/GetAllCategory");
-  const { data: doctorList } = useApi("/Doctors/GetAll");
-  const { data: bankList } = useApi("/Bank/GetAllBanks");
-  const { data: fiscalPeriodList } = useApi("/Fiscal/GetAllFiscalPeriods");
-  const { data: userList } = useApi("/User/GetAllUser");
-  const { data: cashFlowTypeList } = useApi("/CashFlowType/GetCashFlowTypes");
-  const { data: terminalList } = useApi("/Terminal/GetAllShiftNotEnabledTerminals");
-
-  useEffect(() => {
-    if (customerList && config.fields.customer?.enabled) {
-      setCustomers(customerList);
-    }
-    // Only load suppliers automatically if allowAll is true (not for StockMovementReport)
-    if (supplierList && config.fields.supplier?.enabled && config.fields.supplier?.allowAll !== false) {
-      setSuppliers(supplierList);
-    }
-    // Only load categories automatically if allowAll is true (not for StockMovementReport)
-    if (categoryList && config.fields.category?.enabled && config.fields.category?.allowAll !== false) {
-      setCategories(categoryList);
-    }
-    if (doctorList && config.fields.doctor?.enabled) {
-      setDoctors(doctorList);
-    }
-    if (bankList && config.fields.bank?.enabled) {
-      setBanks(bankList);
-    }
-    if (fiscalPeriodList && config.fields.fiscalPeriod?.enabled) {
-      setFiscalPeriods(fiscalPeriodList);
-    }
-    if (userList && config.fields.user?.enabled) {
-      const allUsers = Array.isArray(userList) ? userList : userList?.result || [];
-      const filteredUsers = allUsers.filter(
-        (user) => user.email?.toLowerCase() !== "superadmin@gmail.com"
-      );
-      setUsers(filteredUsers);
-    }
-    if (config.fields.cashFlowType?.enabled) {
-      if (config.fields.cashFlowType.bankTypeOnly) {
-        fetchBankTypeCashFlowTypes();
-      } else if (cashFlowTypeList) {
-        setCashFlowTypes(Array.isArray(cashFlowTypeList) ? cashFlowTypeList : cashFlowTypeList?.result || []);
-      }
-    }
-    if (terminalList && config.fields.terminal?.enabled) {
-      setTerminals(terminalList);
-    }
-    if (config.fields.reservation?.enabled) {
-      fetchReservations();
-    }
-  }, [terminalList, customerList, supplierList, categoryList, doctorList, bankList, fiscalPeriodList, userList, cashFlowTypeList, config]);
-
-  const handleGetSupplierItems = async (id) => {
-    setItemId(null);
-    handleGetFilteredItems(id || 0, categoryId || 0, subCategoryId || 0);
-  };
-
-  const handleGetSubCategories = async (id) => {
-    setItemId(null);
-    setSubCategoryId(null);
-    handleGetFilteredItems(supplierId || 0, id || 0, 0);
-    // Only auto-load subcategories if allowAll is true
-    if (config.fields.subCategory?.allowAll !== false) {
-      try {
-        const token = localStorage.getItem("token");
-        const query = `${BASE_URL}/SubCategory/GetAllSubCategoriesByCategoryId?categoryId=${id}`;
-        const response = await fetch(query, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!response.ok) throw new Error("Failed to fetch items");
-
-        const data = await response.json();
-        setSubCategories(data.result);
-      } catch (error) {
-        console.error("Error:", error);
-      }
-    }
-  };
-
-  const handleGetFilteredItems = async (supplier, category, subCategory) => {
-    setItemId(null);
-    setItems([]);
-    // Clear any pending search
-    if (itemSearchDebounceRef.current) {
-      clearTimeout(itemSearchDebounceRef.current);
-    }
-    setItemSearchInput("");
-  };
-
-  const fetchSuppliersWithSearch = async (searchTerm) => {
-    try {
-      const token = localStorage.getItem("token");
-      const query = `${BASE_URL}/Supplier/GetAllSupplier?Search=${encodeURIComponent(searchTerm || "")}`;
-      const response = await fetch(query, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) throw new Error("Failed to fetch suppliers");
-      const data = await response.json();
-      setSuppliers(data.result || []);
-    } catch (error) {
-      console.error("Error:", error);
-      setSuppliers([]);
-    }
-  };
-
-  const fetchCategoriesWithSearch = async (searchTerm) => {
-    try {
-      const token = localStorage.getItem("token");
-      const query = `${BASE_URL}/Category/GetAllCategory?Search=${encodeURIComponent(searchTerm || "")}`;
-      const response = await fetch(query, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) throw new Error("Failed to fetch categories");
-      const data = await response.json();
-      setCategories(data.result || []);
-    } catch (error) {
-      console.error("Error:", error);
-      setCategories([]);
-    }
-  };
-
-  const fetchSubCategoriesWithSearch = async (searchTerm, categoryIdParam) => {
-    try {
-      const token = localStorage.getItem("token");
-      let query;
-      if (categoryIdParam) {
-        query = `${BASE_URL}/SubCategory/GetAllSubCategoriesByCategoryId?categoryId=${categoryIdParam}`;
-      } else {
-        query = `${BASE_URL}/SubCategory/GetAllSubCategory`;
-      }
-      const response = await fetch(query, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) throw new Error("Failed to fetch sub categories");
-      const data = await response.json();
-      let fetchedSubCategories = data.result || [];
-      // Filter by category if provided
-      if (categoryIdParam) {
-        fetchedSubCategories = fetchedSubCategories.filter(sc => sc.categoryId === categoryIdParam);
-      }
-      // Client-side filtering by search term
-      if (searchTerm && searchTerm.trim()) {
-        const searchLower = searchTerm.toLowerCase().trim();
-        fetchedSubCategories = fetchedSubCategories.filter(sc => 
-          (sc.name || "").toLowerCase().includes(searchLower)
-        );
-      }
-      setSubCategories(fetchedSubCategories);
-    } catch (error) {
-      console.error("Error:", error);
-      setSubCategories([]);
-    }
-  };
-
-  const fetchItemsWithSearch = async (searchTerm) => {
-    try {
-      const token = localStorage.getItem("token");
-      let query;
-      let fetchedItems = [];
-      
-      // Optimize API selection based on filters and search term
-      if (searchTerm && searchTerm.trim()) {
-        // If search term exists and supplier is set, use optimized API
-        if (supplierId) {
-          query = `${BASE_URL}/Items/GetAllItemsBySupplierIdAndName?supplierId=${supplierId}&keyword=${encodeURIComponent(searchTerm.trim())}`;
-        } else {
-          // Use GetAllItemsByName for search (returns 5 items, but faster)
-          query = `${BASE_URL}/Items/GetAllItemsByName?keyword=${encodeURIComponent(searchTerm.trim())}`;
-        }
-        
-        const response = await fetch(query, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!response.ok) throw new Error("Failed to fetch items");
-        const data = await response.json();
-        fetchedItems = data.result || [];
-        
-        // Apply additional filters client-side if needed (category, subCategory)
-        if (categoryId) {
-          fetchedItems = fetchedItems.filter(item => item.categoryId === categoryId || item.CategoryId === categoryId);
-        }
-        if (subCategoryId) {
-          fetchedItems = fetchedItems.filter(item => item.subCategoryId === subCategoryId || item.SubCategoryId === subCategoryId);
-        }
-      } else {
-        // No search term - use GetFilteredItems for better performance when filters are set
-        if (supplierId || categoryId || subCategoryId) {
-          query = `${BASE_URL}/Items/GetFilteredItems?supplier=${supplierId || 0}&category=${categoryId || 0}&subCategory=${subCategoryId || 0}`;
-          const response = await fetch(query, {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          });
-
-          if (!response.ok) throw new Error("Failed to fetch items");
-          const data = await response.json();
-          fetchedItems = data.result || [];
-        } else {
-          // No filters and no search - don't load anything
-          setItems([]);
-          return;
-        }
-      }
-      
-      setItems(fetchedItems);
-    } catch (error) {
-      console.error("Error:", error);
-      setItems([]);
-    }
-  };
-
-  // Cleanup debounce on unmount
-  useEffect(() => {
-    return () => {
-      if (itemSearchDebounceRef.current) {
-        clearTimeout(itemSearchDebounceRef.current);
-      }
-      if (itemFilterDebounceRef.current) {
-        clearTimeout(itemFilterDebounceRef.current);
-      }
-      if (supplierSearchDebounceRef.current) {
-        clearTimeout(supplierSearchDebounceRef.current);
-      }
-      if (categorySearchDebounceRef.current) {
-        clearTimeout(categorySearchDebounceRef.current);
-      }
-      if (subCategorySearchDebounceRef.current) {
-        clearTimeout(subCategorySearchDebounceRef.current);
-      }
-    };
-  }, []);
-
-  // Clear items when filters change - items will load only when user types (with debounce)
-  useEffect(() => {
-    if (config.fields.item?.enabled) {
-      // Clear items and search input when filters change
-      setItems([]);
-      setItemSearchInput("");
-      // Clear any pending search debounce
-      if (itemSearchDebounceRef.current) {
-        clearTimeout(itemSearchDebounceRef.current);
-      }
-      // Clear any pending filter debounce
-      if (itemFilterDebounceRef.current) {
-        clearTimeout(itemFilterDebounceRef.current);
-      }
-    }
-  }, [supplierId, categoryId, subCategoryId]);
-
-  // Clear subCategories when category changes
-  useEffect(() => {
-    if (config.fields.subCategory?.enabled && config.fields.subCategory?.allowAll === false) {
-      setSubCategories([]);
-      setSubCategorySearchInput("");
-      setSubCategoryId(null);
-      if (subCategorySearchDebounceRef.current) {
-        clearTimeout(subCategorySearchDebounceRef.current);
-      }
-    }
-  }, [categoryId]);
-
-  const fetchInvoices = async (customerId) => {
-    try {
-      const response = await fetch(`${BASE_URL}/SalesInvoice/GetInvoicesByCustomerId?customerId=${customerId}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch');
-      }
-
-      const result = await response.json();
-      setInvoices(result.result);
-    } catch (err) {
-      console.error("Error:", err);
-    }
-  };
-
-  const fetchReservations = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const query = `${BASE_URL}/Reservation/GetAllReservationSkipAndTake?SkipCount=0&MaxResultCount=1000&Search=null&appointmentType=0&bridalType=0`;
-      const response = await fetch(query, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) throw new Error("Failed to fetch reservations");
-
-      const data = await response.json();
-      setReservations(data.result?.items || []);
-    } catch (error) {
-      console.error("Error:", error);
-    }
-  };
-
-  const fetchBankTypeCashFlowTypes = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const query = `${BASE_URL}/CashFlowType/GetCashFlowTypesByType?cashType=3`;
-      const response = await fetch(query, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) throw new Error("Failed to fetch bank cash flow types");
-
-      const data = await response.json();
-      setCashFlowTypes(Array.isArray(data.result) ? data.result : []);
-    } catch (error) {
-      console.error("Error:", error);
-    }
-  };
-
-  const handleSelectCustomer = (id) => {
-    setCustomerId(id);
-    if (config.fields.invoice?.enabled && id) {
-      fetchInvoices(id);
-    }
   };
 
   const buildQueryParams = () => {
@@ -857,356 +400,110 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
 
     switch (fieldName) {
       case "customer":
-        {
-          const customerOptions = withAllOption(
-            customers.map((c) => ({
-              id: c.id,
-              label: `${c.firstName || ""} ${c.lastName || ""}`.trim() || String(c.id),
-            })),
-            fieldConfig.allowAll
-          );
-          const value = customerOptions.find((o) => o.id === customerId) || null;
-
-          return (
-            <Grid item {...gridSize} key={fieldName}>
-              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                {fieldConfig.label || "Select Customer"}
-              </Typography>
-              <Autocomplete
-                disableCloseOnSelect
-                fullWidth
-                size="small"
-                options={customerOptions}
-                value={value}
-                onChange={(_, opt) => {
-                  if (opt?.__loadMore) {
-                    incLimit(fieldName);
-                    return;
-                  }
-                  handleSelectCustomer(opt?.id ?? 0);
-                }}
-                isOptionEqualToValue={(option, val) => option.id === val.id}
-                filterOptions={(options, state) =>
-                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
-                }
-                renderOption={renderAutocompleteOption}
-                noOptionsText="No matches"
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Type to search..." />
-                )}
-              />
-            </Grid>
-          );
-        }
+        return (
+          <Grid item {...gridSize} key={fieldName}>
+            <ReportSearchField
+              filterType="customer"
+              extraParams={{}}
+              value={customerId}
+              onChange={(id) => setCustomerId(id)}
+              allowAll={fieldConfig.allowAll}
+              label={fieldConfig.label || "Select Customer"}
+              placeholder="Type to search..."
+              required={fieldConfig.required}
+            />
+          </Grid>
+        );
 
       case "supplier":
-        {
-          const supplierOptions = withAllOption(
-            suppliers.map((s) => ({ id: s.id, label: s.name || String(s.id) })),
-            fieldConfig.allowAll
-          );
-          const value = supplierOptions.find((o) => o.id === supplierId) || null;
-
-          return (
-            <Grid item {...gridSize} key={fieldName}>
-              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                {fieldConfig.label || "Select Supplier"}
-              </Typography>
-              <Autocomplete
-                disableCloseOnSelect={fieldConfig.allowAll !== false}
-                fullWidth
-                size="small"
-                options={supplierOptions}
-                value={value}
-                onInputChange={(_, newInputValue, reason) => {
-                  if (fieldConfig.allowAll === false) {
-                    // Only trigger search on user input, not when clearing, resetting, or selecting
-                    if (reason === "input") {
-                      // Clear previous debounce
-                      if (supplierSearchDebounceRef.current) {
-                        clearTimeout(supplierSearchDebounceRef.current);
-                      }
-                      // Set new debounce
-                      supplierSearchDebounceRef.current = setTimeout(() => {
-                        fetchSuppliersWithSearch(newInputValue);
-                      }, 300);
-                    } else if (reason === "clear") {
-                      setSuppliers([]);
-                      setSupplierId(null);
-                      if (supplierSearchDebounceRef.current) {
-                        clearTimeout(supplierSearchDebounceRef.current);
-                      }
-                    }
-                  }
-                }}
-                onChange={(_, opt) => {
-                  if (opt?.__loadMore) {
-                    incLimit(fieldName);
-                    return;
-                  }
-                  const id = opt?.id ?? null;
-                  setSupplierId(id);
-                  if (config.fields.item?.enabled) handleGetSupplierItems(id || 0);
-                }}
-                isOptionEqualToValue={(option, val) => {
-                  if (!option || !val) return false;
-                  return option.id === val.id;
-                }}
-                filterOptions={fieldConfig.allowAll === false ? (options) => options : (options, state) =>
-                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
-                }
-                renderOption={renderAutocompleteOption}
-                noOptionsText={fieldConfig.allowAll === false ? "Type supplier name to search" : "No matches"}
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Type supplier name to search" />
-                )}
-              />
-            </Grid>
-          );
-        }
+        return (
+          <Grid item {...gridSize} key={fieldName}>
+            <ReportSearchField
+              filterType="supplier"
+              extraParams={{}}
+              value={supplierId}
+              onChange={(id) => {
+                setSupplierId(id);
+                if (config.fields.item?.enabled) setItemId(null);
+              }}
+              allowAll={fieldConfig.allowAll}
+              label={fieldConfig.label || "Select Supplier"}
+              placeholder="Type to search..."
+              required={fieldConfig.required}
+            />
+          </Grid>
+        );
 
       case "category":
-        {
-          const categoryOptions = withAllOption(
-            categories.map((c) => ({ id: c.id, label: c.name || String(c.id) })),
-            fieldConfig.allowAll
-          );
-          const value = categoryOptions.find((o) => o.id === categoryId) || null;
-
-          return (
-            <Grid item {...gridSize} key={fieldName}>
-              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                {fieldConfig.label || "Select Category"}
-              </Typography>
-              <Autocomplete
-                disableCloseOnSelect={fieldConfig.allowAll !== false}
-                fullWidth
-                size="small"
-                options={categoryOptions}
-                value={value}
-                onInputChange={(_, newInputValue, reason) => {
-                  if (fieldConfig.allowAll === false) {
-                    // Only trigger search on user input, not when clearing, resetting, or selecting
-                    if (reason === "input") {
-                      // Clear previous debounce
-                      if (categorySearchDebounceRef.current) {
-                        clearTimeout(categorySearchDebounceRef.current);
-                      }
-                      // Set new debounce
-                      categorySearchDebounceRef.current = setTimeout(() => {
-                        fetchCategoriesWithSearch(newInputValue);
-                      }, 300);
-                    } else if (reason === "clear") {
-                      setCategories([]);
-                      setCategoryId(null);
-                      if (categorySearchDebounceRef.current) {
-                        clearTimeout(categorySearchDebounceRef.current);
-                      }
-                    }
-                  }
-                }}
-                onChange={(_, opt) => {
-                  if (opt?.__loadMore) {
-                    incLimit(fieldName);
-                    return;
-                  }
-                  const id = opt?.id ?? null;
-                  setCategoryId(id);
-                  if (config.fields.subCategory?.enabled) handleGetSubCategories(id || 0);
-                  if (config.fields.item?.enabled) handleGetFilteredItems(supplierId || 0, id || 0, subCategoryId || 0);
-                }}
-                isOptionEqualToValue={(option, val) => {
-                  if (!option || !val) return false;
-                  return option.id === val.id;
-                }}
-                filterOptions={fieldConfig.allowAll === false ? (options) => options : (options, state) =>
-                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
-                }
-                renderOption={renderAutocompleteOption}
-                noOptionsText={fieldConfig.allowAll === false ? "Type category name to search" : "No matches"}
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Type category name to search" />
-                )}
-              />
-            </Grid>
-          );
-        }
+        return (
+          <Grid item {...gridSize} key={fieldName}>
+            <ReportSearchField
+              filterType="category"
+              extraParams={{}}
+              value={categoryId}
+              onChange={(id) => {
+                setCategoryId(id);
+                if (config.fields.subCategory?.enabled) setSubCategoryId(null);
+                if (config.fields.item?.enabled) setItemId(null);
+              }}
+              allowAll={fieldConfig.allowAll}
+              label={fieldConfig.label || "Select Category"}
+              placeholder="Type to search..."
+              required={fieldConfig.required}
+            />
+          </Grid>
+        );
 
       case "subCategory":
-        {
-          const subCategoryOptions = withAllOption(
-            subCategories.map((c) => ({ id: c.id, label: c.name || String(c.id) })),
-            fieldConfig.allowAll
-          );
-          const value = subCategoryOptions.find((o) => o.id === subCategoryId) || null;
-
-          return (
-            <Grid item {...gridSize} key={fieldName}>
-              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                {fieldConfig.label || "Select Sub Category"}
-              </Typography>
-              <Autocomplete
-                disableCloseOnSelect={fieldConfig.allowAll !== false}
-                fullWidth
-                size="small"
-                options={subCategoryOptions}
-                value={value}
-                onInputChange={(_, newInputValue, reason) => {
-                  if (fieldConfig.allowAll === false) {
-                    // Only trigger search on user input, not when clearing, resetting, or selecting
-                    if (reason === "input") {
-                      // Clear previous debounce
-                      if (subCategorySearchDebounceRef.current) {
-                        clearTimeout(subCategorySearchDebounceRef.current);
-                      }
-                      // Set new debounce
-                      subCategorySearchDebounceRef.current = setTimeout(() => {
-                        fetchSubCategoriesWithSearch(newInputValue, categoryId);
-                      }, 300);
-                    } else if (reason === "clear") {
-                      setSubCategories([]);
-                      setSubCategoryId(null);
-                      if (subCategorySearchDebounceRef.current) {
-                        clearTimeout(subCategorySearchDebounceRef.current);
-                      }
-                    }
-                  }
-                }}
-                onChange={(_, opt) => {
-                  if (opt?.__loadMore) {
-                    incLimit(fieldName);
-                    return;
-                  }
-                  const id = opt?.id ?? null;
-                  setSubCategoryId(id);
-                  if (config.fields.item?.enabled) handleGetFilteredItems(supplierId || 0, categoryId || 0, id || 0);
-                }}
-                isOptionEqualToValue={(option, val) => {
-                  if (!option || !val) return false;
-                  return option.id === val.id;
-                }}
-                filterOptions={fieldConfig.allowAll === false ? (options) => options : (options, state) =>
-                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
-                }
-                renderOption={renderAutocompleteOption}
-                noOptionsText={fieldConfig.allowAll === false ? "Type sub category name to search" : "No matches"}
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Type sub category name to search" />
-                )}
-              />
-            </Grid>
-          );
-        }
+        return (
+          <Grid item {...gridSize} key={fieldName}>
+            <ReportSearchField
+              filterType="subCategory"
+              extraParams={{ categoryId: categoryId || undefined }}
+              value={subCategoryId}
+              onChange={(id) => {
+                setSubCategoryId(id);
+                if (config.fields.item?.enabled) setItemId(null);
+              }}
+              allowAll={fieldConfig.allowAll}
+              label={fieldConfig.label || "Select Sub Category"}
+              placeholder="Type to search..."
+              required={fieldConfig.required}
+            />
+          </Grid>
+        );
 
       case "item":
-        {
-          const itemOptions = withAllOption(
-            items.map((i) => ({ id: i.id, label: i.name || String(i.id) })),
-            fieldConfig.allowAll
-          );
-          
-          const value = itemOptions.find((o) => o.id === itemId) || null;
-
-          return (
-            <Grid item {...gridSize} key={fieldName}>
-              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                {fieldConfig.label || "Select Item"}
-              </Typography>
-              <Autocomplete
-                disableCloseOnSelect={fieldConfig.allowAll !== false}
-                fullWidth
-                size="small"
-                options={itemOptions}
-                value={value}
-                onInputChange={(_, newInputValue, reason) => {
-                  // Only trigger search on user input, not when clearing, resetting, or selecting
-                  if (reason === "input") {
-                    // Clear previous debounce
-                    if (itemSearchDebounceRef.current) {
-                      clearTimeout(itemSearchDebounceRef.current);
-                    }
-                    // Set new debounce
-                    itemSearchDebounceRef.current = setTimeout(() => {
-                      fetchItemsWithSearch(newInputValue);
-                    }, 300);
-                  } else if (reason === "clear") {
-                    setItems([]);
-                    setItemId(null);
-                    if (itemSearchDebounceRef.current) {
-                      clearTimeout(itemSearchDebounceRef.current);
-                    }
-                  }
-                }}
-                onChange={(event, opt, reason) => {
-                  if (opt?.__loadMore) {
-                    incLimit(fieldName);
-                    return;
-                  }
-                  // Handle selection
-                  if (reason === "selectOption") {
-                    setItemId(opt?.id ?? null);
-                  } else if (reason === "clear") {
-                    setItemId(null);
-                    setItems([]);
-                  }
-                }}
-                isOptionEqualToValue={(option, val) => {
-                  if (!option || !val) return false;
-                  return option.id === val.id;
-                }}
-                filterOptions={(options) => options} // Disable client-side filtering since we're doing server-side search
-                renderOption={renderAutocompleteOption}
-                noOptionsText={fieldConfig.allowAll === false ? "Type item name to search" : "Type to search items..."}
-                renderInput={(params) => (
-                  <TextField {...params} placeholder={fieldConfig.allowAll === false ? "Type item name to search" : "Type to search..."} />
-                )}
-              />
-            </Grid>
-          );
-        }
+        return (
+          <Grid item {...gridSize} key={fieldName}>
+            <ReportSearchField
+              filterType="item"
+              extraParams={{ supplierId: supplierId || undefined, categoryId: categoryId || undefined, subCategoryId: subCategoryId || undefined }}
+              value={itemId}
+              onChange={(id) => setItemId(id)}
+              allowAll={fieldConfig.allowAll}
+              label={fieldConfig.label || "Select Item"}
+              placeholder="Type to search..."
+              required={fieldConfig.required}
+            />
+          </Grid>
+        );
 
       case "invoice":
-        {
-          const invoiceOptions = withAllOption(
-            invoices.map((inv) => ({
-              id: inv.id,
-              label: `${inv.documentNo || inv.id} - ${formatCurrency(inv.grossTotal)}`,
-            })),
-            fieldConfig.allowAll
-          );
-          const value = invoiceOptions.find((o) => o.id === invoiceId) || null;
-
-          return (
-            <Grid item {...gridSize} key={fieldName}>
-              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                {fieldConfig.label || "Select Invoice"}
-              </Typography>
-              <Autocomplete
-                disableCloseOnSelect
-                fullWidth
-                size="small"
-                options={invoiceOptions}
-                value={value}
-                onChange={(_, opt) => {
-                  if (opt?.__loadMore) {
-                    incLimit(fieldName);
-                    return;
-                  }
-                  setInvoiceId(opt?.id ?? 0);
-                }}
-                isOptionEqualToValue={(option, val) => option.id === val.id}
-                filterOptions={(options, state) =>
-                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
-                }
-                renderOption={renderAutocompleteOption}
-                noOptionsText="No matches"
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Type to search..." />
-                )}
-              />
-            </Grid>
-          );
-        }
+        return (
+          <Grid item {...gridSize} key={fieldName}>
+            <ReportSearchField
+              filterType="invoice"
+              extraParams={{ customerId: customerId || undefined }}
+              value={invoiceId}
+              onChange={(id) => setInvoiceId(id ?? 0)}
+              allowAll={fieldConfig.allowAll}
+              label={fieldConfig.label || "Select Invoice"}
+              placeholder="Type to search..."
+              required={fieldConfig.required}
+            />
+          </Grid>
+        );
 
       case "paymentType":
         return (
@@ -1253,130 +550,52 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
         );
 
       case "fiscalPeriod":
-        {
-          const periodOptions = withAllOption(
-            fiscalPeriods.map((p) => ({
-              id: p.id,
-              label: `${formatDate(p.startDate)} - ${p.endDate ? formatDate(p.endDate) : "Still Active"}`,
-            })),
-            fieldConfig.allowAll
-          );
-          const value = periodOptions.find((o) => o.id === fiscalPeriod) || null;
-
-          return (
-            <Grid item {...gridSize} key={fieldName}>
-              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                {fieldConfig.label || "Select Fiscal Period"}
-              </Typography>
-              <Autocomplete
-                disableCloseOnSelect
-                fullWidth
-                size="small"
-                options={periodOptions}
-                value={value}
-                onChange={(_, opt) => {
-                  if (opt?.__loadMore) {
-                    incLimit(fieldName);
-                    return;
-                  }
-                  setFiscalPeriod(opt?.id ?? 0);
-                }}
-                isOptionEqualToValue={(option, val) => option.id === val.id}
-                filterOptions={(options, state) =>
-                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
-                }
-                renderOption={renderAutocompleteOption}
-                noOptionsText="No matches"
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Type to search..." />
-                )}
-              />
-            </Grid>
-          );
-        }
+        return (
+          <Grid item {...gridSize} key={fieldName}>
+            <ReportSearchField
+              filterType="fiscalPeriod"
+              extraParams={{}}
+              value={fiscalPeriod}
+              onChange={(id) => setFiscalPeriod(id ?? 0)}
+              allowAll={fieldConfig.allowAll}
+              label={fieldConfig.label || "Select Fiscal Period"}
+              placeholder="Type to search..."
+              required={fieldConfig.required}
+            />
+          </Grid>
+        );
 
       case "doctor":
-        {
-          const doctorOptions = withAllOption(
-            doctors.map((d) => ({ id: d.id, label: d.name || String(d.id) })),
-            fieldConfig.allowAll
-          );
-          const value = doctorOptions.find((o) => o.id === doctorId) || null;
-
-          return (
-            <Grid item {...gridSize} key={fieldName}>
-              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                {fieldConfig.label || "Select Doctor"}
-              </Typography>
-              <Autocomplete
-                disableCloseOnSelect
-                fullWidth
-                size="small"
-                options={doctorOptions}
-                value={value}
-                onChange={(_, opt) => {
-                  if (opt?.__loadMore) {
-                    incLimit(fieldName);
-                    return;
-                  }
-                  setDoctorId(opt?.id ?? 0);
-                }}
-                isOptionEqualToValue={(option, val) => option.id === val.id}
-                filterOptions={(options, state) =>
-                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
-                }
-                renderOption={renderAutocompleteOption}
-                noOptionsText="No matches"
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Type to search..." />
-                )}
-              />
-            </Grid>
-          );
-        }
+        return (
+          <Grid item {...gridSize} key={fieldName}>
+            <ReportSearchField
+              filterType="doctor"
+              extraParams={{}}
+              value={doctorId}
+              onChange={(id) => setDoctorId(id ?? 0)}
+              allowAll={fieldConfig.allowAll}
+              label={fieldConfig.label || "Select Doctor"}
+              placeholder="Type to search..."
+              required={fieldConfig.required}
+            />
+          </Grid>
+        );
 
       case "bank":
-        {
-          const bankOptions = withAllOption(
-            banks.map((b) => ({
-              id: b.id,
-              label: `${b.name || ""} - ${b.accountUsername || ""} (${b.accountNo || ""})`.trim() || String(b.id),
-            })),
-            fieldConfig.allowAll
-          );
-          const value = bankOptions.find((o) => o.id === bankId) || null;
-
-          return (
-            <Grid item {...gridSize} key={fieldName}>
-              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                {fieldConfig.label || "Select Bank"}
-              </Typography>
-              <Autocomplete
-                disableCloseOnSelect
-                fullWidth
-                size="small"
-                options={bankOptions}
-                value={value}
-                onChange={(_, opt) => {
-                  if (opt?.__loadMore) {
-                    incLimit(fieldName);
-                    return;
-                  }
-                  setBankId(opt?.id ?? 0);
-                }}
-                isOptionEqualToValue={(option, val) => option.id === val.id}
-                filterOptions={(options, state) =>
-                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
-                }
-                renderOption={renderAutocompleteOption}
-                noOptionsText="No matches"
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Type to search..." />
-                )}
-              />
-            </Grid>
-          );
-        }
+        return (
+          <Grid item {...gridSize} key={fieldName}>
+            <ReportSearchField
+              filterType="bank"
+              extraParams={{}}
+              value={bankId}
+              onChange={(id) => setBankId(id ?? 0)}
+              allowAll={fieldConfig.allowAll}
+              label={fieldConfig.label || "Select Bank"}
+              placeholder="Type to search..."
+              required={fieldConfig.required}
+            />
+          </Grid>
+        );
 
       case "appointmentType":
         return (
@@ -1423,87 +642,36 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
         );
 
       case "user":
-        {
-          const userOptions = withAllOption(
-            users.map((u) => ({
-              id: u.id,
-              label: `${u.firstName || ""} ${u.lastName || ""} ${u.userName ? `(${u.userName})` : ""}`.trim() || String(u.id),
-            })),
-            fieldConfig.allowAll
-          );
-          const value = userOptions.find((o) => o.id === userId) || null;
-
-          return (
-            <Grid item {...gridSize} key={fieldName}>
-              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                {fieldConfig.label || "Select User"}
-              </Typography>
-              <Autocomplete
-                disableCloseOnSelect
-                fullWidth
-                size="small"
-                options={userOptions}
-                value={value}
-                onChange={(_, opt) => {
-                  if (opt?.__loadMore) {
-                    incLimit(fieldName);
-                    return;
-                  }
-                  setUserId(opt?.id ?? 0);
-                }}
-                isOptionEqualToValue={(option, val) => option.id === val.id}
-                filterOptions={(options, state) =>
-                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
-                }
-                renderOption={renderAutocompleteOption}
-                noOptionsText="No matches"
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Type to search..." />
-                )}
-              />
-            </Grid>
-          );
-        }
+        return (
+          <Grid item {...gridSize} key={fieldName}>
+            <ReportSearchField
+              filterType="user"
+              extraParams={{}}
+              value={userId}
+              onChange={(id) => setUserId(id ?? 0)}
+              allowAll={fieldConfig.allowAll}
+              label={fieldConfig.label || "Select User"}
+              placeholder="Type to search..."
+              required={fieldConfig.required}
+            />
+          </Grid>
+        );
 
       case "cashFlowType":
-        {
-          const cashFlowOptions = withAllOption(
-            cashFlowTypes.map((c) => ({ id: c.id, label: c.name || String(c.id) })),
-            fieldConfig.allowAll
-          );
-          const value = cashFlowOptions.find((o) => o.id === cashFlowTypeId) || null;
-
-          return (
-            <Grid item {...gridSize} key={fieldName}>
-              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                {fieldConfig.label || "Select Cash Flow Type"}
-              </Typography>
-              <Autocomplete
-                disableCloseOnSelect
-                fullWidth
-                size="small"
-                options={cashFlowOptions}
-                value={value}
-                onChange={(_, opt) => {
-                  if (opt?.__loadMore) {
-                    incLimit(fieldName);
-                    return;
-                  }
-                  setCashFlowTypeId(opt?.id ?? 0);
-                }}
-                isOptionEqualToValue={(option, val) => option.id === val.id}
-                filterOptions={(options, state) =>
-                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
-                }
-                renderOption={renderAutocompleteOption}
-                noOptionsText="No matches"
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Type to search..." />
-                )}
-              />
-            </Grid>
-          );
-        }
+        return (
+          <Grid item {...gridSize} key={fieldName}>
+            <ReportSearchField
+              filterType="cashFlowType"
+              extraParams={{ bankTypeOnly: fieldConfig.bankTypeOnly }}
+              value={cashFlowTypeId}
+              onChange={(id) => setCashFlowTypeId(id ?? 0)}
+              allowAll={fieldConfig.allowAll}
+              label={fieldConfig.label || "Select Cash Flow Type"}
+              placeholder="Type to search..."
+              required={fieldConfig.required}
+            />
+          </Grid>
+        );
 
       case "cashType":
         return (
@@ -1528,87 +696,36 @@ export default function UnifiedSummaryReportModal({ reportName, docName }) {
         );
 
       case "terminal":
-        {
-          const terminalOptions = withAllOption(
-            terminals.map((t) => ({ id: t.id, label: `${t.name || ""} (${t.code || ""})`.trim() || String(t.id) })),
-            fieldConfig.allowAll
-          );
-          const value = terminalOptions.find((o) => o.id === terminalId) || null;
-
-          return (
-            <Grid item {...gridSize} key={fieldName}>
-              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                {fieldConfig.label || "Select Terminal"}
-              </Typography>
-              <Autocomplete
-                disableCloseOnSelect
-                fullWidth
-                size="small"
-                options={terminalOptions}
-                value={value}
-                onChange={(_, opt) => {
-                  if (opt?.__loadMore) {
-                    incLimit(fieldName);
-                    return;
-                  }
-                  setTerminalId(opt?.id ?? 0);
-                }}
-                isOptionEqualToValue={(option, val) => option.id === val.id}
-                filterOptions={(options, state) =>
-                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
-                }
-                renderOption={renderAutocompleteOption}
-                noOptionsText="No matches"
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Type to search..." />
-                )}
-              />
-            </Grid>
-          );
-        }
+        return (
+          <Grid item {...gridSize} key={fieldName}>
+            <ReportSearchField
+              filterType="terminal"
+              extraParams={{}}
+              value={terminalId}
+              onChange={(id) => setTerminalId(id ?? 0)}
+              allowAll={fieldConfig.allowAll}
+              label={fieldConfig.label || "Select Terminal"}
+              placeholder="Type to search..."
+              required={fieldConfig.required}
+            />
+          </Grid>
+        );
 
       case "reservation":
-        {
-          const reservationOptions = withAllOption(
-            reservations.map((r) => ({
-              id: r.id,
-              label: `${r.documentNo || r.id} - ${r.customerName || ""}`.trim(),
-            })),
-            fieldConfig.allowAll
-          );
-          const value = reservationOptions.find((o) => o.id === reservationId) || null;
-
-          return (
-            <Grid item {...gridSize} key={fieldName}>
-              <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                {fieldConfig.label || "Select Reservation"}
-              </Typography>
-              <Autocomplete
-                disableCloseOnSelect
-                fullWidth
-                size="small"
-                options={reservationOptions}
-                value={value}
-                onChange={(_, opt) => {
-                  if (opt?.__loadMore) {
-                    incLimit(fieldName);
-                    return;
-                  }
-                  setReservationId(opt?.id ?? 0);
-                }}
-                isOptionEqualToValue={(option, val) => option.id === val.id}
-                filterOptions={(options, state) =>
-                  filterTopMatchesWithLoadMore(options, state.inputValue, getLimit(fieldName))
-                }
-                renderOption={renderAutocompleteOption}
-                noOptionsText="No matches"
-                renderInput={(params) => (
-                  <TextField {...params} placeholder="Type to search..." />
-                )}
-              />
-            </Grid>
-          );
-        }
+        return (
+          <Grid item {...gridSize} key={fieldName}>
+            <ReportSearchField
+              filterType="reservation"
+              extraParams={{}}
+              value={reservationId}
+              onChange={(id) => setReservationId(id ?? 0)}
+              allowAll={fieldConfig.allowAll}
+              label={fieldConfig.label || "Select Reservation"}
+              placeholder="Type to search..."
+              required={fieldConfig.required}
+            />
+          </Grid>
+        );
 
       default:
         return null;

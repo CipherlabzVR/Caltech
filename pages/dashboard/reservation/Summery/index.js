@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Box, Grid, TextField, Typography } from "@mui/material";
+import { Box, Grid, Typography } from "@mui/material";
 import Card from "@mui/material/Card";
 import ReservationSummeryChart from "./ReservationSummeryChart";
+import BarChartIcon from "@mui/icons-material/BarChart";
 import styles from "./Summery.module.css";
 import BASE_URL from "Base/api";
 
@@ -11,20 +12,19 @@ const getSLDateString = (date) => {
   return slTime.toISOString().split('T')[0];
 };
 
-const Summery = () => {
-  const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+const Summery = ({ startDate: propStartDate, endDate: propEndDate }) => {
   const [features, setFeatures] = useState();
   const [values, setValues] = useState();
-  const [startDate, setStartDate] = useState(getSLDateString(firstDay));
-  const [endDate, setEndDate] = useState(getSLDateString(lastDay));
   const [percentages, setPercentages] = useState();
 
   const fetchDashboard = async (start, end) => {
     try {
+      // Ensure dates are properly formatted (YYYY-MM-DD)
+      const startDateFormatted = start ? new Date(start).toISOString().split('T')[0] : start;
+      const endDateFormatted = end ? new Date(end).toISOString().split('T')[0] : end;
+      
       const response = await fetch(
-        `${BASE_URL}/Dashboard/ReservationSummaryByDateRange?startDate=${start}&endDate=${end}`,
+        `${BASE_URL}/Dashboard/ReservationSummaryByDateRange?startDate=${encodeURIComponent(startDateFormatted)}&endDate=${encodeURIComponent(endDateFormatted)}`,
         {
           method: "GET",
           headers: {
@@ -76,21 +76,21 @@ const Summery = () => {
   };
 
   useEffect(() => {
-    fetchDashboard(startDate, endDate);
-  }, []);
-
-  const handleUpdate = (start, end) => {
-    fetchDashboard(start, end);
-  }
+    if (propStartDate && propEndDate) {
+      fetchDashboard(propStartDate, propEndDate);
+    }
+  }, [propStartDate, propEndDate]);
 
   return (
     <>
       <Card
         sx={{
-          boxShadow: "none",
-          borderRadius: "10px",
-          p: "25px",
+          background: "#FFFFFF",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+          borderRadius: "8px",
+          p: "20px",
           mb: "15px",
+          border: "1px solid rgba(0, 0, 0, 0.08)",
         }}
       >
 
@@ -99,188 +99,558 @@ const Summery = () => {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            borderBottom: "1px solid #EEF0F7",
-            paddingBottom: "10px",
+            borderBottom: "1px solid rgba(0, 0, 0, 0.1)",
+            paddingBottom: "12px",
             mb: "20px",
           }}
           className="for-dark-bottom-border"
         >
-          <Grid container>
-            <Grid item lg={6} xs={12}>
-              <Typography
-                as="h3"
-                sx={{
-                  fontSize: 18,
-                  fontWeight: 500,
-                }}
-              >
-                Summery
-              </Typography>
-
-            </Grid>
-            <Grid item xs={12} lg={6}>
-              <Box display="flex" gap={2}>
-                <Box display="flex" alignItems="center" gap={2}>
-                  <Typography>Start Date</Typography>
-                  <TextField value={startDate} size="small" type="date" onChange={(e) => {
-                    setStartDate(e.target.value);
-                    handleUpdate(e.target.value, endDate);
-                  }} />
-                </Box>
-                <Box display="flex" alignItems="center" gap={2}>
-                  <Typography>End Date</Typography>
-                  <TextField value={endDate} size="small" type="date" onChange={(e) => {
-                    setEndDate(e.target.value);
-                    handleUpdate(startDate, e.target.value);
-                  }
-                  } />
-                </Box>
-              </Box>
-            </Grid>
-          </Grid>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <BarChartIcon sx={{ fontSize: 20, color: "#475569" }} />
+            <Typography
+              as="h3"
+              sx={{
+                fontSize: 20,
+                fontWeight: 600,
+                color: "#1E293B",
+              }}
+            >
+              Summary
+            </Typography>
+          </Box>
         </Box>
-        <Grid container>
-          <Grid item lg={6} xs={6}>
-            <ReservationSummeryChart features={features} value={values?.totalItems} />
+        <Grid container spacing={3}>
+          <Grid item lg={6} xs={12}>
+            <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%" }}>
+              <ReservationSummeryChart features={features} value={values?.totalItems} />
+            </Box>
           </Grid>
-          <Grid item lg={6} xs={6}>
-            <ul className={styles.list}>
-              <li>
+          <Grid item lg={6} xs={12}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6} lg={6}>
                 <Box
                   sx={{
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
+                    p: "16px",
+                    borderRadius: "16px",
+                    background: "linear-gradient(135deg, rgba(32, 191, 107, 0.08) 0%, rgba(1, 163, 164, 0.08) 100%)",
+                    transition: "all 0.3s ease",
+                    width: "100%",
+                    "&:hover": {
+                      background: "linear-gradient(135deg, rgba(32, 191, 107, 0.12) 0%, rgba(1, 163, 164, 0.12) 100%)",
+                      transform: "translateX(4px)",
+                    },
                   }}
                 >
-                  <img src="/images/dashboard/reservation/1.png" width="22" alt="bitcoin" />
-                  <Box sx={{ ml: "10px" }}>
-                    <Typography
-                      as="h5"
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                    <Box
                       sx={{
-                        fontSize: 15,
-                        fontWeight: 500,
+                        width: 40,
+                        height: 40,
+                        borderRadius: "6px",
+                        background: "linear-gradient(135deg, #20BF6B 0%, #01A3A4 100%)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "18px",
+                        boxShadow: "0 2px 4px rgba(32, 191, 107, 0.3)",
                       }}
                     >
-                      Reservations
-                    </Typography>
+                      📅
+                    </Box>
+                    <Box>
+                      <Typography
+                        as="h5"
+                        sx={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: "#1E293B",
+                          mb: 0.5,
+                        }}
+                      >
+                        Reservations
+                      </Typography>
+                      <Typography 
+                        as="span" 
+                        sx={{ 
+                          fontSize: 12, 
+                          fontWeight: 500,
+                          color: "#20BF6B",
+                        }}
+                      >
+                        {percentages?.ReservationPercentage}%
+                      </Typography>
+                    </Box>
+                  </Box>
 
-                    <Typography as="span">{percentages?.ReservationPercentage}%</Typography>
+                  <Box textAlign="right">
+                    <Typography 
+                      as="p" 
+                      sx={{ 
+                        fontSize: 11, 
+                        fontWeight: 500,
+                        color: "#94A3B8",
+                        mb: 0.5,
+                      }}
+                    >
+                      as of today
+                    </Typography>
+                    <Typography 
+                      as="p" 
+                      sx={{ 
+                        fontSize: 20, 
+                        fontWeight: 700,
+                        background: "linear-gradient(135deg, #20BF6B 0%, #01A3A4 100%)",
+                        backgroundClip: "text",
+                        WebkitBackgroundClip: "text",
+                        WebkitTextFillColor: "transparent",
+                      }}
+                    >
+                      {values?.reservations}
+                    </Typography>
                   </Box>
                 </Box>
+              </Grid>
 
-                <Box textAlign="right">
-                  <Typography as="p" fontWeight="500">
-                    as of today
-                  </Typography>
-                  <Typography as="p" fontWeight="500" color="#00B69B">
-                    {values?.reservations}
-                  </Typography>
-                </Box>
-              </li>
-
-              <li>
+              <Grid item xs={12} sm={6} lg={6}>
                 <Box
                   sx={{
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
+                    p: "20px",
+                    borderRadius: "6px",
+                    background: "rgba(95, 39, 205, 0.08)",
+                    transition: "all 0.2s ease",
+                    width: "100%",
+                    border: "1px solid rgba(0, 0, 0, 0.08)",
+                    "&:hover": {
+                      background: "rgba(95, 39, 205, 0.12)",
+                    },
                   }}
                 >
-                  <img src="/images/dashboard/reservation/2.png" width="22" alt="ethereum" />
-                  <Box sx={{ ml: "10px" }}>
-                    <Typography
-                      as="h5"
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                    <Box
                       sx={{
-                        fontSize: 15,
-                        fontWeight: 500,
+                        width: 40,
+                        height: 40,
+                        borderRadius: "6px",
+                        background: "linear-gradient(135deg, #5F27CD 0%, #341F97 100%)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "18px",
+                        boxShadow: "0 2px 4px rgba(95, 39, 205, 0.3)",
                       }}
                     >
-                      Pencil Notes
-                    </Typography>
+                      ✏️
+                    </Box>
+                    <Box>
+                      <Typography
+                        as="h5"
+                        sx={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: "#1E293B",
+                          mb: 0.5,
+                        }}
+                      >
+                        Pencil Notes
+                      </Typography>
+                      <Typography 
+                        as="span" 
+                        sx={{ 
+                          fontSize: 13, 
+                          fontWeight: 500,
+                          color: "#5F27CD",
+                        }}
+                      >
+                        {percentages?.PencilNotesPercentage}%
+                      </Typography>
+                    </Box>
+                  </Box>
 
-                    <Typography as="span">{percentages?.PencilNotesPercentage}%</Typography>
+                  <Box textAlign="right">
+                    <Typography 
+                      as="p" 
+                      sx={{ 
+                        fontSize: 11, 
+                        fontWeight: 500,
+                        color: "#94A3B8",
+                        mb: 0.5,
+                      }}
+                    >
+                      as of today
+                    </Typography>
+                    <Typography 
+                      as="p" 
+                      sx={{ 
+                        fontSize: 20, 
+                        fontWeight: 700,
+                        background: "linear-gradient(135deg, #5F27CD 0%, #341F97 100%)",
+                        backgroundClip: "text",
+                        WebkitBackgroundClip: "text",
+                        WebkitTextFillColor: "transparent",
+                      }}
+                    >
+                      {values?.pencilNotes}
+                    </Typography>
                   </Box>
                 </Box>
+              </Grid>
 
-                <Box textAlign="right">
-                  <Typography as="p" fontWeight="500">
-                    as of today
-                  </Typography>
-                  <Typography as="p" fontWeight="500" color="#00B69B">
-                    {values?.pencilNotes}
-                  </Typography>
-                </Box>
-              </li>
-
-              <li>
+              <Grid item xs={12} sm={6} lg={6}>
                 <Box
                   sx={{
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
+                    p: "20px",
+                    borderRadius: "6px",
+                    background: "rgba(255, 107, 157, 0.08)",
+                    transition: "all 0.2s ease",
+                    width: "100%",
+                    border: "1px solid rgba(0, 0, 0, 0.08)",
+                    "&:hover": {
+                      background: "rgba(255, 107, 157, 0.12)",
+                    },
                   }}
                 >
-                  <img src="/images/dashboard/reservation/3.png" width="22" alt="comp-bidr" />
-                  <Box sx={{ ml: "10px" }}>
-                    <Typography
-                      as="h5"
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                    <Box
                       sx={{
-                        fontSize: 15,
-                        fontWeight: 500,
+                        width: 40,
+                        height: 40,
+                        borderRadius: "6px",
+                        background: "linear-gradient(135deg, #FF6B9D 0%, #C44569 100%)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "18px",
+                        boxShadow: "0 2px 4px rgba(255, 107, 157, 0.3)",
                       }}
                     >
-                      Pending Payment Approval
-                    </Typography>
+                      ⏳
+                    </Box>
+                    <Box>
+                      <Typography
+                        as="h5"
+                        sx={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: "#1E293B",
+                          mb: 0.5,
+                        }}
+                      >
+                        Pending Payment Approval
+                      </Typography>
+                      <Typography 
+                        as="span" 
+                        sx={{ 
+                          fontSize: 13, 
+                          fontWeight: 500,
+                          color: "#FF6B9D",
+                        }}
+                      >
+                        {percentages?.PendingApprovalsPercentage}%
+                      </Typography>
+                    </Box>
+                  </Box>
 
-                    <Typography as="span">{percentages?.PendingApprovalsPercentage}%</Typography>
+                  <Box textAlign="right">
+                    <Typography 
+                      as="p" 
+                      sx={{ 
+                        fontSize: 11, 
+                        fontWeight: 500,
+                        color: "#94A3B8",
+                        mb: 0.5,
+                      }}
+                    >
+                      as of today
+                    </Typography>
+                    <Typography 
+                      as="p" 
+                      sx={{ 
+                        fontSize: 20, 
+                        fontWeight: 700,
+                        background: "linear-gradient(135deg, #FF6B9D 0%, #C44569 100%)",
+                        backgroundClip: "text",
+                        WebkitBackgroundClip: "text",
+                        WebkitTextFillColor: "transparent",
+                      }}
+                    >
+                      {values?.pendingApprovals}
+                    </Typography>
                   </Box>
                 </Box>
+              </Grid>
 
-                <Box textAlign="right">
-                  <Typography as="p" fontWeight="500">
-                    as of today
-                  </Typography>
-                  <Typography as="p" fontWeight="500" color="#00B69B">
-                    {values?.pendingApprovals}
-                  </Typography>
-                </Box>
-              </li>
-
-              <li>
+              <Grid item xs={12} sm={6} lg={6}>
                 <Box
                   sx={{
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
+                    p: "20px",
+                    borderRadius: "6px",
+                    background: "rgba(254, 202, 87, 0.08)",
+                    transition: "all 0.2s ease",
+                    width: "100%",
+                    border: "1px solid rgba(0, 0, 0, 0.08)",
+                    "&:hover": {
+                      background: "rgba(254, 202, 87, 0.12)",
+                    },
                   }}
                 >
-                  <img src="/images/dashboard/reservation/4.png" width="22" alt="matic2" />
-                  <Box sx={{ ml: "10px" }}>
-                    <Typography
-                      as="h5"
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                    <Box
                       sx={{
-                        fontSize: 15,
-                        fontWeight: 500,
+                        width: 40,
+                        height: 40,
+                        borderRadius: "6px",
+                        background: "linear-gradient(135deg, #FECA57 0%, #FF9FF3 100%)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "18px",
+                        boxShadow: "0 2px 4px rgba(254, 202, 87, 0.3)",
                       }}
                     >
-                      Other Notes
-                    </Typography>
+                      📋
+                    </Box>
+                    <Box>
+                      <Typography
+                        as="h5"
+                        sx={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: "#1E293B",
+                          mb: 0.5,
+                        }}
+                      >
+                        Other Notes
+                      </Typography>
+                      <Typography 
+                        as="span" 
+                        sx={{ 
+                          fontSize: 13, 
+                          fontWeight: 500,
+                          color: "#FECA57",
+                        }}
+                      >
+                        {percentages?.OtherNotesPercentage}%
+                      </Typography>
+                    </Box>
+                  </Box>
 
-                    <Typography as="span">{percentages?.OtherNotesPercentage}%</Typography>
+                  <Box textAlign="right">
+                    <Typography 
+                      as="p" 
+                      sx={{ 
+                        fontSize: 11, 
+                        fontWeight: 500,
+                        color: "#94A3B8",
+                        mb: 0.5,
+                      }}
+                    >
+                      as of today
+                    </Typography>
+                    <Typography 
+                      as="p" 
+                      sx={{ 
+                        fontSize: 20, 
+                        fontWeight: 700,
+                        background: "linear-gradient(135deg, #FECA57 0%, #FF9FF3 100%)",
+                        backgroundClip: "text",
+                        WebkitBackgroundClip: "text",
+                        WebkitTextFillColor: "transparent",
+                      }}
+                    >
+                      {values?.otherNotes}
+                    </Typography>
                   </Box>
                 </Box>
+              </Grid>
+            </Grid>
+            
+            <Grid container spacing={2} sx={{ mt: 2 }}>
+              <Grid item xs={12} sm={6} lg={6}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    p: "20px",
+                    borderRadius: "6px",
+                    background: "rgba(239, 68, 68, 0.08)",
+                    transition: "all 0.2s ease",
+                    width: "100%",
+                    border: "1px solid rgba(0, 0, 0, 0.08)",
+                    "&:hover": {
+                      background: "rgba(239, 68, 68, 0.12)",
+                    },
+                  }}
+                >
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "6px",
+                        background: "linear-gradient(135deg, #EF4444 0%, #DC2626 100%)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "18px",
+                        boxShadow: "0 2px 4px rgba(239, 68, 68, 0.3)",
+                      }}
+                    >
+                      ❌
+                    </Box>
+                    <Box>
+                      <Typography
+                        as="h5"
+                        sx={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: "#1E293B",
+                          mb: 0.5,
+                        }}
+                      >
+                        Rejected Reservations
+                      </Typography>
+                      <Typography 
+                        as="span" 
+                        sx={{ 
+                          fontSize: 13, 
+                          fontWeight: 500,
+                          color: "#EF4444",
+                        }}
+                      >
+                        {values?.rejectedReservations || 0}
+                      </Typography>
+                    </Box>
+                  </Box>
 
-                <Box textAlign="right">
-                  <Typography as="p" fontWeight="500">
-                    as of today
-                  </Typography>
-                  <Typography as="p" fontWeight="500" color="#00B69B">
-                    {values?.otherNotes}
-                  </Typography>
+                  <Box textAlign="right">
+                    <Typography 
+                      as="p" 
+                      sx={{ 
+                        fontSize: 11, 
+                        fontWeight: 500,
+                        color: "#94A3B8",
+                        mb: 0.5,
+                      }}
+                    >
+                      as of today
+                    </Typography>
+                    <Typography 
+                      as="p" 
+                      sx={{ 
+                        fontSize: 20, 
+                        fontWeight: 700,
+                        background: "linear-gradient(135deg, #EF4444 0%, #DC2626 100%)",
+                        backgroundClip: "text",
+                        WebkitBackgroundClip: "text",
+                        WebkitTextFillColor: "transparent",
+                      }}
+                    >
+                      {values?.rejectedReservations || 0}
+                    </Typography>
+                  </Box>
                 </Box>
-              </li>
-            </ul>
+              </Grid>
+
+              <Grid item xs={12} sm={6} lg={6}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    p: "20px",
+                    borderRadius: "6px",
+                    background: "rgba(251, 146, 60, 0.08)",
+                    transition: "all 0.2s ease",
+                    width: "100%",
+                    border: "1px solid rgba(0, 0, 0, 0.08)",
+                    "&:hover": {
+                      background: "rgba(251, 146, 60, 0.12)",
+                    },
+                  }}
+                >
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "6px",
+                        background: "linear-gradient(135deg, #FB923C 0%, #F97316 100%)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "18px",
+                        boxShadow: "0 2px 4px rgba(251, 146, 60, 0.3)",
+                      }}
+                    >
+                      ⏸️
+                    </Box>
+                    <Box>
+                      <Typography
+                        as="h5"
+                        sx={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          color: "#1E293B",
+                          mb: 0.5,
+                        }}
+                      >
+                        Postponed Reservations
+                      </Typography>
+                      <Typography 
+                        as="span" 
+                        sx={{ 
+                          fontSize: 13, 
+                          fontWeight: 500,
+                          color: "#FB923C",
+                        }}
+                      >
+                        {values?.postponedReservations || 0}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Box textAlign="right">
+                    <Typography 
+                      as="p" 
+                      sx={{ 
+                        fontSize: 11, 
+                        fontWeight: 500,
+                        color: "#94A3B8",
+                        mb: 0.5,
+                      }}
+                    >
+                      as of today
+                    </Typography>
+                    <Typography 
+                      as="p" 
+                      sx={{ 
+                        fontSize: 20, 
+                        fontWeight: 700,
+                        background: "linear-gradient(135deg, #FB923C 0%, #F97316 100%)",
+                        backgroundClip: "text",
+                        WebkitBackgroundClip: "text",
+                        WebkitTextFillColor: "transparent",
+                      }}
+                    >
+                      {values?.postponedReservations || 0}
+                    </Typography>
+                  </Box>
+                </Box>
+              </Grid>
+            </Grid>
           </Grid>
         </Grid>
       </Card>

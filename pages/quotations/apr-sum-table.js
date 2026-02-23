@@ -13,6 +13,8 @@ import BASE_URL from "Base/api";
 export default function ApprovedSummaryTable() {
   const [items, setItems] = useState([]);
   const [patternItem, setPatternItem] = useState({});
+  const [commissionItem, setCommissionItem] = useState({});
+  const [headerData, setHeaderData] = useState(null);
   const QuotationDetails = JSON.parse(localStorage.getItem("QuotationDetails"));
 
   const fetchItems = async () => {
@@ -33,7 +35,17 @@ export default function ApprovedSummaryTable() {
       }
 
       const data = await response.json();
-      setItems(data.result);
+      const allItems = data.result || [];
+      
+      // Separate Commission from regular items
+      const commission = allItems.find((item) => item.itemName === "Commission");
+      if (commission) {
+        setCommissionItem(commission);
+      }
+      
+      // Filter out Commission from items list
+      const regularItems = allItems.filter((item) => item.itemName !== "Commission");
+      setItems(regularItems);
     } catch (error) {
       console.error("Error fetching Size List:", error);
     }
@@ -61,9 +73,32 @@ export default function ApprovedSummaryTable() {
     }
   };
 
+  const fetchHeaderData = async () => {
+    try {
+      const response = await fetch(
+        `${BASE_URL}/Inquiry/GetInquirySummeryHeaderBYOptionID?InquiryID=${QuotationDetails.inquiryID}&OptionId=${QuotationDetails.optionId}&WindowType=${QuotationDetails.windowType}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      if (!response.ok) {
+        throw new Error("Failed to fetch Header Data");
+      }
+      const data = await response.json();
+      setHeaderData(data.result);
+    } catch (error) {
+      console.error("Error fetching Header Data:", error);
+    }
+  };
+
   useEffect(() => {
     fetchItems();
     fetchPattern();
+    fetchHeaderData();
   }, []);
 
   const toNumber = (val) => {
@@ -71,23 +106,10 @@ export default function ApprovedSummaryTable() {
     return isNaN(num) ? 0 : num;
   };
 
-  // Calculate approved totals
-  const lines = [
-    ...items,
-    ...(patternItem && patternItem.itemName ? [patternItem] : []),
-  ];
-  const approvedCost = lines.reduce((sum, line) => {
-    const qty = toNumber(line.approvedQuantity);
-    const unit = toNumber(line.approvedUnitCost);
-    const total = line.approvedTotalCost != null ? toNumber(line.approvedTotalCost) : unit * qty;
-    return sum + total;
-  }, 0);
-  const approvedUnits = lines.reduce(
-    (sum, line) => sum + toNumber(line.approvedQuantity),
-    0
-  );
-  // User expects "Unit Cost" summary to be SUM of all approved unit costs (not average)
-  const approvedUnitCost = lines.reduce((sum, line) => sum + toNumber(line.approvedUnitCost), 0);
+  // Get values directly from database (headerData)
+  const approvedCost = toNumber(headerData?.apprvedTotalCost);
+  const approvedUnits = toNumber(headerData?.apprvedTotalUnits);
+  const approvedUnitCost = toNumber(headerData?.apprvedUnitCost);
 
   return (
     <>
@@ -147,6 +169,23 @@ export default function ApprovedSummaryTable() {
                   : patternItem.approvedTotalCost}
               </TableCell>
             </TableRow>
+            {/* Commission Row - displayed separately */}
+            <TableRow>
+              <TableCell component="th" scope="row">
+                {commissionItem.itemName || "Commission"}
+              </TableCell>
+              <TableCell>
+                {commissionItem.approvedUnitCost === null
+                  ? 0
+                  : commissionItem.approvedUnitCost}
+              </TableCell>
+              <TableCell>1</TableCell>
+              <TableCell align="right">
+                {commissionItem.approvedTotalCost === null
+                  ? 0
+                  : commissionItem.approvedTotalCost}
+              </TableCell>
+            </TableRow>
           </TableBody>
         </Table>
       </TableContainer>
@@ -175,23 +214,23 @@ export default function ApprovedSummaryTable() {
             <TableRow>
               <TableCell sx={{ color: "#191919" }}>Profit</TableCell>
               <TableCell sx={{ color: "#191919" }} align="right">
-                {QuotationDetails.apprvedUnitProfit}
+                {toNumber(headerData?.apprvedUnitProfit).toFixed(2)}
               </TableCell>
 
               <TableCell sx={{ color: "#191919" }}>Profit %</TableCell>
               <TableCell sx={{ color: "#191919" }} align="right">
-                {QuotationDetails.apprvedProfitPercentage}
+                {toNumber(headerData?.apprvedProfitPercentage).toFixed(2)}
               </TableCell>
             </TableRow>
             <TableRow>
               <TableCell sx={{ color: "#191919" }}>Selling Price</TableCell>
               <TableCell sx={{ color: "#191919" }} align="right">
-                {QuotationDetails.apprvedSellingPrice}
+                {toNumber(headerData?.apprvedSellingPrice).toFixed(2)}
               </TableCell>
 
               <TableCell sx={{ color: "#191919" }}>Total Profit</TableCell>
               <TableCell sx={{ color: "#191919" }} align="right">
-                {QuotationDetails.apprvedTotalProfit}
+                {toNumber(headerData?.apprvedTotalProfit).toFixed(2)}
               </TableCell>
             </TableRow>
             <TableRow>
@@ -199,7 +238,7 @@ export default function ApprovedSummaryTable() {
                 Revenue
               </TableCell>
               <TableCell sx={{ color: "#191919" }} align="right">
-                {QuotationDetails.apprvedRevanue}
+                {toNumber(headerData?.apprvedRevanue).toFixed(2)}
               </TableCell>
             </TableRow>
           </TableHead>

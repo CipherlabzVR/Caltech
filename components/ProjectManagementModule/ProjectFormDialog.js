@@ -16,6 +16,7 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { Formik } from "formik";
 import * as Yup from "yup";
 import dayjs from "dayjs";
+import { toExactBrowserTimeISOString, fromExactBrowserTime, getBrowserNow } from "@/components/utils/exactBrowserTime";
 
 
 const normalizeToArray = (data) => {
@@ -230,8 +231,8 @@ const ProjectFormDialog = ({
       clientEmail: "",
       advancedAmount: null,
       budgetAmount: null,
-      startDate: dayjs().startOf("day"),
-      endDate: dayjs().add(7, "day").startOf("day"),
+      startDate: getBrowserNow().startOf("day"),
+      endDate: getBrowserNow().add(7, "day").startOf("day"),
       primaryOwnerId: null,
       description: "",
       notes: "",
@@ -348,8 +349,8 @@ const ProjectFormDialog = ({
               fullAmount: normalizedFullAmount,
               advancedAmount: safeAdvanced,
               budgetAmount: safeBudget,
-              startDate: dayjs(values.startDate).toISOString(),
-              endDate: dayjs(values.endDate).toISOString(),
+              startDate: toExactBrowserTimeISOString(values.startDate),
+              endDate: toExactBrowserTimeISOString(values.endDate),
               customerId: normalizedCustomerId,
             };
 
@@ -404,6 +405,7 @@ const ProjectFormDialog = ({
                         <TextField
                           {...params}
                           label="Project Name"
+                          required
                           error={touched.name && Boolean(errors.name)}
                           helperText={touched.name && errors.name}
                           onBlur={(event) => {
@@ -559,6 +561,7 @@ const ProjectFormDialog = ({
                         <TextField
                           {...params}
                           fullWidth
+                          required
                           error={touched.startDate && Boolean(errors.startDate)}
                           helperText={touched.startDate && errors.startDate}
                         />
@@ -574,6 +577,7 @@ const ProjectFormDialog = ({
                         <TextField
                           {...params}
                           fullWidth
+                          required
                           error={touched.endDate && Boolean(errors.endDate)}
                           helperText={touched.endDate && errors.endDate}
                         />

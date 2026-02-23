@@ -66,9 +66,12 @@ const getValidationSchema = (isCustomerNICRequired, isCustomerCreditLimitRequire
   ),
 });
 
-export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
-  const [open, setOpen] = React.useState(false);
+export default function AddCustomerDialog({ fetchItems, chartOfAccounts, externalOpen, onClose: externalOnClose, showButton = true }) {
+  const [internalOpen, setInternalOpen] = React.useState(false);
   const [scroll, setScroll] = React.useState("paper");
+  
+  // Use external open state if provided, otherwise use internal
+  const open = externalOpen !== undefined ? externalOpen : internalOpen;
   const [titleList, setTitleList] = useState([]);
   const [currencyList, setCurrencyList] = useState([]);
   const { data: isCustomerNICRequired } = IsAppSettingEnabled("IsCustomerNICRequired");
@@ -77,6 +80,7 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
     { ContactName: "", ContactNo: "", EmailAddress: "" },
   ]);
   const [birthdate, setBirthdate] = useState("");
+  const [formKey, setFormKey] = useState(0);
 
   const fetchTitleList = async () => {
     try {
@@ -143,16 +147,34 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
   };
 
   const handleClickOpen = (scrollType) => () => {
-    setOpen(true);
+    if (externalOpen === undefined) {
+      setInternalOpen(true);
+    }
     setScroll(scrollType);
     fetchTitleList();
     fetchCurrencyList();
   };
 
   const handleClose = () => {
-    setOpen(false);
+    if (externalOnClose) {
+      externalOnClose();
+    } else if (externalOpen === undefined) {
+      setInternalOpen(false);
+    }
     setBirthdate("");
+    // Reset contacts to initial state
+    setContacts([{ ContactName: "", ContactNo: "", EmailAddress: "" }]);
+    // Increment form key to reset Formik form
+    setFormKey(prev => prev + 1);
   };
+  
+  // Fetch data when externally opened
+  React.useEffect(() => {
+    if (open && externalOpen !== undefined) {
+      fetchTitleList();
+      fetchCurrencyList();
+    }
+  }, [open, externalOpen]);
 
   const descriptionElementRef = React.useRef(null);
   React.useEffect(() => {
@@ -181,8 +203,18 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
       .then((data) => {
         if (data.statusCode == 200) {
           toast.success(data.message);
-          setOpen(false);
-          fetchItems();
+          handleClose();
+          if (fetchItems) {
+            // Pass the newly created customer data to the callback
+            const newCustomer = data.result || data.data || { 
+              id: data.id,
+              firstName: values.FirstName,
+              lastName: values.LastName,
+              displayName: values.DisplayName || `${values.FirstName} ${values.LastName}`.trim(),
+              company: values.Company,
+            };
+            fetchItems(newCustomer);
+          }
         } else {
           toast.error(data.message);
         }
@@ -247,16 +279,18 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
 
   return (
     <>
-      <Button variant="outlined" onClick={handleClickOpen("paper")}>
-        <AddIcon
-          sx={{
-            position: "relative",
-            top: "-2px",
-          }}
-          className="mr-5px"
-        />{" "}
-        Create New Customer
-      </Button>
+      {showButton && (
+        <Button variant="outlined" onClick={handleClickOpen("paper")}>
+          <AddIcon
+            sx={{
+              position: "relative",
+              top: "-2px",
+            }}
+            className="mr-5px"
+          />{" "}
+          Create New Customer
+        </Button>
+      )}
 
       <Dialog
         open={open}
@@ -270,6 +304,7 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
           <DialogTitle id="scroll-dialog-title">Create Customer</DialogTitle>
           <DialogContent>
             <Formik
+              key={formKey}
               initialValues={{
                 Title: "",
                 FirstName: "",
@@ -294,6 +329,7 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
               }}
               validationSchema={getValidationSchema(isCustomerNICRequired, isCustomerCreditLimit)}
               onSubmit={handleSubmit}
+              enableReinitialize
             >
               {({ errors, touched, values, setFieldValue }) => (
                 <Form>

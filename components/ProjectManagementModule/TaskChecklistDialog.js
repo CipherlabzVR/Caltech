@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  Autocomplete,
   Box,
   Button,
   Checkbox,
@@ -20,6 +21,7 @@ import {
 } from "@mui/material";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ChecklistOutlinedIcon from "@mui/icons-material/ChecklistOutlined";
+import LabelIcon from "@mui/icons-material/Label";
 
 const TaskChecklistDialog = ({
   open,
@@ -29,8 +31,10 @@ const TaskChecklistDialog = ({
   onAddItem,
   onDeleteItem,
   onRenameItem,
+  projectLabels = [],
 }) => {
   const [newItemTitle, setNewItemTitle] = useState("");
+  const [newItemLabels, setNewItemLabels] = useState([]);
   const [itemError, setItemError] = useState("");
 
   const totalItems = task?.checklist?.length ?? 0;
@@ -59,8 +63,9 @@ const TaskChecklistDialog = ({
     }
     
     try {
-      await onAddItem?.(task.taskId, trimmed);
+      await onAddItem?.(task.taskId, trimmed, newItemLabels);
       setNewItemTitle("");
+      setNewItemLabels([]);
       setItemError("");
     } catch (err) {
       setItemError(err?.message ?? "Failed to add checklist item. Please try again.");
@@ -86,15 +91,17 @@ const TaskChecklistDialog = ({
                 color={completionPercent === 100 ? "success" : "default"}
               />
             </Stack>
-            <LinearProgress
-              variant={totalItems ? "determinate" : "indeterminate"}
-              value={totalItems ? completionPercent : 0}
-              sx={{ mt: 1.5, height: 8, borderRadius: 999 }}
-            />
+            {totalItems > 0 && (
+              <LinearProgress
+                variant="determinate"
+                value={completionPercent}
+                sx={{ mt: 1.5, height: 8, borderRadius: 999 }}
+              />
+            )}
           </Box>
 
           {task?.checklist?.length ? (
-            <List dense sx={{ maxHeight: 260, overflowY: "auto" }}>
+            <List dense sx={{ maxHeight: 320, overflowY: "auto" }}>
               {task.checklist.map((item) => (
                 <ListItem
                   key={item.checklistItemId}
@@ -107,6 +114,7 @@ const TaskChecklistDialog = ({
                       <DeleteOutlineIcon />
                     </IconButton>
                   }
+                  sx={{ flexWrap: "wrap" }}
                 >
                   <ListItemIcon>
                     <Checkbox
@@ -139,6 +147,26 @@ const TaskChecklistDialog = ({
                       />
                     }
                   />
+                  {Array.isArray(item.labels) && item.labels.length > 0 && (
+                    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ pl: 7, pt: 0.5, width: "100%" }}>
+                      {item.labels.map((label) => (
+                        <Chip
+                          key={label.labelId ?? label.name}
+                          icon={<LabelIcon sx={{ fontSize: 13 }} />}
+                          label={label.name}
+                          size="small"
+                          sx={{
+                            height: 20,
+                            fontSize: "0.65rem",
+                            fontWeight: 600,
+                            bgcolor: label.color ?? "#6366F1",
+                            color: "#fff",
+                            "& .MuiChip-icon": { color: "rgba(255,255,255,0.8)" },
+                          }}
+                        />
+                      ))}
+                    </Stack>
+                  )}
                 </ListItem>
               ))}
             </List>
@@ -148,35 +176,77 @@ const TaskChecklistDialog = ({
             </Typography>
           )}
 
-          <Box
-            sx={{
-              display: "flex",
-              gap: 1,
-              alignItems: "center",
-            }}
-          >
-            <TextField
-              value={newItemTitle}
-              onChange={(event) => {
-                setNewItemTitle(event.target.value);
-                if (itemError) setItemError("");
+          <Stack spacing={1}>
+            <Box
+              sx={{
+                display: "flex",
+                gap: 1,
+                alignItems: "center",
               }}
-              placeholder="Add checklist item"
-              fullWidth
+            >
+              <TextField
+                value={newItemTitle}
+                onChange={(event) => {
+                  setNewItemTitle(event.target.value);
+                  if (itemError) setItemError("");
+                }}
+                placeholder="Add checklist item"
+                fullWidth
+                size="small"
+                error={Boolean(itemError)}
+                helperText={itemError}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleAddItem();
+                  }
+                }}
+              />
+              <Button variant="contained" onClick={handleAddItem} sx={{ whiteSpace: "nowrap" }}>
+                Add
+              </Button>
+            </Box>
+            <Autocomplete
+              multiple
+              freeSolo
+              autoSelect
+              clearOnBlur
               size="small"
-              error={Boolean(itemError)}
-              helperText={itemError}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  handleAddItem();
-                }
+              options={
+                Array.isArray(projectLabels)
+                  ? projectLabels
+                      .map((l) => l.name)
+                      .filter((n) => !newItemLabels.includes(n))
+                  : []
+              }
+              value={newItemLabels}
+              onChange={(_, newValue) => {
+                const labelNames = newValue
+                  .map((v) => (typeof v === "string" ? v.trim() : String(v).trim()))
+                  .filter(Boolean);
+                setNewItemLabels(labelNames);
               }}
+              renderTags={(value, getTagProps) =>
+                value.map((option, index) => (
+                  <Chip
+                    {...getTagProps({ index })}
+                    key={index}
+                    label={option}
+                    size="small"
+                    sx={{
+                      height: 22,
+                      bgcolor: "#6366F1",
+                      color: "white",
+                      "& .MuiChip-deleteIcon": { color: "rgba(255,255,255,0.7)" },
+                    }}
+                  />
+                ))
+              }
+              renderInput={(params) => (
+                <TextField {...params} label="Labels (optional)" placeholder="Type and press Enter" />
+              )}
             />
-            <Button variant="contained" onClick={handleAddItem}>
-              Add
-            </Button>
-          </Box>
+          </Stack>
         </Stack>
       </DialogContent>
       <DialogActions>

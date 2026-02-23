@@ -389,22 +389,114 @@ const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
         return;
       }
 
-      // Calculate date range for Gantt chart
-      const dates = normalizedData
-        .map((entry) => {
-          const start = entry.startDate ? new Date(entry.startDate) : null;
-          const end = entry.endDate ? new Date(entry.endDate) : null;
+      // Group tasks by phase name to export all phases
+      const phaseGroups = new Map();
+      const now = new Date();
+      
+      normalizedData.forEach((entry) => {
+        // Normalize phase name - handle empty strings, null, undefined
+        const rawPhaseName = entry.phaseName || entry.PhaseName || "";
+        const phaseName = String(rawPhaseName).trim() || "Unassigned";
+        const phaseType = entry.phaseType || entry.PhaseType || "";
+        const key = String(phaseName).toLowerCase().trim();
+        
+        if (!phaseGroups.has(key)) {
+          phaseGroups.set(key, {
+            phaseName,
+            phaseType,
+            startDate: null,
+            endDate: null,
+            members: new Set(),
+            taskTitles: [],
+            completedTasks: 0,
+            totalTasks: 0,
+            hasOverdueTasks: false,
+          });
+        }
+        
+        const group = phaseGroups.get(key);
+        // Preserve phaseType if it exists
+        if (phaseType && !group.phaseType) {
+          group.phaseType = phaseType;
+        }
+        
+        const start = entry.startDate ? new Date(entry.startDate) : null;
+        const end = entry.endDate ? new Date(entry.endDate) : null;
+        
+        if (start) {
+          if (!group.startDate || start < new Date(group.startDate)) {
+            group.startDate = entry.startDate;
+          }
+        }
+        
+        if (end) {
+          if (!group.endDate || end > new Date(group.endDate)) {
+            group.endDate = entry.endDate;
+          }
+        }
+        
+        // Track completion status
+        group.totalTasks += 1;
+        const isCompleted = entry.isCompleted || entry.IsCompleted || false;
+        if (isCompleted) {
+          group.completedTasks += 1;
+        }
+        
+        // Check if this task is overdue (past due date and not completed)
+        if (end && !isCompleted && end < now) {
+          group.hasOverdueTasks = true;
+        }
+        
+        // Collect members
+        if (entry.members && Array.isArray(entry.members)) {
+          entry.members.forEach((m) => {
+            const name = m.name || m.Name || "";
+            if (name) group.members.add(name);
+          });
+        }
+        if (entry.assignedToName) {
+          group.members.add(entry.assignedToName);
+        }
+        
+        // Collect task titles
+        const taskTitle = entry.taskTitle || entry.title || entry.Title || "";
+        if (taskTitle) {
+          group.taskTitles.push(taskTitle);
+        }
+      });
+
+      // Convert to array - include ALL phases, even without dates
+      const phasesArray = Array.from(phaseGroups.values())
+        .sort((a, b) => {
+          const aS = a.startDate ? new Date(a.startDate).getTime() : Number.MAX_SAFE_INTEGER;
+          const bS = b.startDate ? new Date(b.startDate).getTime() : Number.MAX_SAFE_INTEGER;
+          return aS - bS;
+        });
+
+      if (phasesArray.length === 0) {
+        alert("No data to export.");
+        return;
+      }
+
+      // Calculate date range for Gantt chart from phases that have dates
+      const dates = phasesArray
+        .map((phase) => {
+          const start = phase.startDate ? new Date(phase.startDate) : null;
+          const end = phase.endDate ? new Date(phase.endDate) : null;
           return { start, end };
         })
         .filter((d) => d.start && d.end);
 
+      // If no phases have dates, use a default range
+      let minDate, maxDate;
       if (dates.length === 0) {
-        alert("No valid date data to export.");
-        return;
+        minDate = new Date();
+        maxDate = new Date();
+        maxDate.setDate(maxDate.getDate() + 30); // Default to 30 days from now
+      } else {
+        minDate = new Date(Math.min(...dates.map((d) => d.start.getTime())));
+        maxDate = new Date(Math.max(...dates.map((d) => d.end.getTime())));
       }
-
-      const minDate = new Date(Math.min(...dates.map((d) => d.start.getTime())));
-      const maxDate = new Date(Math.max(...dates.map((d) => d.end.getTime())));
       
       // Generate date columns (one column per day)
       const dateColumns = [];
@@ -418,27 +510,23 @@ const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
       const ganttData = [];
       
       // Header row 1: Phase info
-      const headerRow1 = ["Phase #", "Phase Name", "SDLC Stage", "Start Date", "End Date", "Duration", "Assigned Members"];
+      const headerRow1 = ["Phase #", "Phase Name", "SDLC Stage", "Start Date", "End Date", "Duration", "Status", "Progress", "Assigned Members"];
       // Add date headers
       dateColumns.forEach(() => headerRow1.push(""));
       ganttData.push(headerRow1);
 
       // Header row 2: Date labels
-      const headerRow2 = ["", "", "", "", "", "", ""];
+      const headerRow2 = ["", "", "", "", "", "", "", "", ""];
       dateColumns.forEach((date) => {
         headerRow2.push(date.toLocaleDateString("en-US", { month: "short", day: "numeric" }));
       });
       ganttData.push(headerRow2);
 
-      // Data rows with Gantt bars
-      normalizedData.forEach((entry, index) => {
-        const members = entry.members || [];
-        const memberNames = members.length > 0
-          ? members.map((m) => m.name || m.Name || "").filter(Boolean).join(", ")
-          : entry.assignedToName || "Unassigned";
-
-        const startDate = entry.startDate ? new Date(entry.startDate) : null;
-        const endDate = entry.endDate ? new Date(entry.endDate) : null;
+      // Data rows with Gantt bars - one row per phase
+      phasesArray.forEach((phase, index) => {
+        const memberNames = Array.from(phase.members).filter(Boolean).join(", ") || "Unassigned";
+        const startDate = phase.startDate ? new Date(phase.startDate) : null;
+        const endDate = phase.endDate ? new Date(phase.endDate) : null;
         
         let duration = "";
         if (startDate && endDate) {
@@ -447,13 +535,46 @@ const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
           duration = `${diffDays} day${diffDays !== 1 ? "s" : ""}`;
         }
 
+        // Determine status
+        let status = "";
+        const now = new Date();
+        if (phase.totalTasks > 0) {
+          const allCompleted = phase.completedTasks === phase.totalTasks;
+          const isOverdue = phase.hasOverdueTasks || (endDate && endDate < now && !allCompleted);
+          
+          if (allCompleted) {
+            status = "Completed";
+          } else if (isOverdue) {
+            status = "Overdue";
+          } else if (startDate && startDate > now) {
+            status = "Not Started";
+          } else {
+            status = "In Progress";
+          }
+        } else {
+          if (endDate && endDate < now) {
+            status = "Overdue";
+          } else if (startDate && startDate > now) {
+            status = "Not Started";
+          } else {
+            status = "Active";
+          }
+        }
+
+        // Calculate progress percentage
+        const progress = phase.totalTasks > 0 
+          ? `${Math.round((phase.completedTasks / phase.totalTasks) * 100)}%`
+          : "N/A";
+
         const row = [
           index + 1,
-          entry.phaseName || "",
-          entry.phaseType || "",
+          phase.phaseName || "",
+          phase.phaseType || "",
           startDate ? startDate.toLocaleDateString() : "",
           endDate ? endDate.toLocaleDateString() : "",
           duration,
+          status,
+          progress,
           memberNames,
         ];
 
@@ -490,6 +611,8 @@ const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
         { wch: 12 }, // Start Date
         { wch: 12 }, // End Date
         { wch: 12 }, // Duration
+        { wch: 12 }, // Status
+        { wch: 10 }, // Progress
         { wch: 30 }, // Assigned Members
       ];
       
@@ -500,18 +623,14 @@ const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
       
       worksheet["!cols"] = columnWidths;
 
-      // Freeze first 7 columns (phase info) and first 2 rows (headers)
-      worksheet["!freeze"] = { xSplit: 7, ySplit: 2, topLeftCell: "H3", activePane: "bottomRight" };
+      // Freeze first 9 columns (phase info) and first 2 rows (headers)
+      worksheet["!freeze"] = { xSplit: 9, ySplit: 2, topLeftCell: "J3", activePane: "bottomRight" };
 
-      // Create a second sheet with detailed data
-      const detailData = normalizedData.map((entry, index) => {
-        const members = entry.members || [];
-        const memberNames = members.length > 0
-          ? members.map((m) => m.name || m.Name || "").filter(Boolean).join(", ")
-          : entry.assignedToName || "Unassigned";
-
-        const startDate = entry.startDate ? new Date(entry.startDate) : null;
-        const endDate = entry.endDate ? new Date(entry.endDate) : null;
+      // Create a second sheet with detailed data - one row per phase
+      const detailData = phasesArray.map((phase, index) => {
+        const memberNames = Array.from(phase.members).filter(Boolean).join(", ") || "Unassigned";
+        const startDate = phase.startDate ? new Date(phase.startDate) : null;
+        const endDate = phase.endDate ? new Date(phase.endDate) : null;
         
         let duration = "";
         if (startDate && endDate) {
@@ -520,15 +639,50 @@ const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
           duration = `${diffDays} day${diffDays !== 1 ? "s" : ""}`;
         }
 
+        // Determine status
+        let status = "";
+        const now = new Date();
+        if (phase.totalTasks > 0) {
+          const allCompleted = phase.completedTasks === phase.totalTasks;
+          const isOverdue = phase.hasOverdueTasks || (endDate && endDate < now && !allCompleted);
+          
+          if (allCompleted) {
+            status = "Completed";
+          } else if (isOverdue) {
+            status = "Overdue";
+          } else if (startDate && startDate > now) {
+            status = "Not Started";
+          } else {
+            status = "In Progress";
+          }
+        } else {
+          if (endDate && endDate < now) {
+            status = "Overdue";
+          } else if (startDate && startDate > now) {
+            status = "Not Started";
+          } else {
+            status = "Active";
+          }
+        }
+
+        // Calculate progress
+        const progress = phase.totalTasks > 0 
+          ? `${Math.round((phase.completedTasks / phase.totalTasks) * 100)}%`
+          : "N/A";
+
         return {
           "Phase #": index + 1,
-          "Phase Name": entry.phaseName || "",
-          "SDLC Stage": entry.phaseType || "",
+          "Phase Name": phase.phaseName || "",
+          "SDLC Stage": phase.phaseType || "",
           "Start Date": startDate ? startDate.toLocaleDateString() : "",
           "End Date": endDate ? endDate.toLocaleDateString() : "",
           "Duration (Days)": duration,
+          "Status": status,
+          "Progress": progress,
+          "Completed Tasks": phase.completedTasks,
+          "Total Tasks": phase.totalTasks,
           "Assigned Members": memberNames,
-          "Notes": entry.notes || "",
+          "Tasks": phase.taskTitles.join(", ") || "",
         };
       });
 
@@ -540,8 +694,12 @@ const TimelineGanttChart = ({ data = [], title = "Project Timeline" }) => {
         { wch: 12 }, // Start Date
         { wch: 12 }, // End Date
         { wch: 15 }, // Duration
+        { wch: 12 }, // Status
+        { wch: 10 }, // Progress
+        { wch: 12 }, // Completed Tasks
+        { wch: 12 }, // Total Tasks
         { wch: 30 }, // Assigned Members
-        { wch: 40 }, // Notes
+        { wch: 40 }, // Tasks
       ];
 
       // Create workbook with two sheets

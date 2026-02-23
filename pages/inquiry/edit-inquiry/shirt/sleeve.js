@@ -44,6 +44,39 @@ export default function SelectSleeve() {
   }, []);
 
 
+  const saveDefaultSleeve = async () => {
+    if (!inquiry) return;
+    try {
+      await fetch(
+        `${BASE_URL}/InquirySleeve/AddOrUpdateSleeve`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            InquiryID: inquiry.inquiryId,
+            InqCode: inquiry.inquiryCode,
+            OptionId: inquiry.optionId,
+            InqOptionName: inquiry.optionName,
+            WindowType: inquiry.windowType,
+            Wrangler: "0",
+            Normal: "0",
+            Short: 1,
+            ShortType: 9,
+            Long: 0,
+            LongType: 9,
+            ShortSize: 0,
+            LongSize: 0,
+          }),
+        }
+      );
+    } catch (error) {
+      console.error("Error saving default sleeve:", error);
+    }
+  };
+
   const fetchSleeve = async (inquiryId, optionId, windowType) => {
     try {
       const response = await fetch(
@@ -57,15 +90,22 @@ export default function SelectSleeve() {
         }
       );
       const data = await response.json();
-      const result = data.result[0];
-      if (result.short === 1) {
+      const result = data.result && data.result[0] ? data.result[0] : null;
+      if (result) {
+        const shortVal = result.short ?? result.Short;
+        const longVal = result.long ?? result.Long;
+        if (longVal === 1 || longVal === "1") {
+          setSelectedValue('long');
+        } else if (shortVal === 1 || shortVal === "1") {
+          setSelectedValue('short');
+        }
+      } else {
         setSelectedValue('short');
-      }
-      if (result.long === 1) {
-        setSelectedValue('long');
+        await saveDefaultSleeve();
       }
     } catch (error) {
-      //console.error("Error fetching Sleeve Details:", error);
+      setSelectedValue('short');
+      saveDefaultSleeve();
     }
   };
 
@@ -113,6 +153,7 @@ export default function SelectSleeve() {
       <DashboardHeader
         customerName={inquiry ? inquiry.customerName : ""}
         optionName={inquiry ? inquiry.optionName : ""}
+        windowType={inquiry ? inquiry.windowType : null}
         href="/inquiry/inquries/"
         link="Inquiries"
         title="Sleeve"

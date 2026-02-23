@@ -19,6 +19,7 @@ export default function Summary() {
   const [formData, setFormData] = useState(null);
   const [isSavedFromChild, setIsSavedFromChild] = React.useState(false);
   const from = router.query.from;
+  const fromSentList = router.query.fromSentList === "true";
 
   const fetchInquiryById = async () => {
     try {
@@ -113,7 +114,12 @@ export default function Summary() {
       .then((data) => {
         if (data.statusCode == 200) {
           toast.success(data.message);
-           router.push("/inquiry/inquries/");
+          // Navigate to pending quotations if came from sent-list, otherwise to inquiries
+          if (fromSentList) {
+            router.push("/quotations/pending-quotation");
+          } else {
+            router.push("/inquiry/inquries/");
+          }
         } else {
           toast.error(data.message);
         }

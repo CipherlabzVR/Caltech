@@ -29,6 +29,11 @@ import { formatDate } from "@/components/utils/formatHelper";
 import LoadingButton from "@/components/UIElements/Buttons/LoadingButton";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
+import useApi from "@/components/utils/useApi";
+import AddItems from "pages/master/items/AddItems";
+import GetAllItemDetails from "@/components/utils/GetAllItemDetails";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
+import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 
 const HelpDeskWorkOrderCreate = () => {
   const today = new Date();
@@ -102,6 +107,22 @@ const HelpDeskWorkOrderCreate = () => {
 
   // Materials
   const [materials, setMaterials] = useState([]);
+  const [itemSearchResults, setItemSearchResults] = useState({});
+  const [itemSearchLoading, setItemSearchLoading] = useState({});
+  const searchTimeoutRef = React.useRef({});
+  const [currentMaterialIndex, setCurrentMaterialIndex] = useState(null);
+  const addItemButtonRef = React.useRef(null);
+
+  // Get item details and app settings for Create Item modal
+  const { uoms } = GetAllItemDetails();
+  const { data: isPOSSystem } = IsAppSettingEnabled(`IsPosSystem`);
+  const { data: isGarmentSystem } = IsAppSettingEnabled(`IsGarmentSystem`);
+  const { data: isBarcodeEnabled } = IsAppSettingEnabled(`IsBarcodeEnabled`);
+  const { data: IsEcommerceWebSiteAvailable } = IsAppSettingEnabled(`IsEcommerceWebSiteAvailable`);
+  const { data: accountList } = useApi("/ChartOfAccount/GetAll");
+  
+  // Check permission for creating items (category ID: 10)
+  const { create: canCreateItem } = IsPermissionEnabled("10");
 
   useEffect(() => {
     sessionStorage.setItem("category", "108"); // Work Order category
@@ -202,6 +223,17 @@ const HelpDeskWorkOrderCreate = () => {
   }, []);
 
   const fetchCustomerDetails = async (customerId) => {
+    console.log("Fetching customer details for ID:", customerId); // Debug log
+    
+    // First try to find customer in already-loaded customers array
+    const existingCustomer = customers.find(c => c.id === customerId || c.customerId === customerId);
+    if (existingCustomer) {
+      console.log("Found customer in local array:", existingCustomer); // Debug log
+      populateCustomerFields(existingCustomer);
+      return;
+    }
+    
+    // If not found, fetch from API
     try {
       const response = await fetch(`${BASE_URL}/Customer/GetCustomerById?id=${customerId}`, {
         method: "GET",
@@ -211,36 +243,80 @@ const HelpDeskWorkOrderCreate = () => {
         },
       });
 
+      console.log("Customer API response status:", response.status); // Debug log
+
       if (response.ok) {
         const result = await response.json();
+        console.log("Customer API result:", result); // Debug log
+        
         if (result.result) {
-          const customer = result.result;
-          setSelectedCustomer(customer);
-          setCustomerCompanyName(customer.company || customer.displayName || "");
-          setCustomerAddress(
-            `${customer.addressLine1 || ""} ${customer.addressLine2 || ""}`.trim()
-          );
-          // You can populate more customer fields here
+          populateCustomerFields(result.result);
+        } else {
+          console.log("No result in customer API response"); // Debug log
         }
+      } else {
+        console.error("Customer API failed with status:", response.status); // Debug log
       }
     } catch (error) {
       console.error("Error fetching customer details:", error);
     }
   };
 
+  const populateCustomerFields = (customer, ticketData = null) => {
+    console.log("Populating customer fields with:", customer); // Debug log
+    console.log("Ticket data for additional info:", ticketData); // Debug log
+    setSelectedCustomer(customer);
+    
+    // Auto-populate all customer information fields
+    setCustomerCompanyName(customer.company || customer.companyName || customer.displayName || "");
+    
+    // Combine address lines
+    const addressParts = [
+      customer.addressLine1 || "",
+      customer.addressLine2 || "",
+      customer.addressLine3 || ""
+    ].filter(part => part.trim() !== "");
+    setCustomerAddress(addressParts.join(", "));
+    
+    setCustomerCity(customer.city || "");
+    setCustomerState(customer.state || customer.country || "");
+    setCustomerZip(customer.zipCode || customer.zip || customer.postalCode || "");
+    setCustomerPointOfContact(customer.designation || customer.contactPerson || customer.pointOfContact || "");
+    
+    // Get phone from ticket data if available, otherwise from customer
+    const phone = ticketData?.customerPhone || customer.phone || customer.phoneNumber || customer.telephone || "";
+    setCustomerPhone(phone);
+    setCustomerCell(customer.mobilePhone || customer.cellPhone || customer.mobile || customer.cell || "");
+    setCustomerProjectManager(customer.projectManager || customer.accountManager || "");
+    setCustomerFacsimile(customer.fax || customer.facsimile || "");
+    
+    console.log("Customer fields populated successfully"); // Debug log
+  };
+
   const handleCustomerChange = (event, newValue) => {
-    setSelectedCustomer(newValue);
     if (newValue) {
-      setCustomerCompanyName(newValue.company || newValue.displayName || "");
-      setCustomerAddress(
-        `${newValue.addressLine1 || ""} ${newValue.addressLine2 || ""}`.trim()
-      );
+      populateCustomerFields(newValue);
+    } else {
+      // Clear all customer fields if no customer is selected
+      setSelectedCustomer(null);
+      setCustomerCompanyName("");
+      setCustomerAddress("");
+      setCustomerCity("");
+      setCustomerState("");
+      setCustomerZip("");
+      setCustomerPointOfContact("");
+      setCustomerPhone("");
+      setCustomerCell("");
+      setCustomerProjectManager("");
+      setCustomerFacsimile("");
     }
   };
 
   const handleAddMaterial = () => {
     const newMaterial = {
       lineItem: materials.length + 1,
+      itemId: null,
+      selectedItem: null,
       itemDescription: "",
       quantity: 1,
       estimatedUnitPrice: 0,
@@ -256,6 +332,128 @@ const HelpDeskWorkOrderCreate = () => {
     updatedMaterials.forEach((m, i) => {
       m.lineItem = i + 1;
     });
+    setMaterials(updatedMaterials);
+  };
+
+  const searchItems = (index, searchTerm) => {
+    // Clear previous timeout for this index
+    if (searchTimeoutRef.current[index]) {
+      clearTimeout(searchTimeoutRef.current[index]);
+    }
+
+    if (!searchTerm || searchTerm.trim().length < 2) {
+      setItemSearchResults(prev => ({ ...prev, [index]: [] }));
+      setItemSearchLoading(prev => ({ ...prev, [index]: false }));
+      return;
+    }
+
+    setItemSearchLoading(prev => ({ ...prev, [index]: true }));
+
+    // Debounce: wait 500ms after user stops typing
+    searchTimeoutRef.current[index] = setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `${BASE_URL}/Items/GetAllItemsSkipAndTake?SkipCount=0&MaxResultCount=10&Search=${searchTerm}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (response.ok) {
+          const result = await response.json();
+          let items = [];
+          
+          if (result.result && result.result.items) {
+            items = result.result.items;
+          } else if (Array.isArray(result.result)) {
+            items = result.result;
+          } else if (Array.isArray(result)) {
+            items = result;
+          }
+          
+          console.log(`Items found for "${searchTerm}":`, items.length);
+          setItemSearchResults(prev => ({ ...prev, [index]: items }));
+        }
+      } catch (error) {
+        console.error("Error searching items:", error);
+        setItemSearchResults(prev => ({ ...prev, [index]: [] }));
+      } finally {
+        setItemSearchLoading(prev => ({ ...prev, [index]: false }));
+      }
+    }, 500);
+  };
+
+  const handleCreateItemClick = (index) => {
+    setCurrentMaterialIndex(index);
+    // Programmatically click the AddItems button to open the modal
+    setTimeout(() => {
+      if (addItemButtonRef.current) {
+        const button = addItemButtonRef.current.querySelector('button');
+        if (button) {
+          button.click();
+        }
+      }
+    }, 100);
+  };
+
+  const handleItemCreated = async (newItem) => {
+    console.log("New item created:", newItem);
+    if (currentMaterialIndex !== null && newItem) {
+      // Fetch the newly created item details
+      try {
+        const response = await fetch(
+          `${BASE_URL}/Items/GetAllItemsSkipAndTake?SkipCount=0&MaxResultCount=1&Search=${newItem.code || newItem.name}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (response.ok) {
+          const result = await response.json();
+          let items = [];
+          
+          if (result.result && result.result.items) {
+            items = result.result.items;
+          } else if (Array.isArray(result.result)) {
+            items = result.result;
+          }
+          
+          if (items.length > 0) {
+            handleItemSelect(currentMaterialIndex, items[0]);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching newly created item:", error);
+      }
+    }
+    setCreateItemModalOpen(false);
+    setCurrentMaterialIndex(null);
+  };
+
+  const handleItemSelect = (index, selectedItem) => {
+    const updatedMaterials = [...materials];
+    if (selectedItem) {
+      updatedMaterials[index].selectedItem = selectedItem;
+      updatedMaterials[index].itemId = selectedItem.id;
+      updatedMaterials[index].itemDescription = selectedItem.itemName || selectedItem.name || selectedItem.description || "";
+      updatedMaterials[index].estimatedUnitPrice = selectedItem.sellingPrice || selectedItem.unitPrice || selectedItem.price || 0;
+      updatedMaterials[index].estimatedTotalPrice =
+        (updatedMaterials[index].quantity || 0) * (updatedMaterials[index].estimatedUnitPrice || 0);
+    } else {
+      updatedMaterials[index].selectedItem = null;
+      updatedMaterials[index].itemId = null;
+      updatedMaterials[index].itemDescription = "";
+      updatedMaterials[index].estimatedUnitPrice = 0;
+      updatedMaterials[index].estimatedTotalPrice = 0;
+    }
     setMaterials(updatedMaterials);
   };
 
@@ -408,7 +606,61 @@ const HelpDeskWorkOrderCreate = () => {
                   options={tickets}
                   getOptionLabel={(option) => `${option.ticketNumber} - ${option.subject}`}
                   value={selectedTicket}
-                  onChange={(event, newValue) => setSelectedTicket(newValue)}
+                  onChange={(event, newValue) => {
+                    setSelectedTicket(newValue);
+                    // Auto-load Project Name and Customer Information from the selected ticket
+                    if (newValue) {
+                      console.log("Selected Ticket:", newValue); // Debug log
+                      setProjectName(newValue.project || newValue.projectName || "");
+                      
+                      // First check if ticket has customer object directly
+                      if (newValue.customer) {
+                        console.log("Found customer object in ticket:", newValue.customer); // Debug log
+                        populateCustomerFields(newValue.customer, newValue);
+                      } else {
+                        // Check for customer ID with different possible field names
+                        const customerId = newValue.customerId || 
+                                         newValue.CustomerId || 
+                                         newValue.customer_id || 
+                                         newValue.clientId ||
+                                         newValue.ClientId;
+                        
+                        console.log("Customer ID found:", customerId); // Debug log
+                        
+                        if (customerId) {
+                          fetchCustomerDetails(customerId);
+                        } else {
+                          console.log("No customer ID found in ticket"); // Debug log
+                          // Clear customer fields if ticket has no customer
+                          setSelectedCustomer(null);
+                          setCustomerCompanyName("");
+                          setCustomerAddress("");
+                          setCustomerCity("");
+                          setCustomerState("");
+                          setCustomerZip("");
+                          setCustomerPointOfContact("");
+                          setCustomerPhone("");
+                          setCustomerCell("");
+                          setCustomerProjectManager("");
+                          setCustomerFacsimile("");
+                        }
+                      }
+                    } else {
+                      // Clear all fields when no ticket is selected
+                      setProjectName("");
+                      setSelectedCustomer(null);
+                      setCustomerCompanyName("");
+                      setCustomerAddress("");
+                      setCustomerCity("");
+                      setCustomerState("");
+                      setCustomerZip("");
+                      setCustomerPointOfContact("");
+                      setCustomerPhone("");
+                      setCustomerCell("");
+                      setCustomerProjectManager("");
+                      setCustomerFacsimile("");
+                    }
+                  }}
                   renderInput={(params) => (
                     <TextField {...params} label="Ticket Number *" required />
                   )}
@@ -789,13 +1041,52 @@ const HelpDeskWorkOrderCreate = () => {
                     materials.map((material, index) => (
                       <TableRow key={index}>
                         <TableCell>{material.lineItem}</TableCell>
-                        <TableCell>
-                          <TextField
+                        <TableCell sx={{ minWidth: 250 }}>
+                          <Autocomplete
                             size="small"
-                            value={material.itemDescription}
-                            onChange={(e) =>
-                              handleMaterialChange(index, "itemDescription", e.target.value)
+                            options={[
+                              ...(canCreateItem ? [{ id: 'create-new', itemName: '+ Create New Item', isCreateOption: true }] : []),
+                              ...(itemSearchResults[index] || [])
+                            ]}
+                            getOptionLabel={(option) => 
+                              option.itemName || option.name || option.description || option.itemCode || ""
                             }
+                            value={material.selectedItem || null}
+                            onChange={(event, newValue) => {
+                              if (newValue?.isCreateOption) {
+                                handleCreateItemClick(index);
+                              } else {
+                                handleItemSelect(index, newValue);
+                              }
+                            }}
+                            onInputChange={(event, newInputValue, reason) => {
+                              if (reason === 'input') {
+                                searchItems(index, newInputValue);
+                              }
+                            }}
+                            renderOption={(props, option) => (
+                              <li {...props} style={{
+                                fontWeight: option.isCreateOption ? 'bold' : 'normal',
+                                color: option.isCreateOption ? '#1976d2' : 'inherit',
+                                borderBottom: option.isCreateOption ? '1px solid #e0e0e0' : 'none',
+                              }}>
+                                {option.itemName || option.name || option.description || option.itemCode}
+                              </li>
+                            )}
+                            renderInput={(params) => (
+                              <TextField 
+                                {...params} 
+                                placeholder="Type to search items..."
+                                size="small"
+                              />
+                            )}
+                            isOptionEqualToValue={(option, value) =>
+                              option?.id === value?.id
+                            }
+                            loading={itemSearchLoading[index] || false}
+                            loadingText="Searching items..."
+                            noOptionsText="Type at least 2 characters to search"
+                            filterOptions={(x) => x}
                           />
                         </TableCell>
                         <TableCell>
@@ -981,6 +1272,24 @@ const HelpDeskWorkOrderCreate = () => {
           </Paper>
         </Grid>
       </Grid>
+      
+      {/* Hidden AddItems component for creating new items - Only if user has create permission */}
+      {canCreateItem && (
+        <div style={{ position: 'fixed', top: '-9999px', left: '-9999px' }}>
+          <div ref={addItemButtonRef}>
+            <AddItems 
+              fetchItems={handleItemCreated}
+              isPOSSystem={isPOSSystem}
+              uoms={uoms}
+              isGarmentSystem={isGarmentSystem}
+              chartOfAccounts={accountList}
+              barcodeEnabled={isBarcodeEnabled}
+              IsEcommerceWebSiteAvailable={IsEcommerceWebSiteAvailable}
+            />
+          </div>
+        </div>
+      )}
+      
       <ToastContainer />
     </>
   );

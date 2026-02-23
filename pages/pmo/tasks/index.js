@@ -27,6 +27,8 @@ import HistoryIcon from "@mui/icons-material/History";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import FilterListOffIcon from "@mui/icons-material/FilterListOff";
 import PageHeader from "@/components/ProjectManagementModule/PageHeader";
 import MetricCard from "@/components/ProjectManagementModule/MetricCard";
 import TaskKanbanBoard from "@/components/ProjectManagementModule/TaskKanbanBoard";
@@ -40,6 +42,8 @@ import {
   deleteBoardColumn,
   deleteChecklistItem,
   deleteTask,
+  getLabels,
+  getProjectDetails,
   getProjects,
   getTaskHistory,
   getTaskBoard,
@@ -56,6 +60,7 @@ const MAX_COLUMNS = 15;
 const TasksBoard = () => {
   const [projects, setProjects] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
+  const [projectMembers, setProjectMembers] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [board, setBoard] = useState([]);
   const [loadingBoard, setLoadingBoard] = useState(false);
@@ -81,6 +86,12 @@ const TasksBoard = () => {
     mode: "create",
     column: null,
   });
+  const [filters, setFilters] = useState({
+    memberId: null,
+    taskNumber: "",
+  });
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [taskNumberInput, setTaskNumberInput] = useState("");
 
   // Auto-dismiss only the "can't start yet" validation after 3 seconds
   useEffect(() => {
@@ -113,7 +124,7 @@ const TasksBoard = () => {
   }, []);
 
   const loadBoard = useCallback(
-    async (projectId) => {
+    async (projectId, filterParams = null) => {
       if (!projectId) {
         setBoard([]);
         return [];
@@ -121,7 +132,15 @@ const TasksBoard = () => {
 
       try {
         setLoadingBoard(true);
-        const data = await getTaskBoard(projectId);
+        const activeFilters = filterParams ?? filters;
+        const filterObj = {};
+        if (activeFilters.memberId) {
+          filterObj.memberId = activeFilters.memberId;
+        }
+        if (activeFilters.taskNumber?.trim()) {
+          filterObj.taskNumber = activeFilters.taskNumber.trim();
+        }
+        const data = await getTaskBoard(projectId, filterObj);
         const columns = data?.columns ?? [];
         setBoard(columns);
         setError(null);
@@ -133,7 +152,7 @@ const TasksBoard = () => {
         setLoadingBoard(false);
       }
     },
-    []
+    [filters]
   );
 
   const loadPhases = useCallback(async (projectId) => {
@@ -153,6 +172,39 @@ const TasksBoard = () => {
     }
   }, []);
 
+  const [projectLabels, setProjectLabels] = useState([]);
+
+  const loadLabels = useCallback(async (projectId) => {
+    if (!projectId) { setProjectLabels([]); return; }
+    try {
+      const data = await getLabels(projectId);
+      setProjectLabels(data ?? []);
+    } catch (err) {
+      console.error("Failed to load labels", err);
+      setProjectLabels([]);
+    }
+  }, []);
+
+  const loadProjectMembers = useCallback(async (projectId) => {
+    if (!projectId) {
+      setProjectMembers([]);
+      return;
+    }
+    try {
+      const data = await getProjectDetails(projectId);
+      const members = data?.members ?? [];
+      // Convert project members to the format expected by TaskFormDialog
+      const formattedMembers = members.map((m) => ({
+        memberId: m.teamMemberId,
+        name: m.name,
+      }));
+      setProjectMembers(formattedMembers);
+    } catch (err) {
+      console.error("Failed to load project members", err);
+      setProjectMembers([]);
+    }
+  }, []);
+
   useEffect(() => {
     loadProjects();
     loadTeamMembers();
@@ -160,10 +212,26 @@ const TasksBoard = () => {
 
   useEffect(() => {
     if (selectedProject?.projectId) {
-      loadBoard(selectedProject.projectId);
+      loadBoard(selectedProject.projectId, filters);
       loadPhases(selectedProject.projectId);
+      loadLabels(selectedProject.projectId);
+      loadProjectMembers(selectedProject.projectId);
     }
-  }, [selectedProject, loadBoard, loadPhases]);
+  }, [selectedProject, loadBoard, loadPhases, loadLabels, loadProjectMembers, filters]);
+
+  // Debounced task number filter - updates filters after user stops typing
+  useEffect(() => {
+    if (!selectedProject?.projectId) return;
+
+    const timeoutId = setTimeout(() => {
+      setFilters((prev) => ({
+        ...prev,
+        taskNumber: taskNumberInput,
+      }));
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [taskNumberInput, selectedProject]);
 
   const totalTaskCount = useMemo(
     () => board.reduce((acc, column) => acc + column.cards.length, 0),
@@ -263,6 +331,7 @@ const TasksBoard = () => {
     setTaskDraft(null);
     await loadBoard(selectedProject.projectId);
     await loadPhases(selectedProject.projectId);
+    await loadLabels(selectedProject.projectId);
   };
 
   const handleEditTask = (task) => {
@@ -278,6 +347,7 @@ const TasksBoard = () => {
         : task.assignedToMemberId != null
         ? [{ memberId: task.assignedToMemberId }]
         : [],
+      labels: Array.isArray(task.labels) ? task.labels : [],
       startDate: task.startDate,
       dueDate: task.dueDate,
       phaseName: task.phaseName || task.PhaseName || "",
@@ -462,38 +532,70 @@ const TasksBoard = () => {
     }));
   };
 
-  const handleAddChecklistItem = async (taskId, title) => {
+  const handleAddChecklistItem = async (taskId, title, labelNames) => {
     try {
-      await addChecklistItem(taskId, { title });
-      const columns = await loadBoard(selectedProject.projectId);
-      const refreshed = (columns ?? [])
-        .flatMap((column) => column.cards ?? [])
-        .find((card) => card.taskId === taskId);
-      if (refreshed) {
+      const newItem = await addChecklistItem(taskId, { title, labelNames: labelNames ?? [] });
+      // Update the checklist task locally without reloading the entire board
+      if (checklistTask && checklistTask.taskId === taskId) {
         setChecklistTask({
-          ...refreshed,
-          checklist: refreshed.checklist,
+          ...checklistTask,
+          checklist: [...(checklistTask.checklist || []), newItem],
         });
       }
+      // Update the board state locally without showing loading spinner
+      setBoard((prevBoard) => {
+        return prevBoard.map((column) => ({
+          ...column,
+          cards: column.cards?.map((card) =>
+            card.taskId === taskId
+              ? {
+                  ...card,
+                  checklist: [...(card.checklist || []), newItem],
+                }
+              : card
+          ),
+        }));
+      });
+      // Reload labels in background (doesn't affect loading state)
+      loadLabels(selectedProject.projectId).catch(() => {});
     } catch (err) {
       setError(err.message);
+      throw err; // Re-throw so TaskChecklistDialog can handle it
     }
   };
 
   const handleChecklistToggle = async (checklistItemId, values) => {
     try {
       await updateChecklistItem(checklistItemId, values);
-      const columns = await loadBoard(selectedProject.projectId);
-      if (!checklistTask) return;
-      const refreshed = (columns ?? [])
-        .flatMap((column) => column.cards ?? [])
-        .find((card) => card.taskId === checklistTask.taskId);
-      if (refreshed) {
+      // Update the checklist task locally without reloading the entire board
+      if (checklistTask && checklistTask.taskId) {
         setChecklistTask({
-          ...refreshed,
-          checklist: refreshed.checklist,
+          ...checklistTask,
+          checklist: checklistTask.checklist?.map((item) =>
+            item.checklistItemId === checklistItemId
+              ? { ...item, ...values }
+              : item
+          ) || [],
         });
       }
+      // Update the board state locally without showing loading spinner
+      setBoard((prevBoard) => {
+        return prevBoard.map((column) => ({
+          ...column,
+          cards: column.cards?.map((card) =>
+            card.taskId === checklistTask?.taskId
+              ? {
+                  ...card,
+                  checklist: card.checklist?.map((item) =>
+                    item.checklistItemId === checklistItemId
+                      ? { ...item, ...values }
+                      : item
+                  ) || [],
+                }
+              : card
+          ),
+        }));
+      });
     } catch (err) {
       setError(err.message);
     }
@@ -502,7 +604,31 @@ const TasksBoard = () => {
   const handleDeleteChecklistItem = async (checklistItemId) => {
     try {
       await deleteChecklistItem(checklistItemId);
-      await loadBoard(selectedProject.projectId);
+      // Update the checklist task locally without reloading the entire board
+      if (checklistTask && checklistTask.taskId) {
+        setChecklistTask({
+          ...checklistTask,
+          checklist: checklistTask.checklist?.filter(
+            (item) => item.checklistItemId !== checklistItemId
+          ) || [],
+        });
+      }
+      // Update the board state locally without showing loading spinner
+      setBoard((prevBoard) => {
+        return prevBoard.map((column) => ({
+          ...column,
+          cards: column.cards?.map((card) =>
+            card.taskId === checklistTask?.taskId
+              ? {
+                  ...card,
+                  checklist: card.checklist?.filter(
+                    (item) => item.checklistItemId !== checklistItemId
+                  ) || [],
+                }
+              : card
+          ),
+        }));
+      });
     } catch (err) {
       setError(err.message);
     }
@@ -670,27 +796,87 @@ const TasksBoard = () => {
           bgcolor: "background.paper",
         }}
       >
-        <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-          <Autocomplete
-            sx={{ minWidth: 280 }}
-            options={projects}
-            value={selectedProject}
-            getOptionLabel={(option) => option.name ?? ""}
-            onChange={(_, newValue) => setSelectedProject(newValue)}
-            renderInput={(params) => (
-              <TextField {...params} label="Select Project" />
+        <Stack spacing={2}>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center">
+            <Autocomplete
+              sx={{ minWidth: 280 }}
+              options={projects}
+              value={selectedProject}
+              getOptionLabel={(option) => {
+                const name = option.name ?? "";
+                const number = option.projectNumber ?? "";
+                return number ? `${number} - ${name}` : name;
+              }}
+              onChange={(_, newValue) => setSelectedProject(newValue)}
+              renderInput={(params) => (
+                <TextField {...params} label="Select Project" />
+              )}
+            />
+            <Box sx={{ flexGrow: 1 }} />
+            {selectedProject && (
+              <Button
+                variant={filtersOpen ? "contained" : "outlined"}
+                startIcon={filtersOpen ? <FilterListOffIcon /> : <FilterListIcon />}
+                onClick={() => setFiltersOpen(!filtersOpen)}
+              >
+                Filters
+              </Button>
             )}
-          />
-          <Box sx={{ flexGrow: 1 }} />
-          <Button
-            variant="outlined"
-            startIcon={<CheckCircleIcon />}
-            onClick={() => setCompletedOpen(true)}
-            disabled={!selectedProject}
-          >
-            Completed Tasks
-            {completedTasksArchived.length ? ` (${completedTasksArchived.length})` : ""}
-          </Button>
+            <Button
+              variant="outlined"
+              startIcon={<CheckCircleIcon />}
+              onClick={() => setCompletedOpen(true)}
+              disabled={!selectedProject}
+            >
+              Completed Tasks
+              {completedTasksArchived.length ? ` (${completedTasksArchived.length})` : ""}
+            </Button>
+          </Stack>
+
+          {selectedProject && filtersOpen && (
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="flex-start">
+              <Autocomplete
+                sx={{ minWidth: 200 }}
+                options={[{ memberId: null, name: "All Users" }, ...teamMembers]}
+                value={
+                  filters.memberId
+                    ? teamMembers.find((m) => (m.memberId ?? m.id) === filters.memberId) || { memberId: null, name: "All Users" }
+                    : { memberId: null, name: "All Users" }
+                }
+                getOptionLabel={(option) => option.name ?? ""}
+                onChange={(_, newValue) => {
+                  setFilters((prev) => ({
+                    ...prev,
+                    memberId: newValue?.memberId ?? newValue?.id ?? null,
+                  }));
+                }}
+                renderInput={(params) => (
+                  <TextField {...params} label="Filter by User" />
+                )}
+              />
+              <TextField
+                sx={{ minWidth: 200 }}
+                label="Filter by Task Number"
+                placeholder="e.g., Pro - 001 - 0001"
+                value={taskNumberInput}
+                onChange={(e) => {
+                  setTaskNumberInput(e.target.value);
+                }}
+              />
+              {(filters.memberId || filters.taskNumber) && (
+                <Button
+                  variant="outlined"
+                  color="secondary"
+                  onClick={() => {
+                    setFilters({ memberId: null, taskNumber: "" });
+                    setTaskNumberInput("");
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              )}
+            </Stack>
+          )}
         </Stack>
       </Box>
 
@@ -827,9 +1013,10 @@ const TasksBoard = () => {
         }}
         onSubmit={handleTaskSubmit}
         initialValues={taskDraft}
-        teamMembers={teamMembers}
+        teamMembers={projectMembers.length > 0 ? projectMembers : teamMembers}
         columns={board}
         phases={phases}
+        projectLabels={projectLabels}
         title={taskDraft?.taskId ? "Update Task" : "New Task"}
       />
 
@@ -841,6 +1028,7 @@ const TasksBoard = () => {
         onAddItem={handleAddChecklistItem}
         onDeleteItem={handleDeleteChecklistItem}
         onRenameItem={handleChecklistToggle}
+        projectLabels={projectLabels}
       />
 
       <ColumnFormDialog

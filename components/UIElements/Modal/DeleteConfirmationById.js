@@ -20,10 +20,15 @@ const style = {
   borderRadius: 1,
 };
 
-export default function DeleteConfirmationById({ id, controller, fetchItems }) {
-  const [open, setOpen] = useState(false);
-  const handleOpen = () => setOpen(true);
-  const handleClose = () => setOpen(false);
+export default function DeleteConfirmationById({ id, controller, fetchItems, open: controlledOpen, onClose: onCloseProp }) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const handleOpen = () => setInternalOpen(true);
+  const handleClose = () => {
+    if (!isControlled) setInternalOpen(false);
+    onCloseProp?.();
+  };
 
   const handleSubmit = () => {
     const token = localStorage.getItem("token");
@@ -57,11 +62,13 @@ export default function DeleteConfirmationById({ id, controller, fetchItems }) {
 
   return (
     <>
-      <Tooltip title="Delete" placement="top">
-        <IconButton onClick={handleOpen} aria-label="delete" size="small">
-          <DeleteIcon color="error" fontSize="inherit" />
-        </IconButton>
-      </Tooltip>
+      {!isControlled && (
+        <Tooltip title="Delete" placement="top">
+          <IconButton onClick={handleOpen} aria-label="delete" size="small">
+            <DeleteIcon color="error" fontSize="inherit" />
+          </IconButton>
+        </Tooltip>
+      )}
       <Modal
         open={open}
         onClose={handleClose}

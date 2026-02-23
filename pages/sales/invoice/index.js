@@ -114,7 +114,7 @@ export default function Invoice() {
         <Grid item xs={12} lg={4} order={{ xs: 2, lg: 1 }}>
           <Search className="search-form">
             <StyledInputBase
-              placeholder="Search by Invoice No or Warehouse.."
+              placeholder="Search by Invoice No, Warehouse or Customer Name.."
               inputProps={{ "aria-label": "search" }}
               value={search}
               onChange={handleSearchChange}

@@ -176,6 +176,7 @@ export default function EditFabric() {
             <DashboardHeader
                 customerName={inquiry ? inquiry.customerName : ""}
                 optionName={inquiry ? inquiry.optionName : ""}
+                windowType={inquiry ? inquiry.windowType : null}
                 href="/inquiry/inquries/"
                 link="Inquiries"
                 title="Select Fabric"

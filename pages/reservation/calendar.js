@@ -12,6 +12,7 @@ import {
   Drawer,
   Grid,
   IconButton,
+  InputAdornment,
   List,
   ListItem,
   ListItemText,
@@ -20,6 +21,10 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import TodayIcon from "@mui/icons-material/Today";
 import AddPencilNote from "@/components/UIElements/Modal/AddPencilNote";
 import DrawerSignIn from "pages/authentication/drawer-sign-in";
 import {
@@ -118,11 +123,12 @@ const Calendar = () => {
   };
 
   const handleDateChange = (e) => {
-    setSelectedDate(e.target.value);
+    const value = e.target.value;
+    setSelectedDate(value);
     setShowCalendar(false);
-    generateCalendar(selectedDate);
-    setApiDate(e.target.value);
-    fetchNotes(e.target.value);
+    generateCalendar(value);
+    setApiDate(value);
+    fetchNotes(value);
   };
 
   const handleDayClick = (day) => {
@@ -131,6 +137,32 @@ const Calendar = () => {
 
     setSelectedDay(day);
     setSelectedDate(formattedDay);
+    setIsTableVisible(true);
+  };
+
+  const navigateMonth = (delta) => {
+    if (!selectedDate) return;
+    const d = new Date(selectedDate + "T12:00:00");
+    d.setMonth(d.getMonth() + delta);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const lastDay = new Date(year, d.getMonth() + 1, 0).getDate();
+    const day = Math.min(selectedDay || 1, lastDay);
+    const newDate = `${year}-${month}-${String(day).padStart(2, "0")}`;
+    setSelectedDate(newDate);
+    setApiDate(newDate);
+    setSelectedDay(day);
+    generateCalendar(newDate);
+    fetchNotes(newDate);
+  };
+
+  const goToToday = () => {
+    const today = currentDate.toISOString().split("T")[0];
+    setSelectedDate(today);
+    setApiDate(today);
+    setSelectedDay(currentDate.getDate());
+    generateCalendar(today);
+    fetchNotes(today);
     setIsTableVisible(true);
   };
 
@@ -335,13 +367,18 @@ const Calendar = () => {
             <Grid item lg={3} xs={12}>
               <TextField
                 size="small"
-                onChange={(e) => {
-                  handleDateChange(e);
-                  generateCalendar(e.target.value);
-                }}
+                onChange={handleDateChange}
                 value={selectedDate}
                 type="date"
                 fullWidth
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <CalendarMonthIcon sx={{ color: "action.active" }} />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
               />
             </Grid>
             <Grid item lg={8} xs={12}>
@@ -361,24 +398,57 @@ const Calendar = () => {
         </Grid>
         <Grid item xs={12} lg={isTableVisible ? 8 : 12} mt={2}>
           <Box sx={{ bgcolor: "background.paper" }} className="calendar">
-            <Box className="calendar-header d-flex justify-content-center">
-              {selectedDate &&
-                new Date(selectedDate).toLocaleString("default", {
-                  month: "long",
-                  year: "numeric",
-                })}
+            <Box className="calendar-toolbar">
+              <IconButton
+                className="calendar-nav-btn"
+                onClick={() => navigateMonth(-1)}
+                aria-label="Previous month"
+                size="small"
+              >
+                <ChevronLeftIcon />
+              </IconButton>
+              <Box className="calendar-header">
+                {selectedDate &&
+                  new Date(selectedDate + "T12:00:00").toLocaleString("default", {
+                    month: "long",
+                    year: "numeric",
+                  })}
+              </Box>
+              <IconButton
+                className="calendar-nav-btn"
+                onClick={() => navigateMonth(1)}
+                aria-label="Next month"
+                size="small"
+              >
+                <ChevronRightIcon />
+              </IconButton>
+              <Button
+                className="calendar-today-btn"
+                startIcon={<TodayIcon />}
+                onClick={goToToday}
+                size="small"
+                variant="outlined"
+              >
+                Today
+              </Button>
             </Box>
             <Box className="calendar-grid">
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                <div key={day} className="weekday">
+                <div
+                  key={day}
+                  className={`weekday ${day === "Sun" || day === "Sat" ? "weekday--weekend" : ""}`}
+                >
                   {day}
                 </div>
               ))}
-              {calendarData.map((date, index) => (
+              {calendarData.map((date, index) => {
+                const yearMonth = selectedDate ? `${selectedDate.split("-")[0]}-${selectedDate.split("-")[1]}` : "";
+                const cellDate = date ? `${yearMonth}-${String(date).padStart(2, "0")}` : "";
+                const isToday = cellDate && cellDate === currentDate.toISOString().split("T")[0];
+                return (
                 <Box
                   key={index}
-                  className={`date ${date === selectedDay ? "selected-date" : ""
-                    }`}
+                  className={`date ${date === selectedDay ? "selected-date" : ""} ${isToday ? "today" : ""} ${!date ? "empty" : ""} ${index % 7 === 0 || index % 7 === 6 ? "date--weekend" : ""}`}
                   onClick={() => date && handleDayClick(date)}
                 >
                   <Grid container>
@@ -388,7 +458,7 @@ const Calendar = () => {
                       display="flex"
                       justifyContent="space-between"
                     >
-                      <Typography p={1} fontWeight="bold">
+                      <Typography component="span" className="date-num" fontWeight="bold">
                         {date}
                       </Typography>
                       <Box className="add-lg">
@@ -411,7 +481,8 @@ const Calendar = () => {
                     </Grid>
                   </Grid>
                 </Box>
-              ))}
+              );
+              })}
             </Box>
           </Box>
         </Grid>

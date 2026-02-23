@@ -230,6 +230,7 @@ export const getSidebarData = (IsGarmentSystem) => {
                 { title: "Stock Adjustment", path: "/inventory/stock-adjustment/", categoryId: 40, isAvailable: true },
                 { title: "Stock Transfer Note", path: "/inventory/stock-transfer/", categoryId: 69, isAvailable: true },
                 { title: "Goods Return Note", path: "/inventory/grn-return/", categoryId: 77, isAvailable: true },
+                { title: "Stock Details", path: "/inventory/stock-details/", categoryId: 156, isAvailable: true },
             ],
         },
         {
@@ -424,7 +425,7 @@ export const getSidebarData = (IsGarmentSystem) => {
                 { title: "Work Track", path: "/work-track/", categoryId: 153, isAvailable: true },
                 { title: "Technician", path: "/work-track/technician/", categoryId: 154, isAvailable: true }
             ],
-        },{
+        }, {
             title: "Administrator",
             path: "/administrator/administrator/",
             icon: <AdminIcon />,

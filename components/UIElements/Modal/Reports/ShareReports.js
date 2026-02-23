@@ -28,7 +28,8 @@ const style = {
 
 export default function ShareReports({
   url,
-  mobile
+  mobile,
+  onSuccess
 }) {
   const { data: IsGarmentSystem } = IsAppSettingEnabled("IsGarmentSystem");
   const { data: IsShareWhatsAppAPIThrough } = IsAppSettingEnabled("IsShareWhatsAppAPIThrough");
@@ -109,12 +110,21 @@ export default function ShareReports({
           },
         });
         toast.success("Document sent successfully!");
+        
+        // Call onSuccess callback if provided
+        if (onSuccess) {
+          onSuccess();
+        }
 
       } catch (error) {
         console.log(error);
       }
     } else {
       handleOpenWhatsappTemp(message, documentUrl);
+      // Call onSuccess callback if provided (for non-API sharing)
+      if (onSuccess) {
+        onSuccess();
+      }
     }
   };
 

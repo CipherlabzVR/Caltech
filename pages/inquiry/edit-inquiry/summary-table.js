@@ -41,6 +41,7 @@ export default function SumTable({ onIsSavedChange, inquiry, onSummaryChange }) 
         );
         await fetchItems(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
         await fetchPattern(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
+        await fetchLastApprovedLineItems(inquiry.inquiryId, inquiry.optionId);
       }
 
     };
@@ -58,8 +59,107 @@ export default function SumTable({ onIsSavedChange, inquiry, onSummaryChange }) 
     }
   }, [items, patternTotalCost, commissionTotalCost]);
 
+  const fetchLastApprovedLineItems = async (inquiryId, optionId) => {
+    try {
+      // Get last approved version
+      const approvedResponse = await fetch(
+        `${BASE_URL}/Inquiry/GetLastApprovedVersion?InquiryID=${inquiryId}&OptionId=${optionId}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (approvedResponse.ok) {
+        const approvedResult = await approvedResponse.json();
+        if (approvedResult.result) {
+          const versionId = approvedResult.result.id;
+          
+          // Get line items for the last approved version
+          const lineResponse = await fetch(
+            `${BASE_URL}/Inquiry/GetQuotationVersionLineHistory?VersionHistoryId=${versionId}`,
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          if (lineResponse.ok) {
+            const lineData = await lineResponse.json();
+            const approvedLineItems = lineData.result || [];
+            
+            // Update items with approved values
+            setItems(prevItems => {
+              return prevItems.map(item => {
+                const approvedItem = approvedLineItems.find(ai => ai.itemName === item.itemName && ai.itemName !== "Commission" && ai.itemName !== "Pattern");
+                if (approvedItem) {
+                  return {
+                    ...item,
+                    unitCost: approvedItem.approvedUnitCost ?? approvedItem.unitCost ?? item.unitCost,
+                    totalCost: approvedItem.approvedTotalCost ?? approvedItem.totalCost ?? item.totalCost,
+                    quantity: approvedItem.approvedQuantity ?? approvedItem.quantity ?? item.quantity,
+                    approvedUnitCost: approvedItem.approvedUnitCost ?? approvedItem.unitCost,
+                    approvedTotalCost: approvedItem.approvedTotalCost ?? approvedItem.totalCost,
+                    approvedQuantity: approvedItem.approvedQuantity ?? approvedItem.quantity,
+                  };
+                }
+                return item;
+              });
+            });
+
+            // Update pattern item
+            const approvedPattern = approvedLineItems.find(ai => ai.itemName === "Pattern");
+            if (approvedPattern) {
+              setPatternUCost(approvedPattern.approvedUnitCost ?? approvedPattern.unitCost ?? 0);
+              setPatternTotalCost(approvedPattern.approvedTotalCost ?? approvedPattern.totalCost ?? 0);
+              setPatternQuantity(approvedPattern.approvedQuantity ?? approvedPattern.quantity ?? 0);
+            }
+
+            // Update commission item
+            const approvedCommission = approvedLineItems.find(ai => ai.itemName === "Commission");
+            if (approvedCommission) {
+              setCommissionTotalCost(approvedCommission.approvedTotalCost ?? approvedCommission.totalCost ?? 0);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching last approved line items:", error);
+    }
+  };
+
   const fetchQuotationDataList = async (inquiryId, optionId, windowType) => {
     try {
+      // First try to get the last approved version
+      const approvedResponse = await fetch(
+        `${BASE_URL}/Inquiry/GetLastApprovedVersion?InquiryID=${inquiryId}&OptionId=${optionId}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      let useApprovedValues = false;
+      let approvedData = null;
+
+      if (approvedResponse.ok) {
+        const approvedResult = await approvedResponse.json();
+        if (approvedResult.result) {
+          approvedData = approvedResult.result;
+          useApprovedValues = true;
+        }
+      }
+
+      // Fallback to current header if no approved version exists
       const response = await fetch(
         `${BASE_URL}/Inquiry/GetInquirySummeryHeaderBYOptionID?InquiryID=${inquiryId}&OptionId=${optionId}&WindowType=${windowType}`,
         {
@@ -74,14 +174,28 @@ export default function SumTable({ onIsSavedChange, inquiry, onSummaryChange }) 
         throw new Error("Failed to fetch Quotation List");
       }
       const data = await response.json();
+      
       if (data.result) {
-        setProfit(data.result.unitProfit || 0);
-        setSellingPrice(data.result.sellingPrice || 0);
-        setRevenue(data.result.revanue || 0);
-        setTotalCost(data.result.totalCost || 0);
-        setTotalProfit(data.result.totalProfit || 0);
-        setUnitCost(data.result.unitCost || 0);
-        setProfitPercentage(data.result.profitPercentage || 0);
+        if (useApprovedValues && approvedData) {
+          // Use last approved values
+          setProfit(approvedData.apprvedUnitProfit || 0);
+          setSellingPrice(approvedData.apprvedSellingPrice || 0);
+          setRevenue(approvedData.apprvedRevanue || 0);
+          setTotalCost(approvedData.apprvedTotalCost || 0);
+          setTotalProfit(approvedData.apprvedTotalProfit || 0);
+          setUnitCost(approvedData.apprvedUnitCost || 0);
+          setProfitPercentage(approvedData.apprvedProfitPercentage || 0);
+          setNoOfUnits(approvedData.apprvedTotalUnits || 0);
+        } else {
+          // Use current values (fallback)
+          setProfit(data.result.unitProfit || 0);
+          setSellingPrice(data.result.sellingPrice || 0);
+          setRevenue(data.result.revanue || 0);
+          setTotalCost(data.result.totalCost || 0);
+          setTotalProfit(data.result.totalProfit || 0);
+          setUnitCost(data.result.unitCost || 0);
+          setProfitPercentage(data.result.profitPercentage || 0);
+        }
       }
     } catch (error) {
       console.error("Error fetching Quotation List:", error);
@@ -163,8 +277,10 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
       ...patternItem,
       UnitCost: patternUCost,
       TotalCost: patternTotalCost,
+      Quantity: patternItem.quantity ?? patternQuantity,
       ApprovedUnitCost: patternUCost, // Copy to approved
       ApprovedTotalCost: patternTotalCost, // Copy to approved
+      ApprovedQuantity: patternQuantity, // Copy to approved
     } : null;
   
     const commissionRow = commissionItem ? {
@@ -180,6 +296,7 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
         ...item,
         ApprovedUnitCost: item.unitCost, // Copy to approved
         ApprovedTotalCost: item.totalCost, // Copy to approved
+        ApprovedQuantity: item.quantity, // Copy to approved
       })),
     ];
   
@@ -299,8 +416,8 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
           <TableHead>
             <TableRow>
               <TableCell>Description</TableCell>
-              <TableCell>Unit Cost</TableCell>
-              <TableCell>Qty</TableCell>
+              <TableCell align="right">Unit Cost</TableCell>
+              <TableCell align="right">Qty</TableCell>
               <TableCell align="right">Total Cost</TableCell>
             </TableRow>
           </TableHead>
@@ -313,17 +430,18 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
                 <TableCell component="th" scope="row">
                   {item.itemName}
                 </TableCell>
-                <TableCell>
+                <TableCell align="right">
                   <input
                     value={item.unitCost ? item.unitCost : 0}
                     style={{
                       width: "60px",
                       border: "1px solid #e5e5e5",
+                      textAlign: "right",
                     }}
                     onChange={(e) => handleUnitCostChange(index, e.target.value)}
                   />
                 </TableCell>
-                <TableCell>{item.quantity ? item.quantity : 0}</TableCell>
+                <TableCell align="right">{item.quantity ? item.quantity : 0}</TableCell>
                 <TableCell align="right">
                   {item.totalCost ? item.totalCost.toFixed(2) : "0.00"}
                 </TableCell>
@@ -335,14 +453,15 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
               <TableCell component="th" scope="row">
                 Pattern
               </TableCell>
-              <TableCell>{patternUCost}</TableCell>
-              <TableCell>{patternQuantity}</TableCell>
+              <TableCell align="right">{patternUCost}</TableCell>
+              <TableCell align="right">{patternQuantity}</TableCell>
               <TableCell align="right">
                 <input
                   value={patternTotalCost}
                   style={{
                     width: "60px",
                     border: "1px solid #e5e5e5",
+                    textAlign: "right",
                   }}
                   onChange={(e) => handlePatternTotalCostChange(e.target.value)}
                 />
@@ -354,14 +473,15 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
               <TableCell component="th" scope="row">
                 Commission
               </TableCell>
-              <TableCell></TableCell>
-              <TableCell></TableCell>
+              <TableCell align="right"></TableCell>
+              <TableCell align="right"></TableCell>
               <TableCell align="right">
                 <input
                   value={commissionTotalCost}
                   style={{
                     width: "60px",
                     border: "1px solid #e5e5e5",
+                    textAlign: "right",
                   }}
                   onChange={(e) => handleCommissionTotalCostChange(e.target.value)}
                 />
@@ -393,6 +513,7 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
                   style={{
                     width: "60px",
                     border: "1px solid #e5e5e5",
+                    textAlign: "right",
                   }}
                   onChange={(e) => handleProfitChange(e.target.value)}
                 />

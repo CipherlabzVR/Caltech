@@ -41,9 +41,16 @@ export default function ConfirmInquiryByInquiryId({ id, fetchItems, hasPending, 
           toast.success("Inquiry confirmed successfully! Proforma Invoice has been created and moved to Pending tab.", {
             autoClose: 5000,
           });
-          fetchItems();
-          if (onSuccess) onSuccess();
           setOpen(false);
+          // Call onSuccess which will switch to Confirmed tab and fetch the data
+          // Add a small delay to ensure backend has committed the changes
+          if (onSuccess) {
+            setTimeout(() => {
+              onSuccess();
+            }, 300);
+          } else {
+            fetchItems();
+          }
         } else {
           toast.error(data.result.message);
         }
@@ -58,7 +65,7 @@ export default function ConfirmInquiryByInquiryId({ id, fetchItems, hasPending, 
       <Button
         onClick={handleOpen}
         color="success"
-        disabled={hasPending || (!hasPending && !hasConfirmed)} // disable when pending exists or all are rejected
+        disabled={hasPending} // disable only when pending quotations exist
         variant="outlined"
       >
         Confirm

@@ -26,12 +26,14 @@ import ProjectFormDialog from "@/components/ProjectManagementModule/ProjectFormD
 import ProjectDetailDialog from "@/components/ProjectManagementModule/ProjectDetailDialog";
 import MetricCard from "@/components/ProjectManagementModule/MetricCard";
 import StatusPill from "@/components/ProjectManagementModule/StatusPill";
+import ProjectTaskPieChart from "@/components/ProjectManagementModule/ProjectTaskPieChart";
 import {
   assignProjectMembers,
   createProject,
   deleteProject,
   getProjectDetails,
   getProjects,
+  getTaskBoard,
   getTeamMembers,
   updateProject,
   updateProjectStatus,
@@ -55,6 +57,7 @@ const Projects = () => {
   const [allProjects, setAllProjects] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
+  const [projectTaskCounts, setProjectTaskCounts] = useState({});
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -90,6 +93,53 @@ const Projects = () => {
       const response = await getProjects({});
       setAllProjects(response ?? []);
       setError(null);
+      
+      // Load task counts for each project
+      if (response && Array.isArray(response)) {
+        const counts = {};
+        await Promise.all(
+          response.map(async (project) => {
+            try {
+              const taskBoard = await getTaskBoard(project.projectId);
+              const columns = taskBoard?.columns ?? [];
+              
+              let completed = 0;
+              let started = 0;
+              let ongoing = 0;
+              let hold = 0;
+              
+              columns.forEach((column) => {
+                const taskCount = column.cards?.length ?? 0;
+                if (column.isEndColumn) {
+                  completed += taskCount;
+                } else if (column.isStartColumn) {
+                  started += taskCount;
+                } else if (column.isHoldColumn) {
+                  hold += taskCount;
+                } else {
+                  ongoing += taskCount;
+                }
+              });
+              
+              counts[project.projectId] = {
+                completed,
+                started,
+                ongoing,
+                hold,
+              };
+            } catch (err) {
+              console.error(`Failed to load tasks for project ${project.projectId}:`, err);
+              counts[project.projectId] = {
+                completed: 0,
+                started: 0,
+                ongoing: 0,
+                hold: 0,
+              };
+            }
+          })
+        );
+        setProjectTaskCounts(counts);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -443,6 +493,9 @@ const Projects = () => {
                     <Typography variant="caption" color="text.secondary">
                       Delivery by {dayjs(project.endDate).format("MMM D, YYYY")}
                     </Typography>
+                    <Box sx={{ mt: 2 }}>
+                      <ProjectTaskPieChart taskCounts={projectTaskCounts[project.projectId]} />
+                    </Box>
                   </Stack>
                 </Paper>
               </Grid>
