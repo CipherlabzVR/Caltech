@@ -3,6 +3,7 @@ import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
+import Modal from "@mui/material/Modal";
 import AddIcon from "@mui/icons-material/Add";
 import Grid from "@mui/material/Grid";
 import { Formik, Form, Field } from "formik";
@@ -11,7 +12,10 @@ import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
 import {
+  Alert,
+  Box,
   Checkbox,
+  CircularProgress,
   FormControl,
   FormControlLabel,
   IconButton,
@@ -20,11 +24,15 @@ import {
   Radio,
   RadioGroup,
   Select,
+  Tab,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
 import BASE_URL from "Base/api";
+import { useRouter } from "next/router";
+import logoutUser from "@/components/utils/logoutUser";
 
 const validationSchema = Yup.object().shape({
   FirstName: Yup.string().required("First Name is required"),
@@ -43,16 +51,38 @@ const validationSchema = Yup.object().shape({
   }),
 });
 
+const confirmModalStyle = {
+  position: "absolute",
+  top: "50%",
+  left: "50%",
+  transform: "translate(-50%, -50%)",
+  width: 420,
+  maxWidth: "90vw",
+  bgcolor: "background.paper",
+  boxShadow: 24,
+  p: 3,
+  borderRadius: 1,
+};
+
 export default function EditUserDialog({ item, fetchItems, warehouses, roles }) {
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [scroll, setScroll] = React.useState("paper");
   const [userTypes, setUserTypes] = useState([]);
   const [salesPersons, setSalesPersons] = useState([]);
+  const [activeTab, setActiveTab] = useState(0);
+  const [devices, setDevices] = useState([]);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+  const [removingDeviceId, setRemovingDeviceId] = useState(null);
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState(null);
 
   const handleClickOpen = (scrollType) => () => {
     setOpen(true);
+    setActiveTab(0);
     fetchUserTypes();
     fetchSalesPersons();
+    fetchLoggedInDevices();
     setScroll(scrollType);
   };
 
@@ -108,6 +138,147 @@ export default function EditUserDialog({ item, fetchItems, warehouses, roles }) 
 
   const handleClose = () => {
     setOpen(false);
+    setActiveTab(0);
+    setConfirmRemoveOpen(false);
+    setSelectedDevice(null);
+  };
+
+  const parseResponseBody = async (response) => {
+    const contentType = response.headers.get("content-type") || "";
+    const responseText = await response.text();
+
+    if (!responseText) {
+      return null;
+    }
+
+    if (contentType.includes("application/json")) {
+      try {
+        return JSON.parse(responseText);
+      } catch (error) {
+        console.error("Failed to parse JSON response:", error);
+        return null;
+      }
+    }
+
+    return null;
+  };
+
+  const buildErrorMessage = (response, data, fallbackMessage) => {
+    if (data?.message) {
+      return data.message;
+    }
+
+    if (response.status === 401) {
+      return "Your session has expired. Please sign in again.";
+    }
+
+    if (response.status === 403) {
+      return "You do not have permission to perform this action.";
+    }
+
+    return fallbackMessage;
+  };
+
+  const fetchLoggedInDevices = async () => {
+    try {
+      setLoadingDevices(true);
+      const response = await fetch(
+        `${BASE_URL}/User/GetLoggedInDevicesByUserId?userId=${item.id}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const data = await parseResponseBody(response);
+
+      if (!response.ok || data?.statusCode !== 200) {
+        throw new Error(
+          buildErrorMessage(response, data, "Failed to fetch devices")
+        );
+      }
+
+      setDevices(data.result || []);
+    } catch (error) {
+      toast.error(error.message || "Failed to fetch devices");
+    } finally {
+      setLoadingDevices(false);
+    }
+  };
+
+  const handleConfirmRemoveOpen = (device) => {
+    setSelectedDevice(device);
+    setConfirmRemoveOpen(true);
+  };
+
+  const handleConfirmRemoveClose = () => {
+    if (removingDeviceId) {
+      return;
+    }
+
+    setConfirmRemoveOpen(false);
+    setSelectedDevice(null);
+  };
+
+  const handleRemoveDevice = async () => {
+    if (!selectedDevice) {
+      return;
+    }
+
+    try {
+      setRemovingDeviceId(selectedDevice.id);
+      const removeDeviceUrl = `${BASE_URL}/User/RemoveLoggedInDeviceByUserId?userId=${item.id}&deviceId=${selectedDevice.id}`;
+      const requestHeaders = {
+        Authorization: `Bearer ${localStorage.getItem("token")}`,
+        "Content-Type": "application/json",
+      };
+
+      const response = await fetch(removeDeviceUrl, {
+        method: "POST",
+        headers: requestHeaders,
+      });
+
+      const data = await parseResponseBody(response);
+
+      if (!response.ok || data?.statusCode !== 200) {
+        throw new Error(
+          buildErrorMessage(response, data, "Failed to remove device")
+        );
+      }
+
+      toast.success(data?.message || "Device removed successfully");
+
+      if (selectedDevice?.isCurrentDevice) {
+        toast.info("Current device removed. Signing out...");
+        await logoutUser({ router });
+        return;
+      }
+
+      setConfirmRemoveOpen(false);
+      setSelectedDevice(null);
+      fetchLoggedInDevices();
+    } catch (error) {
+      toast.error(error.message || "Failed to remove device");
+    } finally {
+      setRemovingDeviceId(null);
+    }
+  };
+
+  const formatDate = (value) => {
+    if (!value) {
+      return "N/A";
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return "N/A";
+    }
+
+    return date.toLocaleString();
   };
   
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
@@ -151,7 +322,7 @@ export default function EditUserDialog({ item, fetchItems, warehouses, roles }) 
         aria-describedby="scroll-dialog-description"
       >
         <DialogTitle id="scroll-dialog-title">Update User</DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ minWidth: { xs: 320, sm: 600 } }}>
           <Formik
             initialValues={{
               Id: item.id,
@@ -173,6 +344,17 @@ export default function EditUserDialog({ item, fetchItems, warehouses, roles }) 
           >
             {({ errors, touched, setFieldValue, values }) => (
               <Form>
+                <Tabs
+                  value={activeTab}
+                  onChange={(_, newValue) => setActiveTab(newValue)}
+                  variant="fullWidth"
+                  sx={{ mb: 2 }}
+                >
+                  <Tab label="Details" />
+                  <Tab label={`Logged In Devices (${devices.length})`} />
+                </Tabs>
+
+                {activeTab === 0 ? (
                 <Grid container spacing={2}>
                   <Grid item lg={6} xs={12}>
                     <Typography
@@ -458,11 +640,134 @@ export default function EditUserDialog({ item, fetchItems, warehouses, roles }) 
                     </Button>
                   </Grid>
                 </Grid>
+                ) : (
+                  <Box sx={{ minHeight: 320 }}>
+                    {loadingDevices ? (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "center",
+                          alignItems: "center",
+                          py: 4,
+                        }}
+                      >
+                        <CircularProgress size={28} />
+                      </Box>
+                    ) : devices.length === 0 ? (
+                      <Alert severity="info">No logged in devices found for this user.</Alert>
+                    ) : (
+                      devices.map((device) => (
+                        <Box
+                          key={device.id}
+                          sx={{
+                            border: "1px solid #E5E7EB",
+                            borderRadius: "10px",
+                            p: 2,
+                            mb: 2,
+                          }}
+                        >
+                          <Grid container spacing={2} alignItems="center">
+                            <Grid item xs={12} md={8}>
+                              <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap", mb: 0.5 }}>
+                                <Typography fontWeight="600">
+                                  {device.deviceName || "Unknown Device"}
+                                </Typography>
+                                <Alert
+                                  icon={false}
+                                  severity={device.isCurrentDevice || device.isActive ? "success" : "info"}
+                                  sx={{
+                                    py: 0,
+                                    px: 1,
+                                    minHeight: "auto",
+                                    alignItems: "center",
+                                    "& .MuiAlert-message": {
+                                      p: 0,
+                                      fontSize: "0.75rem",
+                                      fontWeight: 600,
+                                    },
+                                  }}
+                                >
+                                  {device.isCurrentDevice ? "Current Device" : device.isActive ? "Active" : "Inactive"}
+                                </Alert>
+                              </Box>
+                              <Typography variant="body2" color="text.secondary">
+                                IP Address: {device.ipAddress || "N/A"}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                First Logged In: {formatDate(device.createdOn)}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                Last Active: {formatDate(device.updatedOn || device.createdOn)}
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={12} md={4}>
+                              <Box sx={{ display: "flex", justifyContent: { xs: "flex-start", md: "flex-end" } }}>
+                                <Button
+                                  variant="outlined"
+                                  color="error"
+                                  onClick={() => handleConfirmRemoveOpen(device)}
+                                  disabled={removingDeviceId === device.id}
+                                  sx={{ textTransform: "capitalize" }}
+                                >
+                                  {removingDeviceId === device.id ? "Removing..." : "Remove Device"}
+                                </Button>
+                              </Box>
+                            </Grid>
+                          </Grid>
+                        </Box>
+                      ))
+                    )}
+                  </Box>
+                )}
               </Form>
             )}
           </Formik>
         </DialogContent>
       </Dialog>
+
+      <Modal
+        open={confirmRemoveOpen}
+        onClose={handleConfirmRemoveClose}
+        aria-labelledby="remove-device-modal-title"
+        aria-describedby="remove-device-modal-description"
+      >
+        <Box sx={confirmModalStyle}>
+          <Typography
+            id="remove-device-modal-title"
+            sx={{ fontWeight: "500", fontSize: "16px", mb: 1.5 }}
+          >
+            Remove Logged In Device
+          </Typography>
+          <Typography
+            id="remove-device-modal-description"
+            sx={{ fontSize: "14px", color: "text.secondary" }}
+          >
+            Are you sure you want to remove
+            {" "}
+            <strong>{selectedDevice?.deviceName || "this device"}</strong>
+            ?
+          </Typography>
+          <Box display="flex" justifyContent="flex-end" gap={2} mt={3}>
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={handleConfirmRemoveClose}
+              disabled={Boolean(removingDeviceId)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              color="error"
+              onClick={handleRemoveDevice}
+              disabled={Boolean(removingDeviceId)}
+              sx={{ color: "#fff !important" }}
+            >
+              {removingDeviceId ? "Removing..." : "Remove"}
+            </Button>
+          </Box>
+        </Box>
+      </Modal>
     </>
   );
 }

@@ -127,7 +127,7 @@ export default function TechPackEdit() {
     const navToNext = () => {
         router.push({
             pathname: "/quotations/tech-pack/edit/color-code",
-            query: { inquiryId, optionId, sentQuotationId, ongoingInquiryId },
+            query: { inquiryId, optionId, sentQuotationId, ongoingInquiryId, ...(inquiry?.windowType != null && { windowType: inquiry.windowType }) },
         });
     };
 

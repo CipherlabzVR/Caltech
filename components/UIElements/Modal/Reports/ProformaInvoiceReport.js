@@ -52,11 +52,21 @@ const styles = StyleSheet.create({
     marginLeft: "220px",
     fontWeight: 700,
   },
-  date: {
-    fontSize: "11px",
+  dateDocRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: "8px",
     marginTop: "5px",
     marginLeft: "40px",
+    marginRight: "100px",
+    paddingRight: 0,
+  },
+  date: {
+    fontSize: "11px",
+  },
+  documentNo: {
+    fontSize: "11px",
   },
   invoiceNo: {
     fontSize: "11px",
@@ -685,8 +695,10 @@ const ProformaInvoiceReport = ({ proformaInvoice, onShareSuccess }) => {
         <View style={styles.section}>
           <Image style={styles.backgroundImage} src="/images/quotation/abc.jpg" />
           <Text style={styles.title}>PROFORMA INVOICE</Text>
-          <Text style={styles.date}>Date : {formatDate(proformaInvoice.invoiceDate)}</Text>
-          <Text style={styles.invoiceNo}>Invoice No : {proformaInvoice.inquiryCode}</Text>
+          <View style={styles.dateDocRow}>
+            <Text style={styles.date}>Date : {formatDate(proformaInvoice.invoiceDate)}</Text>
+            <Text style={styles.documentNo}>Document No : {proformaInvoice.documentNo || "—"}</Text>
+          </View>
 
           {customerDetails && (
             <>

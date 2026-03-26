@@ -3,9 +3,13 @@ import {
   Box,
   Button,
   Checkbox,
+  FormControl,
   FormControlLabel,
   Grid,
+  InputLabel,
+  MenuItem,
   Modal,
+  Select,
   TextField,
   Typography,
 } from "@mui/material";
@@ -13,6 +17,11 @@ import { Field, Form, Formik } from "formik";
 import * as Yup from "yup";
 import { toast } from "react-toastify";
 import BASE_URL from "Base/api";
+
+const PER_RATE_OPTIONS = [
+  { value: 1, label: "Per Hour" },
+  { value: 2, label: "Per Minute" },
+];
 
 const style = {
   position: "absolute",
@@ -27,6 +36,8 @@ const style = {
 };
 const validationSchema = Yup.object({
   Name: Yup.string().trim().required("Name is required"),
+  GracePeriodMinutes: Yup.number().nullable().min(0, "Must be 0 or more"),
+  PerRateAmount: Yup.number().nullable().min(0, "Must be 0 or more"),
 });
 
 export default function CreateOTTypeModal({ fetchItems }) {
@@ -43,11 +54,22 @@ export default function CreateOTTypeModal({ fetchItems }) {
   };
 
   const handleSubmit = async (values) => {
-    console.log(values);
+    const payload = {
+      ...values,
+      GracePeriodMinutes:
+        values.GracePeriodMinutes === "" || values.GracePeriodMinutes == null
+          ? null
+          : Number(values.GracePeriodMinutes),
+      PerRateAmount:
+        values.PerRateAmount === "" || values.PerRateAmount == null
+          ? null
+          : Number(values.PerRateAmount),
+      PerRateType: values.PerRateType ?? 1,
+    };
 
     fetch(`${BASE_URL}/OTType/CreateOTType`, {
       method: "POST",
-      body: JSON.stringify(values),
+      body: JSON.stringify(payload),
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -77,7 +99,14 @@ export default function CreateOTTypeModal({ fetchItems }) {
       <Modal open={open} onClose={() => handleClose()}>
         <Box sx={style}>
           <Formik
-            initialValues={{ Name: "", Description: "", IsActive: false }}
+            initialValues={{
+              Name: "",
+              Description: "",
+              GracePeriodMinutes: "",
+              PerRateAmount: "",
+              PerRateType: 1,
+              IsActive: false,
+            }}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
@@ -131,6 +160,78 @@ export default function CreateOTTypeModal({ fetchItems }) {
                           multiline
                           minRows={2}
                         />
+                      </Grid>
+
+                      <Grid item xs={12}>
+                        <Typography sx={{ fontWeight: 500, mb: "5px" }}>
+                          Grace Period (mins)
+                        </Typography>
+                        <Field
+                          as={TextField}
+                          name="GracePeriodMinutes"
+                          fullWidth
+                          type="number"
+                          inputProps={{ min: 0, step: 0.01 }}
+                          placeholder="e.g. 15"
+                          error={
+                            touched.GracePeriodMinutes &&
+                            Boolean(errors.GracePeriodMinutes)
+                          }
+                          helperText={
+                            touched.GracePeriodMinutes &&
+                            errors.GracePeriodMinutes
+                          }
+                        />
+                      </Grid>
+
+                      <Grid item xs={12}>
+                        <Typography sx={{ fontWeight: 500, mb: "5px" }}>
+                          Per Rate
+                        </Typography>
+                        <Grid container spacing={1}>
+                          <Grid item xs={7}>
+                            <Field
+                              as={TextField}
+                              name="PerRateAmount"
+                              fullWidth
+                              type="number"
+                              inputProps={{ min: 0, step: 0.01 }}
+                              placeholder="Amount"
+                              error={
+                                touched.PerRateAmount &&
+                                Boolean(errors.PerRateAmount)
+                              }
+                              helperText={
+                                touched.PerRateAmount && errors.PerRateAmount
+                              }
+                            />
+                          </Grid>
+                          <Grid item xs={5}>
+                            <FormControl fullWidth size="small">
+                              <InputLabel>Unit</InputLabel>
+                              <Select
+                                name="PerRateType"
+                                label="Unit"
+                                value={values.PerRateType ?? 1}
+                                onChange={(e) =>
+                                  setFieldValue(
+                                    "PerRateType",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              >
+                                {PER_RATE_OPTIONS.map((opt) => (
+                                  <MenuItem
+                                    key={opt.value}
+                                    value={opt.value}
+                                  >
+                                    {opt.label}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                        </Grid>
                       </Grid>
 
                       <Grid item xs={12} mt={1} p={1}>

@@ -139,22 +139,52 @@ const POEdit = () => {
     }
   };
 
+  const poType = po?.type ?? po?.purchasingOrderType;
+  const isLocalPO = poType == 1;
+
   const handleInputChange = (index, field, value) => {
-    const updatedRows = selectedRows.map((row, i) =>
-      i === index ? { ...row, [field]: value } : row
-    );
+    const updatedRows = selectedRows.map((row, i) => {
+      if (i !== index) return row;
+      const updated = { ...row, [field]: value };
+
+      if (isLocalPO && ["avgUnitPrice", "avgFreighCost", "poReceivedQty"].includes(field)) {
+        const unitPrice = parseFloat(updated.avgUnitPrice) || 0;
+        const freightCost = parseFloat(updated.avgFreighCost) || 0;
+        const receivedQty = parseFloat(updated.poReceivedQty) || 0;
+        updated.costPrice = (unitPrice + freightCost).toFixed(2);
+        updated.lineTot = ((unitPrice + freightCost) * receivedQty).toFixed(2);
+      }
+
+      return updated;
+    });
     setSelectedRows(updatedRows);
   };
 
   useEffect(() => {
     if (po) {
       const updatedRows = po.goodReceivedNoteLineDetails.map((row) => {
+        if ((po.type ?? po.purchasingOrderType) == 1) {
+          const unitPrice = parseFloat(row.unitPrice) || 0;
+          const additionalCost = parseFloat(row.additionalCost) || 0;
+          const costPrice = unitPrice + additionalCost;
+          const receivedQty = parseFloat(row.qty) || 0;
+          const lineTot = costPrice * receivedQty;
+
+          return {
+            ...row,
+            avgUnitPrice: unitPrice.toFixed(2),
+            avgFreighCost: additionalCost.toFixed(2),
+            costPrice: costPrice.toFixed(2),
+            poReceivedQty: receivedQty,
+            lineTot: lineTot.toFixed(2),
+          };
+        }
+
         const matchedItem = poTallyList.find(
           (tally) =>
             tally.productId === row.productId &&
             tally.purchaseOrderNo === row.purchaseOrderNo
         );
-
 
         const avgUnitPrice = matchedItem ? matchedItem.averageUnitPrice : 0;
         const rawFreightCost = matchedItem?.averageFreightDutyCost || 0;
@@ -180,8 +210,13 @@ const POEdit = () => {
 
   useEffect(() => {
     fetchPO();
-    fetchPOTally();
   }, []);
+
+  useEffect(() => {
+    if (po && (po.type ?? po.purchasingOrderType) != 1) {
+      fetchPOTally();
+    }
+  }, [po]);
 
   const navigateToBack = () => {
     router.push({
@@ -198,6 +233,16 @@ const POEdit = () => {
     if (invalidQty) {
       toast.info("Received Quantity Cannot be 0.");
       return;
+    }
+
+    if (isLocalPO) {
+      const missingUnitPrice = selectedRows.find(
+        (row) => !row.avgUnitPrice || parseFloat(row.avgUnitPrice) <= 0
+      );
+      if (missingUnitPrice) {
+        toast.info("Unit Price is required and must be greater than 0.");
+        return;
+      }
     }
 
     const missingSellingPrice = selectedRows.find(
@@ -284,7 +329,6 @@ const POEdit = () => {
           setTimeout(() => {
             window.location.href = "/inventory/purchase-order";
           }, 1500);
-          S;
         } else {
           toast.error(jsonResponse.result.message);
         }
@@ -475,7 +519,7 @@ const POEdit = () => {
                 sx={{ width: "60%" }}
                 size="small"
                 fullWidth
-                value={po && po.type == 1 ? "Local" : "Import"}
+                value={po && isLocalPO ? "Local" : "Import"}
               />
             </Grid>
             {IsEnableCreditGRN ? <Grid
@@ -509,8 +553,12 @@ const POEdit = () => {
                         Exp&nbsp;Date
                       </TableCell>
                       <TableCell sx={{ color: "#fff" }}>Ordered Qty</TableCell>
-                      <TableCell sx={{ color: "#fff" }}>Qty</TableCell>
-                      <TableCell sx={{ color: "#fff" }}>Received Qty</TableCell>
+                      <TableCell sx={{ color: "#fff" }}>
+                        {isLocalPO ? "Received Qty" : "Qty"}
+                      </TableCell>
+                      {!isLocalPO && (
+                        <TableCell sx={{ color: "#fff" }}>Received Qty</TableCell>
+                      )}
                       <TableCell sx={{ color: "#fff" }}>
                         Unit&nbsp;Price
                       </TableCell>
@@ -564,17 +612,57 @@ const POEdit = () => {
                         </TableCell>
                         <TableCell>{row.poQty}</TableCell>
                         <TableCell>
-                          <AddPOProducts
-                            item={row}
-                            fetchPO={fetchPO}
-                            fetchPOTally={fetchPOTally}
-                          />
+                          {isLocalPO ? (
+                            <TextField
+                              size="small"
+                              type="number"
+                              sx={{ width: "100px" }}
+                              value={row.poReceivedQty === 0 ? "" : row.poReceivedQty}
+                              onChange={(e) =>
+                                handleInputChange(index, "poReceivedQty", e.target.value)
+                              }
+                            />
+                          ) : (
+                            <AddPOProducts
+                              item={row}
+                              fetchPO={fetchPO}
+                              fetchPOTally={fetchPOTally}
+                            />
+                          )}
                         </TableCell>
-                        <TableCell>{row.poReceivedQty}</TableCell>
+                        {!isLocalPO && (
+                          <TableCell>{row.poReceivedQty}</TableCell>
+                        )}
                         <TableCell sx={{ p: 1 }}>
-                          <Typography>{row.avgUnitPrice}</Typography>
+                          {isLocalPO ? (
+                            <TextField
+                              size="small"
+                              type="number"
+                              sx={{ width: "120px" }}
+                              value={row.avgUnitPrice == "0.00" ? "" : row.avgUnitPrice}
+                              onChange={(e) =>
+                                handleInputChange(index, "avgUnitPrice", e.target.value)
+                              }
+                            />
+                          ) : (
+                            <Typography>{row.avgUnitPrice}</Typography>
+                          )}
                         </TableCell>
-                        <TableCell sx={{ p: 1 }}>{formatCurrency(row.avgFreighCost)}</TableCell>
+                        <TableCell sx={{ p: 1 }}>
+                          {isLocalPO ? (
+                            <TextField
+                              size="small"
+                              type="number"
+                              sx={{ width: "120px" }}
+                              value={row.avgFreighCost == "0.00" ? "" : row.avgFreighCost}
+                              onChange={(e) =>
+                                handleInputChange(index, "avgFreighCost", e.target.value)
+                              }
+                            />
+                          ) : (
+                            formatCurrency(row.avgFreighCost)
+                          )}
+                        </TableCell>
                         <TableCell sx={{ p: 1 }}>{formatCurrency(row.costPrice)}</TableCell>
                         <TableCell sx={{ p: 1 }}>
                           <TextField

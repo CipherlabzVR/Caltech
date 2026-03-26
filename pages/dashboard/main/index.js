@@ -10,12 +10,16 @@ import SalesAnalytics from "./SalesAnalytics";
 import AudienceOverview from "./AudienceOverview";
 import OutstandingCustomers from "./OutstandingCustomers";
 import ShippingTargetData from "./ShippingTargetData";
+import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { formatCurrency, formatDateWithTime } from "@/components/utils/formatHelper";
+
+const MAIN_DASHBOARD_CATEGORY_ID = 39;
 
 export default function Dashboard() {
   const [features, setFeatures] = useState({});
   const [outstandingCustomers, setOutstandingCustomers] = useState([]);
   const [activeShifts, setActiveShifts] = useState([]);
+  const { approve1: hasApprovalLevel1 } = IsPermissionEnabled(MAIN_DASHBOARD_CATEGORY_ID);
 
   const fetchIncomeDetails = async () => {
     try {
@@ -115,8 +119,7 @@ export default function Dashboard() {
         columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}
       >
         <Grid item xs={12} md={12} lg={6} xl={6}>
-
-          <AudienceOverview />
+          {hasApprovalLevel1 && <AudienceOverview />}
           {/* <TotalItems /> */}
           <ShippingTargetData />
         </Grid>

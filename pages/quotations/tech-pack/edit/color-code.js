@@ -16,6 +16,7 @@ import {
   IconButton,
   Modal,
   CircularProgress,
+  Checkbox,
 } from "@mui/material";
 import CachedIcon from "@mui/icons-material/Cached";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
@@ -49,41 +50,89 @@ const hover = {
 
 export default function TechPackColorCode() {
   const router = useRouter();
-  const { inquiryId, optionId, sentQuotationId, ongoingInquiryId } = router.query;
+  const { inquiryId, optionId, sentQuotationId, ongoingInquiryId, windowType: queryWindowType } = router.query;
   const [inquiry, setInquiry] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [openGSM, setOpenGSM] = useState(false);
   const [gsmList, setGSMList] = useState([]);
-  const [selectedGSMIndex, setSelectedGSMIndex] = useState(null);
+  const [selectedGSMIndices, setSelectedGSMIndices] = useState([]);
 
   const [openComposition, setOpenComposition] = useState(false);
   const [compositionList, setCompositionList] = useState([]);
-  const [selectedCompositionIndex, setSelectedCompositionIndex] = useState(null);
+  const [selectedCompositionIndices, setSelectedCompositionIndices] = useState([]);
 
   const [openSupplier, setOpenSupplier] = useState(false);
   const [supplierList, setSupplierList] = useState([]);
-  const [selectedSupplierIndex, setSelectedSupplierIndex] = useState(null);
+  const [selectedSupplierIndices, setSelectedSupplierIndices] = useState([]);
 
   const [openColor, setOpenColor] = useState(false);
   const [colorList, setColorList] = useState([]);
-  const [selectedColorIndex, setSelectedColorIndex] = useState(null);
+  const [selectedColorIndices, setSelectedColorIndices] = useState([]);
 
   const [selectedFabricIndex, setSelectedFabricIndex] = useState(null);
   const [fabList, setFabList] = useState([]);
 
-  const fetchOngoingData = async () => {
+  const parseNames = (str) => {
+    if (!str || str === "Not Selected") return new Set();
+    return new Set(str.split(",").map((s) => s.trim()).filter(Boolean));
+  };
+  const getIndicesFromNames = (list, namesStr) => {
+    const names = parseNames(namesStr);
+    if (names.size === 0) return [];
+    return list
+      .map((item, idx) => (names.has((item && item.name) ? item.name.trim() : "") ? idx : -1))
+      .filter((i) => i >= 0);
+  };
+
+  const headers = {
+    Authorization: `Bearer ${localStorage.getItem("token")}`,
+    "Content-Type": "application/json",
+  };
+
+  // Load from inquiry API (same as /inquiry/edit-inquiry/color-code/) – use when only inquiryId is in URL or to show data added in inquiry
+  const fetchInquiryData = async () => {
     try {
       setLoading(true);
       const response = await fetch(
-        `${BASE_URL}/Ongoing/GetOngoingInquiryById?ongoingInquiryId=${ongoingInquiryId}&optionId=${optionId}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
+        `${BASE_URL}/Inquiry/GetInquiryByInquiryId?id=${inquiryId}&optId=${optionId}`,
+        { method: "GET", headers }
+      );
+      if (!response.ok) throw new Error("Failed to fetch inquiry");
+      const data = await response.json();
+      const inq = data.result;
+      if (inq) {
+        setInquiry({
+          ...inq,
+          ongoingInquiryId: inq.ongoingInquiryId ?? ongoingInquiryId,
+          inquiryCode: inq.inqCode ?? inq.inquiryCode,
+        });
+        const fabRes = await fetch(
+          `${BASE_URL}/Inquiry/GetAllInquiryFabric?InquiryID=${inquiryId}&OptionId=${optionId}&WindowType=${inq.windowType}`,
+          { method: "GET", headers }
+        );
+        if (fabRes.ok) {
+          const fabData = await fabRes.json();
+          setFabList(fabData.result || []);
         }
+      }
+    } catch (error) {
+      console.error("Error fetching inquiry data:", error);
+      toast.error("Failed to load inquiry data");
+      setFabList([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchOngoingData = async () => {
+    try {
+      setLoading(true);
+      const winType = inquiry?.windowType ?? queryWindowType;
+      const windowParam = winType != null && winType !== "" ? `&windowType=${winType}` : "";
+      const response = await fetch(
+        `${BASE_URL}/Ongoing/GetOngoingInquiryById?ongoingInquiryId=${ongoingInquiryId}&optionId=${optionId}${windowParam}`,
+        { method: "GET", headers }
       );
 
       if (!response.ok) {
@@ -93,7 +142,11 @@ export default function TechPackColorCode() {
       const data = await response.json();
       if (data.result) {
         setInquiry(data.result);
-        fetchFabricList(data.result.ongoingInquiryId, data.result.optionId, data.result.windowType);
+        await fetchFabricList(
+          data.result.ongoingInquiryId,
+          data.result.optionId,
+          data.result.windowType
+        );
       }
     } catch (error) {
       console.error("Error fetching ongoing data:", error);
@@ -104,33 +157,45 @@ export default function TechPackColorCode() {
   };
 
   useEffect(() => {
-    if (router.isReady && ongoingInquiryId && optionId) {
+    if (!router.isReady || !optionId) return;
+    if (inquiryId && !ongoingInquiryId) {
+      // Only inquiryId (e.g. after creating inquiry): load inquiry data so the data they added shows
+      fetchInquiryData();
+    } else if (ongoingInquiryId) {
       fetchOngoingData();
-      fetchGSMList();
-      fetchCompositionList();
-      fetchSupplierList();
-      fetchColorList();
     }
-  }, [router.isReady, ongoingInquiryId, optionId]);
+    fetchGSMList();
+    fetchCompositionList();
+    fetchSupplierList();
+    fetchColorList();
+  }, [router.isReady, ongoingInquiryId, optionId, inquiryId]);
 
   const handleGSMOpen = (index) => {
-    setOpenGSM(true);
     setSelectedFabricIndex(index);
+    const fab = fabList[index];
+    setSelectedGSMIndices(getIndicesFromNames(gsmList, fab?.gsmName || ""));
+    setOpenGSM(true);
   };
 
   const handleCompositionOpen = (index) => {
-    setOpenComposition(true);
     setSelectedFabricIndex(index);
+    const fab = fabList[index];
+    setSelectedCompositionIndices(getIndicesFromNames(compositionList, fab?.compositionName || ""));
+    setOpenComposition(true);
   };
 
   const handleSupplierOpen = (index) => {
-    setOpenSupplier(true);
     setSelectedFabricIndex(index);
+    const fab = fabList[index];
+    setSelectedSupplierIndices(getIndicesFromNames(supplierList, fab?.supplierName || ""));
+    setOpenSupplier(true);
   };
 
   const handleColorOpen = (index) => {
-    setOpenColor(true);
     setSelectedFabricIndex(index);
+    const fab = fabList[index];
+    setSelectedColorIndices(getIndicesFromNames(colorList, fab?.colorCodeName || ""));
+    setOpenColor(true);
   };
 
   const handleGSMClose = () => setOpenGSM(false);
@@ -138,51 +203,59 @@ export default function TechPackColorCode() {
   const handleColorClose = () => setOpenColor(false);
   const handleCompositionClose = () => setOpenComposition(false);
 
-  const handleGSMSelection = async (index) => {
-    setSelectedGSMIndex(index);
+  const toggleGSMSelection = (index) => {
+    setSelectedGSMIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+  };
+  const handleGSMApply = async () => {
     const selectedFab = fabList[selectedFabricIndex];
-    const selectedGSM = gsmList[index];
-    
-    await updateFabric(selectedFab, {
-      GSMId: selectedGSM.id,
-      GSMName: selectedGSM.name,
-    });
+    const selectedItems = selectedGSMIndices.map((i) => gsmList[i]).filter(Boolean);
+    const names = selectedItems.map((x) => x.name).join(", ");
+    const firstId = selectedItems.length > 0 ? selectedItems[0].id : 0;
+    await updateFabric(selectedFab, { GSMId: firstId, GSMName: names });
     setOpenGSM(false);
   };
 
-  const handleCompositionSelection = async (index) => {
-    setSelectedCompositionIndex(index);
+  const toggleCompositionSelection = (index) => {
+    setSelectedCompositionIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+  };
+  const handleCompositionApply = async () => {
     const selectedFab = fabList[selectedFabricIndex];
-    const selectedComposition = compositionList[index];
-    
-    await updateFabric(selectedFab, {
-      CompositionId: selectedComposition.id,
-      CompositionName: selectedComposition.name,
-    });
+    const selectedItems = selectedCompositionIndices.map((i) => compositionList[i]).filter(Boolean);
+    const names = selectedItems.map((x) => x.name).join(", ");
+    const firstId = selectedItems.length > 0 ? selectedItems[0].id : 0;
+    await updateFabric(selectedFab, { CompositionId: firstId, CompositionName: names });
     setOpenComposition(false);
   };
 
-  const handleSupplierSelection = async (index) => {
-    setSelectedSupplierIndex(index);
+  const toggleSupplierSelection = (index) => {
+    setSelectedSupplierIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+  };
+  const handleSupplierApply = async () => {
     const selectedFab = fabList[selectedFabricIndex];
-    const selectedSupplier = supplierList[index];
-    
-    await updateFabric(selectedFab, {
-      SupplierId: selectedSupplier.id,
-      SupplierName: selectedSupplier.name,
-    });
+    const selectedItems = selectedSupplierIndices.map((i) => supplierList[i]).filter(Boolean);
+    const names = selectedItems.map((x) => x.name).join(", ");
+    const firstId = selectedItems.length > 0 ? selectedItems[0].id : 0;
+    await updateFabric(selectedFab, { SupplierId: firstId, SupplierName: names });
     setOpenSupplier(false);
   };
 
-  const handleColorSelection = async (index) => {
-    setSelectedColorIndex(index);
+  const toggleColorSelection = (index) => {
+    setSelectedColorIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+  };
+  const handleColorApply = async () => {
     const selectedFab = fabList[selectedFabricIndex];
-    const selectedColor = colorList[index];
-    
-    await updateFabric(selectedFab, {
-      ColorCodeId: selectedColor.id,
-      ColorCodeName: selectedColor.name,
-    });
+    const selectedItems = selectedColorIndices.map((i) => colorList[i]).filter(Boolean);
+    const names = selectedItems.map((x) => x.name).join(", ");
+    const firstId = selectedItems.length > 0 ? selectedItems[0].id : 0;
+    await updateFabric(selectedFab, { ColorCodeId: firstId, ColorCodeName: names });
     setOpenColor(false);
   };
 
@@ -342,32 +415,71 @@ export default function TechPackColorCode() {
     }
   };
 
-  const fetchFabricList = async (inqId, optId, windowType) => {
+  const fetchFabricList = async (ongoingInqId, optId, windowType) => {
+    const headers = {
+      Authorization: `Bearer ${localStorage.getItem("token")}`,
+      "Content-Type": "application/json",
+    };
     try {
       const response = await fetch(
-        `${BASE_URL}/Ongoing/GetAllOngoingFabrics?ongoingInquiryId=${inqId}&optionId=${optId}&windowType=${windowType}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
+        `${BASE_URL}/Ongoing/GetAllOngoingFabrics?ongoingInquiryId=${ongoingInqId}&optionId=${optId}&windowType=${windowType}`,
+        { method: "GET", headers }
       );
 
       if (!response.ok) throw new Error("Failed to fetch Fabric List");
 
       const data = await response.json();
-      setFabList(data.result || []);
+      let list = data.result || [];
+
+      // When no ongoing fabrics, ensure tech pack is initialized from inquiry then refetch
+      if (list.length === 0 && inquiryId && sentQuotationId) {
+        try {
+          const initRes = await fetch(
+            `${BASE_URL}/Ongoing/InitializeTechPack?inquiryId=${inquiryId}&optionId=${optId}&sentQuotationId=${sentQuotationId}`,
+            { method: "POST", headers }
+          );
+          if (initRes.ok) {
+            const refetch = await fetch(
+              `${BASE_URL}/Ongoing/GetAllOngoingFabrics?ongoingInquiryId=${ongoingInqId}&optionId=${optId}&windowType=${windowType}`,
+              { method: "GET", headers }
+            );
+            if (refetch.ok) {
+              const refetchData = await refetch.json();
+              list = refetchData.result || [];
+            }
+          }
+        } catch (_) {
+          // ignore init error, fall through to inquiry fallback
+        }
+      }
+
+      // If still empty, load fabric list from inquiry (same as /inquiry/edit-inquiry/color-code/)
+      if (list.length === 0 && inquiryId) {
+        try {
+          const inqRes = await fetch(
+            `${BASE_URL}/Inquiry/GetAllInquiryFabric?InquiryID=${inquiryId}&OptionId=${optId}&WindowType=${windowType}`,
+            { method: "GET", headers }
+          );
+          if (inqRes.ok) {
+            const inqData = await inqRes.json();
+            list = inqData.result || [];
+          }
+        } catch (err) {
+          console.error("Error fetching inquiry fabric list:", err);
+        }
+      }
+
+      setFabList(list);
     } catch (error) {
       console.error("Error fetching Fabric List:", error);
+      setFabList([]);
     }
   };
 
   const navToNext = () => {
     router.push({
       pathname: "/quotations/tech-pack/edit/sizes",
-      query: { inquiryId, optionId, sentQuotationId, ongoingInquiryId },
+      query: { inquiryId, optionId, sentQuotationId, ongoingInquiryId, ...(inquiry?.windowType != null && { windowType: inquiry.windowType }) },
     });
   };
 
@@ -447,10 +559,10 @@ export default function TechPackColorCode() {
                       </TableRow>
                     ) : (
                       fabList.map((fab, index) => {
-                        const gsmValue = fab.gsmName || "Not Selected";
-                        const compositionValue = fab.compositionName || "Not Selected";
-                        const supplierValue = fab.supplierName || "Not Selected";
-                        const colorValue = fab.colorCodeName || "Not Selected";
+                        const gsmValue = fab.gsmName && fab.gsmName.trim() ? fab.gsmName.trim() : "Not Selected";
+                        const compositionValue = fab.compositionName && fab.compositionName.trim() ? fab.compositionName.trim() : "Not Selected";
+                        const supplierValue = fab.supplierName && fab.supplierName.trim() ? fab.supplierName.trim() : "Not Selected";
+                        const colorValue = fab.colorCodeName && fab.colorCodeName.trim() ? fab.colorCodeName.trim() : "Not Selected";
 
                         return (
                           <TableRow key={index}>
@@ -524,6 +636,7 @@ export default function TechPackColorCode() {
                 <Table aria-label="simple table" size="small" className="dark-table">
                   <TableHead>
                     <TableRow>
+                      <TableCell padding="checkbox">Select</TableCell>
                       <TableCell>#</TableCell>
                       <TableCell>GSM</TableCell>
                       <TableCell align="right">Status</TableCell>
@@ -532,13 +645,19 @@ export default function TechPackColorCode() {
                   <TableBody>
                     {gsmList.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={3}>
+                        <TableCell colSpan={4}>
                           <Typography color="error">No GSM Available</Typography>
                         </TableCell>
                       </TableRow>
                     ) : (
                       gsmList.map((gsm, index) => (
-                        <TableRow key={index} onClick={() => handleGSMSelection(index)} sx={hover}>
+                        <TableRow key={index} onClick={() => toggleGSMSelection(index)} sx={hover}>
+                          <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selectedGSMIndices.includes(index)}
+                              onChange={() => toggleGSMSelection(index)}
+                            />
+                          </TableCell>
                           <TableCell>{index + 1}</TableCell>
                           <TableCell>{gsm.name}</TableCell>
                           <TableCell align="right">
@@ -555,9 +674,14 @@ export default function TechPackColorCode() {
                 </Table>
               </TableContainer>
             </Grid>
-            <Button variant="contained" color="error" onClick={handleGSMClose} sx={{ mt: 2 }}>
-              Cancel
-            </Button>
+            <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
+              <Button variant="contained" color="primary" onClick={handleGSMApply}>
+                Apply
+              </Button>
+              <Button variant="contained" color="error" onClick={handleGSMClose}>
+                Cancel
+              </Button>
+            </Box>
           </Grid>
         </Box>
       </Modal>
@@ -574,6 +698,7 @@ export default function TechPackColorCode() {
                 <Table aria-label="simple table" size="small" className="dark-table">
                   <TableHead>
                     <TableRow>
+                      <TableCell padding="checkbox">Select</TableCell>
                       <TableCell>#</TableCell>
                       <TableCell>Composition</TableCell>
                       <TableCell align="right">Status</TableCell>
@@ -582,13 +707,19 @@ export default function TechPackColorCode() {
                   <TableBody>
                     {compositionList.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={3}>
+                        <TableCell colSpan={4}>
                           <Typography color="error">No Compositions Available</Typography>
                         </TableCell>
                       </TableRow>
                     ) : (
                       compositionList.map((composition, index) => (
-                        <TableRow key={index} onClick={() => handleCompositionSelection(index)} sx={hover}>
+                        <TableRow key={index} onClick={() => toggleCompositionSelection(index)} sx={hover}>
+                          <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selectedCompositionIndices.includes(index)}
+                              onChange={() => toggleCompositionSelection(index)}
+                            />
+                          </TableCell>
                           <TableCell>{index + 1}</TableCell>
                           <TableCell>{composition.name}</TableCell>
                           <TableCell align="right">
@@ -605,9 +736,14 @@ export default function TechPackColorCode() {
                 </Table>
               </TableContainer>
             </Grid>
-            <Button variant="contained" color="error" onClick={handleCompositionClose} sx={{ mt: 2 }}>
-              Cancel
-            </Button>
+            <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
+              <Button variant="contained" color="primary" onClick={handleCompositionApply}>
+                Apply
+              </Button>
+              <Button variant="contained" color="error" onClick={handleCompositionClose}>
+                Cancel
+              </Button>
+            </Box>
           </Grid>
         </Box>
       </Modal>
@@ -624,6 +760,7 @@ export default function TechPackColorCode() {
                 <Table aria-label="simple table" size="small" className="dark-table">
                   <TableHead>
                     <TableRow>
+                      <TableCell padding="checkbox">Select</TableCell>
                       <TableCell>#</TableCell>
                       <TableCell>Supplier</TableCell>
                       <TableCell align="right">Status</TableCell>
@@ -632,13 +769,19 @@ export default function TechPackColorCode() {
                   <TableBody>
                     {supplierList.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={3}>
+                        <TableCell colSpan={4}>
                           <Typography color="error">No Suppliers Available</Typography>
                         </TableCell>
                       </TableRow>
                     ) : (
                       supplierList.map((supplier, index) => (
-                        <TableRow key={index} onClick={() => handleSupplierSelection(index)} sx={hover}>
+                        <TableRow key={index} onClick={() => toggleSupplierSelection(index)} sx={hover}>
+                          <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selectedSupplierIndices.includes(index)}
+                              onChange={() => toggleSupplierSelection(index)}
+                            />
+                          </TableCell>
                           <TableCell>{index + 1}</TableCell>
                           <TableCell>{supplier.name}</TableCell>
                           <TableCell align="right">
@@ -655,9 +798,14 @@ export default function TechPackColorCode() {
                 </Table>
               </TableContainer>
             </Grid>
-            <Button variant="contained" color="error" onClick={handleSupplierClose} sx={{ mt: 2 }}>
-              Cancel
-            </Button>
+            <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
+              <Button variant="contained" color="primary" onClick={handleSupplierApply}>
+                Apply
+              </Button>
+              <Button variant="contained" color="error" onClick={handleSupplierClose}>
+                Cancel
+              </Button>
+            </Box>
           </Grid>
         </Box>
       </Modal>
@@ -674,6 +822,7 @@ export default function TechPackColorCode() {
                 <Table aria-label="simple table" size="small" className="dark-table">
                   <TableHead>
                     <TableRow>
+                      <TableCell padding="checkbox">Select</TableCell>
                       <TableCell>#</TableCell>
                       <TableCell>Color</TableCell>
                       <TableCell align="right">Status</TableCell>
@@ -682,13 +831,19 @@ export default function TechPackColorCode() {
                   <TableBody>
                     {colorList.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={3}>
+                        <TableCell colSpan={4}>
                           <Typography color="error">No Color Codes Available</Typography>
                         </TableCell>
                       </TableRow>
                     ) : (
                       colorList.map((color, index) => (
-                        <TableRow key={index} onClick={() => handleColorSelection(index)} sx={hover}>
+                        <TableRow key={index} onClick={() => toggleColorSelection(index)} sx={hover}>
+                          <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selectedColorIndices.includes(index)}
+                              onChange={() => toggleColorSelection(index)}
+                            />
+                          </TableCell>
                           <TableCell>{index + 1}</TableCell>
                           <TableCell>{color.name}</TableCell>
                           <TableCell align="right">
@@ -705,9 +860,14 @@ export default function TechPackColorCode() {
                 </Table>
               </TableContainer>
             </Grid>
-            <Button variant="contained" color="error" onClick={handleColorClose} sx={{ mt: 2 }}>
-              Cancel
-            </Button>
+            <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
+              <Button variant="contained" color="primary" onClick={handleColorApply}>
+                Apply
+              </Button>
+              <Button variant="contained" color="error" onClick={handleColorClose}>
+                Cancel
+              </Button>
+            </Box>
           </Grid>
         </Box>
       </Modal>

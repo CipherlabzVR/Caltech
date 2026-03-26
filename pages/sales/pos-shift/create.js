@@ -15,6 +15,8 @@ import {
   Modal,
   FormControl,
   MenuItem,
+  Tabs,
+  Tab
 } from "@mui/material";
 import { Field, Form, Formik } from "formik";
 import BASE_URL from "Base/api";
@@ -32,6 +34,9 @@ const style = {
   left: "50%",
   transform: "translate(-50%, -50%)",
   width: { lg: 700, xs: 350 },
+  maxWidth: "calc(100vw - 32px)",
+  minWidth: 0,
+  boxSizing: "border-box",
   bgcolor: "background.paper",
   boxShadow: 24,
   p: 3,
@@ -51,7 +56,41 @@ export default function AddShift({ fetchItems }) {
   );
   const inputRef = useRef(null);
   const { data: isDayEndDone } = IsPOSDayEndDone();
+  const [tabValue, setTabValue] = useState(0);
+  const [shiftItems, setShiftItems] = useState([]);
+
+  const fetchShiftItems = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/Items/GetAllShiftEndItems`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.result) {
+          setShiftItems(data.result.map(item => ({ itemId: item.id, name: item.name, code: item.code, startQty: "" })));
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching shift items:", error);
+    }
+  };
+
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue);
+  };
+
+  const updateItemQty = (index, qty) => {
+    const updated = [...shiftItems];
+    updated[index].startQty = qty;
+    setShiftItems(updated);
+  };
+
   const { data: isPOSShiftLinkToBackOffice } = IsAppSettingEnabled("IsPOSShiftLinkToBackOffice");
+  const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
 
   const fetchAvailableTerminalList = async () => {
     try {
@@ -105,7 +144,13 @@ export default function AddShift({ fetchItems }) {
           return;
         } else {
           fetchAvailableTerminalList();
+          if (isItemEndInvolveEnable) {
+            fetchShiftItems();
+          } else {
+            setShiftItems([]);
+          }
           setCashData(denominations.map((val) => ({ val, qty: "", total: 0 })));
+          setTabValue(0);
           setOpen(true);
         }
       })
@@ -169,7 +214,14 @@ export default function AddShift({ fetchItems }) {
       Two: 0,
       One: 0,
       FiftyCents: 0,
-      TerminalId: values.TerminalId
+      TerminalId: values.TerminalId,
+      ShiftItems: isItemEndInvolveEnable
+        ? shiftItems.map(si => ({
+            ItemId: si.itemId,
+            StartQty: parseFloat(si.startQty || 0),
+            EndQty: null
+          }))
+        : []
     };
 
     cashData.forEach((row) => {
@@ -212,8 +264,8 @@ export default function AddShift({ fetchItems }) {
             onSubmit={handleSubmit}
           >
             {({ handleSubmit, touched, errors, setFieldValue }) => (
-              <Form onSubmit={handleSubmit}>
-                <Grid container spacing={1}>
+              <Form onSubmit={handleSubmit} style={{ minWidth: 0, width: "100%" }}>
+                <Grid container spacing={1} sx={{ minWidth: 0, width: "100%" }}>
                   <Grid container spacing={2}>
                     <Grid item xs={12} mt={2}>
                       <Typography variant="h5" fontWeight={500}>
@@ -221,8 +273,15 @@ export default function AddShift({ fetchItems }) {
                       </Typography>
                     </Grid>
                   </Grid>
-                  <Box sx={{maxHeight: '60vh',overflowY: 'scroll'}}>
-                    <Grid container>
+                  <Box
+                    sx={{
+                      maxHeight: "60vh",
+                      overflowY: "auto",
+                      width: "100%",
+                      minWidth: 0,
+                    }}
+                  >
+                    <Grid container sx={{ width: "100%", minWidth: 0 }}>
                       <Grid item xs={12} lg={3} mt={2}>
                         <Typography
                           sx={{
@@ -266,44 +325,52 @@ export default function AddShift({ fetchItems }) {
                         </FormControl>
                       </Grid>
                       <Grid item xs={12}>
-                        <Typography fontWeight={500} my={1}>
-                          Cash Denominations
-                        </Typography>
+                        <Tabs value={tabValue} onChange={handleTabChange}>
+                          <Tab label="Denominations" />
+                          <Tab label="Items" />
+                        </Tabs>
                       </Grid>
-                      <Grid item xs={12} lg={6}>
-                        <TableContainer>
-                          <Table size="small">
-                            <TableHead>
-                              <TableRow>
-                                <TableCell>Value</TableCell>
-                                <TableCell>X</TableCell>
-                                <TableCell>Qty</TableCell>
-                                <TableCell>Total</TableCell>
-                              </TableRow>
-                            </TableHead>
-                            <TableBody>
-                              {cashData.slice(0, 5).map((row, index) => (
-                                <TableRow key={row.val}>
-                                  <TableCell>{row.val}</TableCell>
-                                  <TableCell>X</TableCell>
-                                  <TableCell>
-                                    <TextField
-                                      inputRef={index === 0 ? inputRef : null}
-                                      type="number"
-                                      size="small"
-                                      value={row.qty}
-                                      onChange={(e) =>
-                                        updateQty(index, e.target.value)
-                                      }
-                                    />
-                                  </TableCell>
-                                  <TableCell>{row.total.toFixed(2)}</TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </TableContainer>
-                      </Grid>
+                      {tabValue === 0 && (
+                        <>
+                          <Grid item xs={12}>
+                            <Typography fontWeight={500} my={1}>
+                              Cash Denominations
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} lg={6}>
+                            <TableContainer>
+                              <Table size="small">
+                                <TableHead>
+                                  <TableRow>
+                                    <TableCell>Value</TableCell>
+                                    <TableCell>X</TableCell>
+                                    <TableCell>Qty</TableCell>
+                                    <TableCell>Total</TableCell>
+                                  </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                  {cashData.slice(0, 5).map((row, index) => (
+                                    <TableRow key={row.val}>
+                                      <TableCell>{row.val}</TableCell>
+                                      <TableCell>X</TableCell>
+                                      <TableCell>
+                                        <TextField
+                                          inputRef={index === 0 ? inputRef : null}
+                                          type="number"
+                                          size="small"
+                                          value={row.qty}
+                                          onChange={(e) =>
+                                            updateQty(index, e.target.value)
+                                          }
+                                        />
+                                      </TableCell>
+                                      <TableCell>{row.total.toFixed(2)}</TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </TableContainer>
+                          </Grid>
 
                       <Grid item xs={12} lg={6}>
                         <TableContainer>
@@ -347,6 +414,57 @@ export default function AddShift({ fetchItems }) {
                           </Table>
                         </TableContainer>
                       </Grid>
+                      </>
+                      )}
+
+                      {isItemEndInvolveEnable && tabValue === 1 && (
+                        <Grid item xs={12} sx={{ minWidth: 0, width: "100%", pr: 0 }}>
+                          <TableContainer
+                            sx={{ width: "100%", maxWidth: "100%", minWidth: 0 }}
+                          >
+                            <Table
+                              size="small"
+                              sx={{ tableLayout: "fixed", width: "100%" }}
+                            >
+                              <colgroup>
+                                <col style={{ width: "22%" }} />
+                                <col style={{ width: "50%" }} />
+                                <col style={{ width: "28%" }} />
+                              </colgroup>
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell sx={{ py: 1 }}>Item Code</TableCell>
+                                  <TableCell sx={{ py: 1 }}>Item Name</TableCell>
+                                  <TableCell sx={{ py: 1, pr: 0 }}>Start Qty</TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {shiftItems.length === 0 ? (
+                                  <TableRow>
+                                    <TableCell colSpan={3} align="center">No items found</TableCell>
+                                  </TableRow>
+                                ) : (
+                                  shiftItems.map((item, index) => (
+                                    <TableRow key={item.itemId}>
+                                      <TableCell sx={{ wordBreak: "break-word" }}>{item.code}</TableCell>
+                                      <TableCell sx={{ wordBreak: "break-word" }}>{item.name}</TableCell>
+                                      <TableCell sx={{ pr: 0, verticalAlign: "middle" }}>
+                                        <TextField
+                                          type="number"
+                                          size="small"
+                                          fullWidth
+                                          value={item.startQty}
+                                          onChange={(e) => updateItemQty(index, e.target.value)}
+                                        />
+                                      </TableCell>
+                                    </TableRow>
+                                  ))
+                                )}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        </Grid>
+                      )}
                     </Grid>
                   </Box>
                   <Grid container>

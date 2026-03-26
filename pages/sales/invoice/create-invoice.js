@@ -425,7 +425,7 @@ const InvoiceCreate = () => {
         DiscountPercentage: 0.0,
         LineTotal: row.totalPrice,
         SequanceNo: i + 1,
-        StockBalanceId: row.id,
+        StockBalanceId: row.isNonInventory ? 0 : row.id,
         Machine: null,
         ItemType: 1,
       })),
@@ -544,6 +544,54 @@ const InvoiceCreate = () => {
     setProductName(item.name);
     setProductCode(item.code);
     setSelectedIndex(0);
+  };
+
+  const handleAddNonInventoryLine = (item) => {
+    if (!customer) {
+      toast.error("Customer information is missing!");
+      return;
+    }
+    const unitPrice = parseFloat(item.averagePrice) || 0;
+    const existingItem = selectedRows.find(
+      (row) => row.isNonInventory && row.productId === item.id
+    );
+    if (existingItem) {
+      toast.error("This item already exists in the table. Cannot add duplicate items.");
+      return;
+    }
+
+    const newRow = {
+      lineKey: `noninv-${item.id}-${Date.now()}`,
+      id: 0,
+      productId: item.id,
+      productName: item.name,
+      productCode: item.code,
+      quantity: "",
+      totalPrice: 0,
+      sellingPrice: unitPrice,
+      costPrice: unitPrice,
+      stockBalanceId: null,
+      batchNumber: "",
+      packageName: item.name,
+      isNonInventory: true,
+      bookBalanceQuantity: Number.MAX_SAFE_INTEGER,
+    };
+
+    setSelectedRows((prevRows) => [...prevRows, newRow]);
+  };
+
+  const handleSearchItemSelect = (item) => {
+    if (isOutlet) {
+      handleItemStock(item);
+    } else if (item.stockBalanceId == null) {
+      handleAddNonInventoryLine(item);
+    } else {
+      handleCheckStockBalance(item);
+    }
+    setTimeout(() => {
+      const newIndex = selectedRows.length;
+      qtyRefs.current[newIndex]?.focus();
+    }, 100);
   };
 
   const handleAddRow = (item) => {
@@ -1089,26 +1137,14 @@ const InvoiceCreate = () => {
                       label="Search"
                       placeholder="Search Items by name"
                       fetchUrl={`${BASE_URL}/Items/GetAllItemsWithoutZeroQty`}
-                      onSelect={(item) => {
-                        isOutlet ? handleItemStock(item) : handleCheckStockBalance(item);
-                        setTimeout(() => {
-                          const newIndex = selectedRows.length;
-                          qtyRefs.current[newIndex]?.focus();
-                        }, 100);
-                      }}
+                      onSelect={handleSearchItemSelect}
                     />
                   ) : <SearchItemByName
                     ref={searchRef}
                     label="Search"
                     placeholder="Search Items by name"
                     fetchUrl={isOutlet ? `${BASE_URL}/Outlet/GetAllOutletByProductName` : `${BASE_URL}/Items/GetAllItemsWithoutZeroQty`}
-                    onSelect={(item) => {
-                      isOutlet ? handleItemStock(item) : handleCheckStockBalance(item);
-                      setTimeout(() => {
-                        const newIndex = selectedRows.length;
-                        qtyRefs.current[newIndex]?.focus();
-                      }, 100);
-                    }}
+                    onSelect={handleSearchItemSelect}
                   />}
                 {isBookingSystem && (
                   <Button variant={isItemSearch ? "contained" : "outlined"} size="small" color={isItemSearch ? "warning" : "secondary"} onClick={() => { setIsItemSearch(prev => !prev); setStock([]); setSelectedItem(); }}>
@@ -1166,7 +1202,7 @@ const InvoiceCreate = () => {
                   <TableBody>
                     {selectedRows.map((row, index) => (
                       <TableRow
-                        key={row.id}
+                        key={row.lineKey ?? row.id}
                         sx={{
                           "&:last-child td, &:last-child th": { border: 0 },
                         }}
@@ -1221,7 +1257,7 @@ const InvoiceCreate = () => {
                             value={row.quantity}
                             inputProps={{
                               min: 1,
-                              max: row.bookBalanceQuantity,
+                              max: row.isNonInventory ? undefined : row.bookBalanceQuantity,
                             }}
                             onChange={(e) => {
                               const inputValue = e.target.value;
@@ -1232,7 +1268,7 @@ const InvoiceCreate = () => {
 
                               let newValue = Number(inputValue);
 
-                              if (newValue > row.bookBalanceQuantity) {
+                              if (!row.isNonInventory && newValue > row.bookBalanceQuantity) {
                                 newValue = row.bookBalanceQuantity;
                               }
 

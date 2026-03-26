@@ -19,7 +19,7 @@ import "react-toastify/dist/ReactToastify.css";
 
 export default function TechPackVNeck() {
   const router = useRouter();
-  const { inquiryId, optionId, sentQuotationId, ongoingInquiryId } = router.query;
+  const { inquiryId, optionId, sentQuotationId, ongoingInquiryId, windowType: queryWindowType } = router.query;
   const [inquiry, setInquiry] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedButtonVN, setSelectedButtonVN] = useState(0);
@@ -35,8 +35,9 @@ export default function TechPackVNeck() {
   const fetchOngoingData = async () => {
     try {
       setLoading(true);
+      const windowParam = queryWindowType != null && queryWindowType !== "" ? `&windowType=${queryWindowType}` : "";
       const response = await fetch(
-        `${BASE_URL}/Ongoing/GetOngoingInquiryById?ongoingInquiryId=${ongoingInquiryId}&optionId=${optionId}`,
+        `${BASE_URL}/Ongoing/GetOngoingInquiryById?ongoingInquiryId=${ongoingInquiryId}&optionId=${optionId}${windowParam}`,
         {
           method: "GET",
           headers: {

@@ -255,7 +255,8 @@ const ShipmentCreate = () => {
       if (response.ok) {
         const jsonResponse = await response.json();
         if (jsonResponse && jsonResponse.result) {
-          setFilteredItems(jsonResponse.result);
+          const importPOs = jsonResponse.result.filter(po => (po.type ?? po.purchasingOrderType) != 1);
+          setFilteredItems(importPOs);
         }
       }
     } catch (error) {

@@ -706,9 +706,9 @@ export default function Tickets() {
   return (
     <>
       <ToastContainer />
-      <Box sx={{ p: { xs: 2, sm: 3 }, bgcolor: "#F5F7FA", minHeight: "100vh" }}>
+      <Box sx={{ p: { xs: 2, sm: 3 }, bgcolor: "#F5F7FA", height: "100vh", overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {/* Header */}
-        <Box sx={{ mb: 3 }}>
+        <Box sx={{ mb: 3, flexShrink: 0 }}>
           <Box
             sx={{
               display: "flex",
@@ -814,6 +814,8 @@ export default function Tickets() {
             gap: { xs: 1.25, sm: 1.5, md: 2 },
             overflowX: "auto",
             overflowY: "hidden",
+            flex: 1,
+            minHeight: 0,
             pb: { xs: 1.5, sm: 2 },
             px: { xs: 0.5, sm: 0 },
             mx: { xs: -0.5, sm: 0 },
@@ -831,7 +833,6 @@ export default function Tickets() {
                 bgcolor: "#A0AEC0",
               },
             },
-            // Smooth scrolling on mobile
             WebkitOverflowScrolling: "touch",
             scrollBehavior: "smooth",
           }}
@@ -853,6 +854,8 @@ export default function Tickets() {
                   width: { xs: "260px", sm: "280px", md: "300px", lg: "320px" },
                   maxWidth: { xs: "calc(100vw - 32px)", sm: "none" },
                   flexShrink: 0,
+                  display: "flex",
+                  flexDirection: "column",
                   bgcolor: status.columnBg,
                   borderRadius: { xs: 1.5, sm: 2 },
                   p: { xs: 1, sm: 1.25, md: 1.5 },
@@ -925,8 +928,8 @@ export default function Tickets() {
                     display: "flex",
                     flexDirection: "column",
                     gap: { xs: 0.75, sm: 1 },
-                    minHeight: { xs: "150px", sm: "180px", md: "200px" },
-                    maxHeight: { xs: "calc(100vh - 240px)", sm: "calc(100vh - 260px)", md: "calc(100vh - 280px)" },
+                    flex: 1,
+                    minHeight: 0,
                     overflowY: "auto",
                     overflowX: "hidden",
                     p: isDragOver ? { xs: 0.25, sm: 0.5 } : 0,

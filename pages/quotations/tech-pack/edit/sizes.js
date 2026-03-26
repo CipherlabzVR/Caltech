@@ -32,7 +32,7 @@ import EditOngoingSize from "@/components/UIElements/Modal/EditOngoingSize";
 
 export default function TechPackSizes() {
   const router = useRouter();
-  const { inquiryId, optionId, sentQuotationId, ongoingInquiryId } = router.query;
+  const { inquiryId, optionId, sentQuotationId, ongoingInquiryId, windowType: queryWindowType } = router.query;
   const [inquiry, setInquiry] = useState(null);
   const [inqType, setInqType] = useState(null);
   const [selectedOption, setSelectedOption] = useState("");
@@ -42,8 +42,9 @@ export default function TechPackSizes() {
   const fetchOngoingData = async () => {
     try {
       setLoading(true);
+      const windowParam = queryWindowType != null && queryWindowType !== "" ? `&windowType=${queryWindowType}` : "";
       const response = await fetch(
-        `${BASE_URL}/Ongoing/GetOngoingInquiryById?ongoingInquiryId=${ongoingInquiryId}&optionId=${optionId}`,
+        `${BASE_URL}/Ongoing/GetOngoingInquiryById?ongoingInquiryId=${ongoingInquiryId}&optionId=${optionId}${windowParam}`,
         {
           method: "GET",
           headers: {
@@ -115,14 +116,14 @@ export default function TechPackSizes() {
     };
     router.push({
       pathname: routes[inquiry.windowType],
-      query: { inquiryId, optionId, sentQuotationId, ongoingInquiryId },
+      query: { inquiryId, optionId, sentQuotationId, ongoingInquiryId, ...(inquiry.windowType != null && { windowType: inquiry.windowType }) },
     });
   };
 
   const navToPrevious = () => {
     router.push({
       pathname: "/quotations/tech-pack/edit/color-code",
-      query: { inquiryId, optionId, sentQuotationId, ongoingInquiryId },
+      query: { inquiryId, optionId, sentQuotationId, ongoingInquiryId, ...(inquiry?.windowType != null && { windowType: inquiry.windowType }) },
     });
   };
 

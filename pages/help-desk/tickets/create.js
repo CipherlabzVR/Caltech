@@ -29,7 +29,7 @@ import AddIcon from "@mui/icons-material/Add";
 import useApi from "@/components/utils/useApi";
 import RichTextEditor from "@/components/help-desk/RichTextEditor";
 import AddCustomerDialog from "@/pages/master/customers/create";
-import CreateProjectModal from "@/pages/master/projects/create";
+import CreateHelpDeskProjectModal from "@/pages/help-desk/projects/create";
 
 const filter = createFilterOptions();
 
@@ -541,7 +541,7 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
     try {
       setLoadingProjects(true);
       const token = localStorage.getItem("token");
-      const response = await fetch(`${BASE_URL}/Project/GetAllProjects`, {
+      const response = await fetch(`${BASE_URL}/HelpDesk/GetProjectsForAssign`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -550,7 +550,6 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
       });
       if (response.ok) {
         const data = await response.json();
-        // Master projects API returns { statusCode, message, result: [projects] }
         const projectList = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : []);
         setMasterProjects(projectList);
         return projectList;
@@ -563,13 +562,13 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
     return [];
   };
 
-  // Fetch master projects
+  // Fetch project management projects on mount and when modal opens
   useEffect(() => {
-    const fetchMasterProjects = async () => {
+    const fetchProjectManagementProjects = async () => {
       try {
         setLoadingProjects(true);
         const token = localStorage.getItem("token");
-        const response = await fetch(`${BASE_URL}/Project/GetAllProjects`, {
+        const response = await fetch(`${BASE_URL}/HelpDesk/GetProjectsForAssign`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -578,19 +577,17 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
         });
         if (response.ok) {
           const data = await response.json();
-          // Master projects API returns { statusCode, message, result: [projects] }
           const projectList = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : []);
           setMasterProjects(projectList);
         }
       } catch (error) {
-        console.error("Error fetching master projects:", error);
-        toast.error("Failed to fetch projects");
+        console.error("Error fetching project management projects:", error);
       } finally {
         setLoadingProjects(false);
       }
     };
-    fetchMasterProjects();
-  }, []);
+    fetchProjectManagementProjects();
+  }, [open]);
 
   // Fetch customers for assign category
   const fetchAssignCustomers = async () => {
@@ -617,12 +614,12 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
     }
   };
 
-  // Fetch projects for assign category from master projects
+  // Fetch projects for assign category from ProjectManagement
   const fetchAssignProjects = async () => {
     try {
       setLoadingAssignProjects(true);
       const token = localStorage.getItem("token");
-      const response = await fetch(`${BASE_URL}/Project/GetAllProjects`, {
+      const response = await fetch(`${BASE_URL}/HelpDesk/GetProjectsForAssign`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -631,9 +628,8 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
       });
       if (response.ok) {
         const data = await response.json();
-        // Master projects API returns { statusCode, message, result: [projects] }
         const projectList = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : []);
-        console.log("Fetched master projects for assign:", projectList);
+        console.log("Fetched project management projects for assign:", projectList);
         setAssignProjects(projectList);
       } else {
         console.error("Failed to fetch projects:", response.status, response.statusText);
@@ -647,13 +643,13 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
     }
   };
 
-  // Fetch projects immediately on component mount (like project customer assign page)
+  // Fetch projects immediately on component mount
   useEffect(() => {
     const fetchProjects = async () => {
       try {
         setLoadingAssignProjects(true);
         const token = localStorage.getItem("token");
-        const response = await fetch(`${BASE_URL}/Project/GetAllProjects`, {
+        const response = await fetch(`${BASE_URL}/HelpDesk/GetProjectsForAssign`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -662,9 +658,8 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
         });
         if (response.ok) {
           const data = await response.json();
-          // Master projects API returns { statusCode, message, result: [projects] }
           const projectList = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : []);
-          console.log("Fetched master projects for assign:", projectList);
+          console.log("Fetched project management projects for assign:", projectList);
           setAssignProjects(projectList);
         } else {
           console.error("Failed to fetch projects:", response.status, response.statusText);
@@ -785,8 +780,9 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
   };
 
   const deriveCustomerName = (project) => {
-    // Master projects may use CustomerName (capital C) or customerName
     const candidateNames = [
+      project.ClientName,
+      project.clientName,
       project.CustomerName,
       project.customerName,
       project.customer?.displayName,
@@ -2296,50 +2292,49 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
         showButton={false}
       />
 
-      {/* Create Project Modal - Using Master Project Create Component */}
-      <CreateProjectModal
+      {/* Create Project Modal - Using HelpDesk Project Create Component */}
+      <CreateHelpDeskProjectModal
         open={createProjectModalOpen}
         onClose={() => setCreateProjectModalOpen(false)}
         fetchItems={async (newProject) => {
-          // Refresh project list
-          await refreshProjects();
-          
-          // If a new project was created, select it in the form
+          if (newProject) {
+            const projectId = toNumericId(newProject.id || newProject.Id || newProject.projectId);
+            const customerId = toNumericId(newProject.CustomerId || newProject.customerId || newProject.customerIdNormalized);
+            const projectEntry = {
+              id: projectId,
+              code: newProject.code || newProject.Code || "",
+              name: newProject.name || newProject.Name || "",
+              customerId: customerId,
+              clientName: newProject.clientName || newProject.ClientName || "",
+            };
+            setMasterProjects(prev => {
+              const exists = prev.some(p => toNumericId(p.id || p.Id) === projectId);
+              return exists ? prev : [projectEntry, ...prev];
+            });
+            setAssignProjects(prev => {
+              const exists = prev.some(p => toNumericId(p.id || p.Id) === projectId);
+              return exists ? prev : [projectEntry, ...prev];
+            });
+          }
+
+          refreshProjects();
+
           if (newProject && mainFormikRef.current) {
-            // Wait a bit for state to update and projects to be normalized
             setTimeout(() => {
               if (mainFormikRef.current) {
-                const projectId = newProject.id || newProject.Id || newProject.projectId;
+                const projectId = toNumericId(newProject.id || newProject.Id || newProject.projectId);
                 if (projectId) {
-                  // Find the project in the normalized list to get all normalized fields
-                  const normalizedProjectId = toNumericId(projectId);
-                  const foundProject = normalizedProjects.find(p => 
-                    toNumericId(p.id) === normalizedProjectId
-                  );
-                  
-                  if (foundProject) {
-                    // Set project field using the normalized project
-                    mainFormikRef.current.setFieldValue("projectIds", [foundProject.id]);
-                    
-                    // If customer is not set, try to get it from the project
-                    if (!mainFormikRef.current.values.customerId && foundProject.customerIdNormalized) {
-                      mainFormikRef.current.setFieldValue("customerId", foundProject.customerIdNormalized);
-                    }
-                  } else {
-                    // Fallback: use the projectId directly if not found in normalized list
-                    mainFormikRef.current.setFieldValue("projectIds", [normalizedProjectId]);
-                    
-                    // If customer is not set, try to get it from the newProject
-                    if (!mainFormikRef.current.values.customerId) {
-                      const customerId = newProject.CustomerId || newProject.customerId || newProject.customerIdNormalized;
-                      if (customerId) {
-                        mainFormikRef.current.setFieldValue("customerId", toNumericId(customerId));
-                      }
+                  mainFormikRef.current.setFieldValue("projectIds", [projectId]);
+
+                  if (!mainFormikRef.current.values.customerId) {
+                    const customerId = toNumericId(newProject.CustomerId || newProject.customerId || newProject.customerIdNormalized);
+                    if (customerId) {
+                      mainFormikRef.current.setFieldValue("customerId", customerId);
                     }
                   }
                 }
               }
-            }, 300); // Increased delay to ensure projects are normalized
+            }, 200);
           }
         }}
         showButton={false}

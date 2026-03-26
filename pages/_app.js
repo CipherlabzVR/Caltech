@@ -128,6 +128,7 @@ import { useRouter } from "next/router";
 import { ProjectNo } from "Base/catelogue";
 import Calendar from "./reservation/calendar";
 import getSettingValueByName from "@/components/utils/getSettingValueByName";
+import logoutUser from "@/components/utils/logoutUser";
 
 
 const DEFAULT_INACTIVITY_TIMEOUT_MINUTES = 12 * 60;
@@ -156,7 +157,7 @@ function MyApp({ Component, pageProps }) {
     localStorage.setItem("lastActivityTime", Date.now().toString());
   }, []);
 
-  const handleForceLogout = useCallback(() => {
+  const handleForceLogout = useCallback(async () => {
     if (typeof window === "undefined") {
       return;
     }
@@ -164,10 +165,8 @@ function MyApp({ Component, pageProps }) {
       return;
     }
     hasLoggedOutRef.current = true;
-    localStorage.clear();
-    sessionStorage.removeItem("holidayGreetingShown");
     setToken(null);
-    router.replace("/authentication/sign-in/");
+    await logoutUser({ router });
   }, [router]);
 
 
@@ -341,10 +340,9 @@ function MyApp({ Component, pageProps }) {
     }
 
     var timeUntilClear = clearTime.getTime() - now.getTime();
-    setTimeout(function () {
-      localStorage.clear();
+    setTimeout(async function () {
+      await logoutUser({ router });
       clearLocalStorageDaily();
-      window.location.reload();
     }, timeUntilClear);
   }
   clearLocalStorageDaily();
@@ -368,8 +366,8 @@ function MyApp({ Component, pageProps }) {
     );
   }
 
-  // Exclude customer/quote and customer/invoice pages from layout and token check
-  const noLayoutRoutes = ["/crm/customer/quote", "/crm/customer/invoice", "/verified", "/userverified"];
+  // Exclude standalone print/share pages from layout and token check
+  const noLayoutRoutes = ["/crm/customer/quote", "/crm/customer/invoice", "/inventory/purchase-order/print", "/inventory/grn/print", "/inventory/shipment/print", "/inventory/stock-cycle-count/print", "/verified", "/userverified"];
   const shouldUseLayout = !noLayoutRoutes.includes(router.pathname);
   const shouldCheckToken = !noLayoutRoutes.includes(router.pathname);
 

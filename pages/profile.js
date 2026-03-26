@@ -25,7 +25,7 @@ export default function Profile() {
         columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}
       >
         <ToastContainer/>
-        <Grid item xs={12} md={12} lg={12} xl={4}>
+        <Grid item xs={12}>
           <PersonalInformation />
         </Grid>
       </Grid>

@@ -361,6 +361,7 @@ export default function ProformaList() {
                         <Table aria-label="simple table" className="dark-table">
                             <TableHead>
                                 <TableRow>
+                                    <TableCell>Document No</TableCell>
                                     <TableCell>Invoice Date</TableCell>
                                     <TableCell>Customer Name</TableCell>
                                     <TableCell>Inquiry Code</TableCell>
@@ -393,7 +394,7 @@ export default function ProformaList() {
                                         }
                                     }
 
-                                    const colSpan = tabValue === 3 ? 7 : tabValue === 4 ? 8 : 8;
+                                    const colSpan = tabValue === 3 ? 8 : tabValue === 4 ? 9 : 9;
                                     return displayList.length === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={colSpan}>
@@ -412,6 +413,7 @@ export default function ProformaList() {
 
                                             return (
                                                 <TableRow key={index}>
+                                                    <TableCell>{item.documentNo || "—"}</TableCell>
                                                     <TableCell>{formatDate(item.invoiceDate)}</TableCell>
                                                     <TableCell>{item.customerName}</TableCell>
                                                     <TableCell>{item.inquiryCode}</TableCell>

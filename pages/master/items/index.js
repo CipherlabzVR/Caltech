@@ -173,7 +173,7 @@ export default function Items() {
                   <TableCell>Category</TableCell>
                   <TableCell>Sub Category</TableCell>
                   <TableCell>Supplier</TableCell>
-                  {isPOSSystem && <TableCell>Average Price (LKR)</TableCell>}
+                  {IsEcommerceWebSiteAvailable && <TableCell>Average Price (LKR)</TableCell>}
                   {isGarmentSystem && <>
                     <TableCell>Reorder Level</TableCell>
                     <TableCell>Shipment Target</TableCell>
@@ -205,7 +205,7 @@ export default function Items() {
                       <TableCell>{catInfo[item.categoryId]?.name || "-"}</TableCell>
                       <TableCell>{subCatInfo[item.subCategoryId]?.name || "-"}</TableCell>
                       <TableCell>{supplierInfo[item.supplier]?.name || "-"}</TableCell>
-                      {isPOSSystem && <TableCell>{formatCurrency(item.averagePrice)}</TableCell>}
+                      {IsEcommerceWebSiteAvailable && <TableCell>{formatCurrency(item.averagePrice)}</TableCell>}
                       {isGarmentSystem && <>
                         <TableCell>{item.reorderLevel}</TableCell>
                         <TableCell>{item.shipmentTarget}</TableCell>

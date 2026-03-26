@@ -22,7 +22,7 @@ const validationSchema = Yup.object().shape({
   Gender: Yup.number().required("Gender is required"),
   ContractType: Yup.number().required("Contract type is required"),
   JoinDate: Yup.date().required("Join date is required"),
-  SupervisorID: Yup.number().min(1, "Supervisor is required"),
+  SupervisorID: Yup.number().nullable(),
 });
 
 
@@ -36,6 +36,8 @@ export default function EditEmployeeDialog({ fetchItems, item }) {
   const [supervisors, setSupervisors] = useState([]);
   const [contractTypes, setContractTypes] = useState([]);
   const [genders, setGenders] = useState([]);
+  const [shifts, setShifts] = useState([]);
+  const [otTypes, setOtTypes] = useState([]);
 
   const token = localStorage.getItem("token");
 
@@ -50,13 +52,15 @@ const fetchDropdowns = async () => {
   try {
     const authHeader = { Authorization: `Bearer ${token}` };
 
-    const [titles, depts, jobs, sups, contracts, genderRes] = await Promise.all([
+    const [titles, depts, jobs, sups, contracts, genderRes, shiftsRes, otTypesRes] = await Promise.all([
       fetch(`${BASE_URL}/Customer/GetAllPersonTitle`, { headers: authHeader }),
       fetch(`${BASE_URL}/Employee/GetAlldepartment`, { headers: authHeader }),
       fetch(`${BASE_URL}/Employee/GetAllJobTitle`, { headers: authHeader }),
       fetch(`${BASE_URL}/Employee/GetAllEmployees`, { headers: authHeader }),
       fetch(`${BASE_URL}/Employee/contract-types`, { headers: authHeader }),
-      fetch(`${BASE_URL}/Employee/GetGender`, { headers: authHeader })
+      fetch(`${BASE_URL}/Employee/GetGender`, { headers: authHeader }),
+      fetch(`${BASE_URL}/ShiftMaster/GetAllShifts?Search=&SkipCount=0&MaxResultCount=500`, { headers: authHeader }),
+      fetch(`${BASE_URL}/OTType/GetAllOTType?Search=&SkipCount=0&MaxResultCount=500`, { headers: authHeader }),
     ]);
 
     const titleData = await titles.json();
@@ -65,13 +69,19 @@ const fetchDropdowns = async () => {
     const supData = await sups.json();
     const contractData = await contracts.json();
     const genderData = await genderRes.json();
+    const shiftData = await shiftsRes.json();
 
     setTitleList(titleData.result || []);
     setDepartments(deptData.result || []);
     setJobTitles(jobData.result || []);
-    setSupervisors(supData.result || []);
+    const allEmployees = supData.result || [];
+    setSupervisors(allEmployees.filter((e) => e.isSupervisor === true || e.IsSupervisor === true));
     setContractTypes(contractData || []);
     setGenders(genderData);
+    setShifts(shiftData?.result?.items ?? shiftData?.data?.items ?? []);
+    const otTypeData = await otTypesRes.json();
+    const otList = otTypeData?.result?.items ?? otTypeData?.data?.items ?? otTypeData?.items ?? [];
+    setOtTypes(Array.isArray(otList) ? otList : []);
   } catch (err) {
     console.error("❌ Failed to load dropdown data:", err);
     toast.error("Failed to load dropdown data");
@@ -93,6 +103,9 @@ const handleSubmit = (values) => {
   jobTitleId: parseInt(values.JobTitleId) || null,
   departmentId: parseInt(values.DepartmentId) || null,
   warehouseId: parseInt(values.WarehouseId) || 1,
+  shiftId: values.ShiftId ? parseInt(values.ShiftId) : null,
+  otTypeAvailable: values.OtTypeAvailable ?? false,
+  otTypeId: values.OtTypeAvailable && values.OTTypeId ? parseInt(values.OTTypeId, 10) : null,
   contractType: parseInt(values.ContractType),
   joinDate: values.JoinDate,
   resignDate: values.ResignDate || null,
@@ -103,7 +116,7 @@ const handleSubmit = (values) => {
   contactNumber: values.ContactNumber,
   personalNumber: values.PersonalNumber,
   email: values.Email,
-  supervisorID: parseInt(values.SupervisorID),
+  supervisorID: values.SupervisorID ? parseInt(values.SupervisorID, 10) : null,
   imageURL: values.ImageURL || "",
   isActive: values.IsActive,
   isLabour: values.IsLabour,
@@ -167,6 +180,9 @@ fetch(`${BASE_URL}/Employee/UpdateEmployeescyAsync`, {
               Gender: item.gender || "",
               JobTitleId: item.jobTitleId || "",
               DepartmentId: item.departmentId || "",
+              ShiftId: item.shiftId != null ? item.shiftId : "",
+              OtTypeAvailable: item.otTypeAvailable ?? false,
+              OTTypeId: item.otTypeId != null ? item.otTypeId : "",
               ContractType: item.contractType || "",
               JoinDate: formatDate(item.joinDate) || "",
               ResignDate: formatDate(item.resignDate) || "",
@@ -265,6 +281,55 @@ fetch(`${BASE_URL}/Employee/UpdateEmployeescyAsync`, {
                       </Grid>
                     ))}
 
+                    {/* Shift (optional) */}
+                    <Grid item xs={12} sm={6}>
+                      <FormControl fullWidth>
+                        <InputLabel>Shift (optional)</InputLabel>
+                        <Select
+                          name="ShiftId"
+                          value={values.ShiftId}
+                          onChange={(e) => setFieldValue("ShiftId", e.target.value)}
+                        >
+                          <MenuItem value=""><em>None</em></MenuItem>
+                          {shifts.map((s) => (
+                            <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+
+                    {/* Is OT available + OT Type */}
+                    <Grid item xs={12} sm={6}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={values.OtTypeAvailable}
+                            onChange={(e) => {
+                              setFieldValue("OtTypeAvailable", e.target.checked);
+                              if (!e.target.checked) setFieldValue("OTTypeId", "");
+                            }}
+                          />
+                        }
+                        label="Is OT available"
+                      />
+                      {values.OtTypeAvailable && (
+                        <FormControl fullWidth size="small" sx={{ mt: 1, minWidth: 200 }}>
+                          <InputLabel>OT Type</InputLabel>
+                          <Select
+                            name="OTTypeId"
+                            label="OT Type"
+                            value={values.OTTypeId ?? ""}
+                            onChange={(e) => setFieldValue("OTTypeId", e.target.value ? Number(e.target.value) : "")}
+                          >
+                            <MenuItem value=""><em>Select OT Type</em></MenuItem>
+                            {otTypes.map((ot) => (
+                              <MenuItem key={ot.id} value={ot.id}>{ot.name}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                    </Grid>
+
                     {/* Contract Type */}
                     <Grid item xs={12} sm={6}>
                       <FormControl fullWidth>
@@ -297,15 +362,16 @@ fetch(`${BASE_URL}/Employee/UpdateEmployeescyAsync`, {
                       </Grid>
                     ))}
 
-                    {/* Supervisor */}
+                    {/* Supervisor (optional) */}
                     <Grid item xs={12} sm={6}>
                       <FormControl fullWidth>
-                        <InputLabel>Supervisor</InputLabel>
+                        <InputLabel>Supervisor (optional)</InputLabel>
                         <Select
                           name="SupervisorID"
-                          value={values.SupervisorID}
-                          onChange={(e) => setFieldValue("SupervisorID", e.target.value)}
+                          value={values.SupervisorID ?? ""}
+                          onChange={(e) => setFieldValue("SupervisorID", e.target.value || "")}
                         >
+                          <MenuItem value=""><em>None</em></MenuItem>
                           {supervisors.map((s) => (
                             <MenuItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</MenuItem>
                           ))}

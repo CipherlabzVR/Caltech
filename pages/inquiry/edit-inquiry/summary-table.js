@@ -13,6 +13,23 @@ import {
 import BASE_URL from "Base/api";
 import { formatCurrency } from "@/components/utils/formatHelper";
 
+const ITEM_ORDER = ["collercuff", "trims", "embroider", "screenprint", "sublimation", "dtf", "sewing", "other", "cutting"];
+
+const sortItemsByDisplayOrder = (items) => {
+  if (!items?.length) return items ?? [];
+  const orderMap = new Map(ITEM_ORDER.map((name, i) => [name.toLowerCase(), i]));
+  return [...items].sort((a, b) => {
+    const nameA = (a.itemName || "").toLowerCase().trim();
+    const nameB = (b.itemName || "").toLowerCase().trim();
+    const idxA = orderMap.has(nameA) ? orderMap.get(nameA) : -1;
+    const idxB = orderMap.has(nameB) ? orderMap.get(nameB) : -1;
+    if (idxA === -1 && idxB === -1) return 0;
+    if (idxA === -1) return -1;
+    if (idxB === -1) return 1;
+    return idxA - idxB;
+  });
+};
+
 export default function SumTable({ onIsSavedChange, inquiry, onSummaryChange }) {
   const [items, setItems] = useState([]);
   const [patternItem, setPatternItem] = useState();
@@ -94,9 +111,9 @@ export default function SumTable({ onIsSavedChange, inquiry, onSummaryChange }) 
             const lineData = await lineResponse.json();
             const approvedLineItems = lineData.result || [];
             
-            // Update items with approved values
+            // Update items with approved values (preserve display order: fabric first, then fixed sequence)
             setItems(prevItems => {
-              return prevItems.map(item => {
+              const updated = prevItems.map(item => {
                 const approvedItem = approvedLineItems.find(ai => ai.itemName === item.itemName && ai.itemName !== "Commission" && ai.itemName !== "Pattern");
                 if (approvedItem) {
                   return {
@@ -111,6 +128,7 @@ export default function SumTable({ onIsSavedChange, inquiry, onSummaryChange }) 
                 }
                 return item;
               });
+              return sortItemsByDisplayOrder(updated);
             });
 
             // Update pattern item
@@ -227,7 +245,7 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
     }
 
     const regularItems = allItems.filter(item => item.itemName !== "Commission");
-    setItems(regularItems);
+    setItems(sortItemsByDisplayOrder(regularItems));
 
     if (regularItems.length > 0) {
       setNoOfUnits(regularItems[0].quantity || 0);
@@ -451,26 +469,6 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
               sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
             >
               <TableCell component="th" scope="row">
-                Pattern
-              </TableCell>
-              <TableCell align="right">{patternUCost}</TableCell>
-              <TableCell align="right">{patternQuantity}</TableCell>
-              <TableCell align="right">
-                <input
-                  value={patternTotalCost}
-                  style={{
-                    width: "60px",
-                    border: "1px solid #e5e5e5",
-                    textAlign: "right",
-                  }}
-                  onChange={(e) => handlePatternTotalCostChange(e.target.value)}
-                />
-              </TableCell>
-            </TableRow>
-            <TableRow
-              sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
-            >
-              <TableCell component="th" scope="row">
                 Commission
               </TableCell>
               <TableCell align="right"></TableCell>
@@ -484,6 +482,26 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
                     textAlign: "right",
                   }}
                   onChange={(e) => handleCommissionTotalCostChange(e.target.value)}
+                />
+              </TableCell>
+            </TableRow>
+            <TableRow
+              sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
+            >
+              <TableCell component="th" scope="row">
+                Pattern
+              </TableCell>
+              <TableCell align="right">{patternUCost}</TableCell>
+              <TableCell align="right">{patternQuantity}</TableCell>
+              <TableCell align="right">
+                <input
+                  value={patternTotalCost}
+                  style={{
+                    width: "60px",
+                    border: "1px solid #e5e5e5",
+                    textAlign: "right",
+                  }}
+                  onChange={(e) => handlePatternTotalCostChange(e.target.value)}
                 />
               </TableCell>
             </TableRow>

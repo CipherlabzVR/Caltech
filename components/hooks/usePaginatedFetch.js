@@ -7,17 +7,33 @@ const usePaginatedFetch = (
   initialSearch = "",
   initialPageSize = 10,
   initialIsCurrentDate = true,
-  shouldIncludeIsCurrentDateParam = true
+  shouldIncludeIsCurrentDateParam = true,
+  initialFilter = "",
+  initialExtraQuery = null
 ) => {
   const [data, setData] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [search, setSearch] = useState(initialSearch);
+  const [filter, setFilter] = useState(initialFilter);
+  const [extraQuery, setExtraQuery] = useState(
+    () =>
+      initialExtraQuery && typeof initialExtraQuery === "object" && !Array.isArray(initialExtraQuery)
+        ? initialExtraQuery
+        : {}
+  );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(initialPageSize);
   const [isCurrentDate, setIsCurrentDate] = useState(initialIsCurrentDate);
 
   
-  const fetchData = async (pageNum = page, term = search, size = pageSize, isTodayOnly = isCurrentDate) => {
+  const fetchData = async (
+    pageNum = page,
+    term = search,
+    size = pageSize,
+    isTodayOnly = isCurrentDate,
+    filterTerm = filter,
+    extraQueryOverride
+  ) => {
     // Only fetch on client side to avoid SSR issues
     if (typeof window === 'undefined') {
       return;
@@ -26,7 +42,18 @@ const usePaginatedFetch = (
       const token = localStorage.getItem("token");
       const skip = (pageNum - 1) * size;
       const searchParam = term ? encodeURIComponent(term) : "null";
-      let query = `${BASE_URL}/${endpoint}?SkipCount=${skip}&MaxResultCount=${size}&Search=${searchParam}`;
+      const filterParam = filterTerm ? encodeURIComponent(filterTerm) : "null";
+      let query = `${BASE_URL}/${endpoint}?SkipCount=${skip}&MaxResultCount=${size}&Search=${searchParam}&Filter=${filterParam}`;
+
+      const effectiveExtra =
+        extraQueryOverride !== undefined ? extraQueryOverride : extraQuery;
+      if (effectiveExtra && typeof effectiveExtra === "object" && !Array.isArray(effectiveExtra)) {
+        Object.entries(effectiveExtra).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && value !== "") {
+            query += `&${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`;
+          }
+        });
+      }
 
       if (shouldIncludeIsCurrentDateParam) {
         query += `&isCurrentDate=${isTodayOnly}`;
@@ -189,7 +216,7 @@ const usePaginatedFetch = (
   useEffect(() => {
     // Only fetch on client side to avoid SSR issues
     if (typeof window !== 'undefined') {
-      fetchData(1, search, pageSize, initialIsCurrentDate);
+      fetchData(1, search, pageSize, initialIsCurrentDate, filter, extraQuery);
     }
   }, []);
 
@@ -199,10 +226,14 @@ const usePaginatedFetch = (
     page,
     pageSize,    
     search,
+    filter,
+    extraQuery,
     isCurrentDate,
     setPage,
     setPageSize,    
     setSearch,
+    setFilter,
+    setExtraQuery,
     setIsCurrentDate,
     fetchData,
   };

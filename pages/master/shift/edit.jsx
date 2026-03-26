@@ -3,11 +3,14 @@ import {
   Box,
   Button,
   Checkbox,
+  FormControl,
   FormControlLabel,
   Grid,
   IconButton,
+  InputLabel,
   MenuItem,
   Modal,
+  Select,
   TextField,
   Tooltip,
   Typography,
@@ -55,11 +58,10 @@ const roundingModeMap = {
 
 export default function EditShiftMasterModal({ fetchItems, item }) {
   const [open, setOpen] = useState(false);
-  const [companies, setCompanies] = useState([]); // ADDED: State for companies
+  const [companies, setCompanies] = useState([]);
   const firstInputRef = useRef(null);
 
   useEffect(() => {
-    // ADDED: Fetch companies when modal opens
     if (open) {
       fetch(`${BASE_URL}/ShiftCompany/list`, {
         headers: {
@@ -69,7 +71,7 @@ export default function EditShiftMasterModal({ fetchItems, item }) {
         .then((res) => res.json())
         .then((data) => setCompanies(data))
         .catch((err) => console.error("Failed to fetch companies:", err));
-      
+
       if (firstInputRef.current) {
         setTimeout(() => firstInputRef.current.focus(), 100);
       }
@@ -124,7 +126,7 @@ export default function EditShiftMasterModal({ fetchItems, item }) {
           <Formik
             initialValues={{
               Id: item.id,
-              CompanyId: item.companyId || "", // ADDED: CompanyId to form state
+              CompanyId: item.companyId || "",
               Code: item.code || "",
               Name: item.name || "",
               StartTime: item.startTime ? item.startTime.substring(0, 5) : "00:00",
@@ -132,16 +134,16 @@ export default function EditShiftMasterModal({ fetchItems, item }) {
               BreakMinutes: item.breakMinutes || 0,
               LateGraceMinutes: item.lateGraceMinutes || 0,
               EarlyLeaveGraceMinutes: item.earlyLeaveGraceMinutes || 0,
-              RoundingMode: roundingModeMap[item.roundingMode] ?? 0, // CORRECTED: Use map
+              RoundingMode: roundingModeMap[item.roundingMode] ?? 0,
               RoundingIntervalMinutes: item.roundingIntervalMinutes || 0,
               IsNightShift: item.isNightShift || false,
-              IsActive: item.isActive || false,
+              IsActive: item.isActive ?? false,
             }}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
             enableReinitialize
           >
-            {({ errors, touched, isSubmitting, values }) => (
+            {({ errors, touched, isSubmitting, values, setFieldValue }) => (
               <Form>
                 <Grid container spacing={2}>
                   <Grid item xs={12}>

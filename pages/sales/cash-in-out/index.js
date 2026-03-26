@@ -32,28 +32,36 @@ export default function CashInOut() {
     page,
     pageSize,
     search,
+    filter,
     setPage,
     setPageSize,
     setSearch,
+    setFilter,
     fetchData: fetchCashInOutList,
   } = usePaginatedFetch("Shift/GetAllCashInOutPagedResult");
 
   const handleSearchChange = (event) => {
     setSearch(event.target.value);
     setPage(1);
-    fetchCashInOutList(1, event.target.value, pageSize);
+    fetchCashInOutList(1, event.target.value, pageSize, undefined, filter);
+  };
+
+  const handleFilterChange = (event) => {
+    setFilter(event.target.value);
+    setPage(1);
+    fetchCashInOutList(1, search, pageSize, undefined, event.target.value);
   };
 
   const handlePageChange = (event, value) => {
     setPage(value);
-    fetchCashInOutList(value, search, pageSize);
+    fetchCashInOutList(value, search, pageSize, undefined, filter);
   };
 
   const handlePageSizeChange = (event) => {
     const size = event.target.value;
     setPageSize(size);
     setPage(1);
-    fetchCashInOutList(1, search, size);
+    fetchCashInOutList(1, search, size, undefined, filter);
   };
 
   const handleOpenApprove = (item) => {
@@ -108,7 +116,7 @@ export default function CashInOut() {
         throw new Error("Failed to approve cash in/out");
       }
 
-      fetchCashInOutList(page, search, pageSize);
+      fetchCashInOutList(page, search, pageSize, undefined, filter);
     } catch (error) {
       console.error("Approve error:", error);
     } finally {
@@ -148,7 +156,7 @@ export default function CashInOut() {
         throw new Error("Failed to reject cash in/out");
       }
 
-      fetchCashInOutList(page, search, pageSize);
+      fetchCashInOutList(page, search, pageSize, undefined, filter);
     } catch (error) {
       console.error("Reject error:", error);
     } finally {
@@ -182,6 +190,21 @@ export default function CashInOut() {
             />
           </Search>
         </Grid>
+        <Grid item xs={12} lg={4} order={{ xs: 2, lg: 2 }}>
+          <FormControl fullWidth size="small">
+            <InputLabel>Type</InputLabel>
+            <Select
+              value={filter}
+              label="Type"
+              onChange={handleFilterChange}
+            >
+              <MenuItem value="">All</MenuItem>
+              <MenuItem value="1">Cash In</MenuItem>
+              <MenuItem value="2">Cash Out</MenuItem>
+              <MenuItem value="3">Bank</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
         <Grid item xs={12} order={{ xs: 3, lg: 3 }}>
           <TableContainer component={Paper}>
             <Table aria-label="simple table" className="dark-table">
@@ -192,6 +215,7 @@ export default function CashInOut() {
                   <TableCell>Warehouse</TableCell>
                   <TableCell>Created By</TableCell>
                   <TableCell>Cash Flow Type</TableCell>
+                  <TableCell>Type</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Amount</TableCell>
                   <TableCell align="right">Action</TableCell>
@@ -200,7 +224,7 @@ export default function CashInOut() {
               <TableBody>
                 {cashInOut.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8}>
+                    <TableCell colSpan={9}>
                       <Typography color="error">No Data Available</Typography>
                     </TableCell>
                   </TableRow>
@@ -212,6 +236,17 @@ export default function CashInOut() {
                       <TableCell>{item.warehouseName}</TableCell>
                       <TableCell>{item.createdUser}</TableCell>
                       <TableCell>{item.cashFlowType}</TableCell>
+                      <TableCell>
+                        {item.cashType === 1 ? (
+                          <span className="cashInBadge">Cash In</span>
+                        ) : item.cashType === 2 ? (
+                          <span className="cashOutBadge">Cash Out</span>
+                        ) : item.cashType === 3 ? (
+                          <span className="primaryBadge">Bank</span>
+                        ) : (
+                          "Unknown"
+                        )}
+                      </TableCell>
                       <TableCell>
                         {item.status === 2 ? <span className="successBadge">Approved</span> : (item.status === 3 ? <span className="dangerBadge">Rejected</span> : "Pending")}
                       </TableCell>

@@ -58,7 +58,7 @@ import TicketChecklist from "@/components/help-desk/TicketChecklist";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { formatDate } from "@/components/utils/formatHelper";
 import AddCustomerDialog from "@/pages/master/customers/create";
-import CreateProjectModal from "@/pages/master/projects/create";
+import CreateHelpDeskProjectModal from "@/pages/help-desk/projects/create";
 
 const filter = createFilterOptions();
 
@@ -303,7 +303,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
   const refreshProjects = async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(`${BASE_URL}/Project/GetAllProjects`, {
+      const response = await fetch(`${BASE_URL}/HelpDesk/GetProjectsForAssign`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -312,7 +312,6 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
       });
       if (response.ok) {
         const data = await response.json();
-        // Master projects API returns { statusCode, message, result: [projects] }
         const projectList = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : []);
         setProjectsData({ result: projectList });
         return projectList;
@@ -764,8 +763,8 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
 
         console.log("EditTicket: Fetching ticket project with ID:", ticketProjectId);
         
-        // First try master projects API
-        let response = await fetch(`${BASE_URL}/Project/GetProjectById?id=${ticketProjectId}`, {
+        // Try ProjectManagementModule endpoint
+        let response = await fetch(`${BASE_URL}/ProjectManagementModule/projects/${ticketProjectId}`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -779,13 +778,26 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
           const data = await response.json();
           project = data?.result || data;
           if (project) {
-            console.log("EditTicket: Found project in master projects API");
+            console.log("EditTicket: Found project in ProjectManagement API");
+          }
+        }
+
+        if (!project) {
+          // Fallback: try old master projects API
+          response = await fetch(`${BASE_URL}/Project/GetProjectById?id=${ticketProjectId}`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          });
+          if (response.ok) {
+            const data = await response.json();
+            project = data?.result || data;
           }
         }
 
         if (project) {
-          // Normalize the project to match the format expected by normalizedProjects
-          // Master projects use Id/CustomerId (capital) or id/customerId
           const projectId = project.Id || project.id || project.projectId || ticketProjectId;
           const customerId = project.CustomerId || project.customerId;
           const normalizedProject = {
@@ -799,7 +811,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
           setTicketProject(normalizedProject);
           console.log("EditTicket: Fetched and set ticket project:", normalizedProject);
         } else {
-          console.warn("EditTicket: Project not found in master projects API");
+          console.warn("EditTicket: Project not found");
           setTicketProject(null);
         }
       } catch (error) {
@@ -1284,10 +1296,10 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
   const [projectsData, setProjectsData] = useState(null);
   
   useEffect(() => {
-    const fetchMasterProjects = async () => {
+    const fetchProjectManagementProjects = async () => {
       try {
         const token = localStorage.getItem("token");
-        const response = await fetch(`${BASE_URL}/Project/GetAllProjects`, {
+        const response = await fetch(`${BASE_URL}/HelpDesk/GetProjectsForAssign`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -1296,22 +1308,21 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
         });
         if (response.ok) {
           const data = await response.json();
-          // Master projects API returns { statusCode, message, result: [projects] }
           const projectList = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : []);
           setProjectsData({ result: projectList });
-          console.log("Fetched master projects for edit:", projectList);
+          console.log("Fetched project management projects for edit:", projectList);
         } else {
-          console.error("Failed to fetch master projects:", response.status);
+          console.error("Failed to fetch project management projects:", response.status);
           setProjectsData({ result: [] });
         }
       } catch (error) {
-        console.error("Error fetching master projects:", error);
+        console.error("Error fetching project management projects:", error);
         setProjectsData({ result: [] });
       }
     };
     
     if (open) {
-      fetchMasterProjects();
+      fetchProjectManagementProjects();
     }
   }, [open]);
   const { data: prioritySettingsData } = useApi("/HelpDesk/GetPrioritySettings");
@@ -1412,8 +1423,9 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
   };
 
   const deriveCustomerName = (project) => {
-    // Master projects may use CustomerName (capital C) or customerName
     const candidateNames = [
+      project.ClientName,
+      project.clientName,
       project.CustomerName,
       project.customerName,
       project.customer?.displayName,
@@ -4123,48 +4135,44 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
         showButton={false}
       />
 
-      {/* Create Project Modal - Using Master Project Create Component */}
-      <CreateProjectModal
+      {/* Create Project Modal - Using HelpDesk Project Create Component */}
+      <CreateHelpDeskProjectModal
         fetchItems={async (newProject) => {
-          // Refresh project list
-          await refreshProjects();
-          
-          // If a new project was created, select it in the form
+          if (newProject) {
+            const projectId = toNumericId(newProject.id || newProject.Id || newProject.projectId);
+            const customerId = toNumericId(newProject.CustomerId || newProject.customerId || newProject.customerIdNormalized);
+            const projectEntry = {
+              id: projectId,
+              code: newProject.code || newProject.Code || "",
+              name: newProject.name || newProject.Name || "",
+              customerId: customerId,
+              clientName: newProject.clientName || newProject.ClientName || "",
+            };
+            setProjectsData(prev => {
+              const prevList = Array.isArray(prev?.result) ? prev.result : [];
+              const exists = prevList.some(p => toNumericId(p.id || p.Id) === projectId);
+              return { result: exists ? prevList : [projectEntry, ...prevList] };
+            });
+          }
+
+          refreshProjects();
+
           if (newProject && editFormikRef.current) {
-            // Wait a bit for state to update and projects to be normalized
             setTimeout(() => {
               if (editFormikRef.current) {
-                const projectId = newProject.id || newProject.Id || newProject.projectId;
+                const projectId = toNumericId(newProject.id || newProject.Id || newProject.projectId);
                 if (projectId) {
-                  // Find the project in the normalized list to get all normalized fields
-                  const normalizedProjectId = toNumericId(projectId);
-                  const foundProject = normalizedProjects.find(p => 
-                    toNumericId(p.id) === normalizedProjectId
-                  );
-                  
-                  if (foundProject) {
-                    // Set project field using the normalized project
-                    editFormikRef.current.setFieldValue("projectIds", [foundProject.id]);
-                    
-                    // If customer is not set, try to get it from the project
-                    if (!editFormikRef.current.values.customerId && foundProject.customerIdNormalized) {
-                      editFormikRef.current.setFieldValue("customerId", foundProject.customerIdNormalized);
-                    }
-                  } else {
-                    // Fallback: use the projectId directly if not found in normalized list
-                    editFormikRef.current.setFieldValue("projectIds", [normalizedProjectId]);
-                    
-                    // If customer is not set, try to get it from the newProject
-                    if (!editFormikRef.current.values.customerId) {
-                      const customerId = newProject.CustomerId || newProject.customerId || newProject.customerIdNormalized;
-                      if (customerId) {
-                        editFormikRef.current.setFieldValue("customerId", toNumericId(customerId));
-                      }
+                  editFormikRef.current.setFieldValue("projectIds", [projectId]);
+
+                  if (!editFormikRef.current.values.customerId) {
+                    const customerId = toNumericId(newProject.CustomerId || newProject.customerId || newProject.customerIdNormalized);
+                    if (customerId) {
+                      editFormikRef.current.setFieldValue("customerId", customerId);
                     }
                   }
                 }
               }
-            }, 300); // Increased delay to ensure projects are normalized
+            }, 200);
           }
         }}
         open={createProjectModalOpen}

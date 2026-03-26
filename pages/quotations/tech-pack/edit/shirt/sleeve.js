@@ -13,21 +13,23 @@ import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import { useRouter } from "next/router";
 import BASE_URL from "Base/api";
 import { DashboardHeader } from "@/components/shared/dashboard-header";
-import { ToastContainer } from "react-toastify";
+import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 export default function TechPackShirtSleeve() {
   const router = useRouter();
-  const { inquiryId, optionId, sentQuotationId, ongoingInquiryId } = router.query;
+  const { inquiryId, optionId, sentQuotationId, ongoingInquiryId, windowType: queryWindowType } = router.query;
   const [inquiry, setInquiry] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedValue, setSelectedValue] = useState("");
+  const [selectedValue, setSelectedValue] = useState("short");
+  const [saving, setSaving] = useState(false);
 
   const fetchOngoingData = async () => {
     try {
       setLoading(true);
+      const windowParam = queryWindowType != null && queryWindowType !== "" ? `&windowType=${queryWindowType}` : "";
       const response = await fetch(
-        `${BASE_URL}/Ongoing/GetOngoingInquiryById?ongoingInquiryId=${ongoingInquiryId}&optionId=${optionId}`,
+        `${BASE_URL}/Ongoing/GetOngoingInquiryById?ongoingInquiryId=${ongoingInquiryId}&optionId=${optionId}${windowParam}`,
         {
           method: "GET",
           headers: {
@@ -42,42 +44,136 @@ export default function TechPackShirtSleeve() {
       const data = await response.json();
       if (data.result) {
         setInquiry(data.result);
-        fetchSleeveData(inquiryId, optionId, data.result.windowType);
+        await fetchSleeveData(ongoingInquiryId, optionId, data.result.windowType, data.result);
       }
     } catch (error) {
       console.error("Error:", error);
+      toast.error("Failed to load data");
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchSleeveData = async (inqId, optId, windowType) => {
+  const headers = {
+    Authorization: `Bearer ${localStorage.getItem("token")}`,
+    "Content-Type": "application/json",
+  };
+
+  const setSleeveFromResult = (result) => {
+    if (!result) return "short";
+    const shortVal = result.short ?? result.Short;
+    const longVal = result.long ?? result.Long;
+    if (longVal === 1 || longVal === "1") return "long";
+    if (shortVal === 1 || shortVal === "1") return "short";
+    return "short";
+  };
+
+  const fetchInquirySleeve = async (inqId, optId, windowType) => {
+    try {
+      const res = await fetch(
+        `${BASE_URL}/InquirySleeve/GetSleeve?InquiryID=${inqId}&OptionId=${optId}&WindowType=${windowType}`,
+        { method: "GET", headers }
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      const list = data.result;
+      const result = list && list[0] ? list[0] : null;
+      return result;
+    } catch {
+      return null;
+    }
+  };
+
+  const fetchSleeveData = async (ongoId, optId, windowType, inq) => {
     try {
       const response = await fetch(
-        `${BASE_URL}/InquirySleeve/GetSleeve?InquiryID=${inqId}&OptionId=${optId}&WindowType=${windowType}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
+        `${BASE_URL}/Ongoing/GetOngoingSleeve?ongoingInquiryId=${ongoId}&optionId=${optId}&windowType=${windowType}`,
+        { method: "GET", headers }
       );
 
       if (response.ok) {
         const data = await response.json();
-        if (data.result && data.result[0]) {
-          const result = data.result[0];
-          if (result.short === 1) {
-            setSelectedValue("short");
-          }
-          if (result.long === 1) {
-            setSelectedValue("long");
-          }
+        const result = data.result;
+        if (result) {
+          setSelectedValue(setSleeveFromResult(result));
+          return;
         }
       }
+
+      if (!inquiryId || !inq) {
+        setSelectedValue("short");
+        return;
+      }
+      const inquiryResult = await fetchInquirySleeve(inquiryId, optId, windowType);
+      const value = setSleeveFromResult(inquiryResult);
+      setSelectedValue(value);
+      const payload = {
+        InquiryID: parseInt(ongoingInquiryId, 10),
+        InqCode: inq.inquiryCode || "",
+        OptionId: parseInt(optionId, 10),
+        InqOptionName: inq.optionName || "",
+        WindowType: inq.windowType ?? 0,
+        Wrangler: "0",
+        Normal: "0",
+        Short: value === "short" ? 1 : 0,
+        ShortType: 9,
+        Long: value === "long" ? 1 : 0,
+        LongType: 9,
+        ShortSize: 0,
+        LongSize: 0,
+        UpdateRowNumber: 1,
+      };
+      try {
+        await fetch(`${BASE_URL}/Ongoing/CreateOrUpdateOngoingSleeve`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload),
+        });
+      } catch (_) {}
     } catch (error) {
       console.error("Error fetching sleeve data:", error);
+      setSelectedValue("short");
+    }
+  };
+
+  const buildSleevePayload = (sleeveValue) => ({
+    InquiryID: parseInt(ongoingInquiryId, 10),
+    InqCode: inquiry.inquiryCode || "",
+    OptionId: parseInt(optionId, 10),
+    InqOptionName: inquiry.optionName || "",
+    WindowType: inquiry.windowType ?? 0,
+    Wrangler: "0",
+    Normal: "0",
+    Short: sleeveValue === "short" ? 1 : 0,
+    ShortType: 9,
+    Long: sleeveValue === "long" ? 1 : 0,
+    LongType: 9,
+    ShortSize: 0,
+    LongSize: 0,
+    UpdateRowNumber: 1,
+  });
+
+  const handleSleeveChange = async (event) => {
+    const value = event.target.value;
+    if (!inquiry) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`${BASE_URL}/Ongoing/CreateOrUpdateOngoingSleeve`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(buildSleevePayload(value)),
+      });
+      if (!response.ok) throw new Error("Failed to update sleeve");
+      setSelectedValue(value);
+      toast.success("Sleeve updated");
+    } catch (err) {
+      console.error(err);
+      toast.error(err.message || "Update failed");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -150,7 +246,14 @@ export default function TechPackShirtSleeve() {
               >
                 <FormControlLabel
                   value="short"
-                  control={<Radio checked={selectedValue === "short"} disabled />}
+                  control={
+                    <Radio
+                      value="short"
+                      checked={selectedValue === "short"}
+                      disabled={saving}
+                      onChange={handleSleeveChange}
+                    />
+                  }
                   label="Short Sleeve"
                 />
               </Card>
@@ -169,7 +272,14 @@ export default function TechPackShirtSleeve() {
               >
                 <FormControlLabel
                   value="long"
-                  control={<Radio checked={selectedValue === "long"} disabled />}
+                  control={
+                    <Radio
+                      value="long"
+                      checked={selectedValue === "long"}
+                      disabled={saving}
+                      onChange={handleSleeveChange}
+                    />
+                  }
                   label="Long Sleeve"
                 />
               </Card>
