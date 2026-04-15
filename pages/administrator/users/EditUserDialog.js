@@ -35,8 +35,12 @@ import { useRouter } from "next/router";
 import logoutUser from "@/components/utils/logoutUser";
 
 const validationSchema = Yup.object().shape({
-  FirstName: Yup.string().required("First Name is required"),
-  LastName: Yup.string().required("Last Name is required"),
+  FirstName: Yup.string()
+    .matches(/^[a-zA-Z\s]+$/, "First Name must contain only letters")
+    .required("First Name is required"),
+  LastName: Yup.string()
+    .matches(/^[a-zA-Z\s]+$/, "Last Name must contain only letters")
+    .required("Last Name is required"),
   Email: Yup.string().email("Invalid email").required("Email is required"),
   Address: Yup.string().required("Address is required"),
   MobileNumber: Yup.string()

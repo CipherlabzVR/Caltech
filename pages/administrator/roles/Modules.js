@@ -38,6 +38,7 @@ export default function Modules({ item }) {
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
 
+
   const fetchModules = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -73,7 +74,7 @@ export default function Modules({ item }) {
       <Modal open={open} onClose={handleClose}>
         <Box sx={styles} className="bg-black">
           <Grid container spacing={2}>
-            <Grid item xs={12} display="flex" justifyContent="space-between">
+            <Grid item xs={12} display="flex" justifyContent="space-between" alignItems="center">
               <Typography variant="h5" fontWeight={500}>Add Permissions</Typography>
               <Typography variant="h6" fontWeight={500}>{item.name}</Typography>
             </Grid>

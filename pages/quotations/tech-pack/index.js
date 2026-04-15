@@ -24,7 +24,6 @@ import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
 import { useRouter } from "next/router";
 import { projectStatusType } from "@/components/types/types";
-import SewingPackingPopup from "./components/SewingPackingPopup";
 
 export default function TechPackList() {
     const router = useRouter();
@@ -37,18 +36,54 @@ export default function TechPackList() {
     const [totalCount, setTotalCount] = useState(0);
     const name = localStorage.getItem("name");
     const [tabValue, setTabValue] = useState(0);
-    const [sewingPackingPopupOpen, setSewingPackingPopupOpen] = useState(false);
-    const [sewingPackingSelectedItem, setSewingPackingSelectedItem] = useState(null);
     const { data: InvoiceReportName } = GetReportSettingValueByName("ProformaInvoiceReport");
 
-    const openSewingPackingPopup = (item) => {
-        setSewingPackingSelectedItem(item);
-        setSewingPackingPopupOpen(true);
+    const openSewingPackingPrint = (item) => {
+        const params = new URLSearchParams({
+            inquiryId: String(item.inquiryId ?? ""),
+            optionId: String(item.optionId ?? ""),
+            sentQuotationId: String(item.id ?? ""),
+            startDate: String(item.startDate ?? ""),
+            workingDays: String(item.workingDays ?? ""),
+            styleName: String(item.styleName ?? ""),
+            customerName: String(item.customerName ?? ""),
+            optionName: String(item.optionName ?? ""),
+            selectedOption: String(item.selectedOption ?? ""),
+        });
+
+        window.open(`/quotations/tech-pack/sewing/packing-print?${params.toString()}`, "_blank", "noopener,noreferrer");
     };
 
-    const closeSewingPackingPopup = () => {
-        setSewingPackingPopupOpen(false);
-        setSewingPackingSelectedItem(null);
+    const openEmbSubPrint = (item) => {
+        const params = new URLSearchParams({
+            inquiryId: String(item.inquiryId ?? ""),
+            optionId: String(item.optionId ?? ""),
+            sentQuotationId: String(item.id ?? ""),
+            startDate: String(item.startDate ?? ""),
+            workingDays: String(item.workingDays ?? ""),
+            styleName: String(item.styleName ?? ""),
+            customerName: String(item.customerName ?? ""),
+            optionName: String(item.optionName ?? ""),
+            selectedOption: String(item.selectedOption ?? ""),
+        });
+
+        window.open(`/quotations/tech-pack/sewing/emb-sub-print?${params.toString()}`, "_blank", "noopener,noreferrer");
+    };
+
+    const openCuttingPrint = (item) => {
+        const params = new URLSearchParams({
+            inquiryId: String(item.inquiryId ?? ""),
+            optionId: String(item.optionId ?? ""),
+            sentQuotationId: String(item.id ?? ""),
+            startDate: String(item.startDate ?? ""),
+            workingDays: String(item.workingDays ?? ""),
+            styleName: String(item.styleName ?? ""),
+            customerName: String(item.customerName ?? ""),
+            optionName: String(item.optionName ?? ""),
+            selectedOption: String(item.selectedOption ?? ""),
+        });
+
+        window.open(`/quotations/tech-pack/sewing/cutting-print?${params.toString()}`, "_blank", "noopener,noreferrer");
     };
 
     const navigateToEdit = (inquiryId, optionId, sentQuotationId) => {
@@ -163,13 +198,15 @@ export default function TechPackList() {
                                     )}
                                     <TableCell>Status</TableCell>
                                     {tabValue === 1 && <TableCell align="center">Sewing/Packing</TableCell>}
+                                    {tabValue === 1 && <TableCell align="center">Emb/Sub</TableCell>}
+                                    {tabValue === 1 && <TableCell align="center">Cutting</TableCell>}
                                     {tabValue === 0 && <TableCell align="right">Action</TableCell>}
                                 </TableRow>
                             </TableHead>
                             <TableBody>
                                 {quotationList.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={tabValue === 0 ? 10 : 7}>
+                                        <TableCell colSpan={tabValue === 0 ? 10 : 9}>
                                             <Typography color="error">No Quotations Available</Typography>
                                         </TableCell>
                                     </TableRow>
@@ -201,7 +238,25 @@ export default function TechPackList() {
                                                 {tabValue === 1 && (
                                                     <TableCell
                                                         align="center"
-                                                        onClick={() => openSewingPackingPopup(item)}
+                                                        onClick={() => openSewingPackingPrint(item)}
+                                                        sx={{ cursor: "pointer", textDecoration: "underline", color: "primary.main" }}
+                                                    >
+                                                        Open
+                                                    </TableCell>
+                                                )}
+                                                {tabValue === 1 && (
+                                                    <TableCell
+                                                        align="center"
+                                                        onClick={() => openEmbSubPrint(item)}
+                                                        sx={{ cursor: "pointer", textDecoration: "underline", color: "primary.main" }}
+                                                    >
+                                                        Open
+                                                    </TableCell>
+                                                )}
+                                                {tabValue === 1 && (
+                                                    <TableCell
+                                                        align="center"
+                                                        onClick={() => openCuttingPrint(item)}
                                                         sx={{ cursor: "pointer", textDecoration: "underline", color: "primary.main" }}
                                                     >
                                                         Open
@@ -240,11 +295,6 @@ export default function TechPackList() {
                             </TableBody>
                         </Table>
 
-                        <SewingPackingPopup
-                            open={sewingPackingPopupOpen}
-                            onClose={closeSewingPackingPopup}
-                            item={sewingPackingSelectedItem}
-                        />
                         <Grid container justifyContent="space-between" mt={2} mb={2}>
                             <Pagination
                                 count={Math.ceil(totalCount / pageSize)}

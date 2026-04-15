@@ -28,6 +28,7 @@ import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
 import AddPOProducts from "@/components/UIElements/Modal/AddPOProducts";
 import LoadingButton from "@/components/UIElements/Buttons/LoadingButton";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
+import PurchasingOrderType from "@/components/utils/enums/PurchasingOrderType";
 
 const POEdit = () => {
   const router = useRouter();
@@ -279,6 +280,7 @@ const POEdit = () => {
       TotalAmount: grossTotal,
       TotalQty: totalQty,
       IsCredit: isCredit,
+      PurchasingOrderType: po.type ?? po.purchasingOrderType,
       GoodReceivedNoteLineDetails: selectedRows.map((row, index) => ({
         GRNHeaderID: row.grnHeaderID,
         DocumentNo: row.purchaseOrderNo,

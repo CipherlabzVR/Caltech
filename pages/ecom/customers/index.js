@@ -9,7 +9,14 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
-import { Pagination, Select, MenuItem, Typography } from "@mui/material";
+import {
+  Pagination,
+  FormControl,
+  Typography,
+  InputLabel,
+  MenuItem,
+  Select,
+} from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import { formatDate } from "@/components/utils/formatHelper";
@@ -31,13 +38,24 @@ export default function ECommerceCustomers() {
     setPageSize,
     setSearch,
     fetchData,
-  } = usePaginatedFetch("ECommerce/GetAllECommerceCustomers", "", 10, true, false);
+  } = usePaginatedFetch("ECommerce/GetAllECommerceCustomers", "", 10, false, false);
 
-  const totalPages = Math.ceil(totalCount / pageSize) || 1;
+  const handleSearchChange = (event) => {
+    setSearch(event.target.value);
+    fetchData(1, event.target.value, pageSize);
+    setPage(1);
+  };
 
-  const handlePageChange = (e, value) => {
-    setPage(value - 1);
+  const handlePageChange = (event, value) => {
+    setPage(value);
     fetchData(value, search, pageSize);
+  };
+
+  const handlePageSizeChange = (event) => {
+    const size = event.target.value;
+    setPageSize(size);
+    setPage(1);
+    fetchData(1, search, size);
   };
 
   if (!navigate) {
@@ -66,7 +84,7 @@ export default function ECommerceCustomers() {
               placeholder="Search by name, email or mobile.."
               inputProps={{ "aria-label": "search" }}
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={handleSearchChange}
             />
           </Search>
         </Grid>
@@ -99,7 +117,7 @@ export default function ECommerceCustomers() {
                       sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                     >
                       <TableCell component="th" scope="row">
-                        {(page || 0) * pageSize + index + 1}
+                        {(page - 1) * pageSize + index + 1}
                       </TableCell>
                       <TableCell>{item.firstName}</TableCell>
                       <TableCell>{item.lastName}</TableCell>
@@ -113,35 +131,26 @@ export default function ECommerceCustomers() {
                 )}
               </TableBody>
             </Table>
-            <Grid container p={2} alignItems="center" justifyContent="space-between">
-              <Grid item display="flex" alignItems="center" gap={1}>
-                <Typography variant="body2">Rows per page:</Typography>
+            <Grid container justifyContent="space-between" mt={2} mb={2}>
+              <Pagination
+                count={totalCount ? Math.ceil(totalCount / pageSize) : 1}
+                page={page}
+                onChange={handlePageChange}
+                color="primary"
+                shape="rounded"
+              />
+              <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+                <InputLabel>Page Size</InputLabel>
                 <Select
-                  size="small"
                   value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(e.target.value);
-                    setPage(0);
-                    fetchData(1, search, e.target.value);
-                  }}
+                  label="Page Size"
+                  onChange={handlePageSizeChange}
                 >
                   <MenuItem value={5}>5</MenuItem>
                   <MenuItem value={10}>10</MenuItem>
                   <MenuItem value={25}>25</MenuItem>
                 </Select>
-                <Typography variant="body2" ml={2}>
-                  Total: {totalCount}
-                </Typography>
-              </Grid>
-              <Grid item>
-                <Pagination
-                  count={totalPages}
-                  page={(page || 0) + 1}
-                  onChange={handlePageChange}
-                  color="primary"
-                  shape="rounded"
-                />
-              </Grid>
+              </FormControl>
             </Grid>
           </TableContainer>
         </Grid>

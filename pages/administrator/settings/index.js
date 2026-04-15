@@ -3,6 +3,12 @@ import Grid from "@mui/material/Grid";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import {
+  Pagination,
+  FormControl,
+  Typography,
+  InputLabel,
+  MenuItem,
+  Select,
   FormControlLabel,
   Paper,
   Switch,
@@ -11,52 +17,47 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TablePagination,
   TableRow,
-  Typography,
 } from "@mui/material";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import EditSetting from "pages/administrator/settings/EditSetting";
-import BASE_URL from "Base/api";
 import { toast, ToastContainer } from "react-toastify";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
+import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
+import BASE_URL from "Base/api";
 
 export default function Settings() {
   const cId = sessionStorage.getItem("category")
     const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
-  const [settings, setSettings] = useState([]);
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [searchTerm, setSearchTerm] = useState("");
+  const {
+    data: settings,
+    totalCount,
+    page,
+    pageSize,
+    search,
+    setPage,
+    setPageSize,
+    setSearch,
+    fetchData: fetchSettings,
+  } = usePaginatedFetch("AppSetting/GetAllAppSettingsPage", "", 10, false, false);
 
-  const fetchSettings = async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/AppSetting/GetAllAppSettings`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch usere");
-      }
-
-      const data = await response.json();
-      setSettings(data);
-    } catch (error) {
-      console.error("Error fetching users:", error);
-    }
+  const handleSearchChange = (event) => {
+    setSearch(event.target.value);
+    fetchSettings(1, event.target.value, pageSize);
+    setPage(1);
   };
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
+  const handleChangePage = (event, value) => {
+    setPage(value);
+    fetchSettings(value, search, pageSize);
+  };
 
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
+  const handleChangeRowsPerPage = (event) => {
+    const size = event.target.value;
+    setPageSize(size);
+    setPage(1);
+    fetchSettings(1, search, size);
   };
 
   const handleChangeSwitch = (value, item) => {
@@ -91,24 +92,6 @@ export default function Settings() {
       });
   }
 
-  const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
-  };
-
-  const handleSearchChange = (event) => {
-    setSearchTerm(event.target.value);
-  };
-
-  const filteredData = settings.filter((item) =>
-    item.settingName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const paginatedData = filteredData.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
-  );
-
   if (!navigate) {
       return <AccessDenied />;
     }
@@ -135,7 +118,7 @@ export default function Settings() {
             <StyledInputBase
               placeholder="Search here.."
               inputProps={{ "aria-label": "search" }}
-              value={searchTerm}
+              value={search}
               onChange={handleSearchChange}
             />
           </Search>
@@ -156,7 +139,7 @@ export default function Settings() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {paginatedData.length === 0 ? (
+                {!settings || settings.length === 0 ? (
                   <TableRow
                     sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                   >
@@ -167,13 +150,13 @@ export default function Settings() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedData.map((setting, index) => (
+                  settings.map((setting, index) => (
                     <TableRow
                       key={index}
                       sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                     >
                       <TableCell component="th" scope="row">
-                        {page * rowsPerPage + index + 1}
+                        {(page - 1) * pageSize + index + 1}
                       </TableCell>
                       <TableCell>{setting.settingName}</TableCell>
                       <TableCell>{setting.value}</TableCell>
@@ -201,15 +184,27 @@ export default function Settings() {
                 )}
               </TableBody>
             </Table>
-            <TablePagination
-              rowsPerPageOptions={[5, 10, 25]}
-              component="div"
-              count={filteredData.length}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-            />
+            <Grid container justifyContent="space-between" mt={2} mb={2}>
+              <Pagination
+                count={totalCount ? Math.ceil(totalCount / pageSize) : 1}
+                page={page}
+                onChange={handleChangePage}
+                color="primary"
+                shape="rounded"
+              />
+              <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+                <InputLabel>Page Size</InputLabel>
+                <Select
+                  value={pageSize}
+                  label="Page Size"
+                  onChange={handleChangeRowsPerPage}
+                >
+                  <MenuItem value={5}>5</MenuItem>
+                  <MenuItem value={10}>10</MenuItem>
+                  <MenuItem value={25}>25</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
           </TableContainer>
         </Grid>
       </Grid>

@@ -11,15 +11,18 @@ import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
 import {
   Pagination,
-  Select,
-  MenuItem,
+  FormControl,
   Typography,
+  InputLabel,
+  MenuItem,
+  Select,
   Avatar,
 } from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import { formatDate } from "@/components/utils/formatHelper";
+import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import BASE_URL from "Base/api";
@@ -31,41 +34,35 @@ export default function BlogPosts() {
   const { navigate, create, update, remove } = IsPermissionEnabled(cId);
   const controller = "ECommerce/DeleteBlogPost";
 
-  const [data, setData] = useState([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
-  const [search, setSearch] = useState("");
+  const {
+    data,
+    totalCount,
+    page,
+    pageSize,
+    search,
+    setPage,
+    setPageSize,
+    setSearch,
+    fetchData,
+  } = usePaginatedFetch("ECommerce/GetAllBlogPosts", "", 10, false, false);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const skip = page * pageSize;
-      const searchParam = search || "null";
-      const response = await fetch(
-        `${BASE_URL}/ECommerce/GetAllBlogPosts?SkipCount=${skip}&MaxResultCount=${pageSize}&Search=${searchParam}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      const result = await response.json();
-      if (result.statusCode === 200) {
-        setData(result.result?.items || []);
-        setTotalCount(result.result?.totalCount || 0);
-      }
-    } catch (error) {
-      console.error("Error fetching blog posts:", error);
-    }
-  }, [page, pageSize, search]);
+  const handleSearchChange = (event) => {
+    setSearch(event.target.value);
+    fetchData(1, event.target.value, pageSize);
+    setPage(1);
+  };
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const handlePageChange = (event, value) => {
+    setPage(value);
+    fetchData(value, search, pageSize);
+  };
 
-  const totalPages = Math.ceil(totalCount / pageSize);
+  const handlePageSizeChange = (event) => {
+    const size = event.target.value;
+    setPageSize(size);
+    setPage(1);
+    fetchData(1, search, size);
+  };
 
   if (!navigate) {
     return <AccessDenied />;
@@ -98,10 +95,7 @@ export default function BlogPosts() {
               placeholder="Search by title or excerpt.."
               inputProps={{ "aria-label": "search" }}
               value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(0);
-              }}
+              onChange={handleSearchChange}
             />
           </Search>
         </Grid>
@@ -151,9 +145,9 @@ export default function BlogPosts() {
                         "&:last-child td, &:last-child th": { border: 0 },
                       }}
                     >
-                      <TableCell component="th" scope="row">
-                        {page * pageSize + index + 1}
-                      </TableCell>
+                        <TableCell component="th" scope="row">
+                          {(page - 1) * pageSize + index + 1}
+                        </TableCell>
                       <TableCell component="th" scope="row">
                         {item.title}
                       </TableCell>
@@ -219,39 +213,26 @@ export default function BlogPosts() {
                 )}
               </TableBody>
             </Table>
-            <Grid
-              container
-              p={2}
-              alignItems="center"
-              justifyContent="space-between"
-            >
-              <Grid item display="flex" alignItems="center" gap={1}>
-                <Typography variant="body2">Rows per page:</Typography>
+            <Grid container justifyContent="space-between" mt={2} mb={2}>
+              <Pagination
+                count={totalCount ? Math.ceil(totalCount / pageSize) : 1}
+                page={page}
+                onChange={handlePageChange}
+                color="primary"
+                shape="rounded"
+              />
+              <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+                <InputLabel>Page Size</InputLabel>
                 <Select
-                  size="small"
                   value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(e.target.value);
-                    setPage(0);
-                  }}
+                  label="Page Size"
+                  onChange={handlePageSizeChange}
                 >
                   <MenuItem value={5}>5</MenuItem>
                   <MenuItem value={10}>10</MenuItem>
                   <MenuItem value={25}>25</MenuItem>
                 </Select>
-                <Typography variant="body2" ml={2}>
-                  Total: {totalCount}
-                </Typography>
-              </Grid>
-              <Grid item>
-                <Pagination
-                  count={totalPages}
-                  page={page + 1}
-                  onChange={(e, value) => setPage(value - 1)}
-                  color="primary"
-                  shape="rounded"
-                />
-              </Grid>
+              </FormControl>
             </Grid>
           </TableContainer>
         </Grid>

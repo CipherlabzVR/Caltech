@@ -3,15 +3,19 @@ import Grid from "@mui/material/Grid";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import {
+  Pagination,
+  FormControl,
+  Typography,
+  InputLabel,
+  MenuItem,
+  Select,
   Paper,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
-  TablePagination,
   TableRow,
-  Typography,
 } from "@mui/material";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import BASE_URL from "Base/api";
@@ -25,44 +29,28 @@ import { getMonth } from "@/components/types/types";
 import { formatDate } from "@/components/utils/formatHelper";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
+import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 
 export default function FiscalPeriod() {
   const cId = sessionStorage.getItem("category")
   const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
-  const [periods, setPeriods] = useState([]);
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [searchTerm, setSearchTerm] = useState("");
+  const {
+    data: periods,
+    totalCount,
+    page,
+    pageSize,
+    search,
+    setPage,
+    setPageSize,
+    setSearch,
+    fetchData: fetchFiscalPeriods,
+  } = usePaginatedFetch("Fiscal/GetAllFiscalPeriodsPage", "", 10, false, false);
+
   const controller = "Fiscal/DeleteFiscalPeriod";
   const { data: companyList } = GetAllCompanies();
   const { data: warehouseList } = GetAllWarehouse();
   const [companyInfo, setCompanyInfo] = useState({});
   const [warehouseInfo, setWarehouseInfo] = useState({});
-
-  const fetchFiscalPeriods = async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/Fiscal/GetAllFiscalPeriods`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch usere");
-      }
-
-      const data = await response.json();
-      setPeriods(data.result);
-    } catch (error) {
-      console.error("Error fetching users:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetchFiscalPeriods();
-  }, []);
 
   useEffect(() => {
     if (companyList) {
@@ -81,27 +69,25 @@ export default function FiscalPeriod() {
     }
   }, [companyList, warehouseList]);
 
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
+  const handleSearchChange = (event) => {
+    setSearch(event.target.value);
+    fetchFiscalPeriods(1, event.target.value, pageSize);
+    setPage(1);
+  };
+
+  const handleChangePage = (event, value) => {
+    setPage(value);
+    fetchFiscalPeriods(value, search, pageSize);
   };
 
   const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
+    const size = event.target.value;
+    setPageSize(size);
+    setPage(1);
+    fetchFiscalPeriods(1, search, size);
   };
 
-  const handleSearchChange = (event) => {
-    setSearchTerm(event.target.value);
-  };
 
-  const filteredData = periods.filter((item) =>
-    item.displayTitle.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const paginatedData = filteredData.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
-  );
 
   if (!navigate) {
     return <AccessDenied />;
@@ -129,7 +115,7 @@ export default function FiscalPeriod() {
             <StyledInputBase
               placeholder="Search here.."
               inputProps={{ "aria-label": "search" }}
-              value={searchTerm}
+              value={search}
               onChange={handleSearchChange}
             />
           </Search>
@@ -166,7 +152,7 @@ export default function FiscalPeriod() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {paginatedData.length === 0 ? (
+                {!periods || periods.length === 0 ? (
                   <TableRow
                     sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                   >
@@ -177,13 +163,13 @@ export default function FiscalPeriod() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedData.map((period, index) => (
+                  periods.map((period, index) => (
                     <TableRow
                       key={index}
                       sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                     >
                       <TableCell component="th" scope="row">
-                        {index + 1}
+                        {(page - 1) * pageSize + index + 1}
                       </TableCell>
                       <TableCell>{period.fiscalYear}</TableCell>
                       <TableCell>{getMonth(period.fiscalMonth)}</TableCell>
@@ -225,15 +211,27 @@ export default function FiscalPeriod() {
                 )}
               </TableBody>
             </Table>
-            <TablePagination
-              rowsPerPageOptions={[5, 10, 25]}
-              component="div"
-              count={paginatedData.length}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-            />
+            <Grid container justifyContent="space-between" mt={2} mb={2}>
+              <Pagination
+                count={totalCount ? Math.ceil(totalCount / pageSize) : 1}
+                page={page}
+                onChange={handleChangePage}
+                color="primary"
+                shape="rounded"
+              />
+              <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+                <InputLabel>Page Size</InputLabel>
+                <Select
+                  value={pageSize}
+                  label="Page Size"
+                  onChange={handleChangeRowsPerPage}
+                >
+                  <MenuItem value={5}>5</MenuItem>
+                  <MenuItem value={10}>10</MenuItem>
+                  <MenuItem value={25}>25</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
           </TableContainer>
         </Grid>
       </Grid>

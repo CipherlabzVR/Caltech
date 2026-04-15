@@ -20,6 +20,7 @@ import TextField from "@mui/material/TextField";
 import { Field, Form, Formik } from "formik";
 import * as Yup from "yup";
 import BASE_URL from "Base/api";
+import { useRouter } from "next/router";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
@@ -688,7 +689,19 @@ const validationSchema = Yup.object().shape({
   UOM: Yup.number().required("Unit of Measure is required"),
 });
 
-export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarmentSystem, chartOfAccounts, barcodeEnabled, IsEcommerceWebSiteAvailable }) {
+export default function EditItems({
+  fetchItems,
+  item,
+  isPOSSystem,
+  uoms,
+  isGarmentSystem,
+  chartOfAccounts,
+  barcodeEnabled,
+  IsEcommerceWebSiteAvailable,
+  onDuplicateRequest,
+  approve1 = false,
+}) {
+  const router = useRouter();
   const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
   const [open, setOpen] = React.useState(false);
   const [subImages, setSubImages] = useState([]); // { id, preview|imgUrl, file?, price, description, isExisting }
@@ -728,6 +741,18 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
     });
     setSubImageIdsToRemove([]);
     setOpen(false);
+  };
+  const handleDuplicateItem = () => {
+    localStorage.setItem("duplicateItemId", String(item.id));
+    handleClose();
+    if (onDuplicateRequest) {
+      onDuplicateRequest();
+    } else {
+      router.push({
+        pathname: "/master/items/",
+        query: { duplicate: "1", t: String(Date.now()) },
+      });
+    }
   };
   const [selectedCat, setSelectedCat] = useState();
   const [categoryList, setCategoryList] = useState([]);
@@ -1006,7 +1031,26 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
       return;
     }
 
-    
+    const wp =
+      values.WholesalePrice !== null && values.WholesalePrice !== ""
+        ? Number(values.WholesalePrice)
+        : NaN;
+    const wq =
+      values.WholesaleMinimumQuantity !== null && values.WholesaleMinimumQuantity !== ""
+        ? Number(values.WholesaleMinimumQuantity)
+        : NaN;
+    if (Number.isFinite(wp) && wp > 0) {
+      if (!Number.isFinite(wq) || wq <= 0) {
+        toast.warning("Enter wholesale minimum quantity when wholesale price is set.");
+        return;
+      }
+    }
+    if (Number.isFinite(wq) && wq > 0) {
+      if (!Number.isFinite(wp) || wp <= 0) {
+        toast.warning("Enter wholesale price when wholesale minimum quantity is set.");
+        return;
+      }
+    }
 
     const formData = new FormData();
 
@@ -1014,6 +1058,16 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
     formData.append("Name", values.Name);
     formData.append("Code", values.Code);
     formData.append("AveragePrice", values.AveragePrice);
+    formData.append(
+      "WholesalePrice",
+      values.WholesalePrice !== null && values.WholesalePrice !== "" ? values.WholesalePrice : "",
+    );
+    formData.append(
+      "WholesaleMinimumQuantity",
+      values.WholesaleMinimumQuantity !== null && values.WholesaleMinimumQuantity !== ""
+        ? values.WholesaleMinimumQuantity
+        : "",
+    );
     formData.append("ShipmentTarget", values.ShipmentTarget ? values.ShipmentTarget : "");
     formData.append("ReorderLevel", values.ReorderLevel ?values.ReorderLevel : "");
     formData.append("CategoryId", values.CategoryId);
@@ -1115,6 +1169,8 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
               Name: item.name || "",
               Code: item.code || "",
               AveragePrice: item.averagePrice || null,
+              WholesalePrice: item.wholesalePrice ?? null,
+              WholesaleMinimumQuantity: item.wholesaleMinimumQuantity ?? null,
               CategoryId: item.categoryId || "",
               SubCategoryId: item.subCategoryId || "",
               ShipmentTarget: item.shipmentTarget || null,
@@ -1144,15 +1200,33 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
               <Form>
                 <Grid container>
                   <Grid item xs={12} mb={2}>
-                    <Typography
-                      variant="h5"
+                    <Box
                       sx={{
-                        fontWeight: "500",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
                         mb: "5px",
                       }}
                     >
-                      Edit Item
-                    </Typography>
+                      <Typography
+                        variant="h5"
+                        sx={{
+                          fontWeight: "500",
+                        }}
+                      >
+                        Edit Item
+                      </Typography>
+                      {approve1 ? (
+                        <Button
+                          type="button"
+                          variant="contained"
+                          size="small"
+                          onClick={handleDuplicateItem}
+                        >
+                          Duplicate
+                        </Button>
+                      ) : null}
+                    </Box>
                   </Grid>
                   <Grid item xs={12} mb={2}>
                     <Tabs value={tabValue} onChange={handleTabChange} aria-label="item tabs">
@@ -1374,6 +1448,52 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
                               fullWidth
                               name="AveragePrice"
                               size="small"
+                            />
+                          </Grid>
+                          <Grid item xs={12} mt={1} lg={6} p={1}>
+                            <Typography
+                              sx={{
+                                fontWeight: "500",
+                                fontSize: "14px",
+                                mb: "5px",
+                              }}
+                            >
+                              Wholesale price
+                            </Typography>
+                            <Field
+                              as={TextField}
+                              fullWidth
+                              name="WholesalePrice"
+                              size="small"
+                              type="number"
+                              inputProps={{ min: 0, step: "any" }}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setFieldValue("WholesalePrice", value === "" ? null : value);
+                              }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} mt={1} lg={6} p={1}>
+                            <Typography
+                              sx={{
+                                fontWeight: "500",
+                                fontSize: "14px",
+                                mb: "5px",
+                              }}
+                            >
+                              Wholesale minimum quantity
+                            </Typography>
+                            <Field
+                              as={TextField}
+                              fullWidth
+                              name="WholesaleMinimumQuantity"
+                              size="small"
+                              type="number"
+                              inputProps={{ min: 0, step: "any" }}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setFieldValue("WholesaleMinimumQuantity", value === "" ? null : value);
+                              }}
                             />
                           </Grid>
                         </>

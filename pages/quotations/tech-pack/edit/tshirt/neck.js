@@ -69,6 +69,12 @@ export default function TechPackTshirtNeck() {
 
   const fetchNeckData = async (ongoingId, optId, windowType) => {
     try {
+      const mapNeckTypeToValue = (type) => {
+        const n = Number(type);
+        return n === 1 ? "POLO" : n === 2 ? "Crew Neck" : n === 3 ? "V Neck" : "";
+      };
+      let resolvedNeckValue = "";
+
       // Fetch neck type
       const neckTypeRes = await fetch(
         `${BASE_URL}/Ongoing/GetOngoingNeckType?ongoingInquiryId=${ongoingId}&optionId=${optId}&windowType=${windowType}`,
@@ -84,10 +90,95 @@ export default function TechPackTshirtNeck() {
       if (neckTypeRes.ok) {
         const data = await neckTypeRes.json();
         if (data.result != null) {
-          const type = data.result.necKTypes;
-          const neckValue = type === 1 ? "POLO" : type === 2 ? "Crew Neck" : type === 3 ? "V Neck" : "";
+          const type =
+            Array.isArray(data.result) && data.result.length > 0
+              ? Number(data.result[0]?.necKTypes)
+              : Number(data.result?.necKTypes);
+          const neckValue = mapNeckTypeToValue(type);
           setSelectedNeck(neckValue);
           setNeckSelected(neckValue);
+          resolvedNeckValue = neckValue;
+        }
+      }
+
+      // Fallback for old/inconsistent records:
+      // detect existing type via GetAllOngoingNeckTypes if GetOngoingNeckType is empty.
+      if (!resolvedNeckValue) {
+        const [poloRes, crewRes, vRes] = await Promise.all([
+          fetch(
+            `${BASE_URL}/Ongoing/GetAllOngoingNeckTypes?ongoingInquiryId=${ongoingId}&optionId=${optId}&windowType=${windowType}&necKTypes=1`,
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+                "Content-Type": "application/json",
+              },
+            }
+          ),
+          fetch(
+            `${BASE_URL}/Ongoing/GetAllOngoingNeckTypes?ongoingInquiryId=${ongoingId}&optionId=${optId}&windowType=${windowType}&necKTypes=2`,
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+                "Content-Type": "application/json",
+              },
+            }
+          ),
+          fetch(
+            `${BASE_URL}/Ongoing/GetAllOngoingNeckTypes?ongoingInquiryId=${ongoingId}&optionId=${optId}&windowType=${windowType}&necKTypes=3`,
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+                "Content-Type": "application/json",
+              },
+            }
+          ),
+        ]);
+
+        const [poloJson, crewJson, vJson] = await Promise.all([
+          poloRes.ok ? poloRes.json() : Promise.resolve({}),
+          crewRes.ok ? crewRes.json() : Promise.resolve({}),
+          vRes.ok ? vRes.json() : Promise.resolve({}),
+        ]);
+
+        const hasPolo = Array.isArray(poloJson?.result) && poloJson.result.length > 0;
+        const hasCrew = Array.isArray(crewJson?.result) && crewJson.result.length > 0;
+        const hasV = Array.isArray(vJson?.result) && vJson.result.length > 0;
+
+        const fallbackType = hasPolo ? 1 : hasCrew ? 2 : hasV ? 3 : 0;
+        const neckValue = mapNeckTypeToValue(fallbackType);
+        if (neckValue) {
+          setSelectedNeck(neckValue);
+          setNeckSelected(neckValue);
+          resolvedNeckValue = neckValue;
+        }
+      }
+
+      // Final fallback: read from InquiryNeck source (original inquiry data).
+      if (!resolvedNeckValue && inquiryId && optId) {
+        const inquiryNeckRes = await fetch(
+          `${BASE_URL}/InquiryNeck/GetNeckType?InquiryID=${inquiryId}&OptionId=${optId}&WindowType=${windowType}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (inquiryNeckRes.ok) {
+          const inquiryNeckJson = await inquiryNeckRes.json();
+          if (inquiryNeckJson?.result?.necKTypes != null) {
+            const neckValue = mapNeckTypeToValue(inquiryNeckJson.result.necKTypes);
+            if (neckValue) {
+              setSelectedNeck(neckValue);
+              setNeckSelected(neckValue);
+              resolvedNeckValue = neckValue;
+            }
+          }
         }
       }
 

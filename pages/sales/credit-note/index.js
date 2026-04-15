@@ -1,6 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Grid from "@mui/material/Grid";
 import {
+  Pagination,
+  FormControl,
+  Typography,
+  InputLabel,
+  MenuItem,
+  Select,
   Button,
   Paper,
   Table,
@@ -9,8 +15,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Typography,
-  TablePagination,
   Tooltip,
   IconButton,
 } from "@mui/material";
@@ -18,7 +22,7 @@ import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import { toast, ToastContainer } from "react-toastify";
 import { useRouter } from "next/router";
-import useApi from "@/components/utils/useApi";
+import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import CreditNoteReport from "@/components/UIElements/Modal/Reports/CreditNote";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import useShiftCheck from "@/components/utils/useShiftCheck";
@@ -33,14 +37,22 @@ import GetReportSettingValueByName from "@/components/utils/GetReportSettingValu
 const CNN = () => {
   const cId = sessionStorage.getItem("category")
   const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
-  const [invoice, setInvoice] = useState([]);
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [searchTerm, setSearchTerm] = useState("");
   const router = useRouter();
   const { result: shiftResult, message: shiftMessage } = useShiftCheck();
-  const name = localStorage.getItem("name");
+  const name = typeof window !== 'undefined' ? localStorage.getItem("name") : "";
   const { data: ReportName } = GetReportSettingValueByName("CustomerCreditDebitNote");
+
+  const {
+    data: invoice,
+    totalCount,
+    page,
+    pageSize,
+    search,
+    setPage,
+    setPageSize,
+    setSearch,
+    fetchData: fetchCCNList,
+  } = usePaginatedFetch("CreditNote/GetAllCreditNotePage", "", 10, false, false);
 
   const navigateToCreate = () => {
     if (shiftResult) {
@@ -52,41 +64,23 @@ const CNN = () => {
     });
   };
 
-  const {
-    data: ccnList,
-    loading: Loading,
-    error: Error,
-  } = useApi("/CreditNote/GetAllCreditNote");
+  const handleSearchChange = (event) => {
+    setSearch(event.target.value);
+    fetchCCNList(1, event.target.value, pageSize);
+    setPage(1);
+  };
 
-  useEffect(() => {
-    if (ccnList) {
-      setInvoice(ccnList);
-    }
-  }, [ccnList]);
-
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
+  const handleChangePage = (event, value) => {
+    setPage(value);
+    fetchCCNList(value, search, pageSize);
   };
 
   const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
+    const size = event.target.value;
+    setPageSize(size);
+    setPage(1);
+    fetchCCNList(1, search, size);
   };
-
-  const handleSearchChange = (event) => {
-    setSearchTerm(event.target.value);
-  };
-
-  const filteredData = invoice.filter(
-    (item) =>
-      (item.customerName && item.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.documentNo && item.documentNo.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
-
-  const paginatedData = filteredData.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
-  );
 
   if (!navigate) {
     return <AccessDenied />;
@@ -114,7 +108,7 @@ const CNN = () => {
             <StyledInputBase
               placeholder="Search here.."
               inputProps={{ "aria-label": "search" }}
-              value={searchTerm}
+              value={search}
               onChange={handleSearchChange}
             />
           </Search>
@@ -150,7 +144,7 @@ const CNN = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {paginatedData.length === 0 ? (
+                {!invoice || invoice.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} align="center">
                       <Typography color="error">
@@ -159,12 +153,12 @@ const CNN = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedData.map((item, index) => {
+                  invoice.map((item, index) => {
                     const sign = item.noteType === "Credit" ? "+" : "-";
                     const formattedAmount = formatCurrency(item.amount);
                     return (
                     <TableRow key={item.id}>
-                      <TableCell>{page * rowsPerPage + index + 1}</TableCell>
+                      <TableCell>{(page - 1) * pageSize + index + 1}</TableCell>
                       <TableCell>{item.documentNo}</TableCell>
                       <TableCell>{item.noteType}</TableCell>
                       <TableCell>{item.customerName}</TableCell>
@@ -193,15 +187,27 @@ const CNN = () => {
                 )}
               </TableBody>
             </Table>
-            <TablePagination
-              rowsPerPageOptions={[5, 10, 25]}
-              component="div"
-              count={filteredData.length}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-            />
+            <Grid container justifyContent="space-between" mt={2} mb={2}>
+              <Pagination
+                count={totalCount ? Math.ceil(totalCount / pageSize) : 1}
+                page={page}
+                onChange={handleChangePage}
+                color="primary"
+                shape="rounded"
+              />
+              <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+                <InputLabel>Page Size</InputLabel>
+                <Select
+                  value={pageSize}
+                  label="Page Size"
+                  onChange={handleChangeRowsPerPage}
+                >
+                  <MenuItem value={5}>5</MenuItem>
+                  <MenuItem value={10}>10</MenuItem>
+                  <MenuItem value={25}>25</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
           </TableContainer>
         </Grid>
       </Grid>

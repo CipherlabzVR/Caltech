@@ -99,6 +99,7 @@ const Sidebar = ({ toogleActive, onGrantedCheck, hoverMode = false }) => {
           (p) => p.name === "Navigation"
         );
         return {
+          ModuleId: item.moduleId,
           CategoryId: item.id,
           IsAvailable: navPermission ? navPermission.isActive : false,
         };
@@ -112,7 +113,6 @@ const Sidebar = ({ toogleActive, onGrantedCheck, hoverMode = false }) => {
 
         if (updatedMenu.subNav) {
           updatedMenu.subNav = updatedMenu.subNav.map((sub) => {
-            // Check user type restriction (e.g., only HelpDeskSupport can see self dashboard)
             if (sub.userTypeRestriction) {
               if (!isHelpDeskSupport) {
                 return {
@@ -120,9 +120,8 @@ const Sidebar = ({ toogleActive, onGrantedCheck, hoverMode = false }) => {
                   isAvailable: false,
                 };
               }
-              // For HelpDeskSupport users, still check permissions
               const matched = transformed.find(
-                (t) => t.CategoryId === sub.categoryId
+                (t) => t.ModuleId === updatedMenu.ModuleId && t.CategoryId === sub.categoryId
               );
               return {
                 ...sub,
@@ -130,9 +129,8 @@ const Sidebar = ({ toogleActive, onGrantedCheck, hoverMode = false }) => {
               };
             }
 
-            // For items without userTypeRestriction, check permissions normally
             const matched = transformed.find(
-              (t) => t.CategoryId === sub.categoryId
+              (t) => t.ModuleId === updatedMenu.ModuleId && t.CategoryId === sub.categoryId
             );
             return {
               ...sub,

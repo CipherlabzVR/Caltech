@@ -7,7 +7,16 @@ import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import BASE_URL from "Base/api";
 import PromotionFormFields from "./PromotionFormFields";
-import { buildConfigJson } from "@/components/eCommerce/promotions/promotionConfig";
+import {
+  buildPromotionCategoryLinesPayload,
+  buildPromotionProductItemLinesPayload,
+  buildPromotionTotalAmountLinesPayload,
+  getValidCategoryDiscountRows,
+  getValidProductItemDiscountRows,
+  getValidTotalAmountRows,
+  isPromotionApiSuccess,
+  validateProductItemDiscountForm,
+} from "@/components/eCommerce/promotions/promotionConfig";
 
 const style = {
   position: "absolute",
@@ -25,51 +34,207 @@ const style = {
 const validationSchema = Yup.object().shape({
   Name: Yup.string().required("Name is required"),
   PromotionCategory: Yup.string().required("Category is required"),
-  PromotionType: Yup.string().required("Type is required"),
+  PromotionType: Yup.string().when("PromotionCategory", {
+    is: (cat) => cat === "ProductBased" || cat === "TotalAmountBased",
+    then: (schema) => schema.notRequired(),
+    otherwise: (schema) => schema.required("Type is required"),
+  }),
 });
+
+function buildBasePayload(values) {
+  const isTa = values.PromotionCategory === "TotalAmountBased";
+  const couponOn = isTa && values.IsCouponAvailable;
+  const cat = String(values.PromotionCategory || "").trim();
+  const noStandaloneCoupon =
+    !cat ||
+    isTa ||
+    values.PromotionCategory === "ProductBased" ||
+    values.PromotionCategory === "CategoryBased";
+  return {
+    name: values.Name,
+    description: values.Description || null,
+    promotionCategory: values.PromotionCategory,
+    promotionType: values.PromotionType,
+    couponCode: couponOn
+      ? (values.CouponCode || "").trim() || null
+      : noStandaloneCoupon
+        ? null
+        : values.CouponCode || null,
+    isCouponAvailable: !!couponOn,
+    couponDiscountType: couponOn ? Number(values.CouponDiscountType) : null,
+    couponDiscountValue: couponOn && values.CouponDiscountValue !== "" && values.CouponDiscountValue != null
+      ? Number(values.CouponDiscountValue)
+      : couponOn
+        ? 0
+        : null,
+    maxBillAmount: couponOn && values.MaxBillAmount !== "" && values.MaxBillAmount != null
+      ? Number(values.MaxBillAmount)
+      : null,
+    isOneTimeUse: couponOn && !!values.IsOneTimeUse,
+    startDate: values.StartDate || null,
+    endDate: values.EndDate || null,
+    isActive: values.IsActive,
+  };
+}
 
 export default function AddPromotion({ fetchItems }) {
   const [open, setOpen] = useState(false);
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
 
-  const handleSubmit = (values, { resetForm }) => {
-    const configJson = buildConfigJson(values.PromotionType, values.ConfigValues);
-    const payload = {
-      Name: values.Name,
-      Description: values.Description || null,
-      PromotionCategory: values.PromotionCategory,
-      PromotionType: values.PromotionType,
-      CouponCode: values.CouponCode || null,
-      StartDate: values.StartDate || null,
-      EndDate: values.EndDate || null,
-      IsActive: values.IsActive,
-      ConfigJson: configJson != null ? JSON.stringify(configJson) : null,
-    };
-
+  const handleSubmit = async (values, { resetForm, setSubmitting }) => {
+    setSubmitting(true);
     const token = localStorage.getItem("token");
-    fetch(`${BASE_URL}/ECommerce/CreatePromotion`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.statusCode == 200) {
-          toast.success(data.message);
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+    try {
+      if (values.PromotionType === "CategoryDiscount") {
+        const rows = getValidCategoryDiscountRows(values.ConfigValues);
+        if (rows.length === 0) {
+          toast.error("Select at least one category");
+          return;
+        }
+        const payload = {
+          ...buildBasePayload(values),
+          promotionCategoryLines: buildPromotionCategoryLinesPayload(rows),
+        };
+        const response = await fetch(`${BASE_URL}/ECommerce/CreatePromotion`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+          headers,
+        });
+        const data = await response.json();
+        if (isPromotionApiSuccess(data)) {
+          toast.success(data.message || "Promotion created successfully.");
           resetForm();
           setOpen(false);
           fetchItems();
         } else {
           toast.error(data.message || "Failed to create promotion");
         }
-      })
-      .catch((error) => {
-        toast.error(error.message || "Request failed");
+        return;
+      }
+
+      if (values.PromotionType === "ProductItemDiscount") {
+        const check = validateProductItemDiscountForm(values.ConfigValues);
+        if (!check.ok) {
+          toast.error(check.message);
+          return;
+        }
+        const prodRows = getValidProductItemDiscountRows(values.ConfigValues);
+        if (prodRows.length === 0) {
+          toast.error("Select an item");
+          return;
+        }
+        const payload = {
+          ...buildBasePayload(values),
+          promotionCategoryLines: buildPromotionProductItemLinesPayload(prodRows),
+        };
+        const response = await fetch(`${BASE_URL}/ECommerce/CreatePromotion`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+          headers,
+        });
+        const data = await response.json();
+        if (isPromotionApiSuccess(data)) {
+          toast.success(data.message || "Promotion created successfully.");
+          resetForm();
+          setOpen(false);
+          fetchItems();
+        } else {
+          toast.error(data.message || "Failed to create promotion");
+        }
+        return;
+      }
+
+      if (values.PromotionType === "TotalAmountDiscount") {
+        if (values.IsCouponAvailable) {
+          if (!String(values.CouponCode || "").trim()) {
+            toast.error("Enter a coupon code when coupon is enabled.");
+            return;
+          }
+          const cv = Number(values.CouponDiscountValue);
+          if (!Number.isFinite(cv) || cv < 0) {
+            toast.error("Enter a valid coupon discount value.");
+            return;
+          }
+          if (Number(values.CouponDiscountType) === 2 && cv > 100) {
+            toast.error("Coupon percentage cannot exceed 100.");
+            return;
+          }
+          const payload = {
+            ...buildBasePayload(values),
+            promotionCategoryLines: null,
+            promotionTotalAmountLines: null,
+          };
+          const response = await fetch(`${BASE_URL}/ECommerce/CreatePromotion`, {
+            method: "POST",
+            body: JSON.stringify(payload),
+            headers,
+          });
+          const data = await response.json();
+          if (isPromotionApiSuccess(data)) {
+            toast.success(data.message || "Promotion created successfully.");
+            resetForm();
+            setOpen(false);
+            fetchItems();
+          } else {
+            toast.error(data.message || "Failed to create promotion");
+          }
+          return;
+        }
+        const rows = getValidTotalAmountRows(values.PromotionTotalAmountLines);
+        if (rows.length === 0) {
+          toast.error("Add at least one tier with a positive max bill amount and discount.");
+          return;
+        }
+        const payload = {
+          ...buildBasePayload(values),
+          promotionCategoryLines: null,
+          promotionTotalAmountLines: buildPromotionTotalAmountLinesPayload(rows),
+        };
+        const response = await fetch(`${BASE_URL}/ECommerce/CreatePromotion`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+          headers,
+        });
+        const data = await response.json();
+        if (isPromotionApiSuccess(data)) {
+          toast.success(data.message || "Promotion created successfully.");
+          resetForm();
+          setOpen(false);
+          fetchItems();
+        } else {
+          toast.error(data.message || "Failed to create promotion");
+        }
+        return;
+      }
+
+      const payload = {
+        ...buildBasePayload(values),
+        promotionCategoryLines: null,
+      };
+      const response = await fetch(`${BASE_URL}/ECommerce/CreatePromotion`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+        headers,
       });
+      const data = await response.json();
+      if (isPromotionApiSuccess(data)) {
+        toast.success(data.message || "Promotion created successfully.");
+        resetForm();
+        setOpen(false);
+        fetchItems();
+      } else {
+        toast.error(data.message || "Failed to create promotion");
+      }
+    } catch (error) {
+      toast.error(error.message || "Request failed");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -86,10 +251,16 @@ export default function AddPromotion({ fetchItems }) {
               PromotionCategory: "",
               PromotionType: "",
               CouponCode: "",
+              IsCouponAvailable: false,
+              CouponDiscountType: 2,
+              CouponDiscountValue: "",
+              MaxBillAmount: "",
+              IsOneTimeUse: false,
               StartDate: "",
               EndDate: "",
               IsActive: true,
               ConfigValues: {},
+              PromotionTotalAmountLines: [],
             }}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}

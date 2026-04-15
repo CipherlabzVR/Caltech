@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  Pagination,
+  FormControl,
+  Typography,
+  InputLabel,
+  MenuItem,
+  Select,
   Accordion,
   AccordionDetails,
   AccordionSummary,
@@ -19,6 +25,8 @@ import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import BASE_URL from "Base/api";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { Search, StyledInputBase } from "@/styles/main/search-styles";
+import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 
 import UnifiedSummaryReportModal from "@/components/UIElements/Modal/Reports/Summery/UnifiedSummaryReportModal";
 import CompanyWiseProfit from "@/components/UIElements/Modal/Reports/Summery/CompanyWiseProfit";
@@ -110,98 +118,84 @@ const getReportModuleName = (report) => {
 };
 
 const SummeryReports = () => {
-  const [reports, setReports] = useState([]);
   const [role, setRole] = useState(null);
   const [expandedModule, setExpandedModule] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
 
-  const fetchReports = async (role) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const token = localStorage.getItem("token");
-      const response = await fetch(
-        `${BASE_URL}/ReportSetting/GetAllEnabledSummaryReportsByRoleId?roleId=${role}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      if (!response.ok) throw new Error("Failed to fetch summary reports");
-      const data = await response.json();
+  const {
+    data: reports,
+    totalCount,
+    page,
+    pageSize,
+    search,
+    setPage,
+    setPageSize,
+    setSearch,
+    fetchData: fetchReports,
+    loading,
+    error,
+  } = usePaginatedFetch(role ? `ReportSetting/GetAllEnabledSummaryReportsByRoleIdPage?roleId=${role}` : null, "", 10, false, false);
 
-      const rawResult = Array.isArray(data?.result) ? data.result : [];
+  const handleSearchChange = (event) => {
+    setSearch(event.target.value);
+    fetchReports(1, event.target.value, pageSize);
+    setPage(1);
+  };
 
-      // Normalize casing differences just in case backend serialization changes.
-      const normalized = rawResult.map((r) => {
-        const reportName = r?.reportName ?? r?.ReportName ?? r?.report_name ?? "";
-        const title = r?.title ?? r?.Title ?? r?.name ?? r?.Name ?? "";
-        const documentName = r?.documentName ?? r?.DocumentName ?? "";
-        const id = r?.id ?? r?.Id;
-        const isPermissionEnabled =
-          r?.isPermissionEnabled ?? r?.IsPermissionEnabled ?? true;
+  const handlePageChange = (event, value) => {
+    setPage(value);
+    fetchReports(value, search, pageSize);
+  };
 
-        return {
-          ...r,
-          id,
-          reportName,
-          title,
-          documentName,
-          isPermissionEnabled,
-        };
-      });
-
-      // Only show enabled reports.
-      const enabledOnly = normalized.filter((r) => r.isPermissionEnabled === true);
-
-      const reportsWithComponents = enabledOnly.map((report) => {
-        const ReportComponent = componentMap[report.reportName];
-        return {
-          ...report,
-          component: ReportComponent
-            ? React.createElement(ReportComponent, {
-                docName: report.documentName,
-                reportName: report.reportName,
-              })
-            : null,
-        };
-      });
-
-      setReports(reportsWithComponents);
-    } catch (error) {
-      console.error("Error:", error);
-      setReports([]);
-      setError(error?.message || "Failed to load summary reports");
-    } finally {
-      setLoading(false);
-    }
+  const handlePageSizeChange = (event) => {
+    const size = event.target.value;
+    setPageSize(size);
+    setPage(1);
+    fetchReports(1, search, size);
   };
 
   useEffect(() => {
-    // Avoid SSR crashes (localStorage is client-only).
-    if (typeof window === "undefined") return;
-    setRole(localStorage.getItem("role"));
+    if (typeof window !== "undefined") {
+      setRole(localStorage.getItem("role"));
+    }
   }, []);
 
-  useEffect(() => {
-    if (role) fetchReports(role);
-  }, [role]);
+  const processedReports = useMemo(() => {
+    if (!reports || !Array.isArray(reports)) return [];
+    
+    return reports.map((r) => {
+      const reportName = r?.reportName ?? r?.ReportName ?? r?.report_name ?? "";
+      const title = r?.title ?? r?.Title ?? r?.name ?? r?.Name ?? "";
+      const documentName = r?.documentName ?? r?.DocumentName ?? "";
+      const id = r?.id ?? r?.Id;
+      
+      const ReportComponent = componentMap[reportName];
+      
+      return {
+        ...r,
+        id,
+        reportName,
+        title,
+        documentName,
+        component: ReportComponent
+          ? React.createElement(ReportComponent, {
+              docName: documentName,
+              reportName: reportName,
+            })
+          : null,
+      };
+    });
+  }, [reports]);
 
   const groupedReports = useMemo(() => {
-    const groups = reports.reduce((acc, report) => {
+    const groups = processedReports.reduce((acc, report) => {
       const moduleName = getReportModuleName(report);
       if (!acc[moduleName]) acc[moduleName] = [];
       acc[moduleName].push(report);
       return acc;
     }, {});
 
-    // Keep a consistent module ordering (as requested).
     const preferredOrder = ["Inventory", "Sales", "Finance", "Reservation"];
     
-    // Only include modules that have at least 1 report
     const modulesWithReports = Object.keys(groups).filter(
       (moduleName) => groups[moduleName] && groups[moduleName].length > 0
     );
@@ -217,7 +211,7 @@ const SummeryReports = () => {
       moduleName,
       reports: groups[moduleName] || [],
     }));
-  }, [reports]);
+  }, [processedReports]);
 
   return (
     <>
@@ -229,6 +223,25 @@ const SummeryReports = () => {
           </li>
         </ul>
       </div>
+
+      <Grid
+        container
+        rowSpacing={1}
+        columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}
+        alignItems="center"
+        my={2}
+      >
+        <Grid item xs={12} lg={4}>
+          <Search className="search-form">
+            <StyledInputBase
+              placeholder="Search reports.."
+              inputProps={{ "aria-label": "search" }}
+              value={search}
+              onChange={handleSearchChange}
+            />
+          </Search>
+        </Grid>
+      </Grid>
 
       <Grid container my={2} spacing={2}>
         <Grid item xs={12}>
@@ -291,7 +304,9 @@ const SummeryReports = () => {
                         <TableBody>
                           {moduleReports.map((report, index) => (
                             <TableRow key={report.id || `${moduleName}-${index}`}>
-                              <TableCell>{index + 1}</TableCell>
+                              <TableCell>
+                                {(page - 1) * pageSize + index + 1}
+                              </TableCell>
                               <TableCell>{report.title || report.name}</TableCell>
                               <TableCell align="right">{report.component}</TableCell>
                             </TableRow>
@@ -304,6 +319,27 @@ const SummeryReports = () => {
               ))}
             </>
           )}
+          <Grid container justifyContent="space-between" mt={2} mb={2}>
+            <Pagination
+              count={totalCount ? Math.ceil(totalCount / pageSize) : 1}
+              page={page}
+              onChange={handlePageChange}
+              color="primary"
+              shape="rounded"
+            />
+            <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+              <InputLabel>Page Size</InputLabel>
+              <Select
+                value={pageSize}
+                label="Page Size"
+                onChange={handlePageSizeChange}
+              >
+                <MenuItem value={5}>5</MenuItem>
+                <MenuItem value={10}>10</MenuItem>
+                <MenuItem value={25}>25</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
         </Grid>
       </Grid>
     </>

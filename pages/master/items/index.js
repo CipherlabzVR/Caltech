@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -15,6 +15,7 @@ import AddItems from "pages/master/items/AddItems";
 import BASE_URL from "Base/api";
 import EditItems from "pages/master/items/EditItems";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
+import ProductUpload from "pages/master/items/ProductUpload";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import { formatCurrency } from "@/components/utils/formatHelper";
@@ -26,7 +27,7 @@ import useApi from "@/components/utils/useApi";
 
 export default function Items() {
   const cId = sessionStorage.getItem("category")
-  const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+  const { navigate, create, update, remove, print, approve1 } = IsPermissionEnabled(cId);
   const [itemsList, setItemsList] = useState([]);
   const [chartOfAccounts, setChartOfAccounts] = useState([]);
   const controller = "Items/DeleteItems";
@@ -45,6 +46,10 @@ export default function Items() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
+  const [duplicateRequestSeq, setDuplicateRequestSeq] = useState(0);
+  const handleDuplicateItemRequest = useCallback(() => {
+    setDuplicateRequestSeq((n) => n + 1);
+  }, []);
 
   const { data: accountList } = useApi("/ChartOfAccount/GetAll");
 
@@ -160,8 +165,23 @@ export default function Items() {
             />
           </Search>
         </Grid>
-        <Grid item xs={12} lg={8} mb={1} display="flex" justifyContent="end" order={{ xs: 1, lg: 2 }}>
-          {create ? <AddItems fetchItems={fetchItemsList} isPOSSystem={isPOSSystem} uoms={uoms} isGarmentSystem={isGarmentSystem} chartOfAccounts={chartOfAccounts} barcodeEnabled={isBarcodeEnabled} IsEcommerceWebSiteAvailable={IsEcommerceWebSiteAvailable} /> : ""}
+        <Grid item xs={12} lg={8} mb={1} display="flex" justifyContent="end" alignItems="center" gap={1} order={{ xs: 1, lg: 2 }}>
+          {create ? <ProductUpload fetchItems={fetchItemsList} /> : ""}
+          {create ? (
+            <AddItems
+              fetchItems={fetchItemsList}
+              isPOSSystem={isPOSSystem}
+              uoms={uoms}
+              isGarmentSystem={isGarmentSystem}
+              chartOfAccounts={chartOfAccounts}
+              barcodeEnabled={isBarcodeEnabled}
+              IsEcommerceWebSiteAvailable={IsEcommerceWebSiteAvailable}
+              subCategories={subCategories}
+              duplicateRequestSeq={duplicateRequestSeq}
+            />
+          ) : (
+            ""
+          )}
         </Grid>
         <Grid item xs={12} order={{ xs: 3, lg: 3 }}>
           <TableContainer component={Paper}>
@@ -247,7 +267,22 @@ export default function Items() {
                         )}
                       </TableCell>
                       <TableCell align="right">
-                        {update ? <EditItems fetchItems={fetchItemsList} item={item} isPOSSystem={isPOSSystem} uoms={uoms} isGarmentSystem={isGarmentSystem} chartOfAccounts={chartOfAccounts} barcodeEnabled={isBarcodeEnabled} IsEcommerceWebSiteAvailable={IsEcommerceWebSiteAvailable} /> : ""}
+                        {update ? (
+                          <EditItems
+                            fetchItems={fetchItemsList}
+                            item={item}
+                            isPOSSystem={isPOSSystem}
+                            uoms={uoms}
+                            isGarmentSystem={isGarmentSystem}
+                            chartOfAccounts={chartOfAccounts}
+                            barcodeEnabled={isBarcodeEnabled}
+                            IsEcommerceWebSiteAvailable={IsEcommerceWebSiteAvailable}
+                            onDuplicateRequest={handleDuplicateItemRequest}
+                            approve1={approve1}
+                          />
+                        ) : (
+                          ""
+                        )}
                         {remove ? <DeleteConfirmationById id={item.id} controller={controller} fetchItems={fetchItemsList} /> : ""}
                       </TableCell>
                     </TableRow>

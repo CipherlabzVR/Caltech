@@ -70,6 +70,74 @@ const ORDER_FLOW_STEPS = [
   "Completed",
 ];
 
+/** Backend serializes enums as strings (JsonStringEnumConverter), e.g. "InProgress", not 2. */
+const ORDER_STATUS_NAME_TO_NUM = {
+  queued: 1,
+  inprogress: 2,
+  dispatched: 3,
+  delivered: 4,
+  completed: 5,
+};
+
+const PAYMENT_NAME_TO_NUM = {
+  cashondelivery: 1,
+  card: 2,
+  banktransfer: 3,
+};
+
+function normalizeEnumKey(raw) {
+  if (raw == null) return "";
+  const s = String(raw).trim();
+  const tail = s.includes(".") ? s.split(".").pop() : s;
+  return tail.replace(/\s+/g, "").toLowerCase();
+}
+
+function parseOrderStatus(raw) {
+  if (raw == null || raw === "") return NaN;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return raw >= 1 && raw <= 5 ? raw : NaN;
+  }
+  if (typeof raw === "string") {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 1 && n <= 5) return n;
+    const key = normalizeEnumKey(raw);
+    if (ORDER_STATUS_NAME_TO_NUM[key] != null) return ORDER_STATUS_NAME_TO_NUM[key];
+  }
+  return NaN;
+}
+
+function parsePaymentOption(raw) {
+  if (raw == null || raw === "") return NaN;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const n = Number(raw);
+    if (Number.isFinite(n)) return n;
+    const key = normalizeEnumKey(raw);
+    if (PAYMENT_NAME_TO_NUM[key] != null) return PAYMENT_NAME_TO_NUM[key];
+  }
+  return NaN;
+}
+
+/** API may send camelCase or PascalCase for enriched line pricing. */
+function lineWholesaleApplied(line) {
+  return !!(line?.wholesaleApplied ?? line?.WholesaleApplied);
+}
+
+function lineRetailLineTotal(line) {
+  const v = line?.retailLineTotal ?? line?.RetailLineTotal;
+  return typeof v === "number" ? v : null;
+}
+
+function lineWholesaleUnit(line) {
+  const v = line?.wholesaleUnitPrice ?? line?.WholesaleUnitPrice;
+  return typeof v === "number" ? v : null;
+}
+
+function lineWholesaleMoq(line) {
+  const v = line?.wholesaleMinimumQuantity ?? line?.WholesaleMinimumQuantity;
+  return typeof v === "number" ? v : null;
+}
+
 function extraQueryForStatusTab(tabValue) {
   return tabValue === "all" ? {} : { OrderStatus: Number(tabValue) };
 }
@@ -132,7 +200,12 @@ async function readOrderStatusApiResult(response) {
     throw new Error(data?.message ?? data?.Message ?? `Request failed (${response.status})`);
   }
   const code = data?.statusCode ?? data?.StatusCode;
-  if (code === -99 || code === "FAILED") {
+  const failed =
+    code === -99 ||
+    code === "-99" ||
+    code === "FAILED" ||
+    (typeof code === "string" && code.toUpperCase() === "FAILED");
+  if (failed) {
     throw new Error(data?.message ?? data?.Message ?? "Request failed");
   }
   return data;
@@ -192,16 +265,17 @@ export default function Orders() {
     }
 
     return ordersList.map((order) => {
-      const statusValue = Number(order.orderStatus ?? order.OrderStatus);
+      const statusRaw = order.orderStatus ?? order.OrderStatus;
+      const statusValue = parseOrderStatus(statusRaw);
       const statusMeta =
         STATUS_META[statusValue] ?? { label: "Unknown", color: "default" };
       const createdOnRaw = order.createdOn ?? order.CreatedOn;
       const createdOnDate = createdOnRaw ? new Date(createdOnRaw) : null;
-      const paymentOpt = Number(order.paymentOption ?? order.PaymentOption);
+      const paymentOpt = parsePaymentOption(order.paymentOption ?? order.PaymentOption);
 
       return {
         ...order,
-        orderStatus: Number.isFinite(statusValue) ? statusValue : order.orderStatus ?? order.OrderStatus,
+        orderStatus: Number.isFinite(statusValue) ? statusValue : statusRaw,
         statusLabel: statusMeta.label,
         statusColor: statusMeta.color,
         paymentLabel: PAYMENT_MAPPER[paymentOpt] ?? "Unknown",
@@ -523,7 +597,7 @@ export default function Orders() {
                       </TableCell>
                       <TableCell align="right">
                         <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1, flexWrap: "wrap" }}>
-                          {Number(item.orderStatus) > 1 && (
+                          {parseOrderStatus(item.orderStatus) > 1 && (
                             <Button
                               variant="outlined"
                               color="warning"
@@ -536,7 +610,7 @@ export default function Orders() {
                               {revertingOrderId === item.orderId ? "Reverting…" : "Revert status"}
                             </Button>
                           )}
-                          {item.orderStatus !== 5 && (
+                          {parseOrderStatus(item.orderStatus) !== 5 && (
                             <Button
                               variant="contained"
                               size="small"
@@ -615,16 +689,16 @@ export default function Orders() {
           </Box>
           <Chip
             label={
-              STATUS_META[Number(selectedOrder?.orderStatus ?? selectedOrder?.OrderStatus)]?.label ??
-              "Unknown"
+              STATUS_META[parseOrderStatus(selectedOrder?.orderStatus ?? selectedOrder?.OrderStatus)]
+                ?.label ?? "Unknown"
             }
             color={
-              STATUS_META[Number(selectedOrder?.orderStatus ?? selectedOrder?.OrderStatus)]?.color ??
-              "default"
+              STATUS_META[parseOrderStatus(selectedOrder?.orderStatus ?? selectedOrder?.OrderStatus)]
+                ?.color ?? "default"
             }
             variant={
-              STATUS_META[Number(selectedOrder?.orderStatus ?? selectedOrder?.OrderStatus)]?.color ===
-              "default"
+              STATUS_META[parseOrderStatus(selectedOrder?.orderStatus ?? selectedOrder?.OrderStatus)]
+                ?.color === "default"
                 ? "outlined"
                 : "filled"
             }
@@ -654,7 +728,12 @@ export default function Orders() {
                     <Stepper
                       activeStep={Math.min(
                         4,
-                        Math.max(0, Number(selectedOrder.orderStatus ?? selectedOrder.OrderStatus ?? 1) - 1)
+                        Math.max(0, (() => {
+                          const s = parseOrderStatus(
+                            selectedOrder.orderStatus ?? selectedOrder.OrderStatus
+                          );
+                          return (Number.isFinite(s) ? s : 1) - 1;
+                        })())
                       )}
                       alternativeLabel
                       sx={{
@@ -699,18 +778,90 @@ export default function Orders() {
                                 flexWrap: "wrap",
                               }}
                             >
+                              <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 0.75 }}>
                               <Typography variant="subtitle2" fontWeight={700}>
                                 {line.productName ?? line.ProductName ?? `Item ${index + 1}`}
                               </Typography>
-                              <Typography variant="body2" fontWeight={700} color="primary.main">
-                                {typeof (line.lineTotal ?? line.LineTotal) === "number"
-                                  ? formatCurrency(line.lineTotal ?? line.LineTotal)
-                                  : "—"}
-                              </Typography>
+                              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                                {lineWholesaleApplied(line) && (
+                                  <Chip
+                                    size="small"
+                                    label="Wholesale price"
+                                    color="secondary"
+                                    variant="outlined"
+                                    sx={{ fontWeight: 600, fontSize: "0.65rem", height: 22 }}
+                                  />
+                                )}
+                                {(line.promotionId ?? line.PromotionId) != null &&
+                                  Number(line.totalDiscount ?? line.TotalDiscount) > 0 && (
+                                    <Chip
+                                      size="small"
+                                      label="Promotion"
+                                      color="success"
+                                      variant="outlined"
+                                      sx={{ fontWeight: 600, fontSize: "0.65rem", height: 22 }}
+                                    />
+                                  )}
+                              </Box>
+                              </Box>
+                              <Box sx={{ textAlign: "right" }}>
+                              {(() => {
+                                const gross = line.lineTotal ?? line.LineTotal;
+                                const sub = line.subTotal ?? line.SubTotal;
+                                const disc = line.totalDiscount ?? line.TotalDiscount;
+                                const hasPromo =
+                                  typeof disc === "number" &&
+                                  disc > 0 &&
+                                  typeof sub === "number";
+                                if (hasPromo && typeof gross === "number") {
+                                  return (
+                                    <>
+                                      <Typography
+                                        variant="caption"
+                                        sx={{ display: "block", textDecoration: "line-through", color: "text.secondary" }}
+                                      >
+                                        {formatCurrency(gross)}
+                                      </Typography>
+                                      <Typography variant="body2" fontWeight={700} color="primary.main">
+                                        {formatCurrency(sub)}
+                                      </Typography>
+                                    </>
+                                  );
+                                }
+                                return (
+                                  <Typography variant="body2" fontWeight={700} color="primary.main">
+                                    {typeof gross === "number" ? formatCurrency(gross) : "—"}
+                                  </Typography>
+                                );
+                              })()}
+                            </Box>
                             </Box>
                             <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
                               Qty {line.quantity ?? line.Quantity ?? 0}
+                              {" · "}
+                              Unit {formatCurrency(line.price ?? line.Price)}
+                              {lineWholesaleApplied(line) &&
+                                lineWholesaleUnit(line) != null &&
+                                lineWholesaleMoq(line) != null && (
+                                  <>
+                                    {" · "}
+                                    Wholesale MOQ {lineWholesaleMoq(line)} @ {formatCurrency(lineWholesaleUnit(line))}/unit
+                                  </>
+                                )}
+                              {(line.promotionId ?? line.PromotionId) != null &&
+                                Number(line.totalDiscount ?? line.TotalDiscount) > 0 && (
+                                  <>
+                                    {" · "}
+                                    Promo #{line.promotionId ?? line.PromotionId}
+                                  </>
+                                )}
                             </Typography>
+                            {lineWholesaleApplied(line) && lineRetailLineTotal(line) != null && (
+                              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.25, display: "block", fontStyle: "italic" }}>
+                                List (standard) value for this qty would be {formatCurrency(lineRetailLineTotal(line))}; order
+                                used wholesale rate.
+                              </Typography>
+                            )}
                           </CardContent>
                         </Card>
                       ))}
@@ -816,6 +967,75 @@ export default function Orders() {
                     Totals
                   </Typography>
                   <Stack spacing={0.75} sx={{ mt: 1 }}>
+                    {(() => {
+                      const lines = selectedOrder.lines ?? selectedOrder.Lines ?? [];
+                      const merchandiseGross = Array.isArray(lines)
+                        ? lines.reduce(
+                            (s, l) => s + (Number(l.lineTotal ?? l.LineTotal) || 0),
+                            0,
+                          )
+                        : null;
+                      const disc = Number(
+                        selectedOrder.discountAmount ?? selectedOrder.DiscountAmount,
+                      );
+                      const couponRaw =
+                        selectedOrder.couponDiscountAmount ?? selectedOrder.CouponDiscountAmount;
+                      const couponDisc =
+                        Number.isFinite(Number(couponRaw)) && Number(couponRaw) > 0
+                          ? Number(couponRaw)
+                          : 0;
+                      const couponCode = String(
+                        selectedOrder.couponCode ?? selectedOrder.CouponCode ?? "",
+                      ).trim();
+                      const promoDisc =
+                        Number.isFinite(disc) && disc > 0 && couponDisc > 0
+                          ? Math.max(0, disc - couponDisc)
+                          : Number.isFinite(disc) && disc > 0
+                            ? disc
+                            : 0;
+                      const showDisc = Number.isFinite(disc) && disc > 0;
+                      const showPromoLine = promoDisc > 0;
+                      const showCouponLine = couponDisc > 0;
+                      return (
+                        <>
+                          {showDisc && merchandiseGross != null && merchandiseGross > 0 && (
+                            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1 }}>
+                              <Box>
+                                <Typography variant="body2" color="text.secondary">
+                                  Order (checkout prices, before promo)
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: "block", opacity: 0.85 }}>
+                                  Includes wholesale unit rates where applicable
+                                </Typography>
+                              </Box>
+                              <Typography variant="body2" fontWeight={600}>
+                                {formatCurrency(merchandiseGross)}
+                              </Typography>
+                            </Box>
+                          )}
+                          {showPromoLine && (
+                            <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                              <Typography variant="body2" color="success.main" fontWeight={600}>
+                                Promotion discount (categories / products / tiers)
+                              </Typography>
+                              <Typography variant="body2" fontWeight={600} color="success.main">
+                                −{formatCurrency(promoDisc)}
+                              </Typography>
+                            </Box>
+                          )}
+                          {showCouponLine && (
+                            <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                              <Typography variant="body2" color="success.main" fontWeight={600}>
+                                Coupon discount{couponCode ? ` (${couponCode})` : ""}
+                              </Typography>
+                              <Typography variant="body2" fontWeight={600} color="success.main">
+                                −{formatCurrency(couponDisc)}
+                              </Typography>
+                            </Box>
+                          )}
+                        </>
+                      );
+                    })()}
                     <Box sx={{ display: "flex", justifyContent: "space-between" }}>
                       <Typography variant="body2" color="text.secondary">
                         Subtotal
@@ -869,7 +1089,9 @@ export default function Orders() {
                       selectedOrder.customerFeedbackOn ?? selectedOrder.CustomerFeedbackOn ?? null;
                     const onDate = rawOn ? new Date(rawOn) : null;
                     const isCompleted =
-                      Number(selectedOrder.orderStatus ?? selectedOrder.OrderStatus) === 5;
+                      parseOrderStatus(
+                        selectedOrder.orderStatus ?? selectedOrder.OrderStatus
+                      ) === 5;
                     if (fb) {
                       return (
                         <Box sx={{ mt: 1.5 }}>

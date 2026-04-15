@@ -24,6 +24,8 @@ const usePaginatedFetch = (
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(initialPageSize);
   const [isCurrentDate, setIsCurrentDate] = useState(initialIsCurrentDate);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   
   const fetchData = async (
@@ -38,12 +40,22 @@ const usePaginatedFetch = (
     if (typeof window === 'undefined') {
       return;
     }
+    if (!endpoint) {
+      setData([]);
+      setTotalCount(0);
+      setLoading(false);
+      setError("");
+      return;
+    }
     try {
+      setLoading(true);
+      setError("");
       const token = localStorage.getItem("token");
       const skip = (pageNum - 1) * size;
       const searchParam = term ? encodeURIComponent(term) : "null";
       const filterParam = filterTerm ? encodeURIComponent(filterTerm) : "null";
-      let query = `${BASE_URL}/${endpoint}?SkipCount=${skip}&MaxResultCount=${size}&Search=${searchParam}&Filter=${filterParam}`;
+      const separator = String(endpoint).includes("?") ? "&" : "?";
+      let query = `${BASE_URL}/${endpoint}${separator}SkipCount=${skip}&MaxResultCount=${size}&Search=${searchParam}&Filter=${filterParam}`;
 
       const effectiveExtra =
         extraQueryOverride !== undefined ? extraQueryOverride : extraQuery;
@@ -72,6 +84,7 @@ const usePaginatedFetch = (
         console.error("API Error:", response.status, errorText);
         setData([]);
         setTotalCount(0);
+        setError(errorText || `Request failed with status ${response.status}`);
         return;
       }
 
@@ -206,10 +219,14 @@ const usePaginatedFetch = (
         setData([]);
         setTotalCount(0);
       }
+      setError("");
     } catch (error) {
       console.error("Fetch error:", error);
       setData([]);
       setTotalCount(0);
+      setError(error?.message || "Failed to fetch items");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -218,11 +235,13 @@ const usePaginatedFetch = (
     if (typeof window !== 'undefined') {
       fetchData(1, search, pageSize, initialIsCurrentDate, filter, extraQuery);
     }
-  }, []);
+  }, [endpoint]);
 
   return {
     data,
     totalCount,
+    loading,
+    error,
     page,
     pageSize,    
     search,

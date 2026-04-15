@@ -41,11 +41,12 @@ export const getSidebarData = (IsGarmentSystem) => {
             IsAvailable: true,
             subNav: [
                 { title: "Dashboard (Production)", path: "/dashboard/main", categoryId: 39, isAvailable: true },
-                { title: "Dashboard (Apparel)", path: "/dashboard/apparel", categoryId: 162, isAvailable: true },
+                { title: "Dashboard (Apparel)", path: "/dashboard/apparel", categoryId: 163, isAvailable: true },
+                { title: "Dashboard (E-Commerce)", path: "/dashboard/ecommerce", categoryId: 167, isAvailable: true },
                 { title: "Dashboard", path: "/dashboard/pos", categoryId: 60, isAvailable: true },
                 { title: "Dashboard", path: "/dashboard/reservation", categoryId: 61, isAvailable: true },
                 { title: "Help Desk Dashboard", path: "/dashboard/help-desk", categoryId: 107, isAvailable: true },
-                { title: "My Help Desk Dashboard", path: "/dashboard/help-desk/self", categoryId: 107, isAvailable: true, userTypeRestriction: 14 }, // Only for HelpDeskSupport
+                { title: "My Help Desk Dashboard", path: "/dashboard/help-desk/self", categoryId: 168, isAvailable: true, userTypeRestriction: 14 }, // Only for HelpDeskSupport
             ],
         },
         {
@@ -96,7 +97,7 @@ export const getSidebarData = (IsGarmentSystem) => {
                 { title: "Company", path: "/master/company/", categoryId: 82, isAvailable: true },
                 { title: "Classifications", path: "/master/classifications/", categoryId: 83, isAvailable: true },
                 { title: "Job Title", path: "/master/job-title/", categoryId: 84, isAvailable: true },
-                { title: "Department", path: "/master/department/", categoryId: 84, isAvailable: true },
+                { title: "Department", path: "/master/department/", categoryId: 78, isAvailable: true },
                 { title: "Person Title", path: "/master/person-title/", categoryId: 85, isAvailable: true },
                 { title: "Portion", path: "/master/portion/", categoryId: 86, isAvailable: true },
                 { title: "Kitchen", path: "/master/kitchen/", categoryId: 87, isAvailable: true },
@@ -108,8 +109,10 @@ export const getSidebarData = (IsGarmentSystem) => {
                 { title: "DBR Machine", path: "/master/dbr-machine/", categoryId: 100, isAvailable: true },
                 { title: "Projects", path: "/master/projects/", categoryId: 53, isAvailable: true },
                 { title: "Delivery Methods", path: "/master/delivery-methods/", categoryId: 147, isAvailable: true },
-                { title: "Department", path: "/master/department/", categoryId: 78, isAvailable: true },
                 { title: "Currency", path: "/master/currency/", categoryId: 148, isAvailable: true },
+                { title: "Distributor", path: "/master/distributors/", categoryId: 165, isAvailable: true },
+                { title: "Vehicle", path: "/master/vehicle/", categoryId: 164, isAvailable: true },
+                { title: "Discount Category", path: "/master/discount-category/", categoryId: 166, isAvailable: true },
             ],
         },
         {
@@ -219,7 +222,7 @@ export const getSidebarData = (IsGarmentSystem) => {
                 { title: "Proforma Invoice", path: "/quotations/proforma-list/", categoryId: 72, isAvailable: true },
                 { title: "Tech Pack", path: "/quotations/tech-pack/", categoryId: 73, isAvailable: true },
                 { title: "Sample", path: "/quotations/sample/", categoryId: 74, isAvailable: true },
-                { title: "Projects", path: "/production/projects/", categoryId: 53, isAvailable: true },
+                { title: "Projects", path: "/production/projects/", categoryId: 170, isAvailable: true },
                 { title: "My Tasks", path: "/production/tasks/", categoryId: 55, isAvailable: true },
                 { title: "Ongoing", path: "/production/ongoing/", categoryId: 56, isAvailable: true },
                 { title: "Follow Up", path: "/production/follow-up/", categoryId: 75, isAvailable: true },
@@ -258,8 +261,8 @@ export const getSidebarData = (IsGarmentSystem) => {
                 { title: "Invoice", path: "/sales/invoice/", categoryId: 22, isAvailable: true },
                 { title: "Customer Credit/Debit Notes", path: "/sales/credit-note/", categoryId: 23, isAvailable: true },
                 { title: "Receipt", path: "/sales/receipt/", categoryId: 24, isAvailable: true },
-                { title: "Shift", path: "/sales/shift/", categoryId: 25, isAvailable: true },
-                { title: "Day End", path: "/sales/day-end/", categoryId: 26, isAvailable: true },
+                { title: "Shift", path: "/sales/shift/", categoryId: 26, isAvailable: true },
+                { title: "Day End", path: "/sales/day-end/", categoryId: 25, isAvailable: true },
                 { title: "Daily Deposit", path: "/sales/deposit/", categoryId: 27, isAvailable: true },
                 { title: "Sales Return", path: "/sales/sales-return/", categoryId: 62, isAvailable: true },
                 { title: "POS Shift", path: "/sales/pos-shift/", categoryId: 95, isAvailable: true },
@@ -398,8 +401,8 @@ export const getSidebarData = (IsGarmentSystem) => {
             subNav: [
                 { title: "Tickets", path: "/help-desk/tickets/", categoryId: 105, isAvailable: true },
                 { title: "Categories", path: "/help-desk/categories/", categoryId: 106, isAvailable: true },
-                { title: "Project and Customer Assign", path: "/help-desk/assign/", categoryId: 107, isAvailable: true },
-                { title: "Purchase Order", path: "/help-desk/purchase-order/", categoryId: 18, isAvailable: true },
+                { title: "Project and Customer Assign", path: "/help-desk/assign/", categoryId: 169, isAvailable: true },
+                { title: "Purchase Order", path: "/help-desk/purchase-order/", categoryId: 171, isAvailable: true },
                 { title: "Work Order", path: "/help-desk/work-order/", categoryId: 138, isAvailable: true },
             ],
         }, {

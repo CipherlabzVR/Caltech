@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Checkbox, FormControlLabel, Grid, Typography, Tabs, Tab, IconButton, Select, InputLabel } from "@mui/material";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -9,6 +9,7 @@ import TextField from "@mui/material/TextField";
 import { Field, Form, Formik } from "formik";
 import * as Yup from "yup";
 import BASE_URL from "Base/api";
+import { useRouter } from "next/router";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { ChartOfAccountType } from "@/components/types/types";
@@ -676,9 +677,155 @@ const validationSchema = Yup.object().shape({
   UOM: Yup.number().required("Unit of Measure is required"),
 });
 
-export default function AddItems({ fetchItems, isPOSSystem, uoms, isGarmentSystem, chartOfAccounts, barcodeEnabled, IsEcommerceWebSiteAvailable }) {
+/** Maps GetItemById entity to Add Item Formik shape (excludes Id, InternalId, audit fields). */
+function mapApiItemToDuplicateFormValues(src) {
+  if (!src) return null;
+  const pick = (camel, pascal) => src[camel] ?? src[pascal];
+  return {
+    Name: pick("name", "Name") || "",
+    Code: pick("code", "Code") || "",
+    AveragePrice: pick("averagePrice", "AveragePrice") ?? null,
+    WholesalePrice: pick("wholesalePrice", "WholesalePrice") ?? null,
+    WholesaleMinimumQuantity:
+      pick("wholesaleMinimumQuantity", "WholesaleMinimumQuantity") ?? null,
+    ShipmentTarget: pick("shipmentTarget", "ShipmentTarget") ?? null,
+    ReorderLevel: pick("reorderLevel", "ReorderLevel") ?? null,
+    CategoryId: pick("categoryId", "CategoryId") ?? "",
+    SubCategoryId: pick("subCategoryId", "SubCategoryId") ?? "",
+    Supplier: pick("supplier", "Supplier") ?? "",
+    UOM: pick("uom", "UOM") ?? "",
+    CurrencyId: pick("currencyId", "CurrencyId") ?? "",
+    Barcode: pick("barcode", "Barcode") ?? null,
+    CostAccount: pick("costAccount", "CostAccount") ?? null,
+    AssetsAccount: pick("assetsAccount", "AssetsAccount") ?? null,
+    IncomeAccount: pick("incomeAccount", "IncomeAccount") ?? null,
+    IsActive: pick("isActive", "IsActive") ?? true,
+    IsNonInventoryItem: pick("isNonInventoryItem", "IsNonInventoryItem") ?? false,
+    HasSerialNumbers: pick("hasSerialNumbers", "HasSerialNumbers") ?? false,
+    IsWebView: pick("isWebView", "IsWebView") ?? false,
+    IsOutOfStock: pick("isOutOfStock", "IsOutOfStock") ?? false,
+    IsItemEndInvolve: pick("isItemEndInvolve", "IsItemEndInvolve") ?? false,
+    Description: pick("description", "Description") || "",
+  };
+}
+
+function getAddItemEmptyFormValues(code) {
+  return {
+    Name: "",
+    Code: code ?? "",
+    AveragePrice: null,
+    WholesalePrice: null,
+    WholesaleMinimumQuantity: null,
+    ShipmentTarget: null,
+    ReorderLevel: null,
+    CategoryId: "",
+    SubCategoryId: "",
+    Supplier: "",
+    UOM: "",
+    CurrencyId: "",
+    Barcode: null,
+    CostAccount: null,
+    AssetsAccount: null,
+    IncomeAccount: null,
+    IsActive: true,
+    IsNonInventoryItem: false,
+    HasSerialNumbers: false,
+    IsWebView: false,
+    IsOutOfStock: false,
+    IsItemEndInvolve: false,
+    Description: "",
+  };
+}
+
+const DUPLICATE_FORM_BOOLEAN_KEYS = new Set([
+  "IsActive",
+  "IsNonInventoryItem",
+  "HasSerialNumbers",
+  "IsWebView",
+  "IsOutOfStock",
+  "IsItemEndInvolve",
+]);
+
+const DUPLICATE_FORM_NUMERIC_KEYS = new Set([
+  "AveragePrice",
+  "WholesalePrice",
+  "WholesaleMinimumQuantity",
+  "ShipmentTarget",
+  "ReorderLevel",
+  "CategoryId",
+  "SubCategoryId",
+  "Supplier",
+  "UOM",
+  "CurrencyId",
+  "CostAccount",
+  "AssetsAccount",
+  "IncomeAccount",
+]);
+
+function normalizeItemFormValuesForDuplicateCompare(values) {
+  if (!values) return null;
+  const out = {};
+  for (const key of Object.keys(values)) {
+    let v = values[key];
+    if (v === undefined || v === "") {
+      v = null;
+    } else if (DUPLICATE_FORM_BOOLEAN_KEYS.has(key)) {
+      v = Boolean(v);
+    } else if (typeof v === "string" && ["Name", "Code", "Description", "Barcode"].includes(key)) {
+      v = v.trim();
+      if (v === "") v = null;
+    } else if (DUPLICATE_FORM_NUMERIC_KEYS.has(key) && v !== null) {
+      const n = Number(v);
+      if (!Number.isNaN(n)) v = n;
+    }
+    out[key] = v;
+  }
+  return out;
+}
+
+function sortedStringifyForDuplicateCompare(obj) {
+  if (!obj) return "{}";
+  const keys = Object.keys(obj).sort();
+  const sorted = {};
+  keys.forEach((k) => {
+    sorted[k] = obj[k];
+  });
+  return JSON.stringify(sorted);
+}
+
+/** Returns true when current Formik values match the duplicate snapshot (no meaningful edits). */
+function areDuplicateItemFormValuesUnchanged(current, snapshot) {
+  if (!snapshot) return false;
+  const keys = Object.keys(snapshot);
+  const pick = (src) => {
+    const o = {};
+    keys.forEach((k) => {
+      o[k] = src[k];
+    });
+    return o;
+  };
+  const a = normalizeItemFormValuesForDuplicateCompare(current);
+  const b = normalizeItemFormValuesForDuplicateCompare(snapshot);
+  return sortedStringifyForDuplicateCompare(pick(a)) === sortedStringifyForDuplicateCompare(pick(b));
+}
+
+export default function AddItems({
+  fetchItems,
+  isPOSSystem,
+  uoms,
+  isGarmentSystem,
+  chartOfAccounts,
+  barcodeEnabled,
+  IsEcommerceWebSiteAvailable,
+  subCategories = [],
+  duplicateRequestSeq = 0,
+}) {
+  const router = useRouter();
   const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
   const [itemCode, setItemCode] = useState(null);
+  const [duplicateSourceId, setDuplicateSourceId] = useState(null);
+  const [duplicatePrefill, setDuplicatePrefill] = useState(null);
+  const [initialDuplicateSnapshot, setInitialDuplicateSnapshot] = useState(null);
   const [open, setOpen] = React.useState(false);
   const handleClose = () => {
     setOpen(false);
@@ -706,6 +853,31 @@ export default function AddItems({ fetchItems, isPOSSystem, uoms, isGarmentSyste
   const [createUOMOpen, setCreateUOMOpen] = useState(false);
   const [uomList, setUomList] = useState(uoms || []);
 
+  const clearDuplicateContext = () => {
+    localStorage.removeItem("duplicateItemId");
+    setDuplicateSourceId(null);
+    setDuplicatePrefill(null);
+    setInitialDuplicateSnapshot(null);
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = localStorage.getItem("duplicateItemId");
+    if (raw) {
+      setDuplicateSourceId(raw);
+    } else {
+      setDuplicateSourceId(null);
+      setDuplicatePrefill(null);
+      setInitialDuplicateSnapshot(null);
+    }
+  }, [router.asPath, duplicateRequestSeq]);
+
+  useEffect(() => {
+    if (duplicatePrefill) {
+      setOpen(true);
+    }
+  }, [duplicatePrefill]);
+
   useEffect(() => {
     if (open) {
       setTimeout(() => {
@@ -717,6 +889,10 @@ export default function AddItems({ fetchItems, isPOSSystem, uoms, isGarmentSyste
   }, [open]);
 
   const handleOpen = async () => {
+    // Manual "New item" should always start from a fresh form, not stale duplicate state.
+    clearDuplicateContext();
+    setSelectedCat(undefined);
+    setSubCategoryList([]);
     try {
       const response = await fetch(
         `${BASE_URL}/DocumentSequence/GetNextDocumentNumber?documentType=13`,
@@ -807,6 +983,60 @@ export default function AddItems({ fetchItems, isPOSSystem, uoms, isGarmentSyste
       console.error("Error:", error);
     }
   };
+
+  useEffect(() => {
+    if (!duplicateSourceId) return;
+
+    const loadDuplicateItem = async () => {
+      try {
+        const response = await fetch(
+          `${BASE_URL}/Items/GetItemById?id=${duplicateSourceId}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch item");
+        }
+
+        const data = await response.json();
+        const src = data.result;
+        const formValues = mapApiItemToDuplicateFormValues(src);
+        if (!formValues) return;
+
+        const categoryId = src.categoryId ?? src.CategoryId;
+        if (categoryId) {
+          setSelectedCat(categoryId);
+          if (Array.isArray(subCategories) && subCategories.length > 0) {
+            setSubCategoryList(
+              subCategories.filter((sc) => sc.categoryId == categoryId)
+            );
+          } else {
+            await fetchSubCategoryList(categoryId);
+          }
+        }
+
+        setDuplicatePrefill(formValues);
+        setInitialDuplicateSnapshot(
+          typeof structuredClone === "function"
+            ? structuredClone(formValues)
+            : JSON.parse(JSON.stringify(formValues))
+        );
+        setItemCode(formValues.Code ?? "");
+      } catch (error) {
+        console.error("Error loading duplicate item:", error);
+      }
+    };
+
+    loadDuplicateItem();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchSubCategoryList / subCategories from parent; intentional deps below
+  }, [duplicateSourceId, duplicateRequestSeq]);
+
   const fetchCurrencyList = async () => {
     try {
       const response = await fetch(`${BASE_URL}/Currency/GetAllCurrency?SkipCount=0&MaxResultCount=1000&Search=null`, {
@@ -857,6 +1087,11 @@ export default function AddItems({ fetchItems, isPOSSystem, uoms, isGarmentSyste
       setUomList(uoms);
     }
   }, [uoms]);
+
+  const formInitialValues = useMemo(
+    () => duplicatePrefill ?? getAddItemEmptyFormValues(itemCode),
+    [duplicatePrefill, itemCode]
+  );
 
   const fetchUOMList = async () => {
     try {
@@ -969,11 +1204,48 @@ export default function AddItems({ fetchItems, isPOSSystem, uoms, isGarmentSyste
       toast.warning("Please enter the average price for web view.");
       return;
     }
+    const wp =
+      values.WholesalePrice !== null && values.WholesalePrice !== ""
+        ? Number(values.WholesalePrice)
+        : NaN;
+    const wq =
+      values.WholesaleMinimumQuantity !== null && values.WholesaleMinimumQuantity !== ""
+        ? Number(values.WholesaleMinimumQuantity)
+        : NaN;
+    if (Number.isFinite(wp) && wp > 0) {
+      if (!Number.isFinite(wq) || wq <= 0) {
+        toast.warning("Enter wholesale minimum quantity when wholesale price is set.");
+        return;
+      }
+    }
+    if (Number.isFinite(wq) && wq > 0) {
+      if (!Number.isFinite(wp) || wp <= 0) {
+        toast.warning("Enter wholesale price when wholesale minimum quantity is set.");
+        return;
+      }
+    }
+    if (
+      initialDuplicateSnapshot &&
+      areDuplicateItemFormValuesUnchanged(values, initialDuplicateSnapshot)
+    ) {
+      toast.warning("Please modify at least one field before creating a duplicate item.");
+      return;
+    }
     const formData = new FormData();
 
     formData.append("Name", values.Name);
     formData.append("Code", values.Code);
     formData.append("AveragePrice", values.AveragePrice);
+    formData.append(
+      "WholesalePrice",
+      values.WholesalePrice !== null && values.WholesalePrice !== "" ? values.WholesalePrice : "",
+    );
+    formData.append(
+      "WholesaleMinimumQuantity",
+      values.WholesaleMinimumQuantity !== null && values.WholesaleMinimumQuantity !== ""
+        ? values.WholesaleMinimumQuantity
+        : "",
+    );
     formData.append("ShipmentTarget", values.ShipmentTarget ? values.ShipmentTarget : "");
     formData.append("ReorderLevel", values.ReorderLevel ?values.ReorderLevel : "");
     formData.append("CategoryId", values.CategoryId);
@@ -1025,6 +1297,7 @@ export default function AddItems({ fetchItems, isPOSSystem, uoms, isGarmentSyste
       .then((data) => {
         if (data.statusCode == 200) {
           toast.success(data.message);
+          clearDuplicateContext();
           setOpen(false);
           setSubImages((prev) => {
             prev.forEach((item) => {
@@ -1044,7 +1317,7 @@ export default function AddItems({ fetchItems, isPOSSystem, uoms, isGarmentSyste
   return (
     <>
       <Button variant="outlined" onClick={handleOpen}>
-        + new item
+        + New Item
       </Button>
       <Modal
         open={open}
@@ -1054,29 +1327,8 @@ export default function AddItems({ fetchItems, isPOSSystem, uoms, isGarmentSyste
       >
         <Box sx={style} className="bg-black">
           <Formik
-            initialValues={{
-              Name: "",
-              Code: itemCode,
-              AveragePrice: null,
-              ShipmentTarget: null,
-              ReorderLevel: null,
-              CategoryId: "",
-              SubCategoryId: "",
-              Supplier: "",
-              UOM: "",
-              CurrencyId: "",
-              Barcode: null,
-              CostAccount: null,
-              AssetsAccount: null,
-              IncomeAccount: null,
-              IsActive: true,
-              IsNonInventoryItem: false,
-              HasSerialNumbers: false,
-              IsWebView: false,
-              IsOutOfStock: false,
-              IsItemEndInvolve: false,
-              Description: ""
-            }}
+            enableReinitialize
+            initialValues={formInitialValues}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
@@ -1094,7 +1346,7 @@ export default function AddItems({ fetchItems, isPOSSystem, uoms, isGarmentSyste
                         mb: "5px",
                       }}
                     >
-                      Add Item
+                      {duplicatePrefill ? "Duplicate Item" : "Add Item"}
                     </Typography>
                   </Grid>
                   <Grid item xs={12} mb={2}>
@@ -1320,6 +1572,52 @@ export default function AddItems({ fetchItems, isPOSSystem, uoms, isGarmentSyste
                                 fullWidth
                                 name="AveragePrice"
                                 size="small"
+                              />
+                            </Grid>
+                            <Grid item xs={12} mt={1} lg={6}>
+                              <Typography
+                                sx={{
+                                  fontWeight: "500",
+                                  fontSize: "14px",
+                                  mb: "5px",
+                                }}
+                              >
+                                Wholesale price
+                              </Typography>
+                              <Field
+                                as={TextField}
+                                fullWidth
+                                name="WholesalePrice"
+                                size="small"
+                                type="number"
+                                inputProps={{ min: 0, step: "any" }}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  setFieldValue("WholesalePrice", value === "" ? null : value);
+                                }}
+                              />
+                            </Grid>
+                            <Grid item xs={12} mt={1} lg={6}>
+                              <Typography
+                                sx={{
+                                  fontWeight: "500",
+                                  fontSize: "14px",
+                                  mb: "5px",
+                                }}
+                              >
+                                Wholesale minimum quantity
+                              </Typography>
+                              <Field
+                                as={TextField}
+                                fullWidth
+                                name="WholesaleMinimumQuantity"
+                                size="small"
+                                type="number"
+                                inputProps={{ min: 0, step: "any" }}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  setFieldValue("WholesaleMinimumQuantity", value === "" ? null : value);
+                                }}
                               />
                             </Grid>
                           </>

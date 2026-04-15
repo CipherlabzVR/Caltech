@@ -384,7 +384,7 @@ const GRNCreate = () => {
     if (supplierList) {
       setSuppliers(supplierList);
     }
-  }, [goodsRNo, itemList]);
+  }, [goodsRNo, itemList, supplierList]);
 
   // Fetch Sales Person list by supplier when supplier is selected
   useEffect(() => {

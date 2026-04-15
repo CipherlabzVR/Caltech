@@ -9,11 +9,19 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
-import { TablePagination, Typography } from "@mui/material";
+import {
+  Pagination,
+  FormControl,
+  Typography,
+  InputLabel,
+  MenuItem,
+  Select,
+} from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import BASE_URL from "Base/api";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
+import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import EditSalesPerson from "./edit";
 import AddBank from "./create";
 import { getAccountType } from "@/components/types/types";
@@ -24,58 +32,37 @@ export default function Bank() {
   const cId = sessionStorage.getItem("category");
   const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
   
-  const [banks, setBanks] = useState([]);
   const controller = "Bank/DeleteBank";
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [searchTerm, setSearchTerm] = useState("");
 
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
+  const {
+    data: banks,
+    totalCount,
+    page,
+    pageSize,
+    search,
+    setPage,
+    setPageSize,
+    setSearch,
+    fetchData: fetchBanks,
+  } = usePaginatedFetch("Bank/GetAllBanksPaged", "", 10, false, false);
+
+  const handleSearchChange = (event) => {
+    setSearch(event.target.value);
+    fetchBanks(1, event.target.value, pageSize);
+    setPage(1);
+  };
+
+  const handleChangePage = (event, value) => {
+    setPage(value);
+    fetchBanks(value, search, pageSize);
   };
 
   const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
+    const size = event.target.value;
+    setPageSize(size);
+    setPage(1);
+    fetchBanks(1, search, size);
   };
-
-  const handleSearchChange = (event) => {
-    setSearchTerm(event.target.value);
-  };
-
-  const fetchBanks = async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/Bank/GetAllBanks`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch");
-      }
-
-      const data = await response.json();
-      setBanks(data.result);
-    } catch (error) {
-      console.error("Error fetching:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetchBanks();
-  }, []);
-
-  const filteredData = banks.filter((item) =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const paginatedData = filteredData.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
-  );
   if (!navigate) {
     return <AccessDenied />;
   }
@@ -101,7 +88,7 @@ export default function Bank() {
             <StyledInputBase
               placeholder="Search here.."
               inputProps={{ "aria-label": "search" }}
-              value={searchTerm}
+              value={search}
               onChange={handleSearchChange}
             />
           </Search>
@@ -132,7 +119,7 @@ export default function Bank() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {paginatedData.length === 0 ? (
+                {!banks || banks.length === 0 ? (
                   <TableRow
                     sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                   >
@@ -141,7 +128,7 @@ export default function Bank() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedData.map((bank, index) => (
+                  banks.map((bank, index) => (
                     <TableRow
                       key={index}
                       sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
@@ -181,15 +168,27 @@ export default function Bank() {
                 )}
               </TableBody>
             </Table>
-            <TablePagination
-              rowsPerPageOptions={[5, 10, 25]}
-              component="div"
-              count={paginatedData.length}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-            />
+            <Grid container justifyContent="space-between" mt={2} mb={2}>
+              <Pagination
+                count={totalCount ? Math.ceil(totalCount / pageSize) : 1}
+                page={page}
+                onChange={handleChangePage}
+                color="primary"
+                shape="rounded"
+              />
+              <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+                <InputLabel>Page Size</InputLabel>
+                <Select
+                  value={pageSize}
+                  label="Page Size"
+                  onChange={handleChangeRowsPerPage}
+                >
+                  <MenuItem value={5}>5</MenuItem>
+                  <MenuItem value={10}>10</MenuItem>
+                  <MenuItem value={25}>25</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
           </TableContainer>
         </Grid>
       </Grid>

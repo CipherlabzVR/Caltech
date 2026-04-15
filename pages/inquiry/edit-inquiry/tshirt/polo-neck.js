@@ -21,6 +21,8 @@ import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import BASE_URL from "Base/api";
 import CachedIcon from "@mui/icons-material/Cached";
 import { DashboardHeader } from "@/components/shared/dashboard-header";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function PoloNeck() {
   const router = useRouter();
@@ -34,7 +36,14 @@ export default function PoloNeck() {
   const [message, setMessage] = useState("");
   const [selectedWidth, setSelectedWidth] = useState(1.25);
   const [selectedButtonValue, setSelectedButtonValue] = useState(2);
+  const [selectedButtonType, setSelectedButtonType] = useState(0);
   const [deleteId, setDeleteId] = useState();
+  const [colorCodeList, setColorCodeList] = useState([]);
+  const [innerPlacketColorCodeId, setInnerPlacketColorCodeId] = useState(0);
+  const [outerPlacketColorCodeId, setOuterPlacketColorCodeId] = useState(0);
+  const [sideVent, setSideVent] = useState("2");
+  const [shoulderOutline, setShoulderOutline] = useState("2");
+  const [aHoleOutline, setAHoleOutline] = useState("2");
 
   const fetchInquiryById = async () => {
     try {
@@ -54,6 +63,7 @@ export default function PoloNeck() {
       const inq = data.result;
       setInquiry(inq);
       fetchNeckTypes(inq.inquiryId, inq.optionId, inq.windowType);
+      fetchColorCodes();
     } catch (error) {
       console.error("Error fetching Fabric List:", error);
     }
@@ -64,6 +74,30 @@ export default function PoloNeck() {
       fetchInquiryById();
     }
   }, []);
+
+  const fetchColorCodes = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/ColorCode/GetAllColorCode`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) return;
+      const data = await response.json();
+      const list = Array.isArray(data?.result) ? data.result : [];
+      setColorCodeList(
+        list
+          .filter((item) => item?.isActive !== false)
+          .map((item) => ({ id: Number(item.id) || 0, name: item.name || "" }))
+          .filter((item) => item.id > 0 && item.name)
+      );
+    } catch (error) {
+      console.error("Error fetching color codes:", error);
+    }
+  };
 
   const handleButtonClick = (index) => {
     setSelectedButton(index === selectedButton ? null : index);
@@ -101,8 +135,61 @@ export default function PoloNeck() {
       setSelectedButton(data.result[0].neck2ndRowS);
       setSelectedButtonPlacket(data.result[0].neck3rdRowS);
       setSelectedButtonValue(data.result[0].poloButton);
+      setSelectedButtonType(
+        Number(
+          data.result[0].buttonType ??
+            data.result[0].buttonTypes ??
+            data.result[0].ButtonType ??
+            data.result[0].ButtonTypes ??
+            0
+        ) || 0
+      );
       setSelectedLength(data.result[0].polOlength);
       setSelectedWidth(data.result[0].poloWidth);
+      setInnerPlacketColorCodeId(
+        Number(
+          data.result[0].innerPlacketColorCodeId ??
+            data.result[0].innerPlacketColorId ??
+            data.result[0].innerPlacketColorCodeID ??
+            0
+        ) || 0
+      );
+      setOuterPlacketColorCodeId(
+        Number(
+          data.result[0].outerPlacketColorCodeId ??
+            data.result[0].outerPlacketColorId ??
+            data.result[0].outerPlacketColorCodeID ??
+            0
+        ) || 0
+      );
+      const sideVentValue =
+        data.result[0].sideVent ??
+        data.result[0].sideVents ??
+        data.result[0].sideVentType ??
+        data.result[0].sideVentStatus ??
+        2;
+      const normalizedSideVent =
+        sideVentValue === true ||
+        sideVentValue === "true" ||
+        sideVentValue === "True" ||
+        Number(sideVentValue) === 1
+          ? "1"
+          : "2";
+      setSideVent(normalizedSideVent);
+      const shoulderOutlineValue =
+        data.result[0].shoulderOutline ??
+        data.result[0].shoulderOutlines ??
+        data.result[0].ShoulderOutline ??
+        data.result[0].ShoulderOutlines ??
+        2;
+      setShoulderOutline(String(Number(shoulderOutlineValue) === 1 ? 1 : 2));
+      const aHoleOutlineValue =
+        data.result[0].aHoleOutline ??
+        data.result[0].aholeOutline ??
+        data.result[0].AHoleOutline ??
+        data.result[0].AholeOutline ??
+        2;
+      setAHoleOutline(String(Number(aHoleOutlineValue) === 1 ? 1 : 2));
       setDeleteId(data.result[0].id);
     } catch (error) {
       //console.error("Error fetching Neck Body List:", error);
@@ -121,7 +208,21 @@ export default function PoloNeck() {
     setSelectedButtonValue(event.target.value);
   };
 
-  const handleSubmit = async () => {
+  const handleButtonTypeChange = (event) => {
+    setSelectedButtonType(event.target.value);
+  };
+
+  const getColorCodeNameById = (id) => {
+    const targetId = Number(id);
+    if (!targetId) return "";
+    return colorCodeList.find((item) => item.id === targetId)?.name || "";
+  };
+
+  const saveInquiryPoloNeck = async ({ navigateAfterSave = true } = {}) => {
+    if (!innerPlacketColorCodeId || !outerPlacketColorCodeId) {
+      toast.warning("Please select both Inner and Outer Placket Color before next.");
+      return false;
+    }
     if (selectedButton != null) {
       const response = await fetch(
         `${BASE_URL}/InquiryNeck/AddOrUpdateNeckType`,
@@ -144,6 +245,14 @@ export default function PoloNeck() {
             POLOlength: String(selectedLength),
             POLOWidth: String(selectedWidth),
             POLOButton: String(selectedButtonValue),
+            ButtonType: Number(selectedButtonType) || null,
+            InnerPlacketColorCodeId: Number(innerPlacketColorCodeId) || 0,
+            InnerPlacketColorCodeName: getColorCodeNameById(innerPlacketColorCodeId),
+            OuterPlacketColorCodeId: Number(outerPlacketColorCodeId) || 0,
+            OuterPlacketColorCodeName: getColorCodeNameById(outerPlacketColorCodeId),
+            SideVent: Number(sideVent) === 1,
+            ShoulderOutline: Number(shoulderOutline) === 1,
+            AHoleOutline: Number(aHoleOutline) === 1,
           }),
         }
       );
@@ -151,9 +260,22 @@ export default function PoloNeck() {
         throw new Error("Failed to delete fabric");
       }
       setMessage("");
-      router.push(`/inquiry/edit-inquiry/tshirt/sleeve/?id=${inquiry ? inquiry.inquiryId : ""}&neck=1&option=${inquiry ? inquiry.optionId: ""}`);
+      if (navigateAfterSave) {
+        router.push(`/inquiry/edit-inquiry/tshirt/sleeve/?id=${inquiry ? inquiry.inquiryId : ""}&neck=1&option=${inquiry ? inquiry.optionId: ""}`);
+      }
+      return true;
     } else {
       setMessage("Required *");
+      return false;
+    }
+  };
+
+  const handleSubmit = async () => {
+    try {
+      await saveInquiryPoloNeck({ navigateAfterSave: true });
+    } catch (error) {
+      console.error("Error saving inquiry polo neck:", error);
+      toast.error("Failed to save polo neck details");
     }
   };
 
@@ -168,11 +290,18 @@ export default function PoloNeck() {
         },
       }
     );
+    setSelectedButtonType(0);
+    setInnerPlacketColorCodeId(0);
+    setOuterPlacketColorCodeId(0);
+    setSideVent("2");
+    setShoulderOutline("2");
+    setAHoleOutline("2");
     window.location.reload();
   };
 
   return (
     <>
+      <ToastContainer />
       <DashboardHeader
         customerName={inquiry ? inquiry.customerName : ""}
         optionName={inquiry ? inquiry.optionName : ""}
@@ -497,6 +626,160 @@ export default function PoloNeck() {
                       <MenuItem value={4}>4</MenuItem>
                     </Select>
                   </FormControl>
+                </Grid>
+                <Grid item p={1} xs={12} lg={3} md={6}>
+                  <Typography
+                    as="h5"
+                    sx={{
+                      fontWeight: "500",
+                      fontSize: "14px",
+                      mb: "12px",
+                    }}
+                  >
+                    Button Type
+                  </Typography>
+                  <FormControl fullWidth>
+                    <InputLabel id="button-type-label">Button Type</InputLabel>
+                    <Select
+                      labelId="button-type-label"
+                      id="button-type"
+                      label="Button Type"
+                      value={selectedButtonType}
+                      onChange={handleButtonTypeChange}
+                    >
+                      <MenuItem value={0}>None</MenuItem>
+                      <MenuItem value={1}>Glass</MenuItem>
+                      <MenuItem value={2}>Client&apos;s</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+            </Grid>
+            <Grid item xs={12}>
+              <Grid container>
+                <Grid item p={1} xs={12} lg={3} md={6}>
+                  <Typography
+                    sx={{
+                      fontWeight: "500",
+                      fontSize: "14px",
+                      mb: "12px",
+                    }}
+                  >
+                    Inner Placket Color
+                  </Typography>
+                  <FormControl fullWidth>
+                    <InputLabel id="inner-placket-color-label">Inner Placket Color</InputLabel>
+                    <Select
+                      labelId="inner-placket-color-label"
+                      id="inner-placket-color"
+                      label="Inner Placket Color"
+                      value={innerPlacketColorCodeId}
+                      onChange={(event) =>
+                        setInnerPlacketColorCodeId(Number(event.target.value) || 0)
+                      }
+                    >
+                      <MenuItem value={0}>None</MenuItem>
+                      {colorCodeList.map((color) => (
+                        <MenuItem key={`inner-color-${color.id}`} value={color.id}>
+                          {color.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item p={1} xs={12} lg={3} md={6}>
+                  <Typography
+                    sx={{
+                      fontWeight: "500",
+                      fontSize: "14px",
+                      mb: "12px",
+                    }}
+                  >
+                    Outer Placket Color
+                  </Typography>
+                  <FormControl fullWidth>
+                    <InputLabel id="outer-placket-color-label">Outer Placket Color</InputLabel>
+                    <Select
+                      labelId="outer-placket-color-label"
+                      id="outer-placket-color"
+                      label="Outer Placket Color"
+                      value={outerPlacketColorCodeId}
+                      onChange={(event) =>
+                        setOuterPlacketColorCodeId(Number(event.target.value) || 0)
+                      }
+                    >
+                      <MenuItem value={0}>None</MenuItem>
+                      {colorCodeList.map((color) => (
+                        <MenuItem key={`outer-color-${color.id}`} value={color.id}>
+                          {color.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+            </Grid>
+            <Grid item xs={12}>
+              <Grid container>
+                <Grid item p={1} xs={12} lg={3} md={6}>
+                  <Typography
+                    sx={{
+                      fontWeight: "500",
+                      fontSize: "14px",
+                      mb: "12px",
+                    }}
+                  >
+                    Side Vent
+                  </Typography>
+                  <RadioGroup
+                    row
+                    name="side-vent"
+                    value={sideVent}
+                    onChange={(event) => setSideVent(event.target.value)}
+                  >
+                    <FormControlLabel value="1" control={<Radio />} label="Yes" />
+                    <FormControlLabel value="2" control={<Radio />} label="No" />
+                  </RadioGroup>
+                </Grid>
+                <Grid item p={1} xs={12} lg={3} md={6}>
+                  <Typography
+                    sx={{
+                      fontWeight: "500",
+                      fontSize: "14px",
+                      mb: "12px",
+                    }}
+                  >
+                    Shoulder Outline
+                  </Typography>
+                  <RadioGroup
+                    row
+                    name="shoulder-outline"
+                    value={shoulderOutline}
+                    onChange={(event) => setShoulderOutline(event.target.value)}
+                  >
+                    <FormControlLabel value="1" control={<Radio />} label="Yes" />
+                    <FormControlLabel value="2" control={<Radio />} label="No" />
+                  </RadioGroup>
+                </Grid>
+                <Grid item p={1} xs={12} lg={3} md={6}>
+                  <Typography
+                    sx={{
+                      fontWeight: "500",
+                      fontSize: "14px",
+                      mb: "12px",
+                    }}
+                  >
+                    A/Hole Outline
+                  </Typography>
+                  <RadioGroup
+                    row
+                    name="a-hole-outline"
+                    value={aHoleOutline}
+                    onChange={(event) => setAHoleOutline(event.target.value)}
+                  >
+                    <FormControlLabel value="1" control={<Radio />} label="Yes" />
+                    <FormControlLabel value="2" control={<Radio />} label="No" />
+                  </RadioGroup>
                 </Grid>
               </Grid>
             </Grid>

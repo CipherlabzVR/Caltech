@@ -3,15 +3,19 @@ import Grid from "@mui/material/Grid";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import {
+  Pagination,
+  FormControl,
+  Typography,
+  InputLabel,
+  MenuItem,
+  Select,
   Paper,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
-  TablePagination,
   TableRow,
-  Typography,
   IconButton,
   Tooltip,
   Modal,
@@ -28,17 +32,44 @@ import EditCompany from "./EditCompany";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { formatCurrency } from "@/components/utils/formatHelper";
+import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 
 export default function Company() {
   const cId = sessionStorage.getItem("category")
   const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
-  const [companies, setCompanies] = useState([]);
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [searchTerm, setSearchTerm] = useState("");
+  const {
+    data: companies,
+    totalCount,
+    page,
+    pageSize,
+    search,
+    setPage,
+    setPageSize,
+    setSearch,
+    fetchData: fetchCompanies,
+  } = usePaginatedFetch("Company/GetAllCompaniesPage", "", 10, false, false);
+
   const [letterheadModalOpen, setLetterheadModalOpen] = useState(false);
   const [selectedLetterheadImage, setSelectedLetterheadImage] = useState("");
   const controller = "Company/DeleteCompany";
+
+  const handleSearchChange = (event) => {
+    setSearch(event.target.value);
+    fetchCompanies(1, event.target.value, pageSize);
+    setPage(1);
+  };
+
+  const handleChangePage = (event, value) => {
+    setPage(value);
+    fetchCompanies(value, search, pageSize);
+  };
+
+  const handleChangeRowsPerPage = (event) => {
+    const size = event.target.value;
+    setPageSize(size);
+    setPage(1);
+    fetchCompanies(1, search, size);
+  };
 
   const handleOpenLetterheadModal = (imageUrl) => {
     setSelectedLetterheadImage(imageUrl);
@@ -50,47 +81,9 @@ export default function Company() {
     setSelectedLetterheadImage("");
   };
 
-  const fetchCompanies = async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/Company/GetAllCompanies`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch usere");
-      }
 
-      const data = await response.json();
-      setCompanies(data.result);
-    } catch (error) {
-      console.error("Error fetching users:", error);
-    }
-  };
 
-  useEffect(() => {
-    fetchCompanies();
-  }, []);
-
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
-  };
-
-  const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
-  };
-
-  const handleSearchChange = (event) => {
-    setSearchTerm(event.target.value);
-  };
-
-  const filteredData = companies.filter((item) =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   const getBillingTypeName = (billingType) => {
     if (billingType === null || billingType === undefined) return "-";
@@ -136,10 +129,7 @@ export default function Company() {
     return "-";
   };
 
-  const paginatedData = filteredData.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
-  );
+
 
   if (!navigate) {
     return <AccessDenied />;
@@ -169,7 +159,7 @@ export default function Company() {
             <StyledInputBase
               placeholder="Search here.."
               inputProps={{ "aria-label": "search" }}
-              value={searchTerm}
+              value={search}
               onChange={handleSearchChange}
             />
           </Search>
@@ -204,7 +194,7 @@ export default function Company() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {paginatedData.length === 0 ? (
+                {!companies || companies.length === 0 ? (
                   <TableRow
                     sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                   >
@@ -215,13 +205,13 @@ export default function Company() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedData.map((company, index) => (
+                  companies.map((company, index) => (
                     <TableRow
                       key={index}
                       sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                     >
                       <TableCell component="th" scope="row">
-                        {index + 1}
+                        {(page - 1) * pageSize + index + 1}
                       </TableCell>
                       <TableCell>{company.name}</TableCell>
                       <TableCell>{company.code}</TableCell>
@@ -266,15 +256,27 @@ export default function Company() {
                 )}
               </TableBody>
             </Table>
-            <TablePagination
-              rowsPerPageOptions={[5, 10, 25]}
-              component="div"
-              count={paginatedData.length}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-            />
+            <Grid container justifyContent="space-between" mt={2} mb={2}>
+              <Pagination
+                count={totalCount ? Math.ceil(totalCount / pageSize) : 1}
+                page={page}
+                onChange={handleChangePage}
+                color="primary"
+                shape="rounded"
+              />
+              <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+                <InputLabel>Page Size</InputLabel>
+                <Select
+                  value={pageSize}
+                  label="Page Size"
+                  onChange={handleChangeRowsPerPage}
+                >
+                  <MenuItem value={5}>5</MenuItem>
+                  <MenuItem value={10}>10</MenuItem>
+                  <MenuItem value={25}>25</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
           </TableContainer>
         </Grid>
       </Grid>

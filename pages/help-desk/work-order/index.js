@@ -248,52 +248,65 @@ export default function HelpDeskWorkOrder() {
         </ul>
       </div>
 
-      <Grid container spacing={2}>
-        <Grid item xs={12}>
-          <Paper sx={{ p: 2 }}>
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                mb: 2,
-                flexWrap: "wrap",
-                gap: 2,
-              }}
-            >
-              <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap", flex: 1 }}>
-                <Search>
-                  <StyledInputBase
-                    placeholder="Search work orders..."
-                    inputProps={{ "aria-label": "search" }}
-                    value={search}
-                    onChange={handleSearchChange}
-                  />
-                </Search>
-                <Autocomplete
-                  options={tickets}
-                  getOptionLabel={(option) => `${option.ticketNumber} - ${option.subject}`}
-                  value={selectedTicket}
-                  onChange={(event, newValue) => {
-                    setSelectedTicket(newValue);
-                  }}
-                  sx={{ minWidth: 300 }}
-                  renderInput={(params) => (
-                    <TextField {...params} label="Search by Ticket" size="small" />
-                  )}
-                />
-              </Box>
-              {create && (
-                <Button variant="outlined" onClick={navigateToCreate}>
-                  + Add New
-                </Button>
-              )}
-            </Box>
+      <Grid
+        container
+        rowSpacing={1}
+        columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}
+      >
+        <Grid item xs={12} lg={4} order={{ xs: 2, lg: 1 }}>
+          <Search className="search-form">
+            <StyledInputBase
+              placeholder="Search work orders..."
+              inputProps={{ "aria-label": "search" }}
+              value={search}
+              onChange={handleSearchChange}
+            />
+          </Search>
+        </Grid>
+        <Grid
+          item
+          xs={12}
+          lg={4}
+          mb={1}
+          display="flex"
+          justifyContent="end"
+          order={{ xs: 1, lg: 3 }}
+        >
+          {create && (
+            <Button variant="contained" color="primary" onClick={navigateToCreate}>
+              + Add New
+            </Button>
+          )}
+        </Grid>
+        <Grid
+          item
+          xs={12}
+          lg={4}
+          order={{ xs: 3, lg: 2 }}
+          display="flex"
+          justifyContent={{ xs: "flex-start", lg: "center" }}
+        >
+          <Autocomplete
+            fullWidth
+            options={tickets}
+            getOptionLabel={(option) => `${option.ticketNumber} - ${option.subject}`}
+            value={selectedTicket}
+            onChange={(event, newValue) => {
+              setSelectedTicket(newValue);
+              setPage(1);
+            }}
+            renderInput={(params) => (
+              <TextField {...params} label="Search by Ticket" size="small" />
+            )}
+          />
+        </Grid>
 
-            <TableContainer>
-              <Table>
+        <Grid item xs={12} order={{ xs: 4, lg: 4 }}>
+          <TableContainer component={Paper}>
+            <Table aria-label="simple table" className="dark-table">
                 <TableHead>
                   <TableRow>
+                    <TableCell>#</TableCell>
                     <TableCell>Work Order No</TableCell>
                     <TableCell>Ticket No</TableCell>
                     <TableCell>Project Name</TableCell>
@@ -304,16 +317,19 @@ export default function HelpDeskWorkOrder() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {workOrderList.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} align="center">
-                        <Typography color="error">No Work Orders Available</Typography>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    workOrderList.map((item, index) => {
-                      return (
-                        <TableRow key={index}>
+                {workOrderList.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} align="center">
+                      <Typography color="error">No Work Orders Available</Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  workOrderList.map((item, index) => {
+                    return (
+                      <TableRow key={index}>
+                        <TableCell component="th" scope="row">
+                          {(page - 1) * pageSize + index + 1}
+                        </TableCell>
                           <TableCell>{item.workOrderNumber}</TableCell>
                           <TableCell>{item.ticketNumber || "N/A"}</TableCell>
                           <TableCell>{item.projectName || "N/A"}</TableCell>
@@ -392,41 +408,36 @@ export default function HelpDeskWorkOrder() {
                     })
                   )}
                 </TableBody>
-              </Table>
-            </TableContainer>
-
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                mt: 2,
-                flexWrap: "wrap",
-                gap: 2,
-              }}
-            >
-              <Typography variant="body2" color="text.secondary">
-                Total: {totalCount} work orders
-              </Typography>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                <FormControl size="small" sx={{ minWidth: 120 }}>
-                  <InputLabel>Page Size</InputLabel>
-                  <Select value={pageSize} label="Page Size" onChange={handlePageSizeChange}>
-                    <MenuItem value={10}>10</MenuItem>
-                    <MenuItem value={25}>25</MenuItem>
-                    <MenuItem value={50}>50</MenuItem>
-                    <MenuItem value={100}>100</MenuItem>
-                  </Select>
-                </FormControl>
+            </Table>
+            <Grid container justifyContent="space-between" mt={2} mb={2} px={2}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Pagination
-                  count={Math.ceil(totalCount / pageSize)}
+                  count={totalCount ? Math.ceil(totalCount / pageSize) : 1}
                   page={page}
                   onChange={handlePageChange}
                   color="primary"
+                  shape="rounded"
                 />
+                <Typography variant="body2" sx={{ ml: 2, color: 'text.secondary' }}>
+                  Total: {totalCount} work orders
+                </Typography>
               </Box>
-            </Box>
-          </Paper>
+              <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+                <InputLabel>Page Size</InputLabel>
+                <Select
+                  value={pageSize}
+                  label="Page Size"
+                  onChange={handlePageSizeChange}
+                >
+                  <MenuItem value={5}>5</MenuItem>
+                  <MenuItem value={10}>10</MenuItem>
+                  <MenuItem value={25}>25</MenuItem>
+                  <MenuItem value={50}>50</MenuItem>
+                  <MenuItem value={100}>100</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </TableContainer>
         </Grid>
       </Grid>
     </>

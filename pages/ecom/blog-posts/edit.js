@@ -120,7 +120,7 @@ export default function EditBlogPost({ item, fetchItems }) {
     })
       .then((response) => response.json())
       .then((data) => {
-        if (data.statusCode == 200) {
+        if (data.statusCode === 200) {
           toast.success(data.message);
           setOpen(false);
           fetchItems();

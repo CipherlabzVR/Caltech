@@ -9,7 +9,14 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
-import { Pagination, Select, MenuItem, Typography } from "@mui/material";
+import {
+  Pagination,
+  FormControl,
+  Typography,
+  InputLabel,
+  MenuItem,
+  Select,
+} from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
@@ -19,7 +26,12 @@ import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import AddPromotion from "./create";
 import EditPromotion from "./edit";
-import { PROMOTION_CATEGORIES, PROMOTION_TYPES } from "@/components/eCommerce/promotions/promotionConfig";
+import {
+  PROMOTION_CATEGORIES,
+  PROMOTION_TYPES,
+  humanizePromotionCategoryEnumKey,
+  normalizePromotionCategoryKey,
+} from "@/components/eCommerce/promotions/promotionConfig";
 
 export default function Promotions() {
   const [cId, setCId] = useState(null);
@@ -43,9 +55,25 @@ export default function Promotions() {
     setPageSize,
     setSearch,
     fetchData,
-  } = usePaginatedFetch("ECommerce/GetAllPromotions", "", 10, true, false);
+  } = usePaginatedFetch("ECommerce/GetAllPromotions", "", 10, false, false);
 
-  const totalPages = Math.ceil(totalCount / pageSize) || 1;
+  const handleSearchChange = (event) => {
+    setSearch(event.target.value);
+    fetchData(1, event.target.value, pageSize);
+    setPage(1);
+  };
+
+  const handlePageChange = (event, value) => {
+    setPage(value);
+    fetchData(value, search, pageSize);
+  };
+
+  const handlePageSizeChange = (event) => {
+    const size = event.target.value;
+    setPageSize(size);
+    setPage(1);
+    fetchData(1, search, size);
+  };
 
   const getTypeLabel = (category, type) => {
     const types = PROMOTION_TYPES[category];
@@ -55,8 +83,11 @@ export default function Promotions() {
   };
 
   const getCategoryLabel = (category) => {
-    const c = PROMOTION_CATEGORIES.find((x) => x.value === category);
-    return c ? c.label : category || "";
+    const key = normalizePromotionCategoryKey(category);
+    const c = PROMOTION_CATEGORIES.find((x) => x.value === key);
+    if (c) return c.label;
+    if (key) return humanizePromotionCategoryEnumKey(key);
+    return category || "";
   };
 
   const getStatus = (item) => {
@@ -70,10 +101,6 @@ export default function Promotions() {
     return { label: "Active", className: "successBadge" };
   };
 
-  const handlePageChange = (e, value) => {
-    setPage(value - 1);
-    fetchData(value, search, pageSize);
-  };
 
   if (!navigate) {
     return <AccessDenied />;
@@ -101,7 +128,7 @@ export default function Promotions() {
               placeholder="Search by name, description or coupon code.."
               inputProps={{ "aria-label": "search" }}
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={handleSearchChange}
             />
           </Search>
         </Grid>
@@ -126,7 +153,8 @@ export default function Promotions() {
                   <TableCell>Category</TableCell>
                   <TableCell>Type</TableCell>
                   <TableCell>Coupon Code</TableCell>
-                  <TableCell>Start / End</TableCell>
+                  <TableCell>Start</TableCell>
+                  <TableCell>End</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Created On</TableCell>
                   <TableCell align="right">Action</TableCell>
@@ -135,7 +163,7 @@ export default function Promotions() {
               <TableBody>
                 {data.length === 0 ? (
                   <TableRow sx={{ "&:last-child td, &:last-child th": { border: 0 } }}>
-                    <TableCell colSpan={9} component="th" scope="row">
+                    <TableCell colSpan={10} component="th" scope="row">
                       <Typography color="error">No Promotions Available</Typography>
                     </TableCell>
                   </TableRow>
@@ -148,18 +176,22 @@ export default function Promotions() {
                         sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                       >
                         <TableCell component="th" scope="row">
-                          {(page || 0) * pageSize + index + 1}
+                          {(page - 1) * pageSize + index + 1}
                         </TableCell>
                         <TableCell sx={{ maxWidth: 180 }}>{item.name}</TableCell>
                         <TableCell>{getCategoryLabel(item.promotionCategory)}</TableCell>
                         <TableCell sx={{ maxWidth: 200 }}>
-                          {getTypeLabel(item.promotionCategory, item.promotionType)}
+                          {(() => {
+                            const catKey = normalizePromotionCategoryKey(item.promotionCategory);
+                            if (catKey === "CategoryBased" || catKey === "ProductBased") {
+                              return "—";
+                            }
+                            return getTypeLabel(catKey, item.promotionType);
+                          })()}
                         </TableCell>
                         <TableCell>{item.couponCode || "—"}</TableCell>
-                        <TableCell>
-                          {item.startDate ? formatDate(item.startDate) : "—"} /{" "}
-                          {item.endDate ? formatDate(item.endDate) : "—"}
-                        </TableCell>
+                        <TableCell>{item.startDate ? formatDate(item.startDate) : "—"}</TableCell>
+                        <TableCell>{item.endDate ? formatDate(item.endDate) : "—"}</TableCell>
                         <TableCell>
                           <span className={status.className}>{status.label}</span>
                         </TableCell>
@@ -186,35 +218,26 @@ export default function Promotions() {
                 )}
               </TableBody>
             </Table>
-            <Grid container p={2} alignItems="center" justifyContent="space-between">
-              <Grid item display="flex" alignItems="center" gap={1}>
-                <Typography variant="body2">Rows per page:</Typography>
+            <Grid container justifyContent="space-between" mt={2} mb={2}>
+              <Pagination
+                count={totalCount ? Math.ceil(totalCount / pageSize) : 1}
+                page={page}
+                onChange={handlePageChange}
+                color="primary"
+                shape="rounded"
+              />
+              <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+                <InputLabel>Page Size</InputLabel>
                 <Select
-                  size="small"
                   value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(e.target.value);
-                    setPage(0);
-                    fetchData(1, search, e.target.value);
-                  }}
+                  label="Page Size"
+                  onChange={handlePageSizeChange}
                 >
                   <MenuItem value={5}>5</MenuItem>
                   <MenuItem value={10}>10</MenuItem>
                   <MenuItem value={25}>25</MenuItem>
                 </Select>
-                <Typography variant="body2" ml={2}>
-                  Total: {totalCount}
-                </Typography>
-              </Grid>
-              <Grid item>
-                <Pagination
-                  count={totalPages}
-                  page={(page || 0) + 1}
-                  onChange={handlePageChange}
-                  color="primary"
-                  shape="rounded"
-                />
-              </Grid>
+              </FormControl>
             </Grid>
           </TableContainer>
         </Grid>

@@ -63,7 +63,6 @@ export default function AddCategory({ fetchItems, IsEcommerceWebSiteAvailable })
   }, [open]);
 
   const handleSubmit = (values) => {
-    setOpen(false);
     const formData = new FormData();
 
     formData.append("Name", values.Name);
@@ -81,14 +80,16 @@ export default function AddCategory({ fetchItems, IsEcommerceWebSiteAvailable })
     })
       .then((response) => response.json())
       .then((data) => {
-        if (data.statusCode == 200) {
-          toast.success(data.message);
+        const sc = data.statusCode ?? data.StatusCode;
+        const msg = data.message ?? data.Message ?? "";
+        if (sc === 200) {
+          toast.success(msg);
           setOpen(false);
           fetchItems();
           setImage("");
           setFile(null);
         } else {
-          toast.error(data.message);
+          toast.error(msg);
         }
       })
       .catch((error) => {

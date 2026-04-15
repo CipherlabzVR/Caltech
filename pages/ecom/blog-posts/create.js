@@ -99,7 +99,7 @@ export default function AddBlogPost({ fetchItems }) {
     })
       .then((response) => response.json())
       .then((data) => {
-        if (data.statusCode == 200) {
+        if (data.statusCode === 200) {
           toast.success(data.message);
           resetForm();
           handleClose();

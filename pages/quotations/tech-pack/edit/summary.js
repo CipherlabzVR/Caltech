@@ -17,7 +17,6 @@ import {
 import { useRouter } from "next/router";
 import { DashboardHeader } from "@/components/shared/dashboard-header";
 import { DashboardSummaryHeader } from "@/components/shared/dashboard-summary-header";
-import TechPackSummaryTable from "./tech-pack-summary-table";
 import BASE_URL from "Base/api";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -423,37 +422,7 @@ export default function TechPackSummary() {
           </Card>
         </Grid>
 
-        {/* Summary table for shirt/tshirt (tech-pack ongoing summary) - after Inquiry Information */}
-        {isShirtOrTshirt && ongoingInquiryId && optionId && (
-          <Grid item xs={12} lg={6} md={6}>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <TechPackSummaryTable
-                  onIsSavedChange={setIsSummarySavedFromChild}
-                  inquiry={{
-                    inquiryId: parseInt(ongoingInquiryId, 10),
-                    optionId: parseInt(optionId, 10),
-                    windowType: windowTypeNum,
-                    inquiryCode: inquiry?.inquiryCode ?? "",
-                    optionName: inquiry?.optionName ?? "",
-                  }}
-                  onSummaryChange={handleSummaryChange}
-                  originalInquiry={
-                    inquiryId && optionId
-                      ? {
-                        inquiryId: parseInt(inquiryId, 10),
-                        optionId: parseInt(optionId, 10),
-                        windowType: windowTypeNum,
-                      }
-                      : undefined
-                  }
-                />
-              </Grid>
-            </Grid>
-          </Grid>
-        )}
-
-        <Grid item xs={12} lg={6} md={6}>
+        <Grid item xs={12} lg={12} md={12}>
           <Grid container gap={2}>
             <Grid item xs={12}>
               {/* Fabrics */}
