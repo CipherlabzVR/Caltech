@@ -7,6 +7,7 @@ import {
   TextField,
   Button,
   Alert,
+  Alert,
   FormControlLabel,
   Checkbox,
   InputAdornment,
@@ -31,6 +32,11 @@ const HRLoginForm = () => {
   const [deviceNameInput, setDeviceNameInput] = useState("");
   const [loginResult, setLoginResult] = useState(null);
   const [pendingRedirect, setPendingRedirect] = useState(null);
+  const [loginNote, setLoginNote] = useState("");
+  const [deviceDialogOpen, setDeviceDialogOpen] = useState(false);
+  const [deviceNameInput, setDeviceNameInput] = useState("");
+  const [loginResult, setLoginResult] = useState(null);
+  const [pendingRedirect, setPendingRedirect] = useState(null);
   const router = useRouter();
 
   const handleSubmit = async (event) => {
@@ -45,6 +51,7 @@ const HRLoginForm = () => {
     }
 
     setLoginNote("");
+    setLoginNote("");
     setLoading(true);
     try {
       const response = await fetch(`${BASE_URL}/hr/HRAuthentication/login`, {
@@ -54,14 +61,21 @@ const HRLoginForm = () => {
           UsernameOrEmail: usernameOrEmail,
           Password: password,
           DeviceName: getDeviceName(),
+        body: JSON.stringify({
+          UsernameOrEmail: usernameOrEmail,
+          Password: password,
+          DeviceName: getDeviceName(),
         }),
       });
 
       const responseData = await response.json();
 
+
       const statusCode = responseData.statusCode || responseData.StatusCode;
       const isSuccess =
+      const isSuccess =
         response.ok && (
+          statusCode === 200 ||
           statusCode === 200 ||
           statusCode === "200" ||
           statusCode === "SUCCESS" ||
@@ -74,6 +88,7 @@ const HRLoginForm = () => {
       }
 
       const result = responseData.result || responseData.Result;
+
 
       localStorage.setItem("token", result.accessToken || result.AccessToken);
       localStorage.setItem("user", result.email || result.Email);
@@ -112,6 +127,14 @@ const HRLoginForm = () => {
         router.push("/hr");
       }
     } catch (error) {
+      const message = error.message || "Login failed";
+
+      if (message.includes("registered devices") || message.includes("contact admin")) {
+        setLoginNote(message);
+        return;
+      }
+
+      toast.error(message);
       const message = error.message || "Login failed";
 
       if (message.includes("registered devices") || message.includes("contact admin")) {
@@ -260,6 +283,12 @@ const HRLoginForm = () => {
               </Alert>
             )}
 
+            {loginNote && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                {loginNote}
+              </Alert>
+            )}
+
             <TextField
               fullWidth
               margin="normal"
@@ -356,6 +385,13 @@ const HRLoginForm = () => {
           </Box>
         </Grid>
       </Grid>
+      <DeviceNameDialog
+        open={deviceDialogOpen}
+        value={deviceNameInput}
+        onChange={setDeviceNameInput}
+        onCancel={handleDeviceDialogCancel}
+        onConfirm={handleDeviceDialogConfirm}
+      />
       <DeviceNameDialog
         open={deviceDialogOpen}
         value={deviceNameInput}

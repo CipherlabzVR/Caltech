@@ -5,6 +5,7 @@ import {
   Button,
   Typography,
   Alert,
+  Alert,
   IconButton,
   InputAdornment,
 } from "@mui/material";
@@ -28,6 +29,10 @@ const DrawerSignIn = () => {
 
   const [formErrors, setFormErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
+  const [loginNote, setLoginNote] = useState("");
+  const [deviceDialogOpen, setDeviceDialogOpen] = useState(false);
+  const [deviceNameInput, setDeviceNameInput] = useState("");
+  const [loginResult, setLoginResult] = useState(null);
   const [loginNote, setLoginNote] = useState("");
   const [deviceDialogOpen, setDeviceDialogOpen] = useState(false);
   const [deviceNameInput, setDeviceNameInput] = useState("");
@@ -70,6 +75,22 @@ const DrawerSignIn = () => {
         }),
       });
       const responseData = await response.json();
+    if (!validate()) return;
+
+    setLoginNote("");
+
+    try {
+      const response = await fetch(`${BASE_URL}/User/SignIn`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...formData,
+          DeviceName: getDeviceName(),
+        }),
+      });
+      const responseData = await response.json();
 
       if (!response.ok) {
         throw new Error(responseData.message || "Login failed");
@@ -89,6 +110,20 @@ const DrawerSignIn = () => {
       sessionStorage.setItem("justLoggedIn", "true");
       touchSessionActivity();
 
+      fetch(`${BASE_URL}/Company/CreateCompanyHostingFeeIfDue`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${result.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }).catch(() => {});
+
+      if (result.isNewDevice) {
+        setLoginResult(result);
+        setDeviceNameInput(getDeviceName());
+        setDeviceDialogOpen(true);
+        return;
+      }
       fetch(`${BASE_URL}/Company/CreateCompanyHostingFeeIfDue`, {
         method: "POST",
         headers: {
@@ -204,6 +239,11 @@ const DrawerSignIn = () => {
             {loginNote}
           </Alert>
         )}
+        {loginNote && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {loginNote}
+          </Alert>
+        )}
         <TextField
           fullWidth
           label="Email"
@@ -245,6 +285,13 @@ const DrawerSignIn = () => {
           Sign In
         </Button>
       </Grid>
+      <DeviceNameDialog
+        open={deviceDialogOpen}
+        value={deviceNameInput}
+        onChange={setDeviceNameInput}
+        onCancel={handleDeviceDialogCancel}
+        onConfirm={handleDeviceDialogConfirm}
+      />
       <DeviceNameDialog
         open={deviceDialogOpen}
         value={deviceNameInput}

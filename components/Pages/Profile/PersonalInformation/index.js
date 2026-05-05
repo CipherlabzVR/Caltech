@@ -631,6 +631,10 @@ const PersonalInformation = () => {
       return;
     }
 
+    if (!userEmail) {
+      return;
+    }
+
     fetchUser();
     fetchDevices();
     fetchTwoFactorSettings();
@@ -688,8 +692,14 @@ const PersonalInformation = () => {
 
   const activeSectionDetails = sections.find((section) => section.value === activeSection) || sections[0];
 
+  const activeSectionDetails = sections.find((section) => section.value === activeSection) || sections[0];
+
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
+    if (!file || !user?.id) {
+      return;
+    }
+
     if (!file || !user?.id) {
       return;
     }
@@ -701,6 +711,10 @@ const PersonalInformation = () => {
   };
 
   const handleImageRemove = async () => {
+    if (!user?.id) {
+      return;
+    }
+
     if (!user?.id) {
       return;
     }

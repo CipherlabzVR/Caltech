@@ -111,6 +111,7 @@ export default function AddCategory({
           fetchItems?.(newId);
         } else {
           toast.error(msg);
+          toast.error(msg);
         }
       })
       .catch((error) => {

@@ -49,6 +49,7 @@ const handleSubmit = async (values, { resetForm }) => {
 };
 
 const ChangePasswordForm = ({ embedded = false }) => {
+const ChangePasswordForm = ({ embedded = false }) => {
   const formik = useFormik({
     initialValues: {
       Password: "",
@@ -93,6 +94,10 @@ const ChangePasswordForm = ({ embedded = false }) => {
           <Typography component="h2" fontSize={embedded ? "22px" : "28px"} fontWeight="700" mb="10px">
             Change Password
           </Typography>
+          <Typography fontSize="14px" color="text.secondary">
+            Update your password to keep your account secure.
+          </Typography>
+        </Box>
           <Typography fontSize="14px" color="text.secondary">
             Update your password to keep your account secure.
           </Typography>
@@ -173,6 +178,43 @@ const ChangePasswordForm = ({ embedded = false }) => {
             </Grid>
           </Box>
 
+          <Button
+            type="submit"
+            fullWidth={!embedded}
+            variant="contained"
+            sx={{
+              mt: 1,
+              textTransform: "capitalize",
+              borderRadius: "10px",
+              fontWeight: "600",
+              fontSize: "15px",
+              padding: "12px 24px",
+              minWidth: embedded ? "200px" : "auto",
+              color: "#fff !important",
+            }}
+          >
+            Change Password
+          </Button>
+        </Box>
+      </Box>
+    </Grid>
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <Box
+      component="main"
+      sx={{
+        maxWidth: "510px",
+        ml: "auto",
+        mr: "auto",
+        padding: "50px 0 100px",
+      }}
+    >
+      {content}
           <Button
             type="submit"
             fullWidth={!embedded}

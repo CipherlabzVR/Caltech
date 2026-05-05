@@ -443,14 +443,20 @@ const InvoiceCreate = () => {
 
     // Credit limit validation for credit payments only (PaymentType = 7)
     if (isCustomerCreditLimit && paymentType === 7 && customer) {
+    // Credit limit validation for credit payments only (PaymentType = 7)
+    if (isCustomerCreditLimit && paymentType === 7 && customer) {
       const creditLimit = customer.creditLimit || 0;
+      
+      // Check if customer has a valid credit limit set
       
       // Check if customer has a valid credit limit set
       if (creditLimit <= 0) {
         toast.error("Cannot create invoice. Customer must have a Credit Limit set. Please update customer details.");
         return;
       }
+      }
 
+      // Check if invoice amount exceeds available credit balance
       // Check if invoice amount exceeds available credit balance
       const outstandingAmount = customer.outstandingAmount || 0;
       const availableBalance = creditLimit - outstandingAmount;
@@ -541,6 +547,7 @@ const InvoiceCreate = () => {
         DiscountPercentage: 0.0,
         LineTotal: row.totalPrice,
         SequanceNo: i + 1,
+        StockBalanceId: row.isNonInventory ? 0 : row.id,
         StockBalanceId: row.isNonInventory ? 0 : row.id,
         Machine: null,
         ItemType: 1,
@@ -665,6 +672,54 @@ const InvoiceCreate = () => {
     setProductName(item.name);
     setProductCode(item.code);
     setSelectedIndex(0);
+  };
+
+  const handleAddNonInventoryLine = (item) => {
+    if (!customer) {
+      toast.error("Customer information is missing!");
+      return;
+    }
+    const unitPrice = parseFloat(item.averagePrice) || 0;
+    const existingItem = selectedRows.find(
+      (row) => row.isNonInventory && row.productId === item.id
+    );
+    if (existingItem) {
+      toast.error("This item already exists in the table. Cannot add duplicate items.");
+      return;
+    }
+
+    const newRow = {
+      lineKey: `noninv-${item.id}-${Date.now()}`,
+      id: 0,
+      productId: item.id,
+      productName: item.name,
+      productCode: item.code,
+      quantity: "",
+      totalPrice: 0,
+      sellingPrice: unitPrice,
+      costPrice: unitPrice,
+      stockBalanceId: null,
+      batchNumber: "",
+      packageName: item.name,
+      isNonInventory: true,
+      bookBalanceQuantity: Number.MAX_SAFE_INTEGER,
+    };
+
+    setSelectedRows((prevRows) => [...prevRows, newRow]);
+  };
+
+  const handleSearchItemSelect = (item) => {
+    if (isOutlet) {
+      handleItemStock(item);
+    } else if (item.stockBalanceId == null) {
+      handleAddNonInventoryLine(item);
+    } else {
+      handleCheckStockBalance(item);
+    }
+    setTimeout(() => {
+      const newIndex = selectedRows.length;
+      qtyRefs.current[newIndex]?.focus();
+    }, 100);
   };
 
   const handleAddNonInventoryLine = (item) => {
@@ -1347,6 +1402,7 @@ const InvoiceCreate = () => {
                     {selectedRows.map((row, index) => (
                       <TableRow
                         key={row.lineKey ?? row.id}
+                        key={row.lineKey ?? row.id}
                         sx={{
                           "&:last-child td, &:last-child th": { border: 0 },
                         }}
@@ -1404,6 +1460,7 @@ const InvoiceCreate = () => {
                             inputProps={{
                               min: 1,
                               max: row.isNonInventory ? undefined : row.bookBalanceQuantity,
+                              max: row.isNonInventory ? undefined : row.bookBalanceQuantity,
                             }}
                             onChange={(e) => {
                               const inputValue = e.target.value;
@@ -1414,6 +1471,7 @@ const InvoiceCreate = () => {
 
                               let newValue = Number(inputValue);
 
+                              if (!row.isNonInventory && newValue > row.bookBalanceQuantity) {
                               if (!row.isNonInventory && newValue > row.bookBalanceQuantity) {
                                 newValue = row.bookBalanceQuantity;
                               }
