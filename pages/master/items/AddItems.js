@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Checkbox, FormControlLabel, Grid, Typography, Tabs, Tab, IconButton, Select, InputLabel } from "@mui/material";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -10,7 +9,6 @@ import TextField from "@mui/material/TextField";
 import { Field, Form, Formik } from "formik";
 import * as Yup from "yup";
 import BASE_URL from "Base/api";
-import { useRouter } from "next/router";
 import { useRouter } from "next/router";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -212,19 +210,7 @@ export default function AddItems({
   const [duplicateSourceId, setDuplicateSourceId] = useState(null);
   const [duplicatePrefill, setDuplicatePrefill] = useState(null);
   const [initialDuplicateSnapshot, setInitialDuplicateSnapshot] = useState(null);
-  const [duplicateSourceId, setDuplicateSourceId] = useState(null);
-  const [duplicatePrefill, setDuplicatePrefill] = useState(null);
-  const [initialDuplicateSnapshot, setInitialDuplicateSnapshot] = useState(null);
   const [open, setOpen] = React.useState(false);
-  const handleClose = () => {
-    setOpen(false);
-    setSubImages((prev) => {
-      prev.forEach((item) => {
-        if (item.preview) URL.revokeObjectURL(item.preview);
-      });
-      return [];
-    });
-  };
   const handleClose = () => {
     setOpen(false);
     setSubImages((prev) => {
@@ -245,38 +231,11 @@ export default function AddItems({
   const [selectedFile, setSelectedFile] = useState(null);
   const [subImages, setSubImages] = useState([]); // { id, preview, file, price, description }
   const subImageInputRef = useRef(null);
-  const [subImages, setSubImages] = useState([]); // { id, preview, file, price, description }
-  const subImageInputRef = useRef(null);
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
   const [createSubCategoryOpen, setCreateSubCategoryOpen] = useState(false);
   const [createSupplierOpen, setCreateSupplierOpen] = useState(false);
   const [createUOMOpen, setCreateUOMOpen] = useState(false);
   const [uomList, setUomList] = useState(uoms || []);
-
-  const clearDuplicateContext = () => {
-    localStorage.removeItem("duplicateItemId");
-    setDuplicateSourceId(null);
-    setDuplicatePrefill(null);
-    setInitialDuplicateSnapshot(null);
-  };
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const raw = localStorage.getItem("duplicateItemId");
-    if (raw) {
-      setDuplicateSourceId(raw);
-    } else {
-      setDuplicateSourceId(null);
-      setDuplicatePrefill(null);
-      setInitialDuplicateSnapshot(null);
-    }
-  }, [router.asPath, duplicateRequestSeq]);
-
-  useEffect(() => {
-    if (duplicatePrefill) {
-      setOpen(true);
-    }
-  }, [duplicatePrefill]);
 
   const clearDuplicateContext = () => {
     localStorage.removeItem("duplicateItemId");
@@ -314,10 +273,6 @@ export default function AddItems({
   }, [open]);
 
   const handleOpen = async () => {
-    // Manual "New item" should always start from a fresh form, not stale duplicate state.
-    clearDuplicateContext();
-    setSelectedCat(undefined);
-    setSubCategoryList([]);
     // Manual "New item" should always start from a fresh form, not stale duplicate state.
     clearDuplicateContext();
     setSelectedCat(undefined);
@@ -466,60 +421,6 @@ export default function AddItems({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchSubCategoryList / subCategories from parent; intentional deps below
   }, [duplicateSourceId, duplicateRequestSeq]);
 
-
-  useEffect(() => {
-    if (!duplicateSourceId) return;
-
-    const loadDuplicateItem = async () => {
-      try {
-        const response = await fetch(
-          `${BASE_URL}/Items/GetItemById?id=${duplicateSourceId}`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch item");
-        }
-
-        const data = await response.json();
-        const src = data.result;
-        const formValues = mapApiItemToDuplicateFormValues(src);
-        if (!formValues) return;
-
-        const categoryId = src.categoryId ?? src.CategoryId;
-        if (categoryId) {
-          setSelectedCat(categoryId);
-          if (Array.isArray(subCategories) && subCategories.length > 0) {
-            setSubCategoryList(
-              subCategories.filter((sc) => sc.categoryId == categoryId)
-            );
-          } else {
-            await fetchSubCategoryList(categoryId);
-          }
-        }
-
-        setDuplicatePrefill(formValues);
-        setInitialDuplicateSnapshot(
-          typeof structuredClone === "function"
-            ? structuredClone(formValues)
-            : JSON.parse(JSON.stringify(formValues))
-        );
-        setItemCode(formValues.Code ?? "");
-      } catch (error) {
-        console.error("Error loading duplicate item:", error);
-      }
-    };
-
-    loadDuplicateItem();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchSubCategoryList / subCategories from parent; intentional deps below
-  }, [duplicateSourceId, duplicateRequestSeq]);
-
   const fetchCurrencyList = async () => {
     try {
       const response = await fetch(`${BASE_URL}/Currency/GetAllCurrency?SkipCount=0&MaxResultCount=1000&Search=null`, {
@@ -570,11 +471,6 @@ export default function AddItems({
       setUomList(uoms);
     }
   }, [uoms]);
-
-  const formInitialValues = useMemo(
-    () => duplicatePrefill ?? getAddItemEmptyFormValues(itemCode),
-    [duplicatePrefill, itemCode]
-  );
 
   const formInitialValues = useMemo(
     () => duplicatePrefill ?? getAddItemEmptyFormValues(itemCode),
@@ -731,48 +627,11 @@ export default function AddItems({
       toast.warning("Please modify at least one field before creating a duplicate item.");
       return;
     }
-    const wp =
-      values.WholesalePrice !== null && values.WholesalePrice !== ""
-        ? Number(values.WholesalePrice)
-        : NaN;
-    const wq =
-      values.WholesaleMinimumQuantity !== null && values.WholesaleMinimumQuantity !== ""
-        ? Number(values.WholesaleMinimumQuantity)
-        : NaN;
-    if (Number.isFinite(wp) && wp > 0) {
-      if (!Number.isFinite(wq) || wq <= 0) {
-        toast.warning("Enter wholesale minimum quantity when wholesale price is set.");
-        return;
-      }
-    }
-    if (Number.isFinite(wq) && wq > 0) {
-      if (!Number.isFinite(wp) || wp <= 0) {
-        toast.warning("Enter wholesale price when wholesale minimum quantity is set.");
-        return;
-      }
-    }
-    if (
-      initialDuplicateSnapshot &&
-      areDuplicateItemFormValuesUnchanged(values, initialDuplicateSnapshot)
-    ) {
-      toast.warning("Please modify at least one field before creating a duplicate item.");
-      return;
-    }
     const formData = new FormData();
 
     formData.append("Name", values.Name);
     formData.append("Code", values.Code);
     formData.append("AveragePrice", values.AveragePrice);
-    formData.append(
-      "WholesalePrice",
-      values.WholesalePrice !== null && values.WholesalePrice !== "" ? values.WholesalePrice : "",
-    );
-    formData.append(
-      "WholesaleMinimumQuantity",
-      values.WholesaleMinimumQuantity !== null && values.WholesaleMinimumQuantity !== ""
-        ? values.WholesaleMinimumQuantity
-        : "",
-    );
     formData.append(
       "WholesalePrice",
       values.WholesalePrice !== null && values.WholesalePrice !== "" ? values.WholesalePrice : "",
@@ -812,23 +671,7 @@ export default function AddItems({
     formData.append("IsWebView", values.IsWebView);
     formData.append("IsOutOfStock", values.IsOutOfStock);
     formData.append("IsItemEndInvolve", values.IsItemEndInvolve);
-    formData.append("IsOutOfStock", values.IsOutOfStock);
-    formData.append("IsItemEndInvolve", values.IsItemEndInvolve);
     formData.append("ProductImage", selectedFile ? selectedFile : null);
-    (subImages || []).forEach((item) => {
-      if (item.file) formData.append("SubImages", item.file);
-    });
-    const subImagesMeta = (subImages || [])
-      .filter((item) => item.file)
-      .map((item) => {
-        const priceVal = item.price !== "" && item.price != null ? parseFloat(item.price) : NaN;
-        return {
-          price: !isNaN(priceVal) ? priceVal : null,
-          description: item.description?.trim() || null,
-          isOutOfStock: !!item.isOutOfStock,
-        };
-      });
-    formData.append("SubImagesMeta", JSON.stringify(subImagesMeta));
     (subImages || []).forEach((item) => {
       if (item.file) formData.append("SubImages", item.file);
     });
@@ -859,14 +702,7 @@ export default function AddItems({
         if (data.statusCode == 200) {
           toast.success(data.message);
           clearDuplicateContext();
-          clearDuplicateContext();
           setOpen(false);
-          setSubImages((prev) => {
-            prev.forEach((item) => {
-              if (item.preview) URL.revokeObjectURL(item.preview);
-            });
-            return [];
-          });
           setSubImages((prev) => {
             prev.forEach((item) => {
               if (item.preview) URL.revokeObjectURL(item.preview);
@@ -886,7 +722,6 @@ export default function AddItems({
     <>
       <Button variant="outlined" onClick={handleOpen}>
         + New Item
-        + New Item
       </Button>
       <Modal
         open={open}
@@ -896,8 +731,6 @@ export default function AddItems({
       >
         <Box sx={style} className="bg-black">
           <Formik
-            enableReinitialize
-            initialValues={formInitialValues}
             enableReinitialize
             initialValues={formInitialValues}
             validationSchema={validationSchema}
@@ -917,7 +750,6 @@ export default function AddItems({
                         mb: "5px",
                       }}
                     >
-                      {duplicatePrefill ? "Duplicate Item" : "Add Item"}
                       {duplicatePrefill ? "Duplicate Item" : "Add Item"}
                     </Typography>
                   </Grid>
@@ -1129,7 +961,6 @@ export default function AddItems({
                           </Box>
                         </Grid>
                         {IsEcommerceWebSiteAvailable && (
-                        {IsEcommerceWebSiteAvailable && (
                           <>
                             <Grid item xs={12} mt={1} lg={6}>
                               <Typography
@@ -1146,52 +977,6 @@ export default function AddItems({
                                 fullWidth
                                 name="AveragePrice"
                                 size="small"
-                              />
-                            </Grid>
-                            <Grid item xs={12} mt={1} lg={6}>
-                              <Typography
-                                sx={{
-                                  fontWeight: "500",
-                                  fontSize: "14px",
-                                  mb: "5px",
-                                }}
-                              >
-                                Wholesale price
-                              </Typography>
-                              <Field
-                                as={TextField}
-                                fullWidth
-                                name="WholesalePrice"
-                                size="small"
-                                type="number"
-                                inputProps={{ min: 0, step: "any" }}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  setFieldValue("WholesalePrice", value === "" ? null : value);
-                                }}
-                              />
-                            </Grid>
-                            <Grid item xs={12} mt={1} lg={6}>
-                              <Typography
-                                sx={{
-                                  fontWeight: "500",
-                                  fontSize: "14px",
-                                  mb: "5px",
-                                }}
-                              >
-                                Wholesale minimum quantity
-                              </Typography>
-                              <Field
-                                as={TextField}
-                                fullWidth
-                                name="WholesaleMinimumQuantity"
-                                size="small"
-                                type="number"
-                                inputProps={{ min: 0, step: "any" }}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  setFieldValue("WholesaleMinimumQuantity", value === "" ? null : value);
-                                }}
                               />
                             </Grid>
                             <Grid item xs={12} mt={1} lg={6}>
@@ -1614,22 +1399,6 @@ export default function AddItems({
                                 />
                               </Grid>
                             )}
-
-                            {isItemEndInvolveEnable && (
-                              <Grid item xs={12} lg={6} mt={1}>
-                                <FormControlLabel
-                                  control={
-                                    <Field
-                                      as={Checkbox}
-                                      name="IsItemEndInvolve"
-                                      checked={values.IsItemEndInvolve}
-                                      onChange={() => setFieldValue("IsItemEndInvolve", !values.IsItemEndInvolve)}
-                                    />
-                                  }
-                                  label="Is Item End Involve"
-                                />
-                              </Grid>
-                            )}
                           </Grid>
                         </Grid>
                       </Grid>
@@ -1722,20 +1491,6 @@ export default function AddItems({
                                 label="Out of Stock (main image)"
                               />
                             )}
-                            {IsEcommerceWebSiteAvailable && (
-                              <FormControlLabel
-                                sx={{ mt: 1, display: "block" }}
-                                control={
-                                  <Field
-                                    as={Checkbox}
-                                    name="IsOutOfStock"
-                                    checked={values.IsOutOfStock}
-                                    onChange={() => setFieldValue("IsOutOfStock", !values.IsOutOfStock)}
-                                  />
-                                }
-                                label="Out of Stock (main image)"
-                              />
-                            )}
                           </Grid>
                         )}
 
@@ -1771,156 +1526,9 @@ export default function AddItems({
                                   label="Out of Stock (main image)"
                                 />
                               )}
-                              {IsEcommerceWebSiteAvailable && (
-                                <FormControlLabel
-                                  sx={{ mt: 2, justifyContent: "center" }}
-                                  control={
-                                    <Field
-                                      as={Checkbox}
-                                      name="IsOutOfStock"
-                                      checked={values.IsOutOfStock}
-                                      onChange={() => setFieldValue("IsOutOfStock", !values.IsOutOfStock)}
-                                    />
-                                  }
-                                  label="Out of Stock (main image)"
-                                />
-                              )}
                             </Box>
                           </Grid>
                         )}
-
-                        {/* Sub Images section */}
-                        <Grid item xs={12} sx={{ mt: 3 }}>
-                          <Typography variant="h6" sx={{ mb: 2 }}>
-                            Sub Images
-                          </Typography>
-                          <Button
-                            variant="contained"
-                            component="label"
-                            startIcon={<CloudUploadIcon />}
-                            sx={{ mb: 2 }}
-                          >
-                            Choose Image
-                            <input
-                              ref={subImageInputRef}
-                              type="file"
-                              hidden
-                              accept="image/*"
-                              multiple
-                              onChange={handleSubImagesUpload}
-                            />
-                          </Button>
-                          {subImages.length > 0 ? (
-                            <Grid container spacing={2}>
-                              {subImages.map((item) => (
-                                <Grid item xs={12} sm={6} md={4} key={item.id}>
-                                  <Box
-                                    sx={{
-                                      position: "relative",
-                                      border: "2px solid #e0e0e0",
-                                      borderRadius: "8px",
-                                      overflow: "hidden",
-                                      "&:hover .delete-icon": {
-                                        opacity: 1,
-                                      },
-                                    }}
-                                  >
-                                    <Box
-                                      sx={{
-                                        height: "140px",
-                                        position: "relative",
-                                        backgroundColor: "#f5f5f5",
-                                      }}
-                                    >
-                                      <img
-                                        src={item.preview}
-                                        alt="Sub"
-                                        style={{
-                                          width: "100%",
-                                          height: "100%",
-                                          objectFit: "cover",
-                                        }}
-                                      />
-                                      <IconButton
-                                        className="delete-icon"
-                                        onClick={() => removeSubImage(item.id)}
-                                        sx={{
-                                          position: "absolute",
-                                          top: 5,
-                                          right: 5,
-                                          backgroundColor: "rgba(255, 255, 255, 0.9)",
-                                          opacity: 0,
-                                          transition: "opacity 0.3s",
-                                          "&:hover": {
-                                            backgroundColor: "rgba(255, 255, 255, 1)",
-                                          },
-                                        }}
-                                        size="small"
-                                      >
-                                        <DeleteIcon fontSize="small" color="error" />
-                                      </IconButton>
-                                    </Box>
-                                    <Box sx={{ p: 1.5 }}>
-                                      <TextField
-                                        fullWidth
-                                        size="small"
-                                        label="Price"
-                                        type="number"
-                                        inputProps={{ min: 0, step: 0.01 }}
-                                        value={item.price ?? ""}
-                                        onChange={(e) =>
-                                          updateSubImageMeta(item.id, "price", e.target.value)
-                                        }
-                                        sx={{ mb: 1 }}
-                                      />
-                                      <TextField
-                                        fullWidth
-                                        size="small"
-                                        label="Description"
-                                        multiline
-                                        rows={2}
-                                        value={item.description ?? ""}
-                                        onChange={(e) =>
-                                          updateSubImageMeta(item.id, "description", e.target.value)
-                                        }
-                                      />
-                                      {IsEcommerceWebSiteAvailable && (
-                                        <FormControlLabel
-                                          sx={{ mt: 0.5, alignItems: "flex-start", ml: 0 }}
-                                          control={
-                                            <Checkbox
-                                              size="small"
-                                              checked={!!item.isOutOfStock}
-                                              onChange={(e) =>
-                                                updateSubImageMeta(item.id, "isOutOfStock", e.target.checked)
-                                              }
-                                            />
-                                          }
-                                          label="Out of Stock"
-                                        />
-                                      )}
-                                    </Box>
-                                  </Box>
-                                </Grid>
-                              ))}
-                            </Grid>
-                          ) : (
-                            <Box
-                              sx={{
-                                border: "2px dashed #ccc",
-                                borderRadius: "8px",
-                                p: 3,
-                                textAlign: "center",
-                                backgroundColor: "#f9f9f9",
-                              }}
-                            >
-                              <CloudUploadIcon sx={{ fontSize: 48, color: "#999", mb: 1 }} />
-                              <Typography variant="body2" color="textSecondary">
-                                No sub images. Click "Choose Image" to add multiple images.
-                              </Typography>
-                            </Box>
-                          )}
-                        </Grid>
 
                         {/* Sub Images section */}
                         <Grid item xs={12} sx={{ mt: 3 }}>

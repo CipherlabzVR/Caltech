@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import React, { useEffect, useMemo, useState } from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -24,16 +23,6 @@ import {
   DialogActions,
   Divider,
   Box,
-  Card,
-  CardContent,
-  Stack,
-  Tabs,
-  Tab,
-  Stepper,
-  Step,
-  StepLabel,
-  CircularProgress,
-  TextField,
   Card,
   CardContent,
   Stack,
@@ -266,7 +255,6 @@ async function readOrderStatusApiResult(response) {
 
 export default function Orders() {
   const theme = useTheme();
-  const theme = useTheme();
   const cId = sessionStorage.getItem("category")
   const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
   const {
@@ -279,11 +267,9 @@ export default function Orders() {
     setPageSize,
     setSearch,
     setExtraQuery,
-    setExtraQuery,
     fetchData: fetchOrders,
   } = usePaginatedFetch("ECommerce/GetAllOnlineOrders");
 
-  const [statusTab, setStatusTab] = useState("all");
   const [statusTab, setStatusTab] = useState("all");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
@@ -316,7 +302,6 @@ export default function Orders() {
       1: "Cash on Delivery",
       2: "Card",
       3: "Bank Transfer",
-      3: "Bank Transfer",
     }),
     []
   );
@@ -329,13 +314,7 @@ export default function Orders() {
     return ordersList.map((order) => {
       const statusRaw = order.orderStatus ?? order.OrderStatus;
       const statusValue = parseOrderStatus(statusRaw);
-      const statusRaw = order.orderStatus ?? order.OrderStatus;
-      const statusValue = parseOrderStatus(statusRaw);
       const statusMeta =
-        STATUS_META[statusValue] ?? { label: "Unknown", color: "default" };
-      const createdOnRaw = order.createdOn ?? order.CreatedOn;
-      const createdOnDate = createdOnRaw ? new Date(createdOnRaw) : null;
-      const paymentOpt = parsePaymentOption(order.paymentOption ?? order.PaymentOption);
         STATUS_META[statusValue] ?? { label: "Unknown", color: "default" };
       const createdOnRaw = order.createdOn ?? order.CreatedOn;
       const createdOnDate = createdOnRaw ? new Date(createdOnRaw) : null;
@@ -344,10 +323,8 @@ export default function Orders() {
       return {
         ...order,
         orderStatus: Number.isFinite(statusValue) ? statusValue : statusRaw,
-        orderStatus: Number.isFinite(statusValue) ? statusValue : statusRaw,
         statusLabel: statusMeta.label,
         statusColor: statusMeta.color,
-        paymentLabel: PAYMENT_MAPPER[paymentOpt] ?? "Unknown",
         paymentLabel: PAYMENT_MAPPER[paymentOpt] ?? "Unknown",
         createdOnDate,
         orderId: order.orderId ?? order.OrderId,
@@ -374,20 +351,9 @@ export default function Orders() {
     fetchOrders(1, search, pageSize, undefined, undefined, nextExtra);
   };
 
-  const handleStatusTabChange = (_event, value) => {
-    setStatusTab(value);
-    const nextExtra = extraQueryForStatusTab(value);
-    setExtraQuery(nextExtra);
-    setPage(1);
-    fetchOrders(1, search, pageSize, undefined, undefined, nextExtra);
-  };
-
   const handleSearchChange = (event) => {
     setSearch(event.target.value);
     setPage(1);
-    const nextExtra = extraQueryForStatusTab(statusTab);
-    setExtraQuery(nextExtra);
-    fetchOrders(1, event.target.value, pageSize, undefined, undefined, nextExtra);
     const nextExtra = extraQueryForStatusTab(statusTab);
     setExtraQuery(nextExtra);
     fetchOrders(1, event.target.value, pageSize, undefined, undefined, nextExtra);
@@ -412,46 +378,7 @@ export default function Orders() {
   const handleCloseItems = () => {
     setSelectedOrder(null);
     setStatusHistory([]);
-    setStatusHistory([]);
   };
-
-  useEffect(() => {
-    const orderId = selectedOrder?.orderId ?? selectedOrder?.OrderId;
-    if (!orderId) {
-      setStatusHistory([]);
-      return undefined;
-    }
-    let cancelled = false;
-    (async () => {
-      setHistoryLoading(true);
-      try {
-        const response = await fetch(
-          `${BASE_URL}/ECommerce/GetOnlineOrderStatusHistory?orderId=${orderId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-          }
-        );
-        const data = await readOrderStatusApiResult(response);
-        const list = data?.result ?? data?.Result ?? [];
-        if (!cancelled) {
-          setStatusHistory(Array.isArray(list) ? list : []);
-        }
-      } catch {
-        if (!cancelled) {
-          setStatusHistory([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setHistoryLoading(false);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedOrder?.orderId, selectedOrder?.OrderId, historyRefreshKey]);
 
   useEffect(() => {
     const orderId = selectedOrder?.orderId ?? selectedOrder?.OrderId;
@@ -652,44 +579,7 @@ export default function Orders() {
           </Search>
         </Grid>
 
-
         <Grid item xs={12} order={{ xs: 3, lg: 3 }}>
-          <Paper
-            elevation={0}
-            sx={{
-              borderRadius: 1,
-              border: "1px solid",
-              borderColor: "divider",
-              mb: 2,
-              overflow: "hidden",
-            }}
-          >
-            <Tabs
-              value={statusTab}
-              onChange={handleStatusTabChange}
-              variant="scrollable"
-              scrollButtons="auto"
-              allowScrollButtonsMobile
-              aria-label="Order status filters"
-              sx={{
-                minHeight: 48,
-                px: { xs: 0, sm: 1 },
-                "& .MuiTab-root": {
-                  textTransform: "none",
-                  fontWeight: 600,
-                  fontSize: "0.875rem",
-                  minHeight: 48,
-                },
-              }}
-            >
-              {STATUS_TABS.map((t) => (
-                <Tab key={t.value} label={t.label} value={t.value} />
-              ))}
-            </Tabs>
-          </Paper>
-        </Grid>
-        
-        <Grid item xs={12} order={{ xs: 4, lg: 4 }}>
           <Paper
             elevation={0}
             sx={{
@@ -739,15 +629,12 @@ export default function Orders() {
                   <TableCell>Created On</TableCell>
                   <TableCell>Mobile No</TableCell>
                   <TableCell align="center">View</TableCell>
-                  <TableCell>Mobile No</TableCell>
-                  <TableCell align="center">View</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {orders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10}>
                     <TableCell colSpan={10}>
                       <Typography color="error">No Orders Available</Typography>
                     </TableCell>
@@ -786,36 +673,6 @@ export default function Orders() {
                           : "-"}
                       </TableCell>
                       <TableCell>
-                        {item.checkoutAddress?.mobileNo ?? item.checkoutAddress?.MobileNo ?? "-"}
-                      </TableCell>
-                      <TableCell align="center">
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          onClick={() => handleOpenItems(item)}
-                          sx={{
-                            textTransform: "uppercase",
-                            fontWeight: 700,
-                            fontSize: "0.75rem",
-                            letterSpacing: "0.04em",
-                            borderRadius: 1.5,
-                            px: 1.75,
-                            py: 0.5,
-                            borderColor: "primary.main",
-                            color: "primary.main",
-                            bgcolor: "transparent",
-                            "&:hover": {
-                              borderColor: "primary.dark",
-                              color: "primary.dark",
-                              bgcolor: (theme) =>
-                                theme.palette.mode === "dark"
-                                  ? "rgba(144, 202, 249, 0.08)"
-                                  : "rgba(25, 118, 210, 0.06)",
-                            },
-                          }}
-                        >
-                          View
-                        </Button>
                         {item.checkoutAddress?.mobileNo ?? item.checkoutAddress?.MobileNo ?? "-"}
                       </TableCell>
                       <TableCell align="center">
@@ -945,7 +802,6 @@ export default function Orders() {
       <Dialog
         open={Boolean(selectedOrder)}
         onClose={handleCloseItems}
-        maxWidth="lg"
         maxWidth="lg"
         fullWidth
         PaperProps={{

@@ -21,13 +21,11 @@ import { Field, Form, Formik } from "formik";
 import * as Yup from "yup";
 import BASE_URL from "Base/api";
 import { useRouter } from "next/router";
-import { useRouter } from "next/router";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import DeleteIcon from "@mui/icons-material/Delete";
-import DownloadIcon from "@mui/icons-material/Download";
 import DownloadIcon from "@mui/icons-material/Download";
 import AddIcon from "@mui/icons-material/Add";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
@@ -777,71 +775,7 @@ export default function EditItems({
 }) {
   const router = useRouter();
   const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
-export default function EditItems({
-  fetchItems,
-  item,
-  isPOSSystem,
-  uoms,
-  isGarmentSystem,
-  chartOfAccounts,
-  barcodeEnabled,
-  IsEcommerceWebSiteAvailable,
-  onDuplicateRequest,
-  approve1 = false,
-}) {
-  const router = useRouter();
-  const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
   const [open, setOpen] = React.useState(false);
-  const [subImages, setSubImages] = useState([]); // { id, preview|imgUrl, file?, price, description, isExisting }
-  const [subImageIdsToRemove, setSubImageIdsToRemove] = useState([]);
-  const subImageInputRef = useRef(null);
-  const handleOpen = async () => {
-    setOpen(true);
-    try {
-      const res = await fetch(`${BASE_URL}/Items/GetItemById?id=${item.id}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
-      const data = await res.json();
-      const subImgs = data.result?.itemSubImages ?? data.result?.ItemSubImages ?? [];
-      if (subImgs?.length) {
-        const existing = subImgs.map((s) => ({
-          id: s.id ?? s.Id,
-          imgUrl: s.imgUrl ?? s.ImgUrl ?? "",
-          price: s.price ?? s.Price ?? "",
-          description: s.description ?? s.Description ?? "",
-          isOutOfStock: !!(s.isOutOfStock ?? s.IsOutOfStock),
-          isExisting: true,
-        }));
-        setSubImages(existing);
-      } else {
-        setSubImages([]);
-      }
-      setSubImageIdsToRemove([]);
-    } catch {
-      setSubImages([]);
-      setSubImageIdsToRemove([]);
-    }
-  };
-  const handleClose = () => {
-    setSubImages((prev) => {
-      prev.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
-      return [];
-    });
-    setSubImageIdsToRemove([]);
-    setOpen(false);
-  };
-  const handleDuplicateItem = () => {
-    localStorage.setItem("duplicateItemId", String(item.id));
-    handleClose();
-    if (onDuplicateRequest) {
-      onDuplicateRequest();
-    } else {
-      router.push({
-        pathname: "/master/items/",
-        query: { duplicate: "1", t: String(Date.now()) },
-      });
-    }
-  };
   const [subImages, setSubImages] = useState([]); // { id, preview|imgUrl, file?, price, description, isExisting }
   const [subImageIdsToRemove, setSubImageIdsToRemove] = useState([]);
   const subImageInputRef = useRef(null);
@@ -1202,26 +1136,6 @@ export default function EditItems({
         return;
       }
     }
-    const wp =
-      values.WholesalePrice !== null && values.WholesalePrice !== ""
-        ? Number(values.WholesalePrice)
-        : NaN;
-    const wq =
-      values.WholesaleMinimumQuantity !== null && values.WholesaleMinimumQuantity !== ""
-        ? Number(values.WholesaleMinimumQuantity)
-        : NaN;
-    if (Number.isFinite(wp) && wp > 0) {
-      if (!Number.isFinite(wq) || wq <= 0) {
-        toast.warning("Enter wholesale minimum quantity when wholesale price is set.");
-        return;
-      }
-    }
-    if (Number.isFinite(wq) && wq > 0) {
-      if (!Number.isFinite(wp) || wp <= 0) {
-        toast.warning("Enter wholesale price when wholesale minimum quantity is set.");
-        return;
-      }
-    }
 
     const formData = new FormData();
 
@@ -1229,16 +1143,6 @@ export default function EditItems({
     formData.append("Name", values.Name);
     formData.append("Code", values.Code);
     formData.append("AveragePrice", values.AveragePrice);
-    formData.append(
-      "WholesalePrice",
-      values.WholesalePrice !== null && values.WholesalePrice !== "" ? values.WholesalePrice : "",
-    );
-    formData.append(
-      "WholesaleMinimumQuantity",
-      values.WholesaleMinimumQuantity !== null && values.WholesaleMinimumQuantity !== ""
-        ? values.WholesaleMinimumQuantity
-        : "",
-    );
     formData.append(
       "WholesalePrice",
       values.WholesalePrice !== null && values.WholesalePrice !== "" ? values.WholesalePrice : "",
@@ -1278,38 +1182,7 @@ export default function EditItems({
     formData.append("IsWebView", values.IsWebView);
     formData.append("IsOutOfStock", values.IsOutOfStock);
     formData.append("IsItemEndInvolve", values.IsItemEndInvolve);
-    formData.append("IsOutOfStock", values.IsOutOfStock);
-    formData.append("IsItemEndInvolve", values.IsItemEndInvolve);
     formData.append("ProductImage", selectedFile ? selectedFile : null);
-    (subImages || []).forEach((s) => {
-      if (s.file) formData.append("SubImages", s.file);
-    });
-    const subImagesMeta = (subImages || [])
-      .filter((s) => s.file)
-      .map((s) => {
-        const priceVal = s.price !== "" && s.price != null ? parseFloat(s.price) : NaN;
-        return {
-          price: !isNaN(priceVal) ? priceVal : null,
-          description: (s.description || "").trim() || null,
-          isOutOfStock: !!s.isOutOfStock,
-        };
-      });
-    formData.append("SubImagesMeta", JSON.stringify(subImagesMeta));
-    const existingSubImagesMeta = (subImages || [])
-      .filter((s) => s.isExisting && typeof s.id === "number")
-      .map((s) => {
-        const priceVal = s.price !== "" && s.price != null ? parseFloat(s.price) : NaN;
-        return {
-          id: s.id,
-          price: !isNaN(priceVal) ? priceVal : null,
-          description: (s.description || "").trim() || null,
-          isOutOfStock: !!s.isOutOfStock,
-        };
-      });
-    formData.append("ExistingSubImagesMeta", JSON.stringify(existingSubImagesMeta));
-    if (subImageIdsToRemove.length > 0) {
-      formData.append("SubImageIdsToRemove", subImageIdsToRemove.join(","));
-    }
     (subImages || []).forEach((s) => {
       if (s.file) formData.append("SubImages", s.file);
     });
@@ -1353,13 +1226,7 @@ export default function EditItems({
       .then((response) => response.json())
       .then((data) => {
         if (data?.statusCode == 200) {
-        if (data?.statusCode == 200) {
           toast.success(data.message);
-          setSubImages((prev) => {
-            prev.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
-            return [];
-          });
-          setSubImageIdsToRemove([]);
           setSubImages((prev) => {
             prev.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
             return [];
@@ -1397,8 +1264,6 @@ export default function EditItems({
               AveragePrice: item.averagePrice || null,
               WholesalePrice: item.wholesalePrice ?? null,
               WholesaleMinimumQuantity: item.wholesaleMinimumQuantity ?? null,
-              WholesalePrice: item.wholesalePrice ?? null,
-              WholesaleMinimumQuantity: item.wholesaleMinimumQuantity ?? null,
               CategoryId: item.categoryId || "",
               SubCategoryId: item.subCategoryId || "",
               ShipmentTarget: item.shipmentTarget || null,
@@ -1421,8 +1286,6 @@ export default function EditItems({
               IsWebView: item.isWebView,
               IsOutOfStock: item.isOutOfStock || false,
               IsItemEndInvolve: item.isItemEndInvolve || false,
-              IsOutOfStock: item.isOutOfStock || false,
-              IsItemEndInvolve: item.isItemEndInvolve || false,
               Description: item.description
             }}
             validationSchema={validationSchema}
@@ -1435,33 +1298,6 @@ export default function EditItems({
               <Form>
                 <Grid container>
                   <Grid item xs={12} mb={2}>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        mb: "5px",
-                      }}
-                    >
-                      <Typography
-                        variant="h5"
-                        sx={{
-                          fontWeight: "500",
-                        }}
-                      >
-                        Edit Item
-                      </Typography>
-                      {approve1 ? (
-                        <Button
-                          type="button"
-                          variant="contained"
-                          size="small"
-                          onClick={handleDuplicateItem}
-                        >
-                          Duplicate
-                        </Button>
-                      ) : null}
-                    </Box>
                     <Box
                       sx={{
                         display: "flex",
@@ -1694,7 +1530,6 @@ export default function EditItems({
                       </Grid>
 
                       {IsEcommerceWebSiteAvailable && (
-                      {IsEcommerceWebSiteAvailable && (
                         <>
                           <Grid item xs={12} mt={1} lg={6} p={1}>
                             <Typography
@@ -1711,52 +1546,6 @@ export default function EditItems({
                               fullWidth
                               name="AveragePrice"
                               size="small"
-                            />
-                          </Grid>
-                          <Grid item xs={12} mt={1} lg={6} p={1}>
-                            <Typography
-                              sx={{
-                                fontWeight: "500",
-                                fontSize: "14px",
-                                mb: "5px",
-                              }}
-                            >
-                              Wholesale price
-                            </Typography>
-                            <Field
-                              as={TextField}
-                              fullWidth
-                              name="WholesalePrice"
-                              size="small"
-                              type="number"
-                              inputProps={{ min: 0, step: "any" }}
-                              onChange={(e) => {
-                                const value = e.target.value;
-                                setFieldValue("WholesalePrice", value === "" ? null : value);
-                              }}
-                            />
-                          </Grid>
-                          <Grid item xs={12} mt={1} lg={6} p={1}>
-                            <Typography
-                              sx={{
-                                fontWeight: "500",
-                                fontSize: "14px",
-                                mb: "5px",
-                              }}
-                            >
-                              Wholesale minimum quantity
-                            </Typography>
-                            <Field
-                              as={TextField}
-                              fullWidth
-                              name="WholesaleMinimumQuantity"
-                              size="small"
-                              type="number"
-                              inputProps={{ min: 0, step: "any" }}
-                              onChange={(e) => {
-                                const value = e.target.value;
-                                setFieldValue("WholesaleMinimumQuantity", value === "" ? null : value);
-                              }}
                             />
                           </Grid>
                           <Grid item xs={12} mt={1} lg={6} p={1}>
@@ -2163,22 +1952,6 @@ export default function EditItems({
                               />
                             </Grid>
                           )}
-
-                          {isItemEndInvolveEnable && (
-                            <Grid item xs={12} lg={6} mt={1}>
-                              <FormControlLabel
-                                control={
-                                  <Field
-                                    as={Checkbox}
-                                    name="IsItemEndInvolve"
-                                    checked={values.IsItemEndInvolve}
-                                    onChange={() => setFieldValue("IsItemEndInvolve", !values.IsItemEndInvolve)}
-                                  />
-                                }
-                                label="Is Item End Involve"
-                              />
-                            </Grid>
-                          )}
                         </Grid>
                       </Grid>
                     </Grid>
@@ -2223,7 +1996,6 @@ export default function EditItems({
                                   overflow: "hidden",
                                   height: "250px",
                                   "&:hover .image-action-icon": {
-                                  "&:hover .image-action-icon": {
                                     opacity: 1,
                                   },
                                 }}
@@ -2237,46 +2009,6 @@ export default function EditItems({
                                     objectFit: "cover",
                                   }}
                                 />
-                                <Tooltip title="Download">
-                                  <IconButton
-                                    className="image-action-icon"
-                                    onClick={() => handleDownloadImage(selectedImage, item?.code || item?.name || "item-image")}
-                                    sx={{
-                                      position: "absolute",
-                                      top: 5,
-                                      right: 45,
-                                      backgroundColor: "rgba(255, 255, 255, 0.9)",
-                                      opacity: 0,
-                                      transition: "opacity 0.3s",
-                                      "&:hover": {
-                                        backgroundColor: "rgba(255, 255, 255, 1)",
-                                      },
-                                    }}
-                                    size="small"
-                                  >
-                                    <DownloadIcon fontSize="small" color="primary" />
-                                  </IconButton>
-                                </Tooltip>
-                                <Tooltip title="Delete">
-                                  <IconButton
-                                    className="image-action-icon"
-                                    onClick={handleRemoveImage}
-                                    sx={{
-                                      position: "absolute",
-                                      top: 5,
-                                      right: 5,
-                                      backgroundColor: "rgba(255, 255, 255, 0.9)",
-                                      opacity: 0,
-                                      transition: "opacity 0.3s",
-                                      "&:hover": {
-                                        backgroundColor: "rgba(255, 255, 255, 1)",
-                                      },
-                                    }}
-                                    size="small"
-                                  >
-                                    <DeleteIcon fontSize="small" color="error" />
-                                  </IconButton>
-                                </Tooltip>
                                 <Tooltip title="Download">
                                   <IconButton
                                     className="image-action-icon"
@@ -2334,20 +2066,6 @@ export default function EditItems({
                               label="Out of Stock (main image)"
                             />
                           )}
-                          {IsEcommerceWebSiteAvailable && (
-                            <FormControlLabel
-                              sx={{ mt: 1, display: "block" }}
-                              control={
-                                <Field
-                                  as={Checkbox}
-                                  name="IsOutOfStock"
-                                  checked={values.IsOutOfStock}
-                                  onChange={() => setFieldValue("IsOutOfStock", !values.IsOutOfStock)}
-                                />
-                              }
-                              label="Out of Stock (main image)"
-                            />
-                          )}
                         </Grid>
                       )}
                       
@@ -2383,156 +2101,9 @@ export default function EditItems({
                                 label="Out of Stock (main image)"
                               />
                             )}
-                            {IsEcommerceWebSiteAvailable && (
-                              <FormControlLabel
-                                sx={{ mt: 2, justifyContent: "center" }}
-                                control={
-                                  <Field
-                                    as={Checkbox}
-                                    name="IsOutOfStock"
-                                    checked={values.IsOutOfStock}
-                                    onChange={() => setFieldValue("IsOutOfStock", !values.IsOutOfStock)}
-                                  />
-                                }
-                                label="Out of Stock (main image)"
-                              />
-                            )}
                           </Box>
                         </Grid>
                       )}
-
-                      {/* Sub Images section */}
-                      <Grid item xs={12} sx={{ mt: 3 }}>
-                        <Typography variant="h6" sx={{ mb: 2 }}>
-                          Sub Images
-                        </Typography>
-                        <Button
-                          variant="contained"
-                          component="label"
-                          startIcon={<CloudUploadIcon />}
-                          sx={{ mb: 2 }}
-                        >
-                          Choose Image
-                          <input
-                            ref={subImageInputRef}
-                            type="file"
-                            hidden
-                            accept="image/*"
-                            multiple
-                            onChange={handleSubImagesUpload}
-                          />
-                        </Button>
-                        {subImages.length > 0 ? (
-                          <Grid container spacing={2}>
-                            {subImages.map((s) => (
-                              <Grid item xs={12} sm={6} md={4} key={s.id}>
-                                <Box
-                                  sx={{
-                                    position: "relative",
-                                    border: "2px solid #e0e0e0",
-                                    borderRadius: "8px",
-                                    overflow: "hidden",
-                                    "&:hover .delete-icon, &:hover .download-icon": { opacity: 1 },
-                                  }}
-                                >
-                                  <Box sx={{ height: "140px", position: "relative", backgroundColor: "#f5f5f5" }}>
-                                    <img
-                                      src={s.imgUrl || s.preview}
-                                      alt="Sub"
-                                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                                    />
-                                    <IconButton
-                                      className="delete-icon"
-                                      onClick={() => removeSubImage(s.id)}
-                                      sx={{
-                                        position: "absolute",
-                                        top: 5,
-                                        right: 5,
-                                        backgroundColor: "rgba(255, 255, 255, 0.9)",
-                                        opacity: 0,
-                                        transition: "opacity 0.3s",
-                                        "&:hover": { backgroundColor: "rgba(255, 255, 255, 1)" },
-                                      }}
-                                      size="small"
-                                    >
-                                      <DeleteIcon fontSize="small" color="error" />
-                                    </IconButton>
-                                    <Tooltip title="Download">
-                                      <IconButton
-                                        className="download-icon"
-                                        onClick={() => handleDownloadImage(s.imgUrl || s.preview, `sub-${s.id}`)}
-                                        sx={{
-                                          position: "absolute",
-                                          top: 5,
-                                          right: 45,
-                                          backgroundColor: "rgba(255, 255, 255, 0.9)",
-                                          opacity: 0,
-                                          transition: "opacity 0.3s",
-                                          "&:hover": { backgroundColor: "rgba(255, 255, 255, 1)" },
-                                        }}
-                                        size="small"
-                                      >
-                                        <DownloadIcon fontSize="small" color="primary" />
-                                      </IconButton>
-                                    </Tooltip>
-                                  </Box>
-                                  <Box sx={{ p: 1.5 }}>
-                                    <TextField
-                                      fullWidth
-                                      size="small"
-                                      label="Price"
-                                      type="number"
-                                      inputProps={{ min: 0, step: 0.01 }}
-                                      value={s.price ?? ""}
-                                      onChange={(e) => updateSubImageMeta(s.id, "price", e.target.value)}
-                                      sx={{ mb: 1 }}
-                                    />
-                                    <TextField
-                                      fullWidth
-                                      size="small"
-                                      label="Description"
-                                      multiline
-                                      rows={2}
-                                      value={s.description ?? ""}
-                                      onChange={(e) => updateSubImageMeta(s.id, "description", e.target.value)}
-                                    />
-                                    {IsEcommerceWebSiteAvailable && (
-                                      <FormControlLabel
-                                        sx={{ mt: 0.5, alignItems: "flex-start", ml: 0 }}
-                                        control={
-                                          <Checkbox
-                                            size="small"
-                                            checked={!!s.isOutOfStock}
-                                            onChange={(e) =>
-                                              updateSubImageMeta(s.id, "isOutOfStock", e.target.checked)
-                                            }
-                                          />
-                                        }
-                                        label="Out of Stock"
-                                      />
-                                    )}
-                                  </Box>
-                                </Box>
-                              </Grid>
-                            ))}
-                          </Grid>
-                        ) : (
-                          <Box
-                            sx={{
-                              border: "2px dashed #ccc",
-                              borderRadius: "8px",
-                              p: 3,
-                              textAlign: "center",
-                              backgroundColor: "#f9f9f9",
-                            }}
-                          >
-                            <CloudUploadIcon sx={{ fontSize: 48, color: "#999", mb: 1 }} />
-                            <Typography variant="body2" color="textSecondary">
-                              No sub images. Click &quot;Choose Image&quot; to add multiple images.
-                            </Typography>
-                          </Box>
-                        )}
-                      </Grid>
 
                       {/* Sub Images section */}
                       <Grid item xs={12} sx={{ mt: 3 }}>

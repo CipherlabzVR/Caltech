@@ -4,7 +4,6 @@ import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Modal from "@mui/material/Modal";
-import Modal from "@mui/material/Modal";
 import AddIcon from "@mui/icons-material/Add";
 import Grid from "@mui/material/Grid";
 import { Formik, Form, Field } from "formik";
@@ -15,10 +14,7 @@ import BorderColorIcon from "@mui/icons-material/BorderColor";
 import {
   Alert,
   Box,
-  Alert,
-  Box,
   Checkbox,
-  CircularProgress,
   CircularProgress,
   FormControl,
   FormControlLabel,
@@ -28,8 +24,6 @@ import {
   Radio,
   RadioGroup,
   Select,
-  Tab,
-  Tabs,
   Tab,
   Tabs,
   TextField,
@@ -42,12 +36,6 @@ import logoutUser from "@/components/utils/logoutUser";
 import { getDeviceId, resolveDeviceDisplayId } from "@/components/utils/getDeviceId";
 
 const validationSchema = Yup.object().shape({
-  FirstName: Yup.string()
-    .matches(/^[a-zA-Z\s]+$/, "First Name must contain only letters")
-    .required("First Name is required"),
-  LastName: Yup.string()
-    .matches(/^[a-zA-Z\s]+$/, "Last Name must contain only letters")
-    .required("Last Name is required"),
   FirstName: Yup.string()
     .matches(/^[a-zA-Z\s]+$/, "First Name must contain only letters")
     .required("First Name is required"),
@@ -81,21 +69,7 @@ const confirmModalStyle = {
   borderRadius: 1,
 };
 
-const confirmModalStyle = {
-  position: "absolute",
-  top: "50%",
-  left: "50%",
-  transform: "translate(-50%, -50%)",
-  width: 420,
-  maxWidth: "90vw",
-  bgcolor: "background.paper",
-  boxShadow: 24,
-  p: 3,
-  borderRadius: 1,
-};
-
 export default function EditUserDialog({ item, fetchItems, warehouses, roles }) {
-  const router = useRouter();
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [scroll, setScroll] = React.useState("paper");
@@ -107,20 +81,12 @@ export default function EditUserDialog({ item, fetchItems, warehouses, roles }) 
   const [removingDeviceId, setRemovingDeviceId] = useState(null);
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState(null);
-  const [activeTab, setActiveTab] = useState(0);
-  const [devices, setDevices] = useState([]);
-  const [loadingDevices, setLoadingDevices] = useState(false);
-  const [removingDeviceId, setRemovingDeviceId] = useState(null);
-  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
-  const [selectedDevice, setSelectedDevice] = useState(null);
 
   const handleClickOpen = (scrollType) => () => {
     setOpen(true);
     setActiveTab(0);
-    setActiveTab(0);
     fetchUserTypes();
     fetchSalesPersons();
-    fetchLoggedInDevices();
     fetchLoggedInDevices();
     setScroll(scrollType);
   };
@@ -318,147 +284,6 @@ export default function EditUserDialog({ item, fetchItems, warehouses, roles }) 
     }
 
     return date.toLocaleString();
-    setActiveTab(0);
-    setConfirmRemoveOpen(false);
-    setSelectedDevice(null);
-  };
-
-  const parseResponseBody = async (response) => {
-    const contentType = response.headers.get("content-type") || "";
-    const responseText = await response.text();
-
-    if (!responseText) {
-      return null;
-    }
-
-    if (contentType.includes("application/json")) {
-      try {
-        return JSON.parse(responseText);
-      } catch (error) {
-        console.error("Failed to parse JSON response:", error);
-        return null;
-      }
-    }
-
-    return null;
-  };
-
-  const buildErrorMessage = (response, data, fallbackMessage) => {
-    if (data?.message) {
-      return data.message;
-    }
-
-    if (response.status === 401) {
-      return "Your session has expired. Please sign in again.";
-    }
-
-    if (response.status === 403) {
-      return "You do not have permission to perform this action.";
-    }
-
-    return fallbackMessage;
-  };
-
-  const fetchLoggedInDevices = async () => {
-    try {
-      setLoadingDevices(true);
-      const response = await fetch(
-        `${BASE_URL}/User/GetLoggedInDevicesByUserId?userId=${item.id}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      const data = await parseResponseBody(response);
-
-      if (!response.ok || data?.statusCode !== 200) {
-        throw new Error(
-          buildErrorMessage(response, data, "Failed to fetch devices")
-        );
-      }
-
-      setDevices(data.result || []);
-    } catch (error) {
-      toast.error(error.message || "Failed to fetch devices");
-    } finally {
-      setLoadingDevices(false);
-    }
-  };
-
-  const handleConfirmRemoveOpen = (device) => {
-    setSelectedDevice(device);
-    setConfirmRemoveOpen(true);
-  };
-
-  const handleConfirmRemoveClose = () => {
-    if (removingDeviceId) {
-      return;
-    }
-
-    setConfirmRemoveOpen(false);
-    setSelectedDevice(null);
-  };
-
-  const handleRemoveDevice = async () => {
-    if (!selectedDevice) {
-      return;
-    }
-
-    try {
-      setRemovingDeviceId(selectedDevice.id);
-      const removeDeviceUrl = `${BASE_URL}/User/RemoveLoggedInDeviceByUserId?userId=${item.id}&deviceId=${selectedDevice.id}`;
-      const requestHeaders = {
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-        "Content-Type": "application/json",
-      };
-
-      const response = await fetch(removeDeviceUrl, {
-        method: "POST",
-        headers: requestHeaders,
-      });
-
-      const data = await parseResponseBody(response);
-
-      if (!response.ok || data?.statusCode !== 200) {
-        throw new Error(
-          buildErrorMessage(response, data, "Failed to remove device")
-        );
-      }
-
-      toast.success(data?.message || "Device removed successfully");
-
-      if (selectedDevice?.isCurrentDevice) {
-        toast.info("Current device removed. Signing out...");
-        await logoutUser({ router });
-        return;
-      }
-
-      setConfirmRemoveOpen(false);
-      setSelectedDevice(null);
-      fetchLoggedInDevices();
-    } catch (error) {
-      toast.error(error.message || "Failed to remove device");
-    } finally {
-      setRemovingDeviceId(null);
-    }
-  };
-
-  const formatDate = (value) => {
-    if (!value) {
-      return "N/A";
-    }
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      return "N/A";
-    }
-
-    return date.toLocaleString();
   };
   
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
@@ -503,7 +328,6 @@ export default function EditUserDialog({ item, fetchItems, warehouses, roles }) 
       >
         <DialogTitle id="scroll-dialog-title">Update User</DialogTitle>
         <DialogContent sx={{ minWidth: { xs: 320, sm: 600 } }}>
-        <DialogContent sx={{ minWidth: { xs: 320, sm: 600 } }}>
           <Formik
             initialValues={{
               Id: item.id,
@@ -525,17 +349,6 @@ export default function EditUserDialog({ item, fetchItems, warehouses, roles }) 
           >
             {({ errors, touched, setFieldValue, values }) => (
               <Form>
-                <Tabs
-                  value={activeTab}
-                  onChange={(_, newValue) => setActiveTab(newValue)}
-                  variant="fullWidth"
-                  sx={{ mb: 2 }}
-                >
-                  <Tab label="Details" />
-                  <Tab label={`Logged In Devices (${devices.length})`} />
-                </Tabs>
-
-                {activeTab === 0 ? (
                 <Tabs
                   value={activeTab}
                   onChange={(_, newValue) => setActiveTab(newValue)}
@@ -920,50 +733,6 @@ export default function EditUserDialog({ item, fetchItems, warehouses, roles }) 
           </Formik>
         </DialogContent>
       </Dialog>
-
-      <Modal
-        open={confirmRemoveOpen}
-        onClose={handleConfirmRemoveClose}
-        aria-labelledby="remove-device-modal-title"
-        aria-describedby="remove-device-modal-description"
-      >
-        <Box sx={confirmModalStyle}>
-          <Typography
-            id="remove-device-modal-title"
-            sx={{ fontWeight: "500", fontSize: "16px", mb: 1.5 }}
-          >
-            Remove Logged In Device
-          </Typography>
-          <Typography
-            id="remove-device-modal-description"
-            sx={{ fontSize: "14px", color: "text.secondary" }}
-          >
-            Are you sure you want to remove
-            {" "}
-            <strong>{selectedDevice?.deviceName || "this device"}</strong>
-            ?
-          </Typography>
-          <Box display="flex" justifyContent="flex-end" gap={2} mt={3}>
-            <Button
-              variant="outlined"
-              color="primary"
-              onClick={handleConfirmRemoveClose}
-              disabled={Boolean(removingDeviceId)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="contained"
-              color="error"
-              onClick={handleRemoveDevice}
-              disabled={Boolean(removingDeviceId)}
-              sx={{ color: "#fff !important" }}
-            >
-              {removingDeviceId ? "Removing..." : "Remove"}
-            </Button>
-          </Box>
-        </Box>
-      </Modal>
 
       <Modal
         open={confirmRemoveOpen}

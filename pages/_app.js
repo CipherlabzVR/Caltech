@@ -159,7 +159,6 @@ function MyApp({ Component, pageProps }) {
   }, []);
 
   const handleForceLogout = useCallback(async () => {
-  const handleForceLogout = useCallback(async () => {
     if (typeof window === "undefined") {
       return;
     }
@@ -168,7 +167,6 @@ function MyApp({ Component, pageProps }) {
     }
     hasLoggedOutRef.current = true;
     setToken(null);
-    await logoutUser({ router });
     await logoutUser({ router });
   }, [router]);
 
@@ -379,8 +377,6 @@ function MyApp({ Component, pageProps }) {
     }
 
     var timeUntilClear = clearTime.getTime() - now.getTime();
-    setTimeout(async function () {
-      await logoutUser({ router });
     setTimeout(async function () {
       await logoutUser({ router });
       clearLocalStorageDaily();

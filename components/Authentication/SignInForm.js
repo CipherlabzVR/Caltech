@@ -7,7 +7,6 @@ import {
   TextField,
   Button,
   Alert,
-  Alert,
   FormControlLabel,
   Checkbox,
   InputAdornment,
@@ -418,12 +417,6 @@ const SignInForm = () => {
               <Typography color="error" fontSize={13} mb={2}>
                 Please fill in all required fields.
               </Typography>
-            )}
-
-            {loginNote && (
-              <Alert severity="warning" sx={{ mb: 2 }}>
-                {loginNote}
-              </Alert>
             )}
 
             {loginNote && (

@@ -37,7 +37,6 @@ import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { Catelogue } from "Base/catelogue";
 import IsFiscalPeriodAvailable from "@/components/utils/IsFiscalPeriodAvailable";
 import { Report } from "Base/report";
-import { Report } from "Base/report";
 
 const GRN = () => {
   const cId = sessionStorage.getItem("category")
@@ -46,7 +45,6 @@ const GRN = () => {
   const { data: IsSupplierSalesRef } = IsAppSettingEnabled(
     "IsSupplierSalesRef"
   );
-  const { data: isCustomReportsEnabled } = IsAppSettingEnabled("IsCustomReportsEnabled");
   const { data: isCustomReportsEnabled } = IsAppSettingEnabled("IsCustomReportsEnabled");
   const { data: ReportName } = GetReportSettingValueByName("GoodReceivedNote");
   const router = useRouter();
@@ -230,25 +228,8 @@ const GRN = () => {
                                   size="small"
                                   onClick={() => openGRNPrintPopup(item)}
                                 >
-                            {isCustomReportsEnabled ? (
-                              print ? <Tooltip title="Print" placement="top">
-                                <a href={`${Report}${reportLink}`} target="_blank" rel="noopener noreferrer">
-                                  <IconButton aria-label="print" size="small">
-                                    <LocalPrintshopIcon color="primary" fontSize="medium" />
-                                  </IconButton>
-                                </a>
-                              </Tooltip> : ""
-                            ) : (
-                              print ? <Tooltip title="Print" placement="top">
-                                <IconButton
-                                  aria-label="print"
-                                  size="small"
-                                  onClick={() => openGRNPrintPopup(item)}
-                                >
                                   <LocalPrintshopIcon color="primary" fontSize="medium" />
                                 </IconButton>
-                              </Tooltip> : ""
-                            )}
                               </Tooltip> : ""
                             )}
                           </Box>

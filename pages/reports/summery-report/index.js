@@ -1,11 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Pagination,
-  FormControl,
-  Typography,
-  InputLabel,
-  MenuItem,
-  Select,
   Accordion,
   AccordionDetails,
   AccordionSummary,
@@ -25,8 +19,6 @@ import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import BASE_URL from "Base/api";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import { Search, StyledInputBase } from "@/styles/main/search-styles";
-import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 
@@ -191,7 +183,6 @@ const SummeryReports = () => {
 
   const groupedReports = useMemo(() => {
     const groups = processedReports.reduce((acc, report) => {
-    const groups = processedReports.reduce((acc, report) => {
       const moduleName = getReportModuleName(report);
       if (!acc[moduleName]) acc[moduleName] = [];
       acc[moduleName].push(report);
@@ -217,7 +208,6 @@ const SummeryReports = () => {
       reports: groups[moduleName] || [],
     }));
   }, [processedReports]);
-  }, [processedReports]);
 
   return (
     <>
@@ -229,25 +219,6 @@ const SummeryReports = () => {
           </li>
         </ul>
       </div>
-
-      <Grid
-        container
-        rowSpacing={1}
-        columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}
-        alignItems="center"
-        my={2}
-      >
-        <Grid item xs={12} lg={4}>
-          <Search className="search-form">
-            <StyledInputBase
-              placeholder="Search reports.."
-              inputProps={{ "aria-label": "search" }}
-              value={search}
-              onChange={handleSearchChange}
-            />
-          </Search>
-        </Grid>
-      </Grid>
 
       <Grid
         container
@@ -329,9 +300,7 @@ const SummeryReports = () => {
                         <TableBody>
                           {moduleReports.map((report, index) => (
                             <TableRow key={report.id || `${moduleName}-${index}`}>
-                              <TableCell>
-                                {(page - 1) * pageSize + index + 1}
-                              </TableCell>
+                              <TableCell>{index + 1}</TableCell>
                               <TableCell>{report.title || report.name}</TableCell>
                               <TableCell align="right">{report.component}</TableCell>
                             </TableRow>
@@ -344,27 +313,6 @@ const SummeryReports = () => {
               ))}
             </>
           )}
-          <Grid container justifyContent="space-between" mt={2} mb={2}>
-            <Pagination
-              count={totalCount ? Math.ceil(totalCount / pageSize) : 1}
-              page={page}
-              onChange={handlePageChange}
-              color="primary"
-              shape="rounded"
-            />
-            <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
-              <InputLabel>Page Size</InputLabel>
-              <Select
-                value={pageSize}
-                label="Page Size"
-                onChange={handlePageSizeChange}
-              >
-                <MenuItem value={5}>5</MenuItem>
-                <MenuItem value={10}>10</MenuItem>
-                <MenuItem value={25}>25</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
         </Grid>
       </Grid>
     </>
