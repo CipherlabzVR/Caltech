@@ -28,7 +28,8 @@ const style = {
 
 export default function ShareReports({
   url,
-  mobile
+  mobile,
+  onSuccess
 }) {
   const { data: IsGarmentSystem } = IsAppSettingEnabled("IsGarmentSystem");
   const { data: IsShareWhatsAppAPIThrough } = IsAppSettingEnabled("IsShareWhatsAppAPIThrough");
@@ -99,7 +100,7 @@ export default function ShareReports({
 
       try {
         setOpen(false);
-        const apiUrl = `https://api.textmebot.com/send.php?recipient=${formatNumber}&apikey=781LrdZkpdLh&document=${documentUrl}&text=${message}`;
+        const apiUrl = `${process.env.NEXT_PUBLIC_WHATSAPP_API_URL}?recipient=${formatNumber}&apikey=${process.env.NEXT_PUBLIC_WHATSAPP_API_KEY}&document=${documentUrl}&text=${message}`;
 
         const response = await fetch(apiUrl, {
           method: "GET",
@@ -109,12 +110,21 @@ export default function ShareReports({
           },
         });
         toast.success("Document sent successfully!");
+        
+        // Call onSuccess callback if provided
+        if (onSuccess) {
+          onSuccess();
+        }
 
       } catch (error) {
         console.log(error);
       }
     } else {
       handleOpenWhatsappTemp(message, documentUrl);
+      // Call onSuccess callback if provided (for non-API sharing)
+      if (onSuccess) {
+        onSuccess();
+      }
     }
   };
 

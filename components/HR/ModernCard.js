@@ -23,16 +23,50 @@ const StyledCard = styled(Card)(({ theme, color }) => {
   };
 });
 
-const MetricCard = ({ title, value, subtitle, icon, color = "primary", trend, trendValue, onClick }) => {
+const MetricCard = ({
+  title,
+  value,
+  subtitle,
+  icon,
+  color = "primary",
+  trend,
+  trendValue,
+  onClick,
+  sx,
+  valueSx,
+}) => {
   return (
     <StyledCard 
       color={color}
       onClick={onClick}
-      sx={onClick ? { cursor: "pointer" } : {}}
+      sx={[
+        {
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          alignSelf: "stretch",
+        },
+        onClick ? { cursor: "pointer" } : {},
+        ...(Array.isArray(sx) ? sx : sx ? [sx] : []),
+      ]}
     >
-      <CardContent sx={{ p: 3 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
-          <Box>
+      <CardContent
+        sx={{
+          p: 3,
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          "&:last-child": { pb: 3 },
+        }}
+      >
+        <Box
+          display="flex"
+          justifyContent="space-between"
+          alignItems="flex-start"
+          flex={1}
+          gap={2}
+        >
+          <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
             <Typography
               variant="caption"
               sx={{
@@ -46,6 +80,7 @@ const MetricCard = ({ title, value, subtitle, icon, color = "primary", trend, tr
               {title}
             </Typography>
             <Typography
+              component="div"
               variant="h3"
               sx={(theme) => {
                 // Valid Material-UI palette colors
@@ -58,6 +93,7 @@ const MetricCard = ({ title, value, subtitle, icon, color = "primary", trend, tr
                   fontWeight: 700,
                   color: `${safeColor}.main`,
                   lineHeight: 1.2,
+                  ...(typeof valueSx === "function" ? valueSx(theme) : valueSx || {}),
                 };
               }}
             >
@@ -70,6 +106,8 @@ const MetricCard = ({ title, value, subtitle, icon, color = "primary", trend, tr
                   color: "text.secondary",
                   fontSize: "0.875rem",
                   mt: 0.5,
+                  lineHeight: 1.43,
+                  minHeight: "4.35em",
                 }}
               >
                 {subtitle}
@@ -92,6 +130,7 @@ const MetricCard = ({ title, value, subtitle, icon, color = "primary", trend, tr
           </Box>
           {icon && (
             <Box
+              flexShrink={0}
               sx={(theme) => {
                 // Valid Material-UI palette colors
                 const validColors = ["primary", "secondary", "error", "warning", "info", "success"];

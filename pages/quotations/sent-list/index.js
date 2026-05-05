@@ -34,27 +34,34 @@ export default function SentQuotations() {
         const value = event.target.value;
         setSearchTerm(value);
         setPage(1);
-        fetchQuotationList(1, value, pageSize);
+        fetchQuotationList(1, value, pageSize, tab);
     };
 
     const handlePageChange = (event, value) => {
         setPage(value);
-        fetchQuotationList(value, searchTerm, pageSize);
+        fetchQuotationList(value, searchTerm, pageSize, tab);
     };
 
     const handlePageSizeChange = (event) => {
         const newSize = event.target.value;
         setPageSize(newSize);
         setPage(1);
-        fetchQuotationList(1, searchTerm, newSize);
+        fetchQuotationList(1, searchTerm, newSize, tab);
     };
 
-    const fetchQuotationList = async (page = 1, search = "", size = pageSize) => {
+    const handleTabChange = (event, newValue) => {
+        setTab(newValue);
+        setPage(1);
+        fetchQuotationList(1, searchTerm, pageSize, newValue);
+    };
+
+    const fetchQuotationList = async (page = 1, search = "", size = pageSize, currentTab = tab) => {
         try {
             const token = localStorage.getItem("token");
             const skip = (page - 1) * size;
-            const query = `${BASE_URL}/Inquiry/GetAllSentQuotations?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"
-                }`;
+            // Map tab to confirmation status: 0 = Pending (1), 1 = Confirmed (2), 2 = Rejected (3)
+            const confirmationStatus = currentTab === 0 ? 1 : currentTab === 1 ? 2 : currentTab === 2 ? 3 : null;
+            const query = `${BASE_URL}/Inquiry/GetAllSentQuotationsByConfirmationStatus?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}&confirmationStatus=${confirmationStatus || ""}`;
 
             const response = await fetch(query, {
                 method: "GET",
@@ -67,7 +74,7 @@ export default function SentQuotations() {
             if (!response.ok) throw new Error("Failed to fetch items");
 
             const data = await response.json();
-            setQuotationList(data.result.items);
+            setQuotationList(data.result.items || []);
             setTotalCount(data.result.totalCount || 0);
         } catch (error) {
             console.error("Error:", error);
@@ -75,21 +82,12 @@ export default function SentQuotations() {
     };
 
     useEffect(() => {
-        fetchQuotationList();
+        fetchQuotationList(1, searchTerm, pageSize, tab);
     }, []);
 
     if (!navigate) {
         return <AccessDenied />;
     }
-
-    // Use actual inquiryConfirmationStatus to avoid auto-moving before user action
-    // 1 = Pending, 2 = Confirmed, 3 = Rejected
-    const filteredList = quotationList.filter((q) => {
-        if (tab === 0) return q.inquiryConfirmationStatus === 1;
-        if (tab === 1) return q.inquiryConfirmationStatus === 2;
-        if (tab === 2) return q.inquiryConfirmationStatus === 3;
-        return true;
-    });
 
     return (
         <>
@@ -116,7 +114,7 @@ export default function SentQuotations() {
                 </Grid>
 
                 <Grid item xs={12}>
-                    <Tabs value={tab} onChange={(e, newValue) => setTab(newValue)} sx={{ mb: 2 }}>
+                    <Tabs value={tab} onChange={handleTabChange} sx={{ mb: 2 }}>
                         <Tab label="Pending" />
                         <Tab label="Confirmed" />
                         <Tab label="Rejected" />
@@ -130,28 +128,28 @@ export default function SentQuotations() {
                                     <TableCell>Inquiry Code</TableCell>
                                     <TableCell>Sent Whatsapp Number</TableCell>
                                     <TableCell>Style Name</TableCell>
-                                    {tab === 0 && <TableCell>View Quotations</TableCell> }                                    
+                                    <TableCell>View Quotations</TableCell>
                                     {tab === 2 && <TableCell>Rejected Reason</TableCell>}
                                     <TableCell align="right">Action</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
-                                {filteredList.length === 0 ? (
+                                {quotationList.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={8}>
+                                        <TableCell colSpan={tab === 2 ? 7 : 6}>
                                             <Typography color="error">No Quotations Available</Typography>
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    filteredList.map((item, index) => (
+                                    quotationList.map((item, index) => (
                                         <TableRow key={index}>
                                             <TableCell>{item.customerName}</TableCell>
                                             <TableCell>{item.inquiryCode}</TableCell>
                                             <TableCell>{item.sentWhatsappNumber}</TableCell>
                                             <TableCell>{item.styleName}</TableCell>
-                                            {tab === 0 && <TableCell>
-                                                <ViewSentQuotations item={item} update={update} fetchItems={fetchQuotationList}/>                                                
-                                            </TableCell>}
+                                            <TableCell>
+                                                <ViewSentQuotations item={item} update={update} fetchItems={fetchQuotationList} parentTab={tab}/>                                                
+                                            </TableCell>
                                             {tab === 2 ? <TableCell>{item.inquiryRejectReason}</TableCell> : ""}
                                             <TableCell align="right">
                                                 {tab === 0 ?
@@ -163,7 +161,10 @@ export default function SentQuotations() {
                                                             hasConfirmed={item.isHasConfirmedQuotations}
                                                             onSuccess={() => {
                                                                 setTab(1); // jump to Confirmed tab after confirming
-                                                                fetchQuotationList(1, searchTerm, pageSize);
+                                                                // Add a small delay to ensure backend has committed the changes
+                                                                setTimeout(() => {
+                                                                    fetchQuotationList(1, searchTerm, pageSize, 1);
+                                                                }, 500);
                                                             }}
                                                         />
                                                         <RejectInquiryByInquiryId

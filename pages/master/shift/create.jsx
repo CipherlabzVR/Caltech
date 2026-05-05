@@ -3,10 +3,13 @@ import {
   Box,
   Button,
   Checkbox,
+  FormControl,
   FormControlLabel,
   Grid,
+  InputLabel,
   MenuItem,
   Modal,
+  Select,
   TextField,
   Typography,
 } from "@mui/material";
@@ -123,7 +126,7 @@ export default function CreateShiftMasterModal({ fetchItems }) {
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
-            {({ errors, touched, isSubmitting, resetForm, values }) => (
+            {({ errors, touched, isSubmitting, resetForm, values, setFieldValue }) => (
               <Form>
                 <Grid container spacing={2}>
                   <Grid item xs={12}>

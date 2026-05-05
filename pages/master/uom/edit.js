@@ -32,6 +32,10 @@ const style = {
 const validationSchema = Yup.object().shape({
   Description: Yup.string().required("Description is required"),
   Name: Yup.string().required("Name is required"),
+  Value: Yup.number()
+    .typeError("Value must be a number")
+    .min(0, "Value cannot be negative")
+    .required("Value is required"),
 });
 
 export default function EditUOM({ item, fetchItems }) {
@@ -53,9 +57,13 @@ export default function EditUOM({ item, fetchItems }) {
 
   const handleSubmit = (values) => {
     const token = localStorage.getItem("token");
+    const payload = {
+      ...values,
+      Value: Math.max(0, Number(values.Value) || 0),
+    };
     fetch(`${BASE_URL}/UnitOfMeasure/UpdateUnitOfMeasure`, {
       method: "POST",
-      body: JSON.stringify(values),
+      body: JSON.stringify(payload),
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
@@ -95,7 +103,7 @@ export default function EditUOM({ item, fetchItems }) {
               Id: item.id,
               Description: item.description,
               Name: item.name,
-              Value: item.value || 0,
+              Value: Math.max(0, Number(item.value) || 0),
               IsActive: item.isActive,
             }}
             validationSchema={validationSchema}
@@ -158,24 +166,43 @@ export default function EditUOM({ item, fetchItems }) {
                         helperText={touched.Description && errors.Description}
                       />
                     </Grid>
-                     <Grid item xs={12} mt={1}>
-                                          <Typography
-                                            sx={{
-                                              fontWeight: "500",
-                                              fontSize: "14px",
-                                              mb: "5px",
-                                            }}
-                                          >
-                                            Value
-                                          </Typography>
-                                          <Field
-                                            as={TextField}
-                                            fullWidth
-                                            name="Value"
-                                            type="number"
-                                            size="small"
-                                          />
-                                        </Grid>
+                    <Grid item xs={12} mt={1}>
+                      <Typography
+                        sx={{
+                          fontWeight: "500",
+                          fontSize: "14px",
+                          mb: "5px",
+                        }}
+                      >
+                        Value
+                      </Typography>
+                      <Field name="Value">
+                        {({ field, meta, form }) => (
+                          <TextField
+                            fullWidth
+                            type="number"
+                            name={field.name}
+                            value={field.value === "" || field.value === undefined ? "" : field.value}
+                            onBlur={field.onBlur}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === "") {
+                                form.setFieldValue("Value", "");
+                                return;
+                              }
+                              const n = Number(raw);
+                              if (!Number.isNaN(n)) {
+                                form.setFieldValue("Value", Math.max(0, n));
+                              }
+                            }}
+                            size="small"
+                            inputProps={{ min: 0, step: "any" }}
+                            error={meta.touched && Boolean(meta.error)}
+                            helperText={meta.touched && meta.error}
+                          />
+                        )}
+                      </Field>
+                    </Grid>
                     <Grid item xs={12} mt={1}>
                       <FormControlLabel
                         control={

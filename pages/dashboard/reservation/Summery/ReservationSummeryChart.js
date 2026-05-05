@@ -12,7 +12,7 @@ class ReservationSummeryChart extends Component {
     this.state = {
       series: Array.isArray(props.features) ? props.features : [0],
       options: {
-        colors: ["#00b69b", "#f7931a", "#757fef", "#e5e5e5"],
+        colors: ["#20BF6B", "#5F27CD", "#FF6B9D", "#FECA57"],
         chart: {
           type: "donut",
         },

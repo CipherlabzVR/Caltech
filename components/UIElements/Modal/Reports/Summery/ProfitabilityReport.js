@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Button,
   Grid,
@@ -7,17 +7,14 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Modal from "@mui/material/Modal";
 import "react-toastify/dist/ReactToastify.css";
 import { Visibility } from "@mui/icons-material";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
 import { Report } from "Base/report";
-import useApi from "@/components/utils/useApi";
 import { Catelogue } from "Base/catelogue";
-import BASE_URL from "Base/api";
-import { DEFAULT_PAGE_SIZE, filterTopMatchesWithLoadMore, withAllOption } from "@/components/utils/autocompleteTopMatches";
+import ReportSearchField from "@/components/utils/ReportSearchField";
 
 const style = {
   position: "absolute",
@@ -42,107 +39,16 @@ export default function ProfitabilityReport({ docName, reportName }) {
   const [open, setOpen] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [customers, setCustomers] = useState([]);
   const [customerId, setCustomerId] = useState(0);
   const { data: ProfitabilityReport } = GetReportSettingValueByName(reportName);
-  const [items, setItems] = useState([]);
   const [itemId, setItemId] = useState(0);
-  const [categories, setCategories] = useState([]);
   const [categoryId, setCategoryId] = useState(0);
-  const [subCategories, setSubCategories] = useState([]);
   const [subCategoryId, setSubCategoryId] = useState(0);
-  const [suppliers, setSuppliers] = useState([]);
   const [supplierId, setSupplierId] = useState(0);
 
-  const [customerLimit, setCustomerLimit] = useState(DEFAULT_PAGE_SIZE);
-  const [supplierLimit, setSupplierLimit] = useState(DEFAULT_PAGE_SIZE);
-  const [categoryLimit, setCategoryLimit] = useState(DEFAULT_PAGE_SIZE);
-  const [subCategoryLimit, setSubCategoryLimit] = useState(DEFAULT_PAGE_SIZE);
-  const [itemLimit, setItemLimit] = useState(DEFAULT_PAGE_SIZE);
-
-  const handleOpen = () => {
-    setCustomerLimit(DEFAULT_PAGE_SIZE);
-    setSupplierLimit(DEFAULT_PAGE_SIZE);
-    setCategoryLimit(DEFAULT_PAGE_SIZE);
-    setSubCategoryLimit(DEFAULT_PAGE_SIZE);
-    setItemLimit(DEFAULT_PAGE_SIZE);
-    setOpen(true);
-  };
+  const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
-
-
   const isFormValid = fromDate && toDate;
-
-  const { data: customerList } = useApi("/Customer/GetAllCustomer");
-  const { data: itemList } = useApi("/Items/GetAllItems");
-  const { data: supplierList } = useApi("/Supplier/GetAllSupplier");
-  const { data: categoryList } = useApi("/Category/GetAllCategory");
-
-  useEffect(() => {
-    if (customerList) {
-      setCustomers(customerList);
-    }
-    if (itemList) {
-      setItems(itemList);
-    }
-    if (supplierList) {
-      setSuppliers(supplierList);
-    }
-    if (categoryList) {
-      setCategories(categoryList);
-    }
-  }, [customerList, itemList, supplierList, categoryList]);
-
-  const handleGetSupplierItems = async (id) => {
-    setItemId(0);
-    handleGetFilteredItems(id, categoryId, subCategoryId);
-  }
-
-  const handleGetSubCategories = async (id) => {
-    setItemId(0);
-    setSubCategoryId(0);
-    handleGetFilteredItems(supplierId, id, subCategoryId);
-    try {
-      const token = localStorage.getItem("token");
-      const query = `${BASE_URL}/SubCategory/GetAllSubCategoriesByCategoryId?categoryId=${id}`;
-      const response = await fetch(query, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) throw new Error("Failed to fetch items");
-
-      const data = await response.json();
-      setSubCategories(data.result);
-    } catch (error) {
-      console.error("Error:", error);
-    }
-  }
-
-  const handleGetFilteredItems = async (supplier, category, subCategory) => {
-    setItemId(0);
-    try {
-      const token = localStorage.getItem("token");
-      const query = `${BASE_URL}/Items/GetFilteredItems?supplier=${supplier}&category=${category}&subCategory=${subCategory}`;
-      const response = await fetch(query, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) throw new Error("Failed to fetch items");
-
-      const data = await response.json();
-      setItems(data.result);
-    } catch (error) {
-      console.error("Error:", error);
-    }
-  }
 
   return (
     <>
@@ -191,222 +97,68 @@ export default function ProfitabilityReport({ docName, reportName }) {
                 />
               </Grid>
               <Grid item xs={12}>
-                <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                  Select Customer
-                </Typography>
-                <Autocomplete
-                disableCloseOnSelect
-                  fullWidth
-                  size="small"
-                  options={withAllOption(
-                    customers.map((c) => ({
-                      id: c.id,
-                      label: `${c.firstName || ""} ${c.lastName || ""}`.trim() || String(c.id),
-                    }))
-                  )}
-                  value={
-                    withAllOption(
-                      customers.map((c) => ({
-                        id: c.id,
-                        label: `${c.firstName || ""} ${c.lastName || ""}`.trim() || String(c.id),
-                      }))
-                    ).find((o) => o.id === customerId) || null
-                  }
-                  onChange={(_, opt) => {
-                    if (opt?.__loadMore) {
-                      setCustomerLimit((v) => v + DEFAULT_PAGE_SIZE);
-                      return;
-                    }
-                    setCustomerId(opt?.id ?? 0);
-                  }}
-                  isOptionEqualToValue={(option, val) => option.id === val.id}
-                  filterOptions={(options, state) =>
-                    filterTopMatchesWithLoadMore(options, state.inputValue, customerLimit)
-                  }
-                  renderOption={(props, option) => (
-                    <li
-                      {...props}
-                      style={
-                        option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
-                      }
-                    >
-                      {option.label}
-                    </li>
-                  )}
-                  noOptionsText="No matches"
-                  renderInput={(params) => (
-                    <TextField {...params} placeholder="Type to search..." />
-                  )}
+                <ReportSearchField
+                  filterType="customer"
+                  extraParams={{}}
+                  value={customerId}
+                  onChange={(id) => setCustomerId(id ?? 0)}
+                  allowAll={true}
+                  label="Select Customer"
+                  placeholder="Type to search..."
                 />
               </Grid>
               <Grid item xs={12}>
-                <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                  Select Supplier
-                </Typography>
-                <Autocomplete
-                disableCloseOnSelect
-                  fullWidth
-                  size="small"
-                  options={withAllOption(suppliers.map((s) => ({ id: s.id, label: s.name || String(s.id) })))}
-                  value={
-                    withAllOption(suppliers.map((s) => ({ id: s.id, label: s.name || String(s.id) }))).find(
-                      (o) => o.id === supplierId
-                    ) || null
-                  }
-                  onChange={(_, opt) => {
-                    if (opt?.__loadMore) {
-                      setSupplierLimit((v) => v + DEFAULT_PAGE_SIZE);
-                      return;
-                    }
-                    const id = opt?.id ?? 0;
-                    setSupplierId(id);
-                    handleGetSupplierItems(id);
+                <ReportSearchField
+                  filterType="supplier"
+                  extraParams={{}}
+                  value={supplierId}
+                  onChange={(id) => {
+                    setSupplierId(id ?? 0);
+                    setItemId(0);
                   }}
-                  isOptionEqualToValue={(option, val) => option.id === val.id}
-                  filterOptions={(options, state) =>
-                    filterTopMatchesWithLoadMore(options, state.inputValue, supplierLimit)
-                  }
-                  renderOption={(props, option) => (
-                    <li
-                      {...props}
-                      style={
-                        option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
-                      }
-                    >
-                      {option.label}
-                    </li>
-                  )}
-                  noOptionsText="No matches"
-                  renderInput={(params) => (
-                    <TextField {...params} placeholder="Type to search..." />
-                  )}
+                  allowAll={true}
+                  label="Select Supplier"
+                  placeholder="Type to search..."
                 />
               </Grid>
               <Grid item xs={12} lg={6}>
-                <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                  Select Category
-                </Typography>
-                <Autocomplete
-                disableCloseOnSelect
-                  fullWidth
-                  size="small"
-                  options={withAllOption(categories.map((c) => ({ id: c.id, label: c.name || String(c.id) })))}
-                  value={
-                    withAllOption(categories.map((c) => ({ id: c.id, label: c.name || String(c.id) }))).find(
-                      (o) => o.id === categoryId
-                    ) || null
-                  }
-                  onChange={(_, opt) => {
-                    if (opt?.__loadMore) {
-                      setCategoryLimit((v) => v + DEFAULT_PAGE_SIZE);
-                      return;
-                    }
-                    const id = opt?.id ?? 0;
-                    setCategoryId(id);
-                    handleGetSubCategories(id);
+                <ReportSearchField
+                  filterType="category"
+                  extraParams={{}}
+                  value={categoryId}
+                  onChange={(id) => {
+                    setCategoryId(id ?? 0);
+                    setSubCategoryId(0);
+                    setItemId(0);
                   }}
-                  isOptionEqualToValue={(option, val) => option.id === val.id}
-                  filterOptions={(options, state) =>
-                    filterTopMatchesWithLoadMore(options, state.inputValue, categoryLimit)
-                  }
-                  renderOption={(props, option) => (
-                    <li
-                      {...props}
-                      style={
-                        option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
-                      }
-                    >
-                      {option.label}
-                    </li>
-                  )}
-                  noOptionsText="No matches"
-                  renderInput={(params) => (
-                    <TextField {...params} placeholder="Type to search..." />
-                  )}
+                  allowAll={true}
+                  label="Select Category"
+                  placeholder="Type to search..."
                 />
               </Grid>
               <Grid item xs={12} lg={6}>
-                <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                  Select Sub Category
-                </Typography>
-                <Autocomplete
-                disableCloseOnSelect
-                  fullWidth
-                  size="small"
-                  options={withAllOption(subCategories.map((c) => ({ id: c.id, label: c.name || String(c.id) })))}
-                  value={
-                    withAllOption(subCategories.map((c) => ({ id: c.id, label: c.name || String(c.id) }))).find(
-                      (o) => o.id === subCategoryId
-                    ) || null
-                  }
-                  onChange={(_, opt) => {
-                    if (opt?.__loadMore) {
-                      setSubCategoryLimit((v) => v + DEFAULT_PAGE_SIZE);
-                      return;
-                    }
-                    const id = opt?.id ?? 0;
-                    setSubCategoryId(id);
-                    handleGetFilteredItems(supplierId, categoryId, id);
+                <ReportSearchField
+                  filterType="subCategory"
+                  extraParams={{ categoryId: categoryId || undefined }}
+                  value={subCategoryId}
+                  onChange={(id) => {
+                    setSubCategoryId(id ?? 0);
+                    setItemId(0);
                   }}
-                  isOptionEqualToValue={(option, val) => option.id === val.id}
-                  filterOptions={(options, state) =>
-                    filterTopMatchesWithLoadMore(options, state.inputValue, subCategoryLimit)
-                  }
-                  renderOption={(props, option) => (
-                    <li
-                      {...props}
-                      style={
-                        option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
-                      }
-                    >
-                      {option.label}
-                    </li>
-                  )}
-                  noOptionsText="No matches"
-                  renderInput={(params) => (
-                    <TextField {...params} placeholder="Type to search..." />
-                  )}
+                  allowAll={true}
+                  label="Select Sub Category"
+                  placeholder="Type to search..."
                 />
               </Grid>
               <Grid item xs={12}>
-                <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                  Select Item
-                </Typography>
-                <Autocomplete
-                disableCloseOnSelect
-                  fullWidth
-                  size="small"
-                  options={withAllOption(items.map((i) => ({ id: i.id, label: i.name || String(i.id) })))}
-                  value={
-                    withAllOption(items.map((i) => ({ id: i.id, label: i.name || String(i.id) }))).find(
-                      (o) => o.id === itemId
-                    ) || null
-                  }
-                  onChange={(_, opt) => {
-                    if (opt?.__loadMore) {
-                      setItemLimit((v) => v + DEFAULT_PAGE_SIZE);
-                      return;
-                    }
-                    setItemId(opt?.id ?? 0);
-                  }}
-                  isOptionEqualToValue={(option, val) => option.id === val.id}
-                  filterOptions={(options, state) =>
-                    filterTopMatchesWithLoadMore(options, state.inputValue, itemLimit)
-                  }
-                  renderOption={(props, option) => (
-                    <li
-                      {...props}
-                      style={
-                        option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
-                      }
-                    >
-                      {option.label}
-                    </li>
-                  )}
-                  noOptionsText="No matches"
-                  renderInput={(params) => (
-                    <TextField {...params} placeholder="Type to search..." />
-                  )}
+                <ReportSearchField
+                  filterType="item"
+                  extraParams={{ supplierId: supplierId || undefined, categoryId: categoryId || undefined, subCategoryId: subCategoryId || undefined }}
+                  value={itemId}
+                  onChange={(id) => setItemId(id ?? 0)}
+                  allowAll={true}
+                  label="Select Item"
+                  placeholder="Type to search..."
                 />
               </Grid>
               <Grid item xs={12} display="flex" justifyContent="space-between" mt={2}>

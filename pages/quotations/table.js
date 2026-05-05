@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import {
   Box,
   Button,
@@ -13,7 +13,7 @@ import {
 import BASE_URL from "Base/api";
 import { formatCurrency } from "@/components/utils/formatHelper";
 
-export default function TableData({ onIsSavedChange, inquiry, onSummaryChange }) {
+const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSummaryChange }, ref) {
   const [items, setItems] = useState([]);
   const [patternItem, setPatternItem] = useState({});
   const [patternQuantity, setPatternQuantity] = useState(0);
@@ -124,14 +124,23 @@ export default function TableData({ onIsSavedChange, inquiry, onSummaryChange })
         pattern.approvedUnitCost = pattern.unitCost;
       }
 
-      const qty = pattern.approvedQuantity ?? 0;
+      // Fallback for approvedQuantity - use quantity if approvedQuantity is not set
+      if (!pattern.approvedQuantity && pattern.approvedQuantity !== 0) {
+        pattern.approvedQuantity = pattern.quantity ?? 0;
+      }
+
+      const qty = pattern.approvedQuantity ?? pattern.quantity ?? 0;
       const totalCost = pattern.approvedTotalCost ?? 0;
       const unitCost = qty > 0 ? totalCost / qty : 0;
 
       setPatternQuantity(qty);
       setPatternTotalCost(totalCost);
       setPatternUCost(unitCost);
-      setPatternItem(pattern);
+      setPatternItem({
+        ...pattern,
+        approvedQuantity: qty,
+        quantity: pattern.quantity ?? qty,
+      });
     } catch (error) {
       console.error(error);
     }
@@ -188,6 +197,8 @@ export default function TableData({ onIsSavedChange, inquiry, onSummaryChange })
       ...patternItem,
       approvedUnitCost: unitCost,
       approvedTotalCost: cost,
+      approvedQuantity: patternQuantity,
+      quantity: patternItem.quantity ?? patternQuantity,
     });
   };
 
@@ -202,24 +213,65 @@ export default function TableData({ onIsSavedChange, inquiry, onSummaryChange })
     setRawProfit(profitValue);
   };
 
-  const handleCalculate = async () => {
-    const calculatedValues = [
-      ...items.map((item) => ({
-        ...item,
-        approvedUnitCost: item.approvedUnitCost,
-        approvedTotalCost: item.approvedTotalCost,
-      })),
-      {
-        ...patternItem,
-        approvedTotalCost: patternTotalCost,
-        approvedUnitCost: patternUCost,
-      },
-      {
-        ...commissionItem,
-        approvedTotalCost: commissionTotalCost,
-        approvedUnitCost: 0,
-      },
+  const toLineRequest = (item, approvedUnitCost, approvedTotalCost, approvedQuantity) => {
+    const qty = approvedQuantity ?? item.approvedQuantity ?? item.quantity;
+    return {
+      InquiryID: item.inquiryID ?? inquiry?.inquiryId,
+      InqCode: item.inqCode ?? inquiry?.inquiryCode ?? "",
+      WindowType: item.windowType ?? inquiry?.windowType,
+      OptionId: item.optionId ?? inquiry?.optionId,
+      InqOptionName: item.inqOptionName ?? inquiry?.optionName ?? "",
+      ItemName: item.itemName ?? "",
+      UnitCost: item.unitCost ?? 0,
+      Quantity: qty ?? 0,
+      TotalCost: item.totalCost ?? 0,
+      ApprovedUnitCost: approvedUnitCost !== undefined && approvedUnitCost !== null ? Number(approvedUnitCost) : (item.approvedUnitCost ?? 0),
+      ApprovedQuantity: qty ?? 0,
+      ApprovedTotalCost: approvedTotalCost !== undefined && approvedTotalCost !== null ? Number(approvedTotalCost) : (item.approvedTotalCost ?? 0),
+    };
+  };
+
+  const buildLineItemsPayload = () => {
+    const payload = [
+      ...items.map((item) => toLineRequest(item, item.approvedUnitCost, item.approvedTotalCost, item.approvedQuantity)),
     ];
+    if (patternItem && (patternItem.id || patternItem.itemName === "Pattern")) {
+      payload.push(toLineRequest(
+        patternItem,
+        patternUCost,
+        patternTotalCost,
+        patternQuantity
+      ));
+      payload[payload.length - 1].ItemName = "Pattern";
+    }
+    if (commissionItem && (commissionItem.id || commissionItem.itemName === "Commission")) {
+      payload.push(toLineRequest(commissionItem, 0, commissionTotalCost, commissionItem.approvedQuantity ?? 1));
+      payload[payload.length - 1].ItemName = "Commission";
+    }
+    return payload;
+  };
+
+  useImperativeHandle(ref, () => ({
+    saveLineItems: async () => {
+      const calculatedValues = buildLineItemsPayload();
+      if (calculatedValues.length === 0) return;
+      const res = await fetch(`${BASE_URL}/Inquiry/UpdateSummeryLine`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify(calculatedValues),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || (data.statusCode != null && Number(data.statusCode) !== 200)) {
+        throw new Error(data.message || "Failed to save line items");
+      }
+    },
+  }), [items, patternItem, commissionItem, patternTotalCost, patternQuantity, patternUCost, commissionTotalCost, inquiry]);
+
+  const handleCalculate = async () => {
+    const calculatedValues = buildLineItemsPayload();
     if (calculatedValues.length > 0) {
       const allItems = [
         ...items.map((i) => ({ TotalCost: i.approvedTotalCost })),
@@ -420,4 +472,6 @@ export default function TableData({ onIsSavedChange, inquiry, onSummaryChange })
       </Box>
     </>
   );
-}
+});
+
+export default TableData;

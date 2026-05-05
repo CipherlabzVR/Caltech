@@ -23,6 +23,7 @@ import {
   DialogActions,
   CircularProgress,
   createFilterOptions,
+  Paper,
 } from "@mui/material";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -38,11 +39,26 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import SaveIcon from "@mui/icons-material/Save";
 import CancelIcon from "@mui/icons-material/Cancel";
 import AddIcon from "@mui/icons-material/Add";
+import LocationOnIcon from "@mui/icons-material/LocationOn";
+import LocationOffIcon from "@mui/icons-material/LocationOff";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
+import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import LoginIcon from "@mui/icons-material/Login";
+import LogoutIcon from "@mui/icons-material/Logout";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import HistoryIcon from "@mui/icons-material/History";
+import CameraswitchIcon from "@mui/icons-material/Cameraswitch";
+import FlipCameraIosIcon from "@mui/icons-material/FlipCameraIos";
 import useApi from "@/components/utils/useApi";
 import RichTextEditor from "@/components/help-desk/RichTextEditor";
 import TicketChecklist from "@/components/help-desk/TicketChecklist";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { formatDate } from "@/components/utils/formatHelper";
+import AddCustomerDialog from "@/pages/master/customers/create";
+import CreateHelpDeskProjectModal from "@/pages/help-desk/projects/create";
 
 const filter = createFilterOptions();
 
@@ -129,6 +145,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
   const [clockOutPlaceName, setClockOutPlaceName] = useState("");
   const fileInputRef = React.useRef(null);
   const geocodeCacheRef = React.useRef(new Map());
+  const editFormikRef = React.useRef(null);
 
   // Ticket logs (stored as internal comments via existing API)
   const [logText, setLogText] = useState("");
@@ -162,6 +179,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
   const userType = typeof window !== "undefined" ? localStorage.getItem("type") : null;
   const userTypeNum = userType ? Number(userType) : null;
   const isAdmin = userTypeNum === 1 || userTypeNum === 0; // ADMIN = 1, SuperAdmin = 0
+  const isSuperAdminByType = userTypeNum === 0 || userTypeNum === 1; // SuperAdmin = 0, Admin = 1
   const isHelpDeskSupportUser = userTypeNum === 14; // HelpDeskSupport = 14
   const canAssignTicket = isAdmin || isHelpDeskSupportUser;
 
@@ -169,6 +187,16 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
   const [helpDeskUsers, setHelpDeskUsers] = useState([]);
   const [loadingHelpDeskUsers, setLoadingHelpDeskUsers] = useState(false);
   const [customAssigneeNames, setCustomAssigneeNames] = useState([]); // Store custom names entered by user
+
+  // State for Customers dropdown
+  const [customers, setCustomers] = useState([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [createCustomerModalOpen, setCreateCustomerModalOpen] = useState(false);
+  const [customerAutocompleteOpen, setCustomerAutocompleteOpen] = useState(false);
+  
+  // State for Create Project Modal
+  const [createProjectModalOpen, setCreateProjectModalOpen] = useState(false);
+  const [projectAutocompleteOpen, setProjectAutocompleteOpen] = useState(false);
 
   // Auto-open when item is set and modal is controlled externally
   useEffect(() => {
@@ -246,6 +274,70 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
       checkUserType();
     }
   }, [open]);
+
+  // Fetch customers for dropdown
+  const fetchCustomers = async () => {
+    try {
+      setLoadingCustomers(true);
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${BASE_URL}/Customer/GetAllCustomer`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const customerList = Array.isArray(data) ? data : Array.isArray(data?.result) ? data.result : [];
+        setCustomers(customerList);
+      }
+    } catch (error) {
+      console.error("Error fetching customers:", error);
+    } finally {
+      setLoadingCustomers(false);
+    }
+  };
+
+  // Refresh projects list function
+  const refreshProjects = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${BASE_URL}/HelpDesk/GetProjectsForAssign`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const projectList = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : []);
+        setProjectsData({ result: projectList });
+        return projectList;
+      }
+    } catch (error) {
+      console.error("Error fetching projects:", error);
+    }
+    return [];
+  };
+
+  // Load customers when modal opens
+  useEffect(() => {
+    if (open) {
+      fetchCustomers();
+    }
+  }, [open]);
+
+  // Get customer display name
+  const getCustomerDisplayName = (customer) => {
+    if (!customer) return "";
+    const firstName = customer.firstName || customer.FirstName || "";
+    const lastName = customer.lastName || customer.LastName || "";
+    const company = customer.company || customer.Company || "";
+    const name = `${firstName} ${lastName}`.trim();
+    return company ? `${name} (${company})` : name;
+  };
 
   // Clock In tab is now available to all users, so no need to switch tabs
 
@@ -671,7 +763,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
 
         console.log("EditTicket: Fetching ticket project with ID:", ticketProjectId);
         
-        // First try Project Management module
+        // Try ProjectManagementModule endpoint
         let response = await fetch(`${BASE_URL}/ProjectManagementModule/projects/${ticketProjectId}`, {
           method: "GET",
           headers: {
@@ -686,13 +778,12 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
           const data = await response.json();
           project = data?.result || data;
           if (project) {
-            console.log("EditTicket: Found project in Project Management module");
+            console.log("EditTicket: Found project in ProjectManagement API");
           }
         }
 
-        // If not found in Project Management, try old Project endpoint
         if (!project) {
-          console.log("EditTicket: Project not found in Project Management, trying old Project endpoint");
+          // Fallback: try old master projects API
           response = await fetch(`${BASE_URL}/Project/GetProjectById?id=${ticketProjectId}`, {
             method: "GET",
             headers: {
@@ -700,32 +791,27 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
               "Content-Type": "application/json",
             },
           });
-
           if (response.ok) {
             const data = await response.json();
             project = data?.result || data;
-            if (project) {
-              console.log("EditTicket: Found project in old Project table");
-            }
           }
         }
 
         if (project) {
-          // Normalize the project to match the format expected by normalizedProjects
+          const projectId = project.Id || project.id || project.projectId || ticketProjectId;
+          const customerId = project.CustomerId || project.customerId;
           const normalizedProject = {
             ...project,
-            id: toNumericId(project.id || project.projectId || ticketProjectId),
-            customerIdNormalized: project.customerId,
-            customerNameNormalized: project.customerName || 
-              project.customer?.displayName || 
-              project.customer?.name ||
-              [project.customer?.firstName, project.customer?.lastName].filter(Boolean).join(" ").trim() ||
-              "",
+            id: toNumericId(projectId),
+            name: project.Name || project.name || "",
+            code: project.Code || project.code || "",
+            customerIdNormalized: toNumericId(customerId),
+            customerNameNormalized: deriveCustomerName(project),
           };
           setTicketProject(normalizedProject);
           console.log("EditTicket: Fetched and set ticket project:", normalizedProject);
         } else {
-          console.warn("EditTicket: Project not found in either Project Management or old Project table");
+          console.warn("EditTicket: Project not found");
           setTicketProject(null);
         }
       } catch (error) {
@@ -1213,7 +1299,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
     const fetchProjectManagementProjects = async () => {
       try {
         const token = localStorage.getItem("token");
-        const response = await fetch(`${BASE_URL}/ProjectManagementModule/projects`, {
+        const response = await fetch(`${BASE_URL}/HelpDesk/GetProjectsForAssign`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -1222,16 +1308,15 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
         });
         if (response.ok) {
           const data = await response.json();
-          // Normalize the response to match the expected format
-          const projectList = Array.isArray(data?.result) ? data.result : [];
+          const projectList = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : []);
           setProjectsData({ result: projectList });
-          console.log("Fetched Project Management projects for edit:", projectList);
+          console.log("Fetched project management projects for edit:", projectList);
         } else {
-          console.error("Failed to fetch Project Management projects:", response.status);
+          console.error("Failed to fetch project management projects:", response.status);
           setProjectsData({ result: [] });
         }
       } catch (error) {
-        console.error("Error fetching Project Management projects:", error);
+        console.error("Error fetching project management projects:", error);
         setProjectsData({ result: [] });
       }
     };
@@ -1339,11 +1424,26 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
 
   const deriveCustomerName = (project) => {
     const candidateNames = [
+      project.ClientName,
+      project.clientName,
+      project.CustomerName,
       project.customerName,
       project.customer?.displayName,
+      project.customer?.DisplayName,
       project.customer?.name,
+      project.customer?.Name,
       project.customer?.customerName,
+      project.customer?.CustomerName,
       project.customer?.company,
+      project.customer?.Company,
+      project.Customer?.displayName,
+      project.Customer?.DisplayName,
+      project.Customer?.name,
+      project.Customer?.Name,
+      project.Customer?.customerName,
+      project.Customer?.CustomerName,
+      project.Customer?.company,
+      project.Customer?.Company,
       project.customerDetails?.displayName,
       project.customerDetails?.name,
       project.customerInfo?.displayName,
@@ -1352,6 +1452,9 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
 
     const fromParts = [
       [project.customer?.firstName, project.customer?.lastName],
+      [project.customer?.FirstName, project.customer?.LastName],
+      [project.Customer?.firstName, project.Customer?.lastName],
+      [project.Customer?.FirstName, project.Customer?.LastName],
       [project.customerDetails?.firstName, project.customerDetails?.lastName],
       [project.customerInfo?.firstName, project.customerInfo?.lastName],
     ];
@@ -1371,7 +1474,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
   };
 
   const normalizedProjects = React.useMemo(() => {
-    // Project Management projects come directly from the API, not from normalizeProjectSource
+    // Master projects come from normalizeProjectSource
     const sourceProjects = normalizeProjectSource;
     
     console.log("EditTicket: Normalizing projects", {
@@ -1380,14 +1483,14 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
     });
 
     if (!sourceProjects || sourceProjects.length === 0) {
-      console.log("EditTicket: No Project Management projects available in edit form");
+      console.log("EditTicket: No master projects available in edit form");
       // If no projects but we have a ticketProject, return it
       if (ticketProject) {
         console.log("EditTicket: Only ticketProject available, returning it");
         return [{
           ...ticketProject,
           id: toNumericId(ticketProject.id),
-          customerIdNormalized: ticketProject.customerId,
+          customerIdNormalized: ticketProject.customerId || ticketProject.CustomerId,
           customerNameNormalized: deriveCustomerName(ticketProject),
         }];
       }
@@ -1395,18 +1498,23 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
     }
 
     const projects = sourceProjects.map((project) => {
-      // Project Management projects use 'id' directly
-      const projectId = project.id || project.projectId;
+      // Master projects use 'Id' (capital I) or 'id'
+      const projectId = project.Id || project.id || project.projectId;
       
+      // Master projects use 'CustomerId' (capital C) or 'customerId'
       const customerIdCandidates = [
+        project.CustomerId,
         project.customerId,
         project.assignedToCustomerId,
+        project.AssignedToCustomerId,
+        project.customer?.Id,
         project.customer?.id,
         project.customer?.customerId,
-        project.customerDetails?.id,
-        project.customerDetails?.customerId,
-        project.customerInfo?.id,
-        project.customerInfo?.customerId,
+        project.customer?.CustomerId,
+        project.Customer?.Id,
+        project.Customer?.id,
+        project.Customer?.customerId,
+        project.Customer?.CustomerId,
       ];
 
       const customerId =
@@ -1417,6 +1525,8 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
       return {
         ...project,
         id: toNumericId(projectId), // Ensure id is numeric
+        name: project.Name || project.name || "",
+        code: project.Code || project.code || "",
         customerIdNormalized: customerId,
         customerNameNormalized: deriveCustomerName(project),
       };
@@ -1471,6 +1581,27 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
     console.log("EditTicket: Final normalizedProjects count:", projects.length);
     return projects;
   }, [normalizeProjectSource, ticketProject]);
+
+  // Filter projects by selected customer
+  const filteredProjectsByCustomer = React.useMemo(() => {
+    return (customerId) => {
+      if (!customerId) {
+        // If no customer selected, return all projects
+        return normalizedProjects;
+      }
+      // Normalize the customer ID for comparison
+      const normalizedCustomerId = toNumericId(customerId);
+      if (!normalizedCustomerId) {
+        return normalizedProjects;
+      }
+      
+      return normalizedProjects.filter((project) => {
+        const projectCustomerId = project.customerIdNormalized;
+        // Compare normalized IDs
+        return projectCustomerId !== null && projectCustomerId === normalizedCustomerId;
+      });
+    };
+  }, [normalizedProjects]);
 
   const prioritySettings = Array.isArray(prioritySettingsData?.result)
     ? prioritySettingsData.result
@@ -1722,6 +1853,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
 
           {activeTab === 0 ? (
             <Formik
+              innerRef={editFormikRef}
               initialValues={{
                 subject: item.subject || "",
                 description: item.description || "",
@@ -1760,6 +1892,9 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                       minHeight: 0,
                       overflow: "hidden",
                       flexDirection: { xs: "column", md: "row" },
+                      gap: { xs: 0, md: 3 },
+                      px: { xs: 0, md: 2 },
+                      py: { xs: 0, md: 1 },
                     }}
                   >
                     {/* Left Panel - Form Fields */}
@@ -1768,8 +1903,10 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                         flex: 1,
                         minHeight: 0,
                         overflowY: "auto",
-                        p: { xs: 2, sm: 3 },
+                        p: { xs: 2, sm: 4 },
+                        m: { xs: 0, md: "0 0 0 10px" },
                         bgcolor: "white",
+                        borderRadius: { xs: 0, md: 1 },
                         borderRight: { xs: "none", md: "1px solid #E2E8F0" },
                         borderBottom: { xs: "1px solid #E2E8F0", md: "none" },
                         maxHeight: { xs: "50vh", md: "none" },
@@ -1778,56 +1915,249 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                     <Grid container spacing={2}>
                       {/* Customer Name and Project fields at the top */}
                       <Grid item xs={12} md={6}>
-                        <Field
-                          as={TextField}
-                          fullWidth
-                          name="customerName"
-                          label="Customer Name"
-                          value={values.customerName}
-                          size="small"
-                          disabled={true}
-                          onChange={(e) => {
-                            setFieldValue("customerName", e.target.value);
-                            setFieldValue("customerId", null);
+                        <Autocomplete
+                          id="customer-autocomplete-edit"
+                          disabled={!isSuperAdminByType}
+                          open={customerAutocompleteOpen}
+                          onOpen={() => setCustomerAutocompleteOpen(true)}
+                          onClose={() => setCustomerAutocompleteOpen(false)}
+                          options={customers}
+                          getOptionLabel={(option) => {
+                            if (!option) return "";
+                            if (option.isCreateOption) return "";
+                            return getCustomerDisplayName(option);
                           }}
-                          sx={{
-                            "& .MuiOutlinedInput-root": {
-                              bgcolor: "white",
-                              "& fieldset": {
-                                borderColor: "#E2E8F0",
+                          filterOptions={(options, params) => {
+                            const { inputValue } = params;
+                            
+                            // If no search input, show only first 10 customers (without Create option - it will be fixed at bottom)
+                            if (!inputValue || inputValue.trim() === "") {
+                              return options.slice(0, 10);
+                            }
+                            
+                            // If searching, filter through all customers
+                            const filtered = filter(options, {
+                              ...params,
+                              getOptionLabel: (option) => getCustomerDisplayName(option),
+                            });
+
+                            return filtered;
+                          }}
+                          isOptionEqualToValue={(option, value) => {
+                            if (!option || !value) return false;
+                            if (option.isCreateOption || value.isCreateOption) return false;
+                            const optionId = option.id || option.Id;
+                            const valueId = value.id || value.Id || value;
+                            return optionId === valueId;
+                          }}
+                          value={
+                            values.customerId
+                              ? customers.find((c) => (c.id || c.Id) === values.customerId) || 
+                                { firstName: values.customerName, id: values.customerId }
+                              : values.customerName
+                                ? { firstName: values.customerName, id: null }
+                                : null
+                          }
+                          loading={loadingCustomers}
+                          onChange={(event, newValue) => {
+                            if (newValue) {
+                              const newCustomerId = newValue.id || newValue.Id || null;
+                              const displayName = getCustomerDisplayName(newValue);
+                              setFieldValue("customerName", displayName);
+                              setFieldValue("customerId", newCustomerId);
+                              
+                              // Validate and clear project selection if it doesn't belong to the new customer
+                              if (Array.isArray(values.projectIds) && values.projectIds.length > 0 && newCustomerId) {
+                                const normalizedCustomerId = toNumericId(newCustomerId);
+                                const currentProject = normalizedProjects.find(p => 
+                                  values.projectIds.includes(p.id)
+                                );
+                                
+                                // If current project doesn't belong to new customer, clear it
+                                if (currentProject && normalizedCustomerId) {
+                                  const projectCustomerId = currentProject.customerIdNormalized;
+                                  if (projectCustomerId !== normalizedCustomerId) {
+                                    setFieldValue("projectIds", []);
+                                  }
+                                } else {
+                                  setFieldValue("projectIds", []);
+                                }
+                              } else {
+                                setFieldValue("projectIds", []);
+                              }
+                            } else {
+                              setFieldValue("customerName", "");
+                              setFieldValue("customerId", null);
+                              setFieldValue("projectIds", []);
+                            }
+                          }}
+                          ListboxProps={{
+                            sx: {
+                              maxHeight: '300px',
+                              overflowY: 'auto',
+                              '&::-webkit-scrollbar': {
+                                width: '8px',
                               },
-                              "&:hover fieldset": {
-                                borderColor: "#CBD5E0",
+                              '&::-webkit-scrollbar-track': {
+                                background: '#f1f1f1',
                               },
-                              "&.Mui-focused fieldset": {
-                                borderColor: "#2196F3",
+                              '&::-webkit-scrollbar-thumb': {
+                                background: '#888',
+                                borderRadius: '4px',
+                              },
+                              '&::-webkit-scrollbar-thumb:hover': {
+                                background: '#555',
                               },
                             },
                           }}
+                          PaperComponent={isSuperAdminByType ? (props) => (
+                            <Paper {...props} sx={{ ...props.sx, position: 'relative', overflow: 'hidden' }}>
+                              {props.children}
+                              <Divider />
+                              <Box
+                                sx={{
+                                  p: 1.5,
+                                  bgcolor: 'background.paper',
+                                  borderTop: '1px solid',
+                                  borderColor: 'divider',
+                                  position: 'sticky',
+                                  bottom: 0,
+                                  zIndex: 1,
+                                  cursor: 'pointer',
+                                  '&:hover': {
+                                    bgcolor: 'action.hover',
+                                  },
+                                }}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setCustomerAutocompleteOpen(false);
+                                  setTimeout(() => {
+                                    setCreateCustomerModalOpen(true);
+                                  }, 100);
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                              >
+                                <Box sx={{ display: "flex", alignItems: "center", gap: 1, color: "primary.main", fontWeight: 500 }}>
+                                  <AddIcon sx={{ fontSize: 18 }} />
+                                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                    Create Customer
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            </Paper>
+                          ) : undefined}
+                          renderOption={(props, option) => {
+                            const displayName = getCustomerDisplayName(option);
+                            return (
+                              <li {...props} key={option.id || option.Id}>
+                                <Box sx={{ display: "flex", flexDirection: "column" }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                    {displayName || "Unnamed"}
+                                  </Typography>
+                                  {option.company && (
+                                    <Typography variant="caption" color="text.secondary">
+                                      {option.company}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              </li>
+                            );
+                          }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              label="Customer Name"
+                              placeholder="Search customer..."
+                              size="small"
+                              InputProps={{
+                                ...params.InputProps,
+                                endAdornment: (
+                                  <>
+                                    {loadingCustomers ? <CircularProgress color="inherit" size={20} /> : null}
+                                    {params.InputProps.endAdornment}
+                                  </>
+                                ),
+                              }}
+                              sx={{
+                                "& .MuiOutlinedInput-root": {
+                                  bgcolor: "white",
+                                  "& fieldset": {
+                                    borderColor: "#E2E8F0",
+                                  },
+                                  "&:hover fieldset": {
+                                    borderColor: "#CBD5E0",
+                                  },
+                                  "&.Mui-focused fieldset": {
+                                    borderColor: "#2196F3",
+                                  },
+                                },
+                              }}
+                            />
+                          )}
+                          noOptionsText="No customers found"
+                          loadingText="Loading customers..."
                         />
                       </Grid>
 
                       <Grid item xs={12} md={6}>
                         <Autocomplete
-                          disabled={!isSuperAdmin}
-                          options={normalizedProjects}
-                          getOptionLabel={(option) => option?.name || ""}
-                          isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                          id="project-autocomplete-edit"
+                          disabled={!isSuperAdminByType}
+                          open={projectAutocompleteOpen}
+                          onOpen={() => setProjectAutocompleteOpen(true)}
+                          onClose={() => setProjectAutocompleteOpen(false)}
+                          options={values.customerId ? filteredProjectsByCustomer(values.customerId) : normalizedProjects}
+                          getOptionLabel={(option) => {
+                            if (!option) return "";
+                            if (option.isCreateOption) return "";
+                            return `${option?.code || ""} - ${option?.name || ""}`.trim() || "";
+                          }}
+                          filterOptions={(options, params) => {
+                            const { inputValue } = params;
+                            
+                            // If no search input, show only first 10 projects
+                            if (!inputValue || inputValue.trim() === "") {
+                              return options.slice(0, 10);
+                            }
+                            
+                            // If searching, filter through all projects
+                            const filtered = filter(options, {
+                              ...params,
+                              getOptionLabel: (option) => `${option?.code || ""} - ${option?.name || ""}`.trim() || "",
+                            });
+                            
+                            return filtered;
+                          }}
+                          isOptionEqualToValue={(option, value) => {
+                            if (!option || !value) return false;
+                            if (option.isCreateOption || value.isCreateOption) return false;
+                            return option?.id === value?.id;
+                          }}
                           value={(() => {
+                            // Use filtered projects if customer is selected, otherwise use all projects
+                            const availableProjects = values.customerId 
+                              ? filteredProjectsByCustomer(values.customerId) 
+                              : normalizedProjects;
+                            
                             console.log("EditTicket Autocomplete: Calculating value", {
                               valuesProjectIds: values.projectIds,
+                              customerId: values.customerId,
                               itemProjectId: item?.projectId,
                               itemProjectEntityId: item?.projectEntity?.id,
-                              itemProject: item?.project, // Project name (used when ProjectId is null)
+                              itemProject: item?.project,
+                              availableProjectsCount: availableProjects.length,
                               normalizedProjectsCount: normalizedProjects.length,
-                              normalizedProjectsIds: normalizedProjects.map(p => ({ id: p.id, name: p.name, code: p.code, type: typeof p.id })),
                             });
 
                             // First try to find from values.projectIds array
                             if (Array.isArray(values.projectIds) && values.projectIds.length > 0) {
                               for (const projectId of values.projectIds) {
                                 const normalizedProjectId = toNumericId(projectId);
-                                const found = normalizedProjects.find((project) => 
+                                const found = availableProjects.find((project) => 
                                   toNumericId(project.id) === normalizedProjectId
                                 );
                                 if (found) {
@@ -1840,39 +2170,20 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                             // Fallback: check item.projectId directly (in case form hasn't initialized yet)
                             const ticketProjectId = toNumericId(item?.projectId ?? item?.projectEntity?.id);
                             if (ticketProjectId) {
-                              console.log("EditTicket: Looking for project with ID:", ticketProjectId, "Type:", typeof ticketProjectId);
-                              console.log("EditTicket: Available projects count:", normalizedProjects.length);
-                              console.log("EditTicket: Available project IDs:", normalizedProjects.map(p => ({ 
-                                id: p.id, 
-                                idType: typeof p.id,
-                                normalizedId: toNumericId(p.id),
-                                name: p.name 
-                              })));
-                              
-                              const found = normalizedProjects.find((project) => {
+                              const found = availableProjects.find((project) => {
                                 const projectIdNormalized = toNumericId(project.id);
-                                const match = projectIdNormalized === ticketProjectId;
-                                if (!match) {
-                                  console.log(`EditTicket: Comparing ${projectIdNormalized} (${typeof projectIdNormalized}) with ${ticketProjectId} (${typeof ticketProjectId}) - No match`);
-                                }
-                                return match;
+                                return projectIdNormalized === ticketProjectId;
                               });
                               
                               if (found) {
                                 console.log("EditTicket: Found project from item.projectId:", found);
                                 return found;
-                              } else {
-                                console.warn("EditTicket: Project ID", ticketProjectId, "not found in normalizedProjects list");
-                                console.warn("EditTicket: Item projectId:", item?.projectId, "projectEntity?.id:", item?.projectEntity?.id);
-                                console.warn("EditTicket: All normalized project IDs:", normalizedProjects.map(p => toNumericId(p.id)));
                               }
                             }
                             
                             // Last resort: if projectId is null but Project name exists, try to find by name
-                            // This happens when project is from Project Management (foreign key can't reference it)
-                            if (!ticketProjectId && item?.project && normalizedProjects.length > 0) {
-                              console.log("EditTicket: ProjectId is null, trying to find project by name:", item.project);
-                              const foundByName = normalizedProjects.find(p => {
+                            if (!ticketProjectId && item?.project && availableProjects.length > 0) {
+                              const foundByName = availableProjects.find(p => {
                                 const nameMatch = p.name?.toLowerCase() === item.project?.toLowerCase();
                                 const codeMatch = p.code?.toLowerCase() === item.project?.toLowerCase();
                                 const codeNameMatch = `${p.code} - ${p.name}`.toLowerCase() === item.project?.toLowerCase();
@@ -1881,16 +2192,20 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                               if (foundByName) {
                                 console.log("EditTicket: Found project by name:", foundByName);
                                 return foundByName;
-                              } else {
-                                console.warn("EditTicket: Project name not found in normalizedProjects:", item.project);
-                                console.warn("EditTicket: Available project names:", normalizedProjects.map(p => ({ name: p.name, code: p.code })));
                               }
                             }
                             
-                            console.log("EditTicket: No project found, returning null");
                             return null;
                           })()}
                           onChange={(event, newValue) => {
+                            if (newValue && newValue.isCreateOption) {
+                              setProjectAutocompleteOpen(false);
+                              setTimeout(() => {
+                                setCreateProjectModalOpen(true);
+                              }, 100);
+                              return;
+                            }
+                            
                             const projectId = newValue?.id ?? null;
                             setFieldValue("projectIds", projectId ? [projectId] : []);
 
@@ -1922,11 +2237,19 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                             <TextField
                               {...params}
                               label="Project"
-                              placeholder="Select project"
+                              placeholder={values.customerId ? "Select project for this customer" : "Select project"}
                               size="small"
-                              disabled={!isSuperAdmin}
+                              disabled={!isSuperAdminByType}
                               error={touched.projectIds && !!errors.projectIds}
-                              helperText={touched.projectIds ? errors.projectIds : (!isSuperAdmin ? "Only SuperAdmin can change project" : "")}
+                              helperText={
+                                touched.projectIds && errors.projectIds
+                                  ? errors.projectIds
+                                  : !isSuperAdminByType
+                                    ? "Only SuperAdmin can change project"
+                                    : values.customerId
+                                      ? `Showing projects assigned to selected customer (${filteredProjectsByCustomer(values.customerId).length} available)`
+                                      : "Select a customer first to filter projects"
+                              }
                               sx={{
                                 "& .MuiOutlinedInput-root": {
                                   bgcolor: "white",
@@ -1937,8 +2260,96 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                               }}
                             />
                           )}
-                          noOptionsText="No projects found"
+                          noOptionsText={values.customerId ? "No projects found for the selected customer" : "No projects found"}
                           loadingText="Loading projects..."
+                          key={`project-autocomplete-edit-${values.customerId || 'no-customer'}`}
+                          ListboxProps={{
+                            sx: {
+                              maxHeight: '300px',
+                              overflowY: 'auto',
+                              '&::-webkit-scrollbar': {
+                                width: '8px',
+                              },
+                              '&::-webkit-scrollbar-track': {
+                                background: '#f1f1f1',
+                              },
+                              '&::-webkit-scrollbar-thumb': {
+                                background: '#888',
+                                borderRadius: '4px',
+                              },
+                              '&::-webkit-scrollbar-thumb:hover': {
+                                background: '#555',
+                              },
+                            },
+                          }}
+                          PaperComponent={isSuperAdminByType ? (props) => (
+                            <Paper {...props} sx={{ ...props.sx, position: 'relative', overflow: 'hidden' }}>
+                              {props.children}
+                              <Divider />
+                              <Box
+                                component="div"
+                                role="button"
+                                tabIndex={0}
+                                sx={{
+                                  p: 1.5,
+                                  bgcolor: 'background.paper',
+                                  borderTop: '1px solid',
+                                  borderColor: 'divider',
+                                  position: 'sticky',
+                                  bottom: 0,
+                                  zIndex: 10,
+                                  cursor: 'pointer',
+                                  pointerEvents: 'auto',
+                                  userSelect: 'none',
+                                  '&:hover': {
+                                    bgcolor: 'action.hover',
+                                  },
+                                  '&:active': {
+                                    bgcolor: 'action.selected',
+                                  },
+                                }}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  // Close the autocomplete first
+                                  setProjectAutocompleteOpen(false);
+                                  // Use requestAnimationFrame to ensure state updates properly
+                                  requestAnimationFrame(() => {
+                                    setTimeout(() => {
+                                      setCreateProjectModalOpen(true);
+                                    }, 100);
+                                  });
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onMouseUp={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setProjectAutocompleteOpen(false);
+                                    requestAnimationFrame(() => {
+                                      setTimeout(() => {
+                                        setCreateProjectModalOpen(true);
+                                      }, 100);
+                                    });
+                                  }
+                                }}
+                              >
+                                <Box sx={{ display: "flex", alignItems: "center", gap: 1, color: "primary.main", fontWeight: 500 }}>
+                                  <AddIcon sx={{ fontSize: 18 }} />
+                                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                    Create Project
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            </Paper>
+                          ) : undefined}
                         />
                       </Grid>
 
@@ -1948,9 +2359,9 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                           fullWidth
                           name="subject"
                           label="Subject"
-                          disabled={!isSuperAdmin}
+                          disabled={!isSuperAdminByType}
                           error={touched.subject && !!errors.subject}
-                          helperText={touched.subject ? errors.subject : (!isSuperAdmin ? "Only SuperAdmin can change subject" : "")}
+                          helperText={touched.subject ? errors.subject : (!isSuperAdminByType ? "Only SuperAdmin can change subject" : "")}
                           sx={{
                             "& .MuiOutlinedInput-root": {
                               bgcolor: "white",
@@ -1972,7 +2383,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                       {canAssignTicket && (
                         <Grid item xs={12} md={6}>
                           <Autocomplete
-                            disabled={!isSuperAdmin}
+                            disabled={!isSuperAdminByType}
                             options={[
                               ...helpDeskUsers,
                               ...customAssigneeNames.map(name => ({ id: null, firstName: name, lastName: "", isCustomName: true }))
@@ -2014,7 +2425,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                               });
 
                               // Suggest adding a new value if it doesn't exist
-                              if (inputValue !== "" && !isExisting && inputValue.trim().length > 0 && isSuperAdmin) {
+                              if (inputValue !== "" && !isExisting && inputValue.trim().length > 0 && isSuperAdminByType) {
                                 filtered.push({
                                   inputValue: inputValue.trim(),
                                   isNewOption: true,
@@ -2085,9 +2496,9 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                                 {...params}
                                 label="Assign To (Optional)"
                                 size="small"
-                                disabled={!isSuperAdmin}
-                                placeholder={isSuperAdmin ? "Select user or type name to add..." : ""}
-                                helperText={!isSuperAdmin ? "Only SuperAdmin can change assignment" : ""}
+                                disabled={!isSuperAdminByType}
+                                placeholder={isSuperAdminByType ? "Select user or type name to add..." : ""}
+                                helperText={!isSuperAdminByType ? "Only SuperAdmin can change assignment" : ""}
                                 sx={{
                                   "& .MuiOutlinedInput-root": {
                                     bgcolor: "white",
@@ -2107,7 +2518,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                                 }}
                               />
                             )}
-                            noOptionsText={isSuperAdmin ? "No users found. Type a name to add new." : "No help desk support users found"}
+                            noOptionsText={isSuperAdminByType ? "No users found. Type a name to add new." : "No help desk support users found"}
                             loadingText="Loading help desk support users..."
                           />
                         </Grid>
@@ -2122,7 +2533,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                             name="categoryId"
                             label="Category"
                             value={values.categoryId}
-                            disabled={!isSuperAdmin}
+                            disabled={!isSuperAdminByType}
                             size="small"
                             sx={{
                               bgcolor: "white",
@@ -2141,7 +2552,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                               <MenuItem disabled>No categories available</MenuItem>
                             )}
                           </Field>
-                          {!isSuperAdmin && (
+                          {!isSuperAdminByType && (
                             <Typography variant="caption" sx={{ color: "#666", mt: 0.5, display: "block" }}>
                               Only SuperAdmin can change category
                             </Typography>
@@ -2505,9 +2916,11 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                         flexDirection: "column",
                         bgcolor: "#F7FAFC",
                         maxHeight: { xs: "50vh", md: "none" },
+                        borderRadius: { xs: 0, md: 1 },
+                        m: { xs: 0, md: "0 8px 0 0" },
                       }}
                     >
-                    <Box sx={{ p: { xs: 2, sm: 3 }, pb: 1, flexShrink: 0 }}>
+                    <Box sx={{ p: { xs: 2, sm: 4 }, pb: 1, flexShrink: 0 }}>
                       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
                         <Typography variant="h6" sx={{ color: "#1A202C" }}>
                           Comments and activity
@@ -2615,7 +3028,7 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
                         minHeight: 0,
                         overflowY: "auto",
                         overflowX: "hidden",
-                        px: { xs: 2, sm: 3 },
+                        px: { xs: 2, sm: 4 },
                         pt: 1,
                         pb: 3,
                         "&::-webkit-scrollbar": {
@@ -2764,269 +3177,686 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
               )}
             </Formik>
           ) : (
-            <Box sx={{ flex: 1, overflowY: "auto", p: { xs: 2, sm: 3 }, bgcolor: "white" }}>
-              <Stack spacing={2}>
-                  <Typography variant="h6" sx={{ fontWeight: 700, color: "#1A202C" }}>
-                    Clock In / Clock Out
-                  </Typography>
-
-                  {clockError ? <Alert severity="error">{clockError}</Alert> : null}
-
-                  <Box sx={{ p: 2, border: "1px solid #E2E8F0", borderRadius: 2, bgcolor: "#F8FAFC" }}>
-                    <Typography variant="subtitle2" sx={{ color: "#64748B", mb: 1 }}>
-                      Live Location
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: "#0F172A" }}>
-                      {geoStatus || "—"}
-                    </Typography>
-                    {geoPlaceName ? (
-                      <Typography variant="caption" sx={{ color: "#475569", display: "block", mt: 0.5 }}>
-                        {geoPlaceName}
-                      </Typography>
-                    ) : geo ? (
-                      <Typography variant="caption" sx={{ color: "#475569", display: "block", mt: 0.5 }}>
-                        Lat: {geo.lat}, Lng: {geo.lng} (±{Math.round(geo.accuracy || 0)}m)
-                      </Typography>
-                    ) : null}
+            <Box sx={{ flex: 1, overflowY: "auto", p: { xs: 2, sm: 3 }, bgcolor: "#F8FAFC" }}>
+              <Stack spacing={3}>
+                  {/* Header Section */}
+                  <Box sx={{ 
+                    display: "flex", 
+                    alignItems: "center", 
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: 2
+                  }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                      <Box sx={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: "12px",
+                        background: getActiveClockEntry 
+                          ? "linear-gradient(135deg, #10B981 0%, #059669 100%)" 
+                          : "linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxShadow: "0 4px 14px rgba(99, 102, 241, 0.3)"
+                      }}>
+                        <AccessTimeIcon sx={{ color: "white", fontSize: 24 }} />
+                      </Box>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 700, color: "#1A202C", lineHeight: 1.2 }}>
+                          Time Tracker
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: "#64748B" }}>
+                          {getActiveClockEntry ? "Currently working" : "Ready to start"}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    {getActiveClockEntry && (
+                      <Chip
+                        icon={<CheckCircleIcon sx={{ fontSize: 16 }} />}
+                        label={`Active since ${formatDate(getActiveClockEntry.clockInAt ?? getActiveClockEntry.ClockInAt)}`}
+                        sx={{
+                          bgcolor: "#ECFDF5",
+                          color: "#059669",
+                          fontWeight: 600,
+                          "& .MuiChip-icon": { color: "#10B981" }
+                        }}
+                      />
+                    )}
                   </Box>
 
-                  <Box sx={{ p: 2, border: "1px solid #E2E8F0", borderRadius: 2 }}>
-                    <Typography variant="subtitle2" sx={{ color: "#64748B", mb: 1 }}>
-                      Live Photo
-                    </Typography>
+                  {clockError ? <Alert severity="error" sx={{ borderRadius: 2 }}>{clockError}</Alert> : null}
 
-                    {cameraError ? <Alert severity="warning" sx={{ mb: 1 }}>{cameraError}</Alert> : null}
-
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 1 }}>
-                      <Button variant="outlined" onClick={startCamera}>
-                        Start Camera
-                      </Button>
-                      <Button variant="contained" onClick={takePhoto} disabled={!cameraStream}>
-                        Take Photo
-                      </Button>
-                      <Button variant="text" color="inherit" onClick={stopCamera} disabled={!cameraStream}>
-                        Stop
-                      </Button>
-                      <Button variant="outlined" component="label">
-                        Upload Photo
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          hidden
-                          ref={fileInputRef}
-                          onChange={(e) => onPhotoPicked(e.target.files?.[0])}
-                        />
-                      </Button>
-                      <Button
-                        variant="text"
-                        color="error"
-                        onClick={clearSelectedPhoto}
-                        disabled={!photoFile && !photoPreviewUrl}
-                      >
-                        Remove Photo
-                      </Button>
-                    </Stack>
-
-                    <Box sx={{ display: "flex", gap: 2, flexDirection: { xs: "column", md: "row" } }}>
-                      <Box sx={{ flex: 1 }}>
-                        <video
-                          ref={videoRef}
-                          style={{ width: "100%", borderRadius: 8, background: "#0B1220" }}
-                          playsInline
-                          muted
-                        />
-                        <canvas ref={canvasRef} style={{ display: "none" }} />
+                  {/* Main Action Card */}
+                  <Box sx={{ 
+                    p: 3, 
+                    borderRadius: 3, 
+                    bgcolor: "white",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04)",
+                    border: "1px solid #E2E8F0"
+                  }}>
+                    {/* Status Indicators Row */}
+                    <Box sx={{ 
+                      display: "grid", 
+                      gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, 
+                      gap: 2, 
+                      mb: 3 
+                    }}>
+                      {/* Location Status Card */}
+                      <Box sx={{ 
+                        p: 2, 
+                        borderRadius: 2, 
+                        bgcolor: geo ? "#F0FDF4" : "#FEF2F2",
+                        border: geo ? "1px solid #BBF7D0" : "1px solid #FECACA",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 1.5
+                      }}>
+                        <Box sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: "10px",
+                          bgcolor: geo ? "#DCFCE7" : "#FEE2E2",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0
+                        }}>
+                          {geo ? (
+                            <LocationOnIcon sx={{ color: "#16A34A", fontSize: 22 }} />
+                          ) : (
+                            <LocationOffIcon sx={{ color: "#DC2626", fontSize: 22 }} />
+                          )}
+                        </Box>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography variant="subtitle2" sx={{ 
+                            fontWeight: 600, 
+                            color: geo ? "#166534" : "#991B1B",
+                            mb: 0.25
+                          }}>
+                            {geo ? "Location Ready" : "Location Required"}
+                          </Typography>
+                          <Typography variant="caption" sx={{ 
+                            color: geo ? "#15803D" : "#B91C1C",
+                            display: "block",
+                            lineHeight: 1.4
+                          }}>
+                            {geoPlaceName || geoStatus || (geo ? `${geo.lat.toFixed(5)}, ${geo.lng.toFixed(5)}` : "Please allow location access")}
+                          </Typography>
+                        </Box>
                       </Box>
-                      <Box sx={{ width: { xs: "100%", md: 280 } }}>
-                        <Typography variant="caption" sx={{ color: "#64748B" }}>
-                          Preview
-                        </Typography>
-                        <Box
-                          sx={{
-                            mt: 0.5,
-                            width: "100%",
-                            height: 200,
-                            borderRadius: 2,
-                            border: "1px dashed #CBD5E1",
-                            overflow: "hidden",
+
+                      {/* Photo Status Card */}
+                      <Box sx={{ 
+                        p: 2, 
+                        borderRadius: 2, 
+                        bgcolor: photoFile ? "#F0FDF4" : "#FEF3C7",
+                        border: photoFile ? "1px solid #BBF7D0" : "1px solid #FDE68A",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 1.5
+                      }}>
+                        <Box sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: "10px",
+                          bgcolor: photoFile ? "#DCFCE7" : "#FEF9C3",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0
+                        }}>
+                          {photoFile ? (
+                            <CheckCircleIcon sx={{ color: "#16A34A", fontSize: 22 }} />
+                          ) : (
+                            <CameraAltIcon sx={{ color: "#CA8A04", fontSize: 22 }} />
+                          )}
+                        </Box>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography variant="subtitle2" sx={{ 
+                            fontWeight: 600, 
+                            color: photoFile ? "#166534" : "#92400E",
+                            mb: 0.25
+                          }}>
+                            {photoFile ? "Photo Captured" : "Photo Required"}
+                          </Typography>
+                          <Typography variant="caption" sx={{ 
+                            color: photoFile ? "#15803D" : "#B45309",
+                            display: "block"
+                          }}>
+                            {photoFile ? "Ready to submit" : "Take or upload a photo"}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Box>
+
+                    {cameraError ? <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>{cameraError}</Alert> : null}
+
+                    {/* Camera & Photo Section */}
+                    <Box sx={{ 
+                      display: "grid", 
+                      gridTemplateColumns: { xs: "1fr", md: "1fr 320px" }, 
+                      gap: 3 
+                    }}>
+                      {/* Camera View */}
+                      <Box>
+                        <Box sx={{ 
+                          position: "relative",
+                          borderRadius: 2,
+                          overflow: "hidden",
+                          bgcolor: "#0F172A",
+                          aspectRatio: "16/9",
+                          minHeight: 240
+                        }}>
+                          <video
+                            ref={videoRef}
+                            style={{ 
+                              width: "100%", 
+                              height: "100%",
+                              objectFit: "cover",
+                              display: cameraStream ? "block" : "none"
+                            }}
+                            playsInline
+                            muted
+                          />
+                          <canvas ref={canvasRef} style={{ display: "none" }} />
+                          
+                          {/* Camera Placeholder */}
+                          {!cameraStream && (
+                            <Box sx={{
+                              position: "absolute",
+                              inset: 0,
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 2,
+                              color: "#64748B"
+                            }}>
+                              <PhotoCameraIcon sx={{ fontSize: 48, opacity: 0.5 }} />
+                              <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                                Camera not started
+                              </Typography>
+                            </Box>
+                          )}
+
+                          {/* Camera Controls Overlay */}
+                          <Box sx={{
+                            position: "absolute",
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            p: 2,
+                            background: "linear-gradient(transparent, rgba(0,0,0,0.7))",
+                            display: "flex",
+                            justifyContent: "center",
+                            gap: 1.5
+                          }}>
+                            {!cameraStream ? (
+                              <Button
+                                variant="contained"
+                                startIcon={<PhotoCameraIcon />}
+                                onClick={startCamera}
+                                sx={{
+                                  bgcolor: "white",
+                                  color: "#1E293B",
+                                  fontWeight: 600,
+                                  px: 3,
+                                  "&:hover": { bgcolor: "#F1F5F9" }
+                                }}
+                              >
+                                Start Camera
+                              </Button>
+                            ) : (
+                              <>
+                                <IconButton
+                                  onClick={stopCamera}
+                                  sx={{
+                                    bgcolor: "rgba(255,255,255,0.2)",
+                                    color: "white",
+                                    "&:hover": { bgcolor: "rgba(255,255,255,0.3)" }
+                                  }}
+                                >
+                                  <CancelIcon />
+                                </IconButton>
+                                <Button
+                                  variant="contained"
+                                  onClick={takePhoto}
+                                  sx={{
+                                    bgcolor: "white",
+                                    color: "#1E293B",
+                                    fontWeight: 600,
+                                    px: 4,
+                                    py: 1.5,
+                                    borderRadius: "28px",
+                                    "&:hover": { bgcolor: "#F1F5F9" }
+                                  }}
+                                >
+                                  <CameraAltIcon sx={{ fontSize: 28 }} />
+                                </Button>
+                                <IconButton
+                                  sx={{
+                                    bgcolor: "rgba(255,255,255,0.2)",
+                                    color: "white",
+                                    "&:hover": { bgcolor: "rgba(255,255,255,0.3)" }
+                                  }}
+                                >
+                                  <FlipCameraIosIcon />
+                                </IconButton>
+                              </>
+                            )}
+                          </Box>
+                        </Box>
+
+                        {/* Upload Alternative */}
+                        <Box sx={{ mt: 2, textAlign: "center" }}>
+                          <Typography variant="body2" sx={{ color: "#64748B", mb: 1 }}>
+                            or
+                          </Typography>
+                          <Button
+                            variant="outlined"
+                            component="label"
+                            startIcon={<CloudUploadIcon />}
+                            sx={{
+                              borderColor: "#E2E8F0",
+                              color: "#475569",
+                              fontWeight: 500,
+                              "&:hover": { borderColor: "#CBD5E1", bgcolor: "#F8FAFC" }
+                            }}
+                          >
+                            Upload from Device
+                            <input
+                              type="file"
+                              accept="image/*"
+                              capture="environment"
+                              hidden
+                              ref={fileInputRef}
+                              onChange={(e) => onPhotoPicked(e.target.files?.[0])}
+                            />
+                          </Button>
+                        </Box>
+                      </Box>
+
+                      {/* Photo Preview & Action */}
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        {/* Preview Card */}
+                        <Box sx={{
+                          flex: 1,
+                          borderRadius: 2,
+                          border: photoPreviewUrl ? "2px solid #10B981" : "2px dashed #CBD5E1",
+                          overflow: "hidden",
+                          bgcolor: photoPreviewUrl ? "transparent" : "#F8FAFC",
+                          display: "flex",
+                          flexDirection: "column",
+                          minHeight: 200
+                        }}>
+                          {photoPreviewUrl ? (
+                            <Box sx={{ position: "relative", flex: 1 }}>
+                              <img
+                                src={photoPreviewUrl}
+                                alt="Clock photo preview"
+                                style={{ 
+                                  width: "100%", 
+                                  height: "100%", 
+                                  objectFit: "cover",
+                                  minHeight: 200
+                                }}
+                              />
+                              <IconButton
+                                onClick={clearSelectedPhoto}
+                                size="small"
+                                sx={{
+                                  position: "absolute",
+                                  top: 8,
+                                  right: 8,
+                                  bgcolor: "rgba(0,0,0,0.6)",
+                                  color: "white",
+                                  "&:hover": { bgcolor: "rgba(220,38,38,0.9)" }
+                                }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                              <Box sx={{
+                                position: "absolute",
+                                bottom: 0,
+                                left: 0,
+                                right: 0,
+                                p: 1.5,
+                                bgcolor: "rgba(16,185,129,0.95)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: 1
+                              }}>
+                                <CheckCircleIcon sx={{ fontSize: 18, color: "white" }} />
+                                <Typography variant="body2" sx={{ color: "white", fontWeight: 600 }}>
+                                  Photo Ready
+                                </Typography>
+                              </Box>
+                            </Box>
+                          ) : (
+                            <Box sx={{
+                              flex: 1,
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 1,
+                              p: 3
+                            }}>
+                              <CameraAltIcon sx={{ fontSize: 40, color: "#CBD5E1" }} />
+                              <Typography variant="body2" sx={{ color: "#94A3B8", textAlign: "center" }}>
+                                Your photo will appear here
+                              </Typography>
+                            </Box>
+                          )}
+                        </Box>
+
+                        {/* Clock In/Out Button */}
+                        {getActiveClockEntry ? (
+                          <Box>
+                            <TextField
+                              label="Clock Out Time"
+                              type="datetime-local"
+                              value={clockOutAt}
+                              onChange={(e) => setClockOutAt(e.target.value)}
+                              InputLabelProps={{ shrink: true }}
+                              fullWidth
+                              size="small"
+                              sx={{ mb: 2 }}
+                            />
+                            <Button
+                              variant="contained"
+                              fullWidth
+                              size="large"
+                              startIcon={clockLoading ? <CircularProgress size={20} color="inherit" /> : <LogoutIcon />}
+                              onClick={submitClockOut}
+                              disabled={clockLoading || !photoFile}
+                              sx={{
+                                py: 1.5,
+                                borderRadius: 2,
+                                fontWeight: 700,
+                                fontSize: "1rem",
+                                textTransform: "none",
+                                bgcolor: "#DC2626",
+                                boxShadow: "0 4px 14px rgba(220,38,38,0.35)",
+                                "&:hover": { 
+                                  bgcolor: "#B91C1C",
+                                  boxShadow: "0 6px 20px rgba(220,38,38,0.4)"
+                                },
+                                "&:disabled": {
+                                  bgcolor: "#FCA5A5",
+                                  color: "white"
+                                }
+                              }}
+                            >
+                              {clockLoading ? "Processing..." : "Clock Out"}
+                            </Button>
+                          </Box>
+                        ) : (
+                          <Box>
+                            <TextField
+                              label="Clock In Time"
+                              type="datetime-local"
+                              value={clockInAt}
+                              onChange={(e) => setClockInAt(e.target.value)}
+                              InputLabelProps={{ shrink: true }}
+                              fullWidth
+                              size="small"
+                              sx={{ mb: 2 }}
+                            />
+                            <Button
+                              variant="contained"
+                              fullWidth
+                              size="large"
+                              startIcon={clockLoading ? <CircularProgress size={20} color="inherit" /> : <LoginIcon />}
+                              onClick={submitClockIn}
+                              disabled={clockLoading || !photoFile}
+                              sx={{
+                                py: 1.5,
+                                borderRadius: 2,
+                                fontWeight: 700,
+                                fontSize: "1rem",
+                                textTransform: "none",
+                                background: "linear-gradient(135deg, #10B981 0%, #059669 100%)",
+                                boxShadow: "0 4px 14px rgba(16,185,129,0.35)",
+                                "&:hover": { 
+                                  background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+                                  boxShadow: "0 6px 20px rgba(16,185,129,0.4)"
+                                },
+                                "&:disabled": {
+                                  background: "#A7F3D0",
+                                  color: "white"
+                                }
+                              }}
+                            >
+                              {clockLoading ? "Processing..." : "Clock In"}
+                            </Button>
+                          </Box>
+                        )}
+
+                        {!photoFile && (
+                          <Typography variant="caption" sx={{ 
+                            color: "#92400E", 
+                            textAlign: "center",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            bgcolor: "#F1F5F9",
-                          }}
-                        >
-                          {photoPreviewUrl ? (
-                            <img
-                              src={photoPreviewUrl}
-                              alt="Clock photo preview"
-                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                            />
-                          ) : (
-                            <Typography variant="body2" sx={{ color: "#64748B" }}>
-                              No photo selected
-                            </Typography>
-                          )}
+                            gap: 0.5
+                          }}>
+                            <CameraAltIcon sx={{ fontSize: 14 }} />
+                            Photo is required to {getActiveClockEntry ? "clock out" : "clock in"}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                  </Box>
+
+                  {/* Clock History Section */}
+                  <Box sx={{ 
+                    p: 3, 
+                    borderRadius: 3, 
+                    bgcolor: "white",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04)",
+                    border: "1px solid #E2E8F0"
+                  }}>
+                    <Box sx={{ 
+                      display: "flex", 
+                      justifyContent: "space-between", 
+                      alignItems: "center",
+                      mb: 2.5
+                    }}>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                        <Box sx={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: "10px",
+                          bgcolor: "#EEF2FF",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center"
+                        }}>
+                          <HistoryIcon sx={{ color: "#6366F1", fontSize: 20 }} />
                         </Box>
-                        <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="error"
-                            onClick={clearSelectedPhoto}
-                            disabled={!photoFile && !photoPreviewUrl}
-                            fullWidth
-                          >
-                            Delete photo
-                          </Button>
-                        </Stack>
-                      </Box>
-                    </Box>
-                  </Box>
-
-                  {getActiveClockEntry ? (
-                    <Box sx={{ p: 2, border: "1px solid #E2E8F0", borderRadius: 2 }}>
-                      <Typography variant="subtitle2" sx={{ mb: 1, color: "#0F172A" }}>
-                        You are currently clocked in (since{" "}
-                        {formatDate(getActiveClockEntry.clockInAt ?? getActiveClockEntry.ClockInAt)})
-                      </Typography>
-                      <TextField
-                        label="Clock Out Time"
-                        type="datetime-local"
-                        value={clockOutAt}
-                        onChange={(e) => setClockOutAt(e.target.value)}
-                        InputLabelProps={{ shrink: true }}
-                        sx={{ maxWidth: 320, mb: 2 }}
-                      />
-                      <Box>
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          onClick={submitClockOut}
-                          disabled={clockLoading || !photoFile}
-                        >
-                          {clockLoading ? "Clocking out..." : "Clock Out"}
-                        </Button>
-                      </Box>
-                      {!photoFile ? (
-                        <Typography variant="caption" sx={{ color: "#B91C1C", display: "block", mt: 1 }}>
-                          Photo is required to clock out.
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#1E293B" }}>
+                          Clock History
                         </Typography>
-                      ) : null}
-                    </Box>
-                  ) : (
-                    <Box sx={{ p: 2, border: "1px solid #E2E8F0", borderRadius: 2 }}>
-                      <Typography variant="subtitle2" sx={{ mb: 1, color: "#0F172A" }}>
-                        Clock In
-                      </Typography>
-                      <TextField
-                        label="Clock In Time"
-                        type="datetime-local"
-                        value={clockInAt}
-                        onChange={(e) => setClockInAt(e.target.value)}
-                        InputLabelProps={{ shrink: true }}
-                        sx={{ maxWidth: 320, mb: 2 }}
-                      />
-                      <Box>
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          onClick={submitClockIn}
-                          disabled={clockLoading || !photoFile}
-                        >
-                          {clockLoading ? "Clocking in..." : "Clock In"}
-                        </Button>
                       </Box>
-                      <Typography variant="caption" sx={{ color: "#64748B", display: "block", mt: 1 }}>
-                        Note: Photo is required. Location is captured if you allow it in the browser.
-                      </Typography>
+                      <IconButton 
+                        onClick={loadClockEntries} 
+                        disabled={clockLoading}
+                        sx={{
+                          bgcolor: "#F1F5F9",
+                          "&:hover": { bgcolor: "#E2E8F0" }
+                        }}
+                      >
+                        <RefreshIcon sx={{ fontSize: 20, color: "#64748B" }} />
+                      </IconButton>
                     </Box>
-                  )}
 
-                  <Divider />
-
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                      Clock History
-                    </Typography>
-                    <Button variant="outlined" onClick={loadClockEntries} disabled={clockLoading}>
-                      Refresh
-                    </Button>
-                  </Box>
-
-                  {clockLoading ? (
-                    <Typography variant="body2" color="text.secondary">
-                      Loading...
-                    </Typography>
-                  ) : (clockEntries?.length ?? 0) === 0 ? (
-                    <Typography variant="body2" color="text.secondary">
-                      No clock entries yet.
-                    </Typography>
-                  ) : (
-                    <Box sx={{ display: "grid", gap: 1 }}>
-                      {(clockEntries ?? []).map((e) => (
-                        <Box
-                          key={e.id ?? e.Id}
-                          sx={{
-                            p: 1.5,
-                            border: "1px solid #E2E8F0",
-                            borderRadius: 2,
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: 2,
-                            flexWrap: "wrap",
-                            cursor: "pointer",
-                            "&:hover": { bgcolor: "#F8FAFC" },
-                          }}
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => openClockEntryDetails(e)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              openClockEntryDetails(e);
-                            }
-                          }}
-                        >
-                          <Box sx={{ minWidth: 260 }}>
-                            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                              {(e.userName ?? e.UserName) || "User"}
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: "#334155" }}>
-                              In: {formatDate(e.clockInAt ?? e.ClockInAt)}{" "}
-                              {e.clockOutAt || e.ClockOutAt ? `• Out: ${formatDate(e.clockOutAt ?? e.ClockOutAt)}` : "• (active)"}
-                            </Typography>
-                            <Typography variant="caption" sx={{ color: "#64748B", display: "block", mt: 0.25 }}>
-                              Click to view details
-                            </Typography>
-                          </Box>
-                          <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}>
-                            {(e.clockInImageUrl ?? e.ClockInImageUrl) ? (
-                              <a href={e.clockInImageUrl ?? e.ClockInImageUrl} target="_blank" rel="noreferrer">
-                                <Chip label="Clock-in photo" size="small" />
-                              </a>
-                            ) : null}
-                            {(e.clockOutImageUrl ?? e.ClockOutImageUrl) ? (
-                              <a href={e.clockOutImageUrl ?? e.ClockOutImageUrl} target="_blank" rel="noreferrer">
-                                <Chip label="Clock-out photo" size="small" />
-                              </a>
-                            ) : null}
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={(ev) => {
-                                ev.preventDefault();
-                                ev.stopPropagation();
-                                openClockEntryDetails(e);
+                    {clockLoading ? (
+                      <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+                        <CircularProgress size={32} />
+                      </Box>
+                    ) : (clockEntries?.length ?? 0) === 0 ? (
+                      <Box sx={{ 
+                        textAlign: "center", 
+                        py: 4,
+                        bgcolor: "#F8FAFC",
+                        borderRadius: 2,
+                        border: "1px dashed #E2E8F0"
+                      }}>
+                        <HistoryIcon sx={{ fontSize: 40, color: "#CBD5E1", mb: 1 }} />
+                        <Typography variant="body2" color="text.secondary">
+                          No clock entries yet
+                        </Typography>
+                      </Box>
+                    ) : (
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                        {(clockEntries ?? []).map((e) => {
+                          const isActive = !(e.clockOutAt || e.ClockOutAt);
+                          return (
+                            <Box
+                              key={e.id ?? e.Id}
+                              sx={{
+                                p: 2,
+                                border: isActive ? "2px solid #10B981" : "1px solid #E2E8F0",
+                                borderRadius: 2,
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: 2,
+                                flexWrap: "wrap",
+                                cursor: "pointer",
+                                bgcolor: isActive ? "#F0FDF4" : "white",
+                                transition: "all 0.2s ease",
+                                "&:hover": { 
+                                  bgcolor: isActive ? "#DCFCE7" : "#F8FAFC",
+                                  borderColor: isActive ? "#10B981" : "#CBD5E1",
+                                  transform: "translateY(-1px)",
+                                  boxShadow: "0 4px 12px rgba(0,0,0,0.05)"
+                                },
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => openClockEntryDetails(e)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  openClockEntryDetails(e);
+                                }
                               }}
                             >
-                              Details
-                            </Button>
-                          </Box>
-                        </Box>
-                      ))}
-                    </Box>
-                  )}
+                              <Box sx={{ display: "flex", alignItems: "center", gap: 2, flex: 1, minWidth: 0 }}>
+                                <Avatar sx={{ 
+                                  width: 44, 
+                                  height: 44, 
+                                  bgcolor: isActive ? "#10B981" : "#6366F1",
+                                  fontSize: 16,
+                                  fontWeight: 600
+                                }}>
+                                  {((e.userName ?? e.UserName) || "U").charAt(0).toUpperCase()}
+                                </Avatar>
+                                <Box sx={{ minWidth: 0, flex: 1 }}>
+                                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+                                    <Typography variant="subtitle2" sx={{ fontWeight: 600, color: "#1E293B" }}>
+                                      {(e.userName ?? e.UserName) || "User"}
+                                    </Typography>
+                                    {isActive && (
+                                      <Chip
+                                        size="small"
+                                        label="Active"
+                                        sx={{
+                                          height: 20,
+                                          fontSize: 11,
+                                          fontWeight: 600,
+                                          bgcolor: "#10B981",
+                                          color: "white"
+                                        }}
+                                      />
+                                    )}
+                                  </Box>
+                                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, alignItems: "center" }}>
+                                    <Chip
+                                      size="small"
+                                      icon={<LoginIcon sx={{ fontSize: 14 }} />}
+                                      label={formatDate(e.clockInAt ?? e.ClockInAt)}
+                                      sx={{
+                                        height: 24,
+                                        fontSize: 12,
+                                        bgcolor: "#EEF2FF",
+                                        color: "#4F46E5",
+                                        "& .MuiChip-icon": { color: "#6366F1" }
+                                      }}
+                                    />
+                                    {(e.clockOutAt || e.ClockOutAt) && (
+                                      <Chip
+                                        size="small"
+                                        icon={<LogoutIcon sx={{ fontSize: 14 }} />}
+                                        label={formatDate(e.clockOutAt ?? e.ClockOutAt)}
+                                        sx={{
+                                          height: 24,
+                                          fontSize: 12,
+                                          bgcolor: "#FEF2F2",
+                                          color: "#DC2626",
+                                          "& .MuiChip-icon": { color: "#EF4444" }
+                                        }}
+                                      />
+                                    )}
+                                  </Box>
+                                </Box>
+                              </Box>
+                              <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                                {(e.clockInImageUrl ?? e.ClockInImageUrl) && (
+                                  <Tooltip title="View clock-in photo">
+                                    <IconButton
+                                      size="small"
+                                      onClick={(ev) => {
+                                        ev.stopPropagation();
+                                        window.open(e.clockInImageUrl ?? e.ClockInImageUrl, "_blank");
+                                      }}
+                                      sx={{ 
+                                        bgcolor: "#EEF2FF",
+                                        "&:hover": { bgcolor: "#E0E7FF" }
+                                      }}
+                                    >
+                                      <CameraAltIcon sx={{ fontSize: 18, color: "#6366F1" }} />
+                                    </IconButton>
+                                  </Tooltip>
+                                )}
+                                {(e.clockOutImageUrl ?? e.ClockOutImageUrl) && (
+                                  <Tooltip title="View clock-out photo">
+                                    <IconButton
+                                      size="small"
+                                      onClick={(ev) => {
+                                        ev.stopPropagation();
+                                        window.open(e.clockOutImageUrl ?? e.ClockOutImageUrl, "_blank");
+                                      }}
+                                      sx={{ 
+                                        bgcolor: "#FEF2F2",
+                                        "&:hover": { bgcolor: "#FEE2E2" }
+                                      }}
+                                    >
+                                      <CameraAltIcon sx={{ fontSize: 18, color: "#EF4444" }} />
+                                    </IconButton>
+                                  </Tooltip>
+                                )}
+                                <IconButton
+                                  size="small"
+                                  sx={{
+                                    bgcolor: "#F1F5F9",
+                                    "&:hover": { bgcolor: "#E2E8F0" }
+                                  }}
+                                >
+                                  <BorderColorIcon sx={{ fontSize: 16, color: "#64748B" }} />
+                                </IconButton>
+                              </Box>
+                            </Box>
+                          );
+                        })}
+                      </Box>
+                    )}
+                  </Box>
                 </Stack>
             </Box>
           )}
@@ -3276,6 +4106,80 @@ export default function EditTicketModal({ fetchItems, item, currentPage = 1, cur
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Create Customer Modal - Using Master Customer Create Component */}
+      <AddCustomerDialog
+        fetchItems={async (newCustomer) => {
+          // Refresh customer list
+          await fetchCustomers();
+          
+          // If a new customer was created, select it in the form
+          if (newCustomer && editFormikRef.current) {
+            // Wait a bit for state to update
+            setTimeout(() => {
+              if (editFormikRef.current) {
+                const customerId = newCustomer.id || newCustomer.Id;
+                if (customerId) {
+                  // Use the newCustomer data directly since we just created it
+                  const displayName = getCustomerDisplayName(newCustomer);
+                  editFormikRef.current.setFieldValue("customerName", displayName);
+                  editFormikRef.current.setFieldValue("customerId", customerId);
+                }
+              }
+            }, 200);
+          }
+        }}
+        chartOfAccounts={[]}
+        externalOpen={createCustomerModalOpen}
+        onClose={() => setCreateCustomerModalOpen(false)}
+        showButton={false}
+      />
+
+      {/* Create Project Modal - Using HelpDesk Project Create Component */}
+      <CreateHelpDeskProjectModal
+        fetchItems={async (newProject) => {
+          if (newProject) {
+            const projectId = toNumericId(newProject.id || newProject.Id || newProject.projectId);
+            const customerId = toNumericId(newProject.CustomerId || newProject.customerId || newProject.customerIdNormalized);
+            const projectEntry = {
+              id: projectId,
+              code: newProject.code || newProject.Code || "",
+              name: newProject.name || newProject.Name || "",
+              customerId: customerId,
+              clientName: newProject.clientName || newProject.ClientName || "",
+            };
+            setProjectsData(prev => {
+              const prevList = Array.isArray(prev?.result) ? prev.result : [];
+              const exists = prevList.some(p => toNumericId(p.id || p.Id) === projectId);
+              return { result: exists ? prevList : [projectEntry, ...prevList] };
+            });
+          }
+
+          refreshProjects();
+
+          if (newProject && editFormikRef.current) {
+            setTimeout(() => {
+              if (editFormikRef.current) {
+                const projectId = toNumericId(newProject.id || newProject.Id || newProject.projectId);
+                if (projectId) {
+                  editFormikRef.current.setFieldValue("projectIds", [projectId]);
+
+                  if (!editFormikRef.current.values.customerId) {
+                    const customerId = toNumericId(newProject.CustomerId || newProject.customerId || newProject.customerIdNormalized);
+                    if (customerId) {
+                      editFormikRef.current.setFieldValue("customerId", customerId);
+                    }
+                  }
+                }
+              }
+            }, 200);
+          }
+        }}
+        open={createProjectModalOpen}
+        onClose={() => setCreateProjectModalOpen(false)}
+        showButton={false}
+      />
+
     </>
   );
 }

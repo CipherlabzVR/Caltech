@@ -33,7 +33,7 @@ const style = {
   p: 2,
 };
 
-const denominations = [5000, 1000, 500, 100, 50, 20, 10, 5, 2, 1, 0.5];
+const denominations = [5000, 2000, 1000, 500, 100, 50, 20, 10, 5, 2, 1, 0.5];
 
 export default function ViewShift({ shiftId, isShiftEnd }) {
   const [open, setOpen] = useState(false);
@@ -62,6 +62,7 @@ export default function ViewShift({ shiftId, isShiftEnd }) {
           const qty = item
             ? {
               5000: item.fiveThousand,
+              2000: item.twoThousand,
               1000: item.thousand,
               500: item.fiveHundred,
               100: item.hundred,

@@ -114,6 +114,8 @@ const Index = () => {
                 <TableRow>
                   <TableCell>Name</TableCell>
                   <TableCell>Description</TableCell>
+                  <TableCell>Grace Period (mins)</TableCell>
+                  <TableCell>Per Rate</TableCell>
                   <TableCell>Is Active</TableCell>
                   <TableCell align="right">Action</TableCell>
                 </TableRow>
@@ -132,6 +134,16 @@ const Index = () => {
                     <TableRow key={index}>
                       <TableCell>{item.name}</TableCell>
                       <TableCell>{item.description}</TableCell>
+                      <TableCell>
+                        {item.gracePeriodMinutes != null
+                          ? item.gracePeriodMinutes
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {item.perRateAmount != null
+                          ? `${item.perRateAmount} (${item.perRateType === 1 ? "hr" : "min"})`
+                          : "—"}
+                      </TableCell>
                       <TableCell>
                         {item.isActive ? (
                           <span className="successBadge">Yes</span>

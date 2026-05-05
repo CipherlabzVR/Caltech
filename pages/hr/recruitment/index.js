@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import SearchIcon from "@mui/icons-material/Search";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import {
@@ -12,6 +13,12 @@ import {
   IconButton,
   Tooltip,
   Button,
+  Tabs,
+  Tab,
+  TextField,
+  MenuItem,
+  InputAdornment,
+  Switch,
 } from "@mui/material";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -27,8 +34,9 @@ import {
 } from "@/components/utils/apiHelpers";
 import MetricCard from "@/components/HR/ModernCard";
 import ModernTable from "@/components/HR/ModernTable";
-import ModernFilter from "@/components/HR/ModernFilter";
 import AddButton from "@/components/HR/AddButton";
+import RecruitmentKanbanBoard from "@/components/HR/RecruitmentKanbanBoard";
+import RecruitmentPaginationBar from "@/components/HR/RecruitmentPaginationBar";
 import ActionButtons from "@/components/HR/ActionButtons";
 import ConfirmDialog from "@/components/HR/ConfirmDialog";
 import FormDialog from "@/components/HR/FormDialog";
@@ -37,10 +45,19 @@ import PeopleIcon from "@mui/icons-material/People";
 import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
 import SendIcon from "@mui/icons-material/Send";
 import HowToRegIcon from "@mui/icons-material/HowToReg";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
-import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
+import EventRepeatIcon from "@mui/icons-material/EventRepeat";
+import DonutLargeIcon from "@mui/icons-material/DonutLarge";
+import DescriptionIcon from "@mui/icons-material/Description";
+import DownloadIcon from "@mui/icons-material/Download";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { useCurrency } from "@/components/HR/CurrencyContext";
+
+const HR_RECRUITMENT_DASHBOARD_VISIBLE_KEY = "hr-recruitment-dashboard-visible";
+
+const JOB_OPENING_STATUS_API = ["Draft", "Published", "Closed", "OnHold", "Filled"];
 
 const JOB_STATUS_LABELS = {
   0: "Draft",
@@ -104,8 +121,31 @@ const getStatusValue = (status) => {
   return 0;
 };
 
+/** Integer PK only — backend CycleId is int; never use Guid internalId here. */
+function getCycleOptionValue(cycle) {
+  const raw = cycle?.id ?? cycle?.Id;
+  if (raw === undefined || raw === null || raw === "") return "";
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return String(n);
+}
+
+/** Map stored Location (warehouse id or legacy name) to warehouse id for the dropdown; returns "" if unknown. */
+function resolveLocationToWarehouseId(raw, warehouseList) {
+  if (raw === null || raw === undefined || !warehouseList?.length) return "";
+  const s = String(raw).trim();
+  if (!s) return "";
+  const byId = warehouseList.find((w) => String(w.id ?? w.Id ?? "") === s);
+  if (byId) return String(byId.id ?? byId.Id ?? "");
+  const byName = warehouseList.find(
+    (w) => String(w.name ?? w.Name ?? "").toLowerCase() === s.toLowerCase()
+  );
+  if (byName) return String(byName.id ?? byName.Id ?? "");
+  return "";
+}
+
 const Recruitment = () => {
-  const { currency, setCurrency, formatCurrencyWithSymbol } = useCurrency();
+  const { currency, formatCurrencyWithSymbol, formatAmountForCurrency } = useCurrency();
   const categoryId = 126;
   const moduleId = 6;
 
@@ -122,7 +162,7 @@ const Recruitment = () => {
     }
   }, [moduleId, categoryId]);
 
-  const { navigate } = IsPermissionEnabled(categoryId);
+  const { navigate, create, update, remove, approve1 } = IsPermissionEnabled(categoryId);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -147,8 +187,28 @@ const Recruitment = () => {
   const [loadingCycles, setLoadingCycles] = useState(false);
   const [departments, setDepartments] = useState([]);
   const [loadingDepartments, setLoadingDepartments] = useState(false);
+  const [warehouses, setWarehouses] = useState([]);
+  const [loadingWarehouses, setLoadingWarehouses] = useState(false);
   const [candidates, setCandidates] = useState([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
+  /** Full candidate list for dashboard metrics and metric-card dialogs (not paged). */
+  const [dashboardCandidates, setDashboardCandidates] = useState([]);
+  const [hiredCandidates, setHiredCandidates] = useState([]);
+  const [loadingHiredCandidates, setLoadingHiredCandidates] = useState(false);
+  const [recruitmentCycleOptions, setRecruitmentCycleOptions] = useState([]);
+  const [cyclesTotalCount, setCyclesTotalCount] = useState(0);
+  const [cyclesPage, setCyclesPage] = useState(0);
+  const [jobOpeningsTotalCount, setJobOpeningsTotalCount] = useState(0);
+  const [jobOpeningsPage, setJobOpeningsPage] = useState(0);
+  const [candidatesTotalCount, setCandidatesTotalCount] = useState(0);
+  const [candidatesPage, setCandidatesPage] = useState(0);
+  const [hiredCandidatesTotalCount, setHiredCandidatesTotalCount] = useState(0);
+  const [hiredCandidatesPage, setHiredCandidatesPage] = useState(0);
+  /** jobOpeningId → title for candidate tables when job list is paged */
+  const [jobOpeningTitles, setJobOpeningTitles] = useState({});
+  /** Up to 500 openings for selects (Add Candidate / interview / offer), not the paged table list */
+  const [jobOpeningFormOptions, setJobOpeningFormOptions] = useState([]);
+  const [jobOpeningsLoading, setJobOpeningsLoading] = useState(false);
   const [candidateFormOpen, setCandidateFormOpen] = useState(false);
   const [candidateFormData, setCandidateFormData] = useState({
     jobOpeningId: "",
@@ -160,6 +220,7 @@ const Recruitment = () => {
     currentCompany: "",
     source: "Direct",
     notes: "",
+    cvFile: null,
   });
   const [candidateFormErrors, setCandidateFormErrors] = useState({});
   const [candidateFormLoading, setCandidateFormLoading] = useState(false);
@@ -202,6 +263,7 @@ const Recruitment = () => {
   const [candidateDetailOpen, setCandidateDetailOpen] = useState(false);
   const [selectedCandidateDetail, setSelectedCandidateDetail] = useState(null);
   const [loadingCandidateDetail, setLoadingCandidateDetail] = useState(false);
+  const [markInterviewedLoading, setMarkInterviewedLoading] = useState(false);
   
   // Offer action dialog
   const [offerActionDialogOpen, setOfferActionDialogOpen] = useState(false);
@@ -219,58 +281,110 @@ const Recruitment = () => {
   const [cycleFormData, setCycleFormData] = useState({});
   const [cycleFormErrors, setCycleFormErrors] = useState({});
   const [cycleFormLoading, setCycleFormLoading] = useState(false);
+  const [selectedCycle, setSelectedCycle] = useState(null);
+  const [cycleDeleteDialogOpen, setCycleDeleteDialogOpen] = useState(false);
+  const [cycleDeleteLoading, setCycleDeleteLoading] = useState(false);
+
+  const [activeTab, setActiveTab] = useState(0);
+  const [showRecruitmentDashboard, setShowRecruitmentDashboard] = useState(true);
+
+  const [candidateCycleSearchQuery, setCandidateCycleSearchQuery] = useState("");
+  const [candidateStatusFilter, setCandidateStatusFilter] = useState("all");
+
+  const [cycleSearchQuery, setCycleSearchQuery] = useState("");
+  const [cycleStatusFilter, setCycleStatusFilter] = useState("all");
+
+  // Job openings tab: search + status filter (server-side via loadJobOpenings)
+  const [jobOpeningSearchQuery, setJobOpeningSearchQuery] = useState("");
+  const [jobOpeningStatusFilter, setJobOpeningStatusFilter] = useState("all");
+  /** Shared page size for recruitment list API calls (cycles, openings, candidates, hired). */
+  const [recruitmentPageSize, setRecruitmentPageSize] = useState(10);
 
   const loadRecruitmentCycles = useCallback(async () => {
     try {
       setLoadingCycles(true);
       const orgId = getOrgId();
       const headers = createAuthHeaders();
-      
+      const params = new URLSearchParams();
+      params.set("OrgId", String(orgId || 0));
+      params.set("SkipCount", String(cyclesPage * recruitmentPageSize));
+      params.set("MaxResultCount", String(recruitmentPageSize));
+      if (cycleStatusFilter !== "all") {
+        params.set("Status", cycleStatusFilter);
+      }
+      const cq = cycleSearchQuery.trim();
+      if (cq) {
+        params.set("Search", cq);
+      }
+
       const response = await fetch(
-        `${BASE_URL}/hr/recruitment/cycles?OrgId=${orgId || 0}&SkipCount=0&MaxResultCount=100`,
+        `${BASE_URL}/hr/recruitment/cycles?${params.toString()}`,
         { headers }
       );
-      
+
       if (response.ok) {
         const jsonResponse = await response.json();
-        console.log("Recruitment cycles API response:", jsonResponse);
-        
-        // The API returns PagedResult directly, not wrapped
-        let cycles = [];
-        if (Array.isArray(jsonResponse)) {
-          cycles = jsonResponse;
-        } else if (jsonResponse.items) {
-          cycles = jsonResponse.items;
-        } else if (jsonResponse.result) {
-          if (Array.isArray(jsonResponse.result)) {
-            cycles = jsonResponse.result;
-          } else if (jsonResponse.result.items) {
-            cycles = jsonResponse.result.items;
-          }
-        }
-        
-        // Handle both camelCase and PascalCase property names
-        const normalizedCycles = cycles.map(cycle => ({
-          id: cycle.id || cycle.Id,
-          internalId: cycle.internalId || cycle.InternalId,
-          name: cycle.name || cycle.Name || `Cycle ${cycle.id || cycle.Id || cycle.internalId || cycle.InternalId || ""}`,
+        const parsed = parsePagedResponse(jsonResponse);
+        const cycles = parsed.items || [];
+        setCyclesTotalCount(parsed.totalCount ?? 0);
+        const normalizedCycles = cycles.map((cycle) => ({
+          id: cycle.id ?? cycle.Id,
+          internalId: cycle.internalId ?? cycle.InternalId,
+          name:
+            cycle.name ||
+            cycle.Name ||
+            `Cycle ${cycle.id ?? cycle.Id ?? cycle.internalId ?? cycle.InternalId ?? ""}`,
           startDate: cycle.startDate || cycle.StartDate,
           endDate: cycle.endDate || cycle.EndDate,
           status: cycle.status || cycle.Status || "Draft",
         }));
-        
-        console.log("Normalized recruitment cycles:", normalizedCycles);
         setRecruitmentCycles(normalizedCycles);
       } else {
-        const errorText = await response.text();
-        console.error("Failed to load recruitment cycles:", response.status, response.statusText, errorText);
         setRecruitmentCycles([]);
+        setCyclesTotalCount(0);
       }
     } catch (err) {
       console.error("Failed to load recruitment cycles:", err);
       setRecruitmentCycles([]);
+      setCyclesTotalCount(0);
     } finally {
       setLoadingCycles(false);
+    }
+  }, [cyclesPage, cycleSearchQuery, cycleStatusFilter, recruitmentPageSize]);
+
+  const loadRecruitmentCycleOptions = useCallback(async () => {
+    try {
+      const orgId = getOrgId();
+      const headers = createAuthHeaders();
+      const params = new URLSearchParams();
+      params.set("OrgId", String(orgId || 0));
+      params.set("SkipCount", "0");
+      params.set("MaxResultCount", "500");
+      const response = await fetch(
+        `${BASE_URL}/hr/recruitment/cycles?${params.toString()}`,
+        { headers }
+      );
+      if (!response.ok) {
+        setRecruitmentCycleOptions([]);
+        return;
+      }
+      const parsed = parsePagedResponse(await response.json());
+      const cycles = parsed.items || [];
+      setRecruitmentCycleOptions(
+        cycles.map((cycle) => ({
+          id: cycle.id ?? cycle.Id,
+          internalId: cycle.internalId ?? cycle.InternalId,
+          name:
+            cycle.name ||
+            cycle.Name ||
+            `Cycle ${cycle.id ?? cycle.Id ?? cycle.internalId ?? cycle.InternalId ?? ""}`,
+          startDate: cycle.startDate || cycle.StartDate,
+          endDate: cycle.endDate || cycle.EndDate,
+          status: cycle.status || cycle.Status || "Draft",
+        }))
+      );
+    } catch {
+      setRecruitmentCycleOptions([]);
     }
   }, []);
 
@@ -300,65 +414,152 @@ const Recruitment = () => {
     }
   }, []);
 
+  const loadWarehouses = useCallback(async () => {
+    try {
+      setLoadingWarehouses(true);
+      const headers = createAuthHeaders();
+      const response = await fetch(`${BASE_URL}/Warehouse/GetAllWarehouse`, {
+        headers,
+      });
+      if (response.ok) {
+        const jsonResponse = await response.json();
+        const list = Array.isArray(jsonResponse?.result)
+          ? jsonResponse.result
+          : Array.isArray(jsonResponse)
+            ? jsonResponse
+            : [];
+        setWarehouses(list);
+        return list;
+      }
+      console.error("Failed to load warehouses:", response.status, response.statusText);
+      setWarehouses([]);
+      return [];
+    } catch (err) {
+      console.error("Failed to load warehouses:", err);
+      setWarehouses([]);
+      return [];
+    } finally {
+      setLoadingWarehouses(false);
+    }
+  }, []);
+
   const loadRecruitmentData = useCallback(async () => {
     if (!navigate) {
       return;
     }
 
-      try {
-        setLoading(true);
-        setError(null);
+    try {
+      setLoading(true);
+      setError(null);
 
-        const orgId = getOrgId();
-        const headers = createAuthHeaders();
+      const orgId = getOrgId();
+      const headers = createAuthHeaders();
 
-        const [analyticsResponse, openingsResponse] = await Promise.all([
-          fetch(`${BASE_URL}/hr/recruitment/analytics?OrgId=${orgId || 0}`, {
-            headers,
-          }),
-          fetch(
-          `${BASE_URL}/hr/recruitment/job-openings?OrgId=${orgId || 0}&SkipCount=0&MaxResultCount=50&IncludePublic=false`,
-            { headers }
-          ),
-        ]);
+      const analyticsResponse = await fetch(
+        `${BASE_URL}/hr/recruitment/analytics?OrgId=${orgId || 0}`,
+        { headers }
+      );
 
-        if (!analyticsResponse.ok) {
-          throw new Error("Unable to load recruitment analytics");
-        }
+      if (!analyticsResponse.ok) {
+        throw new Error("Unable to load recruitment analytics");
+      }
 
-        if (!openingsResponse.ok) {
-          throw new Error("Unable to load job openings");
-        }
+      const analyticsPayload = parseObjectResponse(await analyticsResponse.json());
 
-        const analyticsPayload = parseObjectResponse(await analyticsResponse.json());
-        const openingsPayload = parsePagedResponse(await openingsResponse.json());
-
-        setAnalytics({
-          applicantsCount: analyticsPayload.applicantsCount ?? 0,
-          interviewedCount: analyticsPayload.interviewedCount ?? 0,
-          offeredCount: analyticsPayload.offeredCount ?? 0,
-          hiredCount: analyticsPayload.hiredCount ?? 0,
-          averageTimeToHire: analyticsPayload.averageTimeToHire ?? 0,
-          offerAcceptanceRate: analyticsPayload.offerAcceptanceRate ?? 0,
-          costPerHire: analyticsPayload.costPerHire ?? 0,
-        });
-
-      const loadedOpenings = openingsPayload.items ?? [];
-      setJobOpenings(loadedOpenings);
-      
-      // Debug: log the loaded openings to verify status
-      console.log("Loaded job openings:", loadedOpenings.map(item => ({
-        id: item.jobOpening?.id || item.jobOpening?.Id,
-        title: item.jobOpening?.title || item.jobOpening?.Title,
-        status: item.jobOpening?.status ?? item.jobOpening?.Status,
-        statusType: typeof (item.jobOpening?.status ?? item.jobOpening?.Status)
-      })));
-      } catch (err) {
-          setError(err.message || "Failed to load recruitment data");
-      } finally {
-          setLoading(false);
-        }
+      setAnalytics({
+        applicantsCount: analyticsPayload.applicantsCount ?? 0,
+        interviewedCount: analyticsPayload.interviewedCount ?? 0,
+        offeredCount: analyticsPayload.offeredCount ?? 0,
+        hiredCount: analyticsPayload.hiredCount ?? 0,
+        averageTimeToHire: analyticsPayload.averageTimeToHire ?? 0,
+        offerAcceptanceRate: analyticsPayload.offerAcceptanceRate ?? 0,
+        costPerHire: analyticsPayload.costPerHire ?? 0,
+      });
+    } catch (err) {
+      setError(err.message || "Failed to load recruitment data");
+    } finally {
+      setLoading(false);
+    }
   }, [navigate]);
+
+  const loadJobOpenings = useCallback(async () => {
+    if (!navigate) return;
+    try {
+      setJobOpeningsLoading(true);
+      const orgId = getOrgId();
+      const headers = createAuthHeaders();
+      const params = new URLSearchParams();
+      params.set("OrgId", String(orgId || 0));
+      params.set("SkipCount", String(jobOpeningsPage * recruitmentPageSize));
+      params.set("MaxResultCount", String(recruitmentPageSize));
+      params.set("IncludePublic", "true");
+      if (jobOpeningStatusFilter !== "all") {
+        const idx = Number(jobOpeningStatusFilter);
+        const name = JOB_OPENING_STATUS_API[idx];
+        if (name) params.set("Status", name);
+      }
+      const sq = jobOpeningSearchQuery.trim();
+      if (sq) {
+        params.set("Search", sq);
+      }
+
+      const response = await fetch(
+        `${BASE_URL}/hr/recruitment/job-openings?${params.toString()}`,
+        { headers }
+      );
+      if (!response.ok) {
+        setJobOpenings([]);
+        setJobOpeningsTotalCount(0);
+        return;
+      }
+      const openingsPayload = parsePagedResponse(await response.json());
+      setJobOpeningsTotalCount(openingsPayload.totalCount ?? 0);
+      setJobOpenings(openingsPayload.items ?? []);
+    } catch (err) {
+      console.error("Failed to load job openings:", err);
+      setJobOpenings([]);
+      setJobOpeningsTotalCount(0);
+    } finally {
+      setJobOpeningsLoading(false);
+    }
+  }, [navigate, jobOpeningsPage, jobOpeningSearchQuery, jobOpeningStatusFilter, recruitmentPageSize]);
+
+  const loadJobOpeningTitlesIndex = useCallback(async () => {
+    try {
+      const orgId = getOrgId();
+      const headers = createAuthHeaders();
+      const params = new URLSearchParams();
+      params.set("OrgId", String(orgId || 0));
+      params.set("SkipCount", "0");
+      params.set("MaxResultCount", "500");
+      params.set("IncludePublic", "true");
+      const response = await fetch(
+        `${BASE_URL}/hr/recruitment/job-openings?${params.toString()}`,
+        { headers }
+      );
+      if (!response.ok) return;
+      const parsed = parsePagedResponse(await response.json());
+      const next = {};
+      const opts = [];
+      (parsed.items || []).forEach((item) => {
+        const jo = item.jobOpening || item;
+        const id = jo?.id ?? jo?.Id;
+        const t = jo?.title ?? jo?.Title;
+        if (id != null) {
+          const sid = String(id);
+          next[sid] = t || "-";
+          opts.push({
+            value: sid,
+            label: t || `Job Opening ${sid}`,
+          });
+        }
+      });
+      setJobOpeningTitles(next);
+      setJobOpeningFormOptions(opts);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const loadInterviews = useCallback(async () => {
     try {
@@ -386,57 +587,257 @@ const Recruitment = () => {
     }
   }, []);
 
-  const loadCandidates = useCallback(async () => {
+  const loadDashboardCandidates = useCallback(async () => {
+    try {
+      const orgId = getOrgId();
+      const headers = createAuthHeaders();
+      const params = new URLSearchParams();
+      params.set("OrgId", String(orgId || 0));
+      params.set("SkipCount", "0");
+      params.set("MaxResultCount", "500");
+      const response = await fetch(
+        `${BASE_URL}/hr/recruitment/candidates?${params.toString()}`,
+        { headers }
+      );
+      if (!response.ok) {
+        setDashboardCandidates([]);
+        return;
+      }
+      const parsed = parsePagedResponse(await response.json());
+      setDashboardCandidates(parsed.items || []);
+    } catch {
+      setDashboardCandidates([]);
+    }
+  }, []);
+
+  const loadCandidatesPage = useCallback(async () => {
     try {
       setLoadingCandidates(true);
       const orgId = getOrgId();
       const headers = createAuthHeaders();
-      
+      const params = new URLSearchParams();
+      params.set("OrgId", String(orgId || 0));
+      params.set("SkipCount", String(candidatesPage * recruitmentPageSize));
+      params.set("MaxResultCount", String(recruitmentPageSize));
+
+      const cf = candidateStatusFilter;
+      if (cf === "interviewed") {
+        params.set("Stage", "Interviewed");
+      } else if (cf === "2") {
+        params.set("Status", "Interviewing");
+        params.set("ExcludeInterviewedStage", "true");
+      } else if (cf !== "all") {
+        const statusNames = [
+          "Applied",
+          "Shortlisted",
+          "Interviewing",
+          "Offered",
+          "Hired",
+          "Rejected",
+          "Withdrawn",
+        ];
+        const num = Number(cf);
+        if (!Number.isNaN(num) && statusNames[num]) {
+          params.set("Status", statusNames[num]);
+        }
+      }
+
+      const cs = candidateCycleSearchQuery.trim();
+      if (cs) {
+        params.set("CycleSearch", cs);
+      }
+
       const response = await fetch(
-        `${BASE_URL}/hr/recruitment/candidates?OrgId=${orgId || 0}&SkipCount=0&MaxResultCount=100`,
+        `${BASE_URL}/hr/recruitment/candidates?${params.toString()}`,
         { headers }
       );
-      
-      if (response.ok) {
-        const jsonResponse = await response.json();
-        console.log("Candidates API response:", jsonResponse);
-        const candidatesData = parsePagedResponse(jsonResponse);
-        const candidatesList = candidatesData.items || [];
-        console.log("Loaded candidates:", candidatesList.length, candidatesList);
-        setCandidates(candidatesList);
-      } else {
-        const errorText = await response.text();
-        console.error("Failed to load candidates:", response.status, response.statusText, errorText);
+      if (!response.ok) {
         setCandidates([]);
+        setCandidatesTotalCount(0);
+        return;
       }
+      const parsed = parsePagedResponse(await response.json());
+      setCandidatesTotalCount(parsed.totalCount ?? 0);
+      setCandidates(parsed.items || []);
     } catch (err) {
       console.error("Error loading candidates:", err);
       setCandidates([]);
+      setCandidatesTotalCount(0);
     } finally {
       setLoadingCandidates(false);
     }
-  }, []);
+  }, [candidatesPage, candidateStatusFilter, candidateCycleSearchQuery, recruitmentPageSize]);
+
+  const loadHiredCandidatesPage = useCallback(async () => {
+    try {
+      setLoadingHiredCandidates(true);
+      const orgId = getOrgId();
+      const headers = createAuthHeaders();
+      const params = new URLSearchParams();
+      params.set("OrgId", String(orgId || 0));
+      params.set("SkipCount", String(hiredCandidatesPage * recruitmentPageSize));
+      params.set("MaxResultCount", String(recruitmentPageSize));
+      params.set("Status", "Hired");
+
+      const response = await fetch(
+        `${BASE_URL}/hr/recruitment/candidates?${params.toString()}`,
+        { headers }
+      );
+      if (!response.ok) {
+        setHiredCandidates([]);
+        setHiredCandidatesTotalCount(0);
+        return;
+      }
+      const parsed = parsePagedResponse(await response.json());
+      setHiredCandidatesTotalCount(parsed.totalCount ?? 0);
+      setHiredCandidates(parsed.items || []);
+    } catch {
+      setHiredCandidates([]);
+      setHiredCandidatesTotalCount(0);
+    } finally {
+      setLoadingHiredCandidates(false);
+    }
+  }, [hiredCandidatesPage, recruitmentPageSize]);
+
+  const refreshRecruitmentCandidateData = useCallback(async () => {
+    await Promise.all([
+      loadRecruitmentData(),
+      loadJobOpenings(),
+      loadJobOpeningTitlesIndex(),
+      loadRecruitmentCycles(),
+      loadDashboardCandidates(),
+      loadCandidatesPage(),
+      loadHiredCandidatesPage(),
+    ]);
+  }, [
+    loadRecruitmentData,
+    loadJobOpenings,
+    loadJobOpeningTitlesIndex,
+    loadRecruitmentCycles,
+    loadDashboardCandidates,
+    loadCandidatesPage,
+    loadHiredCandidatesPage,
+  ]);
 
   useEffect(() => {
+    if (!navigate) return;
     loadRecruitmentData();
-    loadRecruitmentCycles();
     loadDepartments();
-    loadCandidates();
+    loadWarehouses();
     loadInterviews();
     loadOffers();
-  }, [loadRecruitmentData, loadRecruitmentCycles, loadDepartments, loadCandidates, loadInterviews, loadOffers]);
+    loadRecruitmentCycleOptions();
+    loadJobOpeningTitlesIndex();
+  }, [
+    navigate,
+    loadRecruitmentData,
+    loadDepartments,
+    loadWarehouses,
+    loadInterviews,
+    loadOffers,
+    loadRecruitmentCycleOptions,
+    loadJobOpeningTitlesIndex,
+  ]);
+
+  useEffect(() => {
+    if (!navigate) return;
+    loadJobOpenings();
+  }, [navigate, loadJobOpenings]);
+
+  useEffect(() => {
+    if (!navigate) return;
+    loadRecruitmentCycles();
+  }, [navigate, loadRecruitmentCycles]);
+
+  useEffect(() => {
+    if (!navigate) return;
+    loadDashboardCandidates();
+  }, [navigate, loadDashboardCandidates]);
+
+  useEffect(() => {
+    if (!navigate) return;
+    loadCandidatesPage();
+  }, [navigate, loadCandidatesPage]);
+
+  useEffect(() => {
+    if (!navigate) return;
+    loadHiredCandidatesPage();
+  }, [navigate, loadHiredCandidatesPage]);
+
+  useEffect(() => {
+    setCyclesPage(0);
+  }, [cycleSearchQuery, cycleStatusFilter]);
+
+  useEffect(() => {
+    setJobOpeningsPage(0);
+  }, [jobOpeningSearchQuery, jobOpeningStatusFilter]);
+
+  useEffect(() => {
+    setCandidatesPage(0);
+  }, [candidateCycleSearchQuery, candidateStatusFilter]);
+
+  useEffect(() => {
+    setCyclesPage(0);
+    setJobOpeningsPage(0);
+    setCandidatesPage(0);
+    setHiredCandidatesPage(0);
+  }, [recruitmentPageSize]);
+
+  useEffect(() => {
+    const eventName = "hr-recruitment-candidates-changed";
+    const onCandidatesChanged = () => {
+      refreshRecruitmentCandidateData();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener(eventName, onCandidatesChanged);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener(eventName, onCandidatesChanged);
+      }
+    };
+  }, [refreshRecruitmentCandidateData]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(HR_RECRUITMENT_DASHBOARD_VISIBLE_KEY);
+      if (raw !== null) {
+        setShowRecruitmentDashboard(raw === "1" || raw === "true");
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const handleRecruitmentDashboardToggle = useCallback(
+    (event, checked) => {
+      setShowRecruitmentDashboard(checked);
+      if (checked && navigate) {
+        loadRecruitmentCycleOptions();
+      }
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(
+            HR_RECRUITMENT_DASHBOARD_VISIBLE_KEY,
+            checked ? "1" : "0"
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+    },
+    [navigate, loadRecruitmentCycleOptions]
+  );
 
   // Handle metric card click to show filtered candidates
   const handleMetricCardClick = (cardTitle) => {
     let filtered = [];
     let title = "";
     
-    console.log("Filtering candidates for:", cardTitle);
-    console.log("All candidates:", candidates);
-    
     switch (cardTitle) {
       case "Applicants":
-        filtered = candidates.filter(c => {
+        filtered = dashboardCandidates.filter(c => {
           const status = c.status !== undefined ? c.status : (c.Status !== undefined ? c.Status : 0);
           const stage = c.stage !== undefined ? c.stage : (c.Stage !== undefined ? c.Stage : 0);
           // Applied status (0) or Sourcing stage (1)
@@ -444,19 +845,25 @@ const Recruitment = () => {
         });
         title = "Applicants";
         break;
+      case "Interview":
       case "Interviews":
-        filtered = candidates.filter(c => {
-          const status = c.status !== undefined ? c.status : (c.Status !== undefined ? c.Status : 0);
+        filtered = dashboardCandidates.filter(c => {
           const stage = c.stage !== undefined ? c.stage : (c.Stage !== undefined ? c.Stage : 0);
-          console.log("Candidate:", c.firstName || c.FirstName, "Status:", status, "Stage:", stage);
-          // Interviewing status (2) OR Interview stage (3) OR Screening stage (2)
-          return status === 2 || stage === 3 || stage === 2;
+          // Backend HrRecruitmentStage.Interview = 3
+          return Number(stage) === 3;
         });
-        console.log("Filtered interview candidates:", filtered);
         title = "Candidates in Interview Stage";
         break;
+      case "Interviewed":
+        filtered = dashboardCandidates.filter(c => {
+          const stage = c.stage !== undefined ? c.stage : (c.Stage !== undefined ? c.Stage : 0);
+          // Backend HrRecruitmentStage.Interviewed = 7
+          return Number(stage) === 7;
+        });
+        title = "Candidates in Interviewed Stage";
+        break;
       case "Offers":
-        filtered = candidates.filter(c => {
+        filtered = dashboardCandidates.filter(c => {
           const status = c.status !== undefined ? c.status : (c.Status !== undefined ? c.Status : 0);
           const stage = c.stage !== undefined ? c.stage : (c.Stage !== undefined ? c.Stage : 0);
           // Offered status (3) OR Offer stage (4)
@@ -465,7 +872,7 @@ const Recruitment = () => {
         title = "Candidates with Offers";
         break;
       case "Hires":
-        filtered = candidates.filter(c => {
+        filtered = dashboardCandidates.filter(c => {
           const status = c.status !== undefined ? c.status : (c.Status !== undefined ? c.Status : 0);
           const stage = c.stage !== undefined ? c.stage : (c.Stage !== undefined ? c.Stage : 0);
           // Hired status (4) OR Hired stage (5)
@@ -477,36 +884,40 @@ const Recruitment = () => {
         return;
     }
     
-    console.log("Final filtered list:", filtered);
     setFilteredCandidates(filtered);
     setFilteredCandidatesTitle(title);
     setFilteredCandidatesDialogOpen(true);
   };
 
-  // Calculate metric counts directly from candidates array for real-time updates
+  // Dashboard metrics from a larger candidate snapshot (not the paged table list).
   const calculatedMetrics = useMemo(() => {
-    const applicants = candidates.filter(c => {
+    const applicants = dashboardCandidates.filter(c => {
       const status = c.status !== undefined ? c.status : (c.Status !== undefined ? c.Status : 0);
       const stage = c.stage !== undefined ? c.stage : (c.Stage !== undefined ? c.Stage : 0);
       // Applied status (0) or Sourcing stage (1)
       return status === 0 || stage === 1;
     });
 
-    const interviewed = candidates.filter(c => {
-      const status = c.status !== undefined ? c.status : (c.Status !== undefined ? c.Status : 0);
+    const interviews = dashboardCandidates.filter(c => {
       const stage = c.stage !== undefined ? c.stage : (c.Stage !== undefined ? c.Stage : 0);
-      // Interviewing status (2) OR Interview stage (3) OR Screening stage (2)
-      return status === 2 || stage === 3 || stage === 2;
+      // HrRecruitmentStage.Interview = 3 (active / scheduled interview)
+      return Number(stage) === 3;
     });
 
-    const offered = candidates.filter(c => {
+    const interviewedStage = dashboardCandidates.filter(c => {
+      const stage = c.stage !== undefined ? c.stage : (c.Stage !== undefined ? c.Stage : 0);
+      // HrRecruitmentStage.Interviewed = 7 (post-interview, before offer)
+      return Number(stage) === 7;
+    });
+
+    const offered = dashboardCandidates.filter(c => {
       const status = c.status !== undefined ? c.status : (c.Status !== undefined ? c.Status : 0);
       const stage = c.stage !== undefined ? c.stage : (c.Stage !== undefined ? c.Stage : 0);
       // Offered status (3) OR Offer stage (4)
       return status === 3 || stage === 4;
     });
 
-    const hired = candidates.filter(c => {
+    const hired = dashboardCandidates.filter(c => {
       const status = c.status !== undefined ? c.status : (c.Status !== undefined ? c.Status : 0);
       const stage = c.stage !== undefined ? c.stage : (c.Stage !== undefined ? c.Stage : 0);
       // Hired status (4) OR Hired stage (5)
@@ -515,11 +926,12 @@ const Recruitment = () => {
 
     return {
       applicantsCount: applicants.length,
-      interviewedCount: interviewed.length,
+      interviewsCount: interviews.length,
+      interviewedStageCount: interviewedStage.length,
       offeredCount: offered.length,
       hiredCount: hired.length,
     };
-  }, [candidates]);
+  }, [dashboardCandidates]);
 
   const summaryCards = useMemo(
     () => [
@@ -533,11 +945,20 @@ const Recruitment = () => {
       },
       {
         title: "Interviews",
-        value: calculatedMetrics.interviewedCount,
-        subtitle: "Candidates interviewed",
+        value: calculatedMetrics.interviewsCount,
+        subtitle: "In interview stage",
         icon: <AssignmentIndIcon />,
         color: "info",
         onClick: () => handleMetricCardClick("Interviews"),
+      },
+      {
+        title: "Interviewed",
+        value: calculatedMetrics.interviewedStageCount,
+        subtitle: "Interview completed, before offer",
+        icon: <FactCheckIcon />,
+        color: "warning",
+        valueSx: { color: "warning.dark" },
+        onClick: () => handleMetricCardClick("Interviewed"),
       },
       {
         title: "Offers",
@@ -559,6 +980,43 @@ const Recruitment = () => {
     [calculatedMetrics]
   );
 
+  /** Active cycles only for job opening dropdown; in edit mode, include current cycle if not Active so selection stays visible. */
+  const jobOpeningCycleDropdownOptions = useMemo(() => {
+    const activeOnly = recruitmentCycleOptions.filter(
+      (c) => String(c.status || "").trim().toLowerCase() === "active"
+    );
+    if (formMode === "edit" && formData.cycleId) {
+      const cid = String(formData.cycleId);
+      const hasCurrent = activeOnly.some(
+        (c) => getCycleOptionValue(c) === cid
+      );
+      if (!hasCurrent) {
+        const fallback = recruitmentCycleOptions.find(
+          (c) => getCycleOptionValue(c) === cid
+        );
+        if (fallback) {
+          return [...activeOnly, fallback];
+        }
+      }
+    }
+    return activeOnly;
+  }, [recruitmentCycleOptions, formMode, formData.cycleId]);
+
+  /** Dashboard breakdown from loaded cycle options (up to API page size). */
+  const recruitmentCycleDashboardStats = useMemo(() => {
+    const list = recruitmentCycleOptions || [];
+    let active = 0;
+    let closed = 0;
+    let draft = 0;
+    for (const c of list) {
+      const s = String(c.status || "").trim().toLowerCase();
+      if (s === "active") active += 1;
+      else if (s === "closed") closed += 1;
+      else draft += 1;
+    }
+    return { total: list.length, active, closed, draft };
+  }, [recruitmentCycleOptions]);
+
   const handleAdd = () => {
     setFormMode("add");
     setFormData({
@@ -575,15 +1033,16 @@ const Recruitment = () => {
       location: "",
       tags: "",
       status: "Draft",
-      publish: false,
     });
     setFormErrors({});
     setFormOpen(true);
     loadRecruitmentCycles();
+    loadRecruitmentCycleOptions();
     loadDepartments();
+    loadWarehouses();
   };
 
-  const handleEdit = (item) => {
+  const handleEdit = async (item) => {
     const opening = item.jobOpening || item || {};
     const openingId = opening.id || opening.Id || opening.internalId || opening.InternalId;
     
@@ -595,11 +1054,9 @@ const Recruitment = () => {
     const statusMap = { 0: "Draft", 1: "Published", 2: "Closed", 3: "OnHold", 4: "Filled" };
     const statusString = statusMap[statusValue] || "Draft";
     
-    // Normalize visibility to check publish status
-    const visibilityValue = opening.visibility !== undefined ? opening.visibility : 
-                          (opening.Visibility !== undefined ? opening.Visibility : 0);
-    const isPublic = visibilityValue === 1 || visibilityValue === "Public" || visibilityValue === 1;
-    const isPublished = statusValue === 1 || statusValue === "Published";
+    const warehouseList = await loadWarehouses();
+    const rawLocation = opening.location ?? opening.Location ?? "";
+    const locationField = resolveLocationToWarehouseId(rawLocation, warehouseList);
     
     setFormMode("edit");
     setFormData({
@@ -618,15 +1075,15 @@ const Recruitment = () => {
         : (opening.SalaryMax !== null && opening.SalaryMax !== undefined ? String(opening.SalaryMax) : ""),
       currency: opening.currency || opening.Currency || "USD",
       employmentType: opening.employmentType || opening.EmploymentType || "Full-Time",
-      location: opening.location || opening.Location || "",
+      location: locationField,
       tags: opening.tags || opening.Tags || "",
       status: statusString,
-      publish: isPublished || isPublic || opening.publish || opening.Publish || false,
     });
     
     setFormErrors({});
     setFormOpen(true);
     loadRecruitmentCycles();
+    loadRecruitmentCycleOptions();
     loadDepartments();
   };
 
@@ -690,10 +1147,17 @@ const Recruitment = () => {
       const statusValue = formData.status && formData.status.trim() !== "" 
         ? formData.status 
         : "Draft";
+
+      const parsedCycleId = Number.parseInt(String(formData.cycleId ?? "").trim(), 10);
+      if (!Number.isFinite(parsedCycleId) || parsedCycleId <= 0) {
+        toast.error("Please select a valid recruitment cycle.");
+        setFormLoading(false);
+        return;
+      }
       
       const payload = {
         OrgId: orgIdValue,
-        CycleId: parseInt(formData.cycleId, 10),
+        CycleId: parsedCycleId,
         DepartmentId: formData.departmentId ? parseInt(formData.departmentId, 10) : null,
         DepartmentName: departmentName,
         Title: formData.title,
@@ -707,7 +1171,7 @@ const Recruitment = () => {
         Location: formData.location || null,
         Tags: formData.tags || null,
         Status: statusValue,
-        Publish: formData.publish || false,
+        Publish: String(formData.status || "").trim().toLowerCase() === "published",
       };
       
       console.log("Form Data Status:", formData.status);
@@ -734,28 +1198,53 @@ const Recruitment = () => {
         body: JSON.stringify(payload),
       });
 
-      const responseData = await response.json();
-      
-      // Debug: log the response to see what was saved
-      console.log("Response from server:", responseData);
-      if (responseData.data) {
-        const savedStatus = responseData.data.status !== undefined ? responseData.data.status : 
-                           (responseData.data.Status !== undefined ? responseData.data.Status : "unknown");
-        console.log("Saved job opening status:", savedStatus);
-        console.log("Full saved job opening data:", responseData.data);
+      const rawText = await response.text();
+      let responseData = {};
+      try {
+        responseData = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        responseData = {};
       }
-      
-      // Check both HTTP status and response body statusCode
-      if (!response.ok || (responseData.statusCode !== undefined && responseData.statusCode !== 200)) {
-        const errorMessage = responseData.message || responseData.Message || "Failed to save job opening";
+
+      const apiStatus =
+        responseData.statusCode ?? responseData.StatusCode;
+      const isLogicalSuccess =
+        apiStatus === undefined ||
+        apiStatus === 200 ||
+        apiStatus === "200";
+
+      console.log("Response from server:", responseData, "HTTP", response.status);
+
+      if (responseData.result || responseData.data) {
+        const inner = responseData.result ?? responseData.data;
+        if (inner) {
+          const savedStatus =
+            inner.status !== undefined
+              ? inner.status
+              : inner.Status !== undefined
+                ? inner.Status
+                : "unknown";
+          console.log("Saved job opening status:", savedStatus);
+        }
+      }
+
+      if (!response.ok || !isLogicalSuccess) {
+        const errorMessage =
+          responseData.message ||
+          responseData.Message ||
+          responseData.title ||
+          `Request failed (${response.status})`;
         throw new Error(errorMessage);
       }
 
       setFormOpen(false);
       toast.success(formMode === "add" ? "Job opening created successfully!" : "Job opening updated successfully!");
-      
-      // Reload the data to show the new/updated job opening
-      await loadRecruitmentData();
+
+      await Promise.all([
+        loadJobOpenings(),
+        loadJobOpeningTitlesIndex(),
+        loadRecruitmentData(),
+      ]);
     } catch (error) {
       toast.error(error.message || "Failed to save job opening");
     } finally {
@@ -774,26 +1263,50 @@ const Recruitment = () => {
     
     try {
       const opening = selectedItem.jobOpening || {};
-      const orgId = getOrgId();
-      const headers = createAuthHeaders();
-      
-      const response = await fetch(`${BASE_URL}/hr/recruitment/job-openings/${opening.id || opening.internalId}`, {
-        method: "DELETE",
-        headers,
-      });
+      const openingId = opening.id ?? opening.Id;
+      if (openingId === undefined || openingId === null || openingId === "") {
+        toast.error("Job opening id is missing. Cannot delete.");
+        return;
+      }
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to delete job opening");
+      const headers = createAuthHeaders();
+
+      const response = await fetch(
+        `${BASE_URL}/hr/recruitment/job-openings/${openingId}`,
+        {
+          method: "DELETE",
+          headers,
+        }
+      );
+
+      const responseData = await response.json().catch(() => ({}));
+      const statusCode =
+        responseData.statusCode ?? responseData.StatusCode;
+      // Backend returns HTTP 200 for both success and logical failure; ApiResponse.StatusCode is 200 (SUCCESS) or -99 (FAILED).
+      const isLogicalSuccess =
+        response.ok &&
+        (statusCode === undefined ||
+          Number(statusCode) === 200 ||
+          statusCode === "200");
+
+      if (!isLogicalSuccess) {
+        const msg =
+          responseData.message ||
+          responseData.Message ||
+          `Failed to delete job opening (${response.status})`;
+        throw new Error(msg);
       }
 
       setDeleteDialogOpen(false);
       setSelectedItem(null);
-      
+
       toast.success("Job opening deleted successfully!");
-      
-      // Reload the data to reflect the deletion
-      await loadRecruitmentData();
+
+      await Promise.all([
+        loadJobOpenings(),
+        loadJobOpeningTitlesIndex(),
+        loadRecruitmentData(),
+      ]);
     } catch (error) {
       toast.error(error.message || "Failed to delete job opening");
     }
@@ -833,17 +1346,35 @@ const Recruitment = () => {
       const headers = createAuthHeaders();
       const orgIdValue = orgId && !isNaN(orgId) ? parseInt(orgId, 10) : 0;
       
-      const payload = {
-        OrgId: orgIdValue,
-        Name: cycleFormData.name,
-        StartDate: cycleFormData.startDate,
-        EndDate: cycleFormData.endDate || null,
-        Status: cycleFormData.status || "Draft",
-      };
+      const isEdit = cycleFormMode === "edit";
+      const cycleId = isEdit ? Number(selectedCycle?.id) : 0;
 
-      // Only create is supported for now (no update endpoint)
-      const url = `${BASE_URL}/hr/recruitment/cycles`;
-      const method = "POST";
+      if (isEdit && (!Number.isFinite(cycleId) || cycleId <= 0)) {
+        toast.error("Invalid recruitment cycle selected for update.");
+        setCycleFormLoading(false);
+        return;
+      }
+
+      const payload = isEdit
+        ? {
+            CycleId: cycleId,
+            Name: cycleFormData.name,
+            StartDate: cycleFormData.startDate,
+            EndDate: cycleFormData.endDate || null,
+            Status: cycleFormData.status || "Draft",
+          }
+        : {
+            OrgId: orgIdValue,
+            Name: cycleFormData.name,
+            StartDate: cycleFormData.startDate,
+            EndDate: cycleFormData.endDate || null,
+            Status: cycleFormData.status || "Draft",
+          };
+
+      const url = isEdit
+        ? `${BASE_URL}/hr/recruitment/cycles/${cycleId}`
+        : `${BASE_URL}/hr/recruitment/cycles`;
+      const method = isEdit ? "PUT" : "POST";
 
       const response = await fetch(url, {
         method,
@@ -854,23 +1385,134 @@ const Recruitment = () => {
         body: JSON.stringify(payload),
       });
 
-      const responseData = await response.json();
-      
-      if (!response.ok || (responseData.statusCode !== undefined && responseData.statusCode !== 200)) {
-        const errorMessage = responseData.message || responseData.Message || "Failed to save recruitment cycle";
+      let responseData = null;
+      const rawText = await response.text();
+      if (rawText) {
+        try {
+          responseData = JSON.parse(rawText);
+        } catch {
+          responseData = null;
+        }
+      }
+
+      const statusCode =
+        responseData?.statusCode ?? responseData?.StatusCode;
+      const ok =
+        response.ok && (statusCode === undefined || statusCode === 200);
+
+      if (!ok) {
+        const errorMessage =
+          responseData?.message ||
+          responseData?.Message ||
+          responseData?.title ||
+          (rawText && !responseData ? rawText : null) ||
+          `Failed to save recruitment cycle (HTTP ${response.status})`;
         throw new Error(errorMessage);
       }
 
       setCycleFormOpen(false);
       toast.success(cycleFormMode === "add" ? "Recruitment cycle created successfully!" : "Recruitment cycle updated successfully!");
       
-      // Reload cycles and job openings
+      // Reload cycles, dropdown options, and job openings
       await loadRecruitmentCycles();
+      await loadRecruitmentCycleOptions();
       await loadRecruitmentData();
     } catch (error) {
       toast.error(error.message || "Failed to save recruitment cycle");
     } finally {
       setCycleFormLoading(false);
+    }
+  };
+
+  const toDateInputValue = (value) => {
+    if (!value) return "";
+    try {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return "";
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    } catch {
+      return "";
+    }
+  };
+
+  const handleCycleEdit = (cycle) => {
+    if (!cycle) return;
+    setSelectedCycle(cycle);
+    setCycleFormMode("edit");
+    setCycleFormData({
+      name: cycle.name || "",
+      startDate: toDateInputValue(cycle.startDate),
+      endDate: toDateInputValue(cycle.endDate),
+      status: cycle.status || "Draft",
+    });
+    setCycleFormErrors({});
+    setCycleFormOpen(true);
+  };
+
+  const handleCycleDelete = (cycle) => {
+    if (!cycle) return;
+    setSelectedCycle(cycle);
+    setCycleDeleteDialogOpen(true);
+  };
+
+  const confirmCycleDelete = async () => {
+    if (!selectedCycle) return;
+    const cycleId = Number(selectedCycle.id);
+    if (!Number.isFinite(cycleId) || cycleId <= 0) {
+      toast.error("Invalid recruitment cycle.");
+      return;
+    }
+
+    setCycleDeleteLoading(true);
+    try {
+      const headers = createAuthHeaders();
+      const response = await fetch(
+        `${BASE_URL}/hr/recruitment/cycles/${cycleId}`,
+        {
+          method: "DELETE",
+          headers: {
+            ...headers,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      let responseData = null;
+      try {
+        responseData = await response.json();
+      } catch {
+        responseData = null;
+      }
+
+      const statusCode = responseData?.statusCode ?? responseData?.StatusCode;
+      const ok =
+        response.ok && (statusCode === undefined || statusCode === 200);
+
+      if (!ok) {
+        const errorMessage =
+          responseData?.message ||
+          responseData?.Message ||
+          responseData?.title ||
+          "Failed to delete recruitment cycle";
+        throw new Error(errorMessage);
+      }
+
+      toast.success(
+        responseData?.message ||
+          responseData?.Message ||
+          "Recruitment cycle deleted successfully!"
+      );
+      setCycleDeleteDialogOpen(false);
+      setSelectedCycle(null);
+      await loadRecruitmentCycleOptions();
+      await refreshRecruitmentCandidateData();
+    } catch (error) {
+      toast.error(error.message || "Failed to delete recruitment cycle");
+    } finally {
+      setCycleDeleteLoading(false);
     }
   };
 
@@ -903,71 +1545,191 @@ const Recruitment = () => {
             </Box>
           ) : null}
 
-          <Box sx={{ mb: 3, display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
-            <ModernFilter
-              label="Currency"
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              options={[
-                { value: "USD", label: "USD ($)" },
-                { value: "LKR", label: "LKR (Rs.)" },
-              ]}
-              sx={{ minWidth: 150 }}
-            />
+          {activeTab !== 4 && (
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "flex-end",
+                alignItems: "center",
+                mb: showRecruitmentDashboard ? 2 : 1,
+              }}
+            >
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showRecruitmentDashboard}
+                    onChange={handleRecruitmentDashboardToggle}
+                    color="primary"
+                    size="small"
+                  />
+                }
+                label={
+                  <Typography variant="body2" color="text.secondary">
+                    Hide dashboard
+                  </Typography>
+                }
+                labelPlacement="start"
+                sx={{ mr: 0, userSelect: "none" }}
+              />
+            </Box>
+          )}
+
+          {activeTab !== 4 && showRecruitmentDashboard && (
+          <Box sx={{ mb: 4 }}>
+            <Box
+              sx={{
+                display: "grid",
+                gap: 3,
+                mb: 3,
+                alignItems: "stretch",
+                gridTemplateColumns: {
+                  xs: "minmax(0, 1fr)",
+                  sm: "repeat(2, minmax(0, 1fr))",
+                  md: "repeat(5, minmax(0, 1fr))",
+                },
+              }}
+            >
+              {summaryCards.map((card) => (
+                <Box key={card.title} sx={{ display: "flex", minWidth: 0 }}>
+                  <MetricCard {...card} />
+                </Box>
+              ))}
+            </Box>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={4}>
+                <MetricCard
+                  title="Offer Acceptance Rate"
+                  value={`${(analytics.offerAcceptanceRate ?? 0).toFixed(1)}%`}
+                  subtitle="Percentage of offers accepted by candidates"
+                  icon={<TrendingUpIcon />}
+                  color="success"
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MetricCard
+                  title="Recruitment Cycles"
+                  value={`${recruitmentCycleDashboardStats.total} cycle${recruitmentCycleDashboardStats.total === 1 ? "" : "s"}`}
+                  subtitle={`Active: ${recruitmentCycleDashboardStats.active} · Closed: ${recruitmentCycleDashboardStats.closed} · Draft: ${recruitmentCycleDashboardStats.draft}`}
+                  icon={<EventRepeatIcon />}
+                  color="error"
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MetricCard
+                  title="Average Time to Hire"
+                  value={`${(analytics.averageTimeToHire ?? 0).toFixed(1)} days`}
+                  subtitle="Average duration from application to hire"
+                  icon={<AccessTimeIcon />}
+                  color="info"
+                />
+              </Grid>
+            </Grid>
+          </Box>
+          )}
+
+          <Box
+            sx={{
+              borderBottom: 1,
+              borderColor: "divider",
+              mb: 3,
+              bgcolor: "background.paper",
+              borderRadius: 1,
+            }}
+          >
+            <Tabs
+              value={activeTab}
+              onChange={(_, newValue) => setActiveTab(newValue)}
+              variant="scrollable"
+              scrollButtons="auto"
+              sx={{
+                "& .MuiTab-root": {
+                  fontWeight: 600,
+                  textTransform: "none",
+                  fontSize: "0.95rem",
+                  minHeight: 48,
+                },
+              }}
+            >
+              <Tab label="Recruitment Cycles" />
+              <Tab label="Job Openings" />
+              <Tab label="Candidates" />
+              <Tab label="Hired Candidates" />
+              <Tab label="Kanban Board" />
+            </Tabs>
           </Box>
 
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            {summaryCards.map((card) => (
-              <Grid item xs={12} sm={6} md={3} key={card.title}>
-                <MetricCard {...card} />
-              </Grid>
-            ))}
-            <Grid item xs={12} md={4}>
-              <MetricCard
-                title="Offer Acceptance Rate"
-                value={`${(analytics.offerAcceptanceRate ?? 0).toFixed(1)}%`}
-                subtitle="Percentage of offers accepted by candidates"
-                icon={<TrendingUpIcon />}
-                color="success"
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <MetricCard
-                title="Average Time to Hire"
-                value={`${(analytics.averageTimeToHire ?? 0).toFixed(1)} days`}
-                subtitle="Average duration from application to hire"
-                icon={<AccessTimeIcon />}
-                color="info"
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <MetricCard
-                title="Cost per Hire"
-                value={formatCurrencyWithSymbol(analytics.costPerHire ?? 0)}
-                subtitle="Estimated recruitment spend per hire"
-                icon={<AttachMoneyIcon />}
-                color="warning"
-              />
-            </Grid>
-          </Grid>
-
+          {activeTab === 0 && (
           <Box sx={{ mb: 3 }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
               <Typography variant="h6" sx={{ fontWeight: 600, color: "text.primary" }}>
                 Recruitment Cycles
               </Typography>
-              <AddButton label="Add Cycle" onClick={() => {
-                setCycleFormMode("add");
-                setCycleFormData({
-                  name: "",
-                  startDate: "",
-                  endDate: "",
-                  status: "Draft",
-                });
-                setCycleFormErrors({});
-                setCycleFormOpen(true);
-              }} />
+              {create && (
+                <AddButton label="Add Cycle" onClick={() => {
+                  setSelectedCycle(null);
+                  setCycleFormMode("add");
+                  setCycleFormData({
+                    name: "",
+                    startDate: "",
+                    endDate: "",
+                    status: "Draft",
+                  });
+                  setCycleFormErrors({});
+                  setCycleFormOpen(true);
+                }} />
+              )}
             </Box>
+
+            <Box
+              sx={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 2,
+                alignItems: "center",
+                mb: 2,
+              }}
+            >
+              <TextField
+                size="small"
+                placeholder="Search by cycle name or ID…"
+                value={cycleSearchQuery}
+                onChange={(e) => setCycleSearchQuery(e.target.value)}
+                sx={{ flexGrow: 1, minWidth: 220, maxWidth: { sm: 400 } }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" color="action" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <TextField
+                select
+                size="small"
+                label="Status"
+                value={cycleStatusFilter}
+                onChange={(e) => setCycleStatusFilter(e.target.value)}
+                sx={{ minWidth: 160 }}
+              >
+                <MenuItem value="all">All statuses</MenuItem>
+                <MenuItem value="Draft">Draft</MenuItem>
+                <MenuItem value="Active">Active</MenuItem>
+                <MenuItem value="Closed">Closed</MenuItem>
+              </TextField>
+              {(cycleSearchQuery.trim() !== "" || cycleStatusFilter !== "all") && (
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => {
+                    setCycleSearchQuery("");
+                    setCycleStatusFilter("all");
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )}
+            </Box>
+
             <ModernTable
               columns={[
                 { id: "name", label: "Cycle Name" },
@@ -985,6 +1747,28 @@ const Recruitment = () => {
                     />
                   ),
                 },
+                {
+                  id: "actions",
+                  label: "Actions",
+                  align: "right",
+                  render: (_, row) => (
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        alignItems: "center",
+                        width: "100%",
+                      }}
+                    >
+                      <ActionButtons
+                        onEdit={() => handleCycleEdit(row._originalCycle || row)}
+                        onDelete={() => handleCycleDelete(row._originalCycle || row)}
+                        showEdit={update}
+                        showDelete={remove}
+                      />
+                    </Box>
+                  ),
+                },
               ]}
               rows={recruitmentCycles.map((cycle) => ({
                 id: cycle.id || cycle.internalId,
@@ -992,18 +1776,88 @@ const Recruitment = () => {
                 startDate: cycle.startDate,
                 endDate: cycle.endDate,
                 status: cycle.status,
+                _originalCycle: cycle,
               }))}
-              emptyMessage="No recruitment cycles available. Create one to get started."
+              emptyMessage={
+                cyclesTotalCount === 0
+                  ? "No recruitment cycles available. Create one to get started."
+                  : "No cycles match your search or status filter."
+              }
             />
+            {cyclesTotalCount > 0 && (
+              <RecruitmentPaginationBar
+                idSuffix="cycles"
+                totalCount={cyclesTotalCount}
+                page={cyclesPage}
+                onPageChange={setCyclesPage}
+                pageSize={recruitmentPageSize}
+                onPageSizeChange={setRecruitmentPageSize}
+              />
+            )}
           </Box>
+          )}
 
+          {activeTab === 1 && (
           <Box sx={{ mb: 3 }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
               <Typography variant="h6" sx={{ fontWeight: 600, color: "text.primary" }}>
                 Recent Job Openings
               </Typography>
-            <AddButton label="Add Job Opening" onClick={handleAdd} />
+            {create && <AddButton label="Add Job Opening" onClick={handleAdd} />}
             </Box>
+
+            <Box
+              sx={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 2,
+                alignItems: "center",
+                mb: 2,
+              }}
+            >
+              <TextField
+                size="small"
+                placeholder="Search by title, department, or ID…"
+                value={jobOpeningSearchQuery}
+                onChange={(e) => setJobOpeningSearchQuery(e.target.value)}
+                sx={{ flexGrow: 1, minWidth: 220, maxWidth: { sm: 400 } }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" color="action" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <TextField
+                select
+                size="small"
+                label="Status"
+                value={jobOpeningStatusFilter}
+                onChange={(e) => setJobOpeningStatusFilter(e.target.value)}
+                sx={{ minWidth: 180 }}
+              >
+                <MenuItem value="all">All statuses</MenuItem>
+                <MenuItem value="0">Draft</MenuItem>
+                <MenuItem value="1">Published</MenuItem>
+                <MenuItem value="2">Closed</MenuItem>
+                <MenuItem value="3">On Hold</MenuItem>
+                <MenuItem value="4">Filled</MenuItem>
+              </TextField>
+              {(jobOpeningSearchQuery.trim() !== "" || jobOpeningStatusFilter !== "all") && (
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => {
+                    setJobOpeningSearchQuery("");
+                    setJobOpeningStatusFilter("all");
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )}
+            </Box>
+
             <ModernTable
               columns={[
                 { id: "title", label: "Job Title" },
@@ -1066,12 +1920,23 @@ const Recruitment = () => {
                 {
                   id: "actions",
                   label: "Actions",
-                  align: "center",
+                  align: "right",
                   render: (_, row) => (
-                    <ActionButtons
-                      onEdit={() => handleEdit(row._originalItem || row)}
-                      onDelete={() => handleDelete(row._originalItem || row)}
-                    />
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        alignItems: "center",
+                        width: "100%",
+                      }}
+                    >
+                      <ActionButtons
+                        onEdit={() => handleEdit(row._originalItem || row)}
+                        onDelete={() => handleDelete(row._originalItem || row)}
+                        showEdit={update}
+                        showDelete={remove}
+                      />
+                    </Box>
                   ),
                 },
               ]}
@@ -1113,16 +1978,31 @@ const Recruitment = () => {
                   _originalItem: item,
                 };
               })}
-              emptyMessage="No job openings available"
+              emptyMessage={
+                jobOpeningsTotalCount === 0
+                  ? "No job openings available"
+                  : "No job openings match your search or status filter."
+              }
             />
+            {jobOpeningsTotalCount > 0 && (
+              <RecruitmentPaginationBar
+                idSuffix="job-openings"
+                totalCount={jobOpeningsTotalCount}
+                page={jobOpeningsPage}
+                onPageChange={setJobOpeningsPage}
+                pageSize={recruitmentPageSize}
+                onPageSizeChange={setRecruitmentPageSize}
+              />
+            )}
           </Box>
+          )}
 
           <FormDialog
             open={cycleFormOpen}
             onClose={() => setCycleFormOpen(false)}
-            title="Add Recruitment Cycle"
+            title={cycleFormMode === "edit" ? "Edit Recruitment Cycle" : "Add Recruitment Cycle"}
             onSubmit={handleCycleFormSubmit}
-            submitLabel="Create"
+            submitLabel={cycleFormMode === "edit" ? "Update" : "Create"}
             loading={cycleFormLoading}
             maxWidth="md"
           >
@@ -1167,6 +2047,22 @@ const Recruitment = () => {
           </FormDialog>
 
           <ConfirmDialog
+            open={cycleDeleteDialogOpen}
+            onClose={() => {
+              if (cycleDeleteLoading) return;
+              setCycleDeleteDialogOpen(false);
+              setSelectedCycle(null);
+            }}
+            onConfirm={confirmCycleDelete}
+            title="Delete Recruitment Cycle"
+            message={`Are you sure you want to delete "${selectedCycle?.name || 'this recruitment cycle'}"? This action cannot be undone.`}
+            confirmText="Delete"
+            cancelText="Cancel"
+            confirmColor="error"
+            loading={cycleDeleteLoading}
+          />
+
+          <ConfirmDialog
             open={deleteDialogOpen}
             onClose={() => {
               setDeleteDialogOpen(false);
@@ -1198,15 +2094,26 @@ const Recruitment = () => {
                 onChange={handleFormChange}
                 required
                 error={!!formErrors.cycleId}
-                helperText={formErrors.cycleId || (loadingCycles ? "Loading cycles..." : recruitmentCycles.length === 0 ? "No cycles available. Please create a recruitment cycle first." : "")}
+                helperText={
+                  formErrors.cycleId ||
+                  (loadingCycles
+                    ? "Loading cycles..."
+                    : jobOpeningCycleDropdownOptions.length === 0
+                      ? formMode === "add"
+                        ? "No active recruitment cycles. Activate a cycle before adding a job opening."
+                        : "No cycles available."
+                      : "")
+                }
                 disabled={loadingCycles}
                 options={loadingCycles 
                   ? [{ value: "", label: "Loading..." }]
-                  : recruitmentCycles.length > 0 
-                    ? recruitmentCycles.map(cycle => ({ 
-                        value: String(cycle.id || cycle.internalId || ""), 
-                        label: cycle.name || `Cycle ${cycle.id || cycle.internalId || ""}` 
-                      }))
+                  : jobOpeningCycleDropdownOptions.length > 0 
+                    ? jobOpeningCycleDropdownOptions.map((cycle) => ({
+                        value: getCycleOptionValue(cycle),
+                        label:
+                          cycle.name ||
+                          `Cycle ${getCycleOptionValue(cycle) || "?"}`,
+                      })).filter((opt) => opt.value !== "")
                     : [{ value: "", label: "No cycles available" }]
                 }
                 xs={12}
@@ -1251,8 +2158,28 @@ const Recruitment = () => {
               <FormField
                 name="location"
                 label="Location"
-                value={formData.location}
+                type="select"
+                value={formData.location ?? ""}
                 onChange={handleFormChange}
+                disabled={loadingWarehouses}
+                helperText={
+                  loadingWarehouses
+                    ? "Loading warehouses..."
+                    : warehouses.length === 0
+                      ? "No warehouses found."
+                      : ""
+                }
+                options={
+                  loadingWarehouses
+                    ? [{ value: "", label: "Loading..." }]
+                    : [
+                        { value: "", label: "Select warehouse (optional)" },
+                        ...warehouses.map((wh) => ({
+                          value: String(wh.id ?? wh.Id ?? ""),
+                          label: wh.name ?? wh.Name ?? `Warehouse ${wh.id ?? wh.Id ?? ""}`,
+                        })),
+                      ]
+                }
               />
               <FormField
                 name="currency"
@@ -1331,42 +2258,92 @@ const Recruitment = () => {
                 ]}
                 xs={6}
               />
-              <Grid item xs={6} sx={{ display: "flex", alignItems: "center" }}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      name="publish"
-                      checked={formData.publish || false}
-                      onChange={handleFormChange}
-                    />
-                  }
-                  label="Publish (Make Public)"
-                />
-              </Grid>
             </Grid>
           </FormDialog>
 
           {/* Candidates Section */}
+          {activeTab === 2 && (
           <Box sx={{ mb: 3 }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
               <Typography variant="h6" sx={{ fontWeight: 600, color: "text.primary" }}>
                 Candidates
               </Typography>
-              <AddButton label="Add Candidate" onClick={() => {
-                setCandidateFormData({
-                  jobOpeningId: "",
-                  firstName: "",
-                  lastName: "",
-                  email: "",
-                  phone: "",
-                  experienceYears: "",
-                  currentCompany: "",
-                  source: "Direct",
-                  notes: "",
-                });
-                setCandidateFormErrors({});
-                setCandidateFormOpen(true);
-              }} />
+              {create && (
+                <AddButton label="Add Candidate" onClick={() => {
+                  setCandidateFormData({
+                    jobOpeningId: "",
+                    firstName: "",
+                    lastName: "",
+                    email: "",
+                    phone: "",
+                    experienceYears: "",
+                    currentCompany: "",
+                    source: "Direct",
+                    notes: "",
+                    cvFile: null,
+                  });
+                  setCandidateFormErrors({});
+                  setCandidateFormOpen(true);
+                }} />
+              )}
+            </Box>
+
+            <Box
+              sx={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 2,
+                alignItems: "center",
+                mb: 2,
+              }}
+            >
+              <TextField
+                size="small"
+                label="Recruitment cycle"
+                placeholder="Search by cycle name or ID…"
+                value={candidateCycleSearchQuery}
+                onChange={(e) => setCandidateCycleSearchQuery(e.target.value)}
+                sx={{ flexGrow: 1, minWidth: 220, maxWidth: { sm: 360 } }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" color="action" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+
+              <TextField
+                select
+                size="small"
+                label="Status"
+                value={candidateStatusFilter}
+                onChange={(e) => setCandidateStatusFilter(e.target.value)}
+                sx={{ minWidth: 180 }}
+              >
+                <MenuItem value="all">All Statuses</MenuItem>
+                <MenuItem value="0">Applied</MenuItem>
+                <MenuItem value="1">Shortlisted</MenuItem>
+                <MenuItem value="2">Interviewing</MenuItem>
+                <MenuItem value="interviewed">Interviewed</MenuItem>
+                <MenuItem value="3">Offered</MenuItem>
+                <MenuItem value="4">Hired</MenuItem>
+                <MenuItem value="5">Rejected</MenuItem>
+                <MenuItem value="6">Withdrawn</MenuItem>
+              </TextField>
+
+              {(candidateCycleSearchQuery.trim() !== "" || candidateStatusFilter !== "all") && (
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => {
+                    setCandidateCycleSearchQuery("");
+                    setCandidateStatusFilter("all");
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              )}
             </Box>
             <ModernTable
               columns={[
@@ -1377,7 +2354,7 @@ const Recruitment = () => {
                 {
                   id: "status",
                   label: "Status",
-                  render: (value) => {
+                  render: (value, row) => {
                     const statusLabels = {
                       0: "Applied",
                       1: "Shortlisted",
@@ -1387,16 +2364,24 @@ const Recruitment = () => {
                       5: "Rejected",
                       6: "Withdrawn",
                     };
+                    const isInterviewedStage = Number(row?.stage) === 7;
+                    const label = isInterviewedStage
+                      ? "Interviewed"
+                      : (statusLabels[value] || "Applied");
+                    const color = isInterviewedStage
+                      ? "secondary"
+                      : value === 4
+                        ? "success"
+                        : value === 5 || value === 6
+                          ? "error"
+                          : value === 2
+                            ? "info"
+                            : "default";
                     return (
                       <Chip
-                        label={statusLabels[value] || "Applied"}
+                        label={label}
                         size="small"
-                        color={
-                          value === 4 ? "success" :
-                          value === 5 || value === 6 ? "error" :
-                          value === 2 ? "info" :
-                          "default"
-                        }
+                        color={color}
                         sx={{ fontWeight: 600 }}
                       />
                     );
@@ -1444,81 +2429,101 @@ const Recruitment = () => {
                             <PeopleIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title="Schedule Interview">
-                          <IconButton
-                            size="small"
-                            color="primary"
-                            onClick={() => {
-                              if (candidate) {
-                                setInterviewFormData({
-                                  candidateId: String(row.id),
-                                  jobOpeningId: String(candidate.jobOpeningId || candidate.JobOpeningId || ""),
-                                  scheduledStart: "",
-                                  scheduledEnd: "",
-                                  mode: "Virtual",
-                                  location: "",
-                                  interviewerIds: "",
-                                });
-                                setInterviewFormErrors({});
-                                setInterviewFormOpen(true);
-                              }
-                            }}
-                          >
-                            <AssignmentIndIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Create Offer">
-                          <IconButton
-                            size="small"
-                            color="success"
-                            onClick={() => {
-                              if (candidate) {
-                                const offerNumber = `OFF-${Date.now()}`;
-                                setOfferFormData({
-                                  candidateId: String(row.id),
-                                  jobOpeningId: String(candidate.jobOpeningId || candidate.JobOpeningId || ""),
-                                  offerNumber: offerNumber,
-                                  salary: "",
-                                  currency: currency || "USD",
-                                  joinDate: "",
-                                  sendImmediately: true,
-                                });
-                                setOfferFormErrors({});
-                                setOfferFormOpen(true);
-                              }
-                            }}
-                          >
-                            <SendIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                        {create && (
+                          <Tooltip title="Schedule Interview">
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={() => {
+                                if (candidate) {
+                                  setInterviewFormData({
+                                    candidateId: String(row.id),
+                                    jobOpeningId: String(candidate.jobOpeningId || candidate.JobOpeningId || ""),
+                                    scheduledStart: "",
+                                    scheduledEnd: "",
+                                    mode: "Virtual",
+                                    location: "",
+                                    interviewerIds: "",
+                                  });
+                                  setInterviewFormErrors({});
+                                  setInterviewFormOpen(true);
+                                }
+                              }}
+                            >
+                              <AssignmentIndIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                        {create && (
+                          <Tooltip title="Create Offer">
+                            <IconButton
+                              size="small"
+                              color="success"
+                              onClick={() => {
+                                if (candidate) {
+                                  const offerNumber = `OFF-${Date.now()}`;
+                                  setOfferFormData({
+                                    candidateId: String(row.id),
+                                    jobOpeningId: String(candidate.jobOpeningId || candidate.JobOpeningId || ""),
+                                    offerNumber: offerNumber,
+                                    salary: "",
+                                    currency: currency || "USD",
+                                    joinDate: "",
+                                    sendImmediately: true,
+                                  });
+                                  setOfferFormErrors({});
+                                  setOfferFormOpen(true);
+                                }
+                              }}
+                            >
+                              <SendIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                       </Box>
                     );
                   },
                 },
               ]}
               rows={candidates.map((candidate) => {
-                // Find job opening title
-                const jobOpening = jobOpenings.find(
-                  item => (item.jobOpening?.id || item.jobOpening?.Id) === candidate.jobOpeningId
-                );
-                const jobOpeningTitle = jobOpening?.jobOpening?.title || jobOpening?.jobOpening?.Title || "-";
-                
+                const jobOpeningId = candidate.jobOpeningId ?? candidate.JobOpeningId;
+                const jid = jobOpeningId != null ? String(jobOpeningId) : "";
+                const jobOpeningTitle =
+                  (jid && jobOpeningTitles[jid]) || "-";
+
                 return {
                   id: candidate.id || candidate.Id || candidate.internalId || candidate.InternalId,
                   firstName: candidate.firstName || candidate.FirstName || "",
                   lastName: candidate.lastName || candidate.LastName || "",
                   email: candidate.email || candidate.Email || "-",
                   phone: candidate.phone || candidate.Phone || "-",
-                  jobOpeningTitle: jobOpeningTitle,
+                  jobOpeningTitle,
                   status: candidate.status !== undefined ? candidate.status : (candidate.Status !== undefined ? candidate.Status : 0),
+                  stage: candidate.stage !== undefined ? candidate.stage : (candidate.Stage !== undefined ? candidate.Stage : 0),
                   source: candidate.source || candidate.Source || "Direct",
                 };
               })}
-              emptyMessage="No candidates available. Add candidates to track applications."
+              emptyMessage={
+                candidateCycleSearchQuery.trim() !== "" || candidateStatusFilter !== "all"
+                  ? "No candidates match the selected filters."
+                  : "No candidates available. Add candidates to track applications."
+              }
             />
+            {candidatesTotalCount > 0 && (
+              <RecruitmentPaginationBar
+                idSuffix="candidates"
+                totalCount={candidatesTotalCount}
+                page={candidatesPage}
+                onPageChange={setCandidatesPage}
+                pageSize={recruitmentPageSize}
+                onPageSizeChange={setRecruitmentPageSize}
+              />
+            )}
           </Box>
+          )}
 
           {/* Hired Candidates Section */}
+          {activeTab === 3 && (
           <Box sx={{ mt: 4 }}>
             <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>
               Hired Candidates
@@ -1540,9 +2545,6 @@ const Recruitment = () => {
                   label: "Actions",
                   align: "center",
                   render: (_, row) => {
-                    const candidate = candidates.find(c => 
-                      String(c.id || c.Id || c.internalId || c.InternalId) === String(row.id)
-                    );
                     return (
                       <Box display="flex" gap={1} justifyContent="center">
                         <Tooltip title="View Details">
@@ -1550,31 +2552,28 @@ const Recruitment = () => {
                             size="small"
                             color="info"
                             onClick={async () => {
-                              if (candidate) {
-                                setLoadingCandidateDetail(true);
-                                try {
-                                  const headers = createAuthHeaders();
-                                  const response = await fetch(
-                                    `${BASE_URL}/hr/recruitment/candidates/${row.id}`,
-                                    { headers }
-                                  );
-                                  if (response.ok) {
-                                    const data = await response.json();
-                                    console.log("Candidate detail response:", data);
-                                    const detailData = data.result || data.data || data;
-                                    setSelectedCandidateDetail(detailData);
-                                    setCandidateDetailOpen(true);
-                                  } else {
-                                    const errorText = await response.text();
-                                    console.error("Failed to load candidate details:", response.status, errorText);
-                                    toast.error("Failed to load candidate details");
-                                  }
-                                } catch (error) {
-                                  console.error("Error loading candidate details:", error);
-                                  toast.error("Error loading candidate details");
-                                } finally {
-                                  setLoadingCandidateDetail(false);
+                              setLoadingCandidateDetail(true);
+                              try {
+                                const headers = createAuthHeaders();
+                                const response = await fetch(
+                                  `${BASE_URL}/hr/recruitment/candidates/${row.id}`,
+                                  { headers }
+                                );
+                                if (response.ok) {
+                                  const data = await response.json();
+                                  const detailData = data.result || data.data || data;
+                                  setSelectedCandidateDetail(detailData);
+                                  setCandidateDetailOpen(true);
+                                } else {
+                                  const errorText = await response.text();
+                                  console.error("Failed to load candidate details:", response.status, errorText);
+                                  toast.error("Failed to load candidate details");
                                 }
+                              } catch (error) {
+                                console.error("Error loading candidate details:", error);
+                                toast.error("Error loading candidate details");
+                              } finally {
+                                setLoadingCandidateDetail(false);
                               }
                             }}
                           >
@@ -1586,49 +2585,68 @@ const Recruitment = () => {
                   },
                 },
               ]}
-              rows={candidates
-                .filter(candidate => {
-                  const status = candidate.status !== undefined ? candidate.status : (candidate.Status !== undefined ? candidate.Status : 0);
-                  const stage = candidate.stage !== undefined ? candidate.stage : (candidate.Stage !== undefined ? candidate.Stage : 0);
-                  // Check both status (Hired = 4) and stage (Hired = 4)
-                  return status === 4 || stage === 4;
-                })
-                .map((candidate) => {
-                  // Find job opening title - check both direct jobOpeningId and nested structure
-                  const jobOpeningId = candidate.jobOpeningId || candidate.JobOpeningId;
-                  let jobOpeningTitle = "-";
-                  
-                  if (jobOpeningId) {
-                    const jobOpening = jobOpenings.find(
-                      item => {
-                        const itemId = item.jobOpening?.id || item.jobOpening?.Id || item.id || item.Id;
-                        return String(itemId) === String(jobOpeningId);
-                      }
-                    );
-                    jobOpeningTitle = jobOpening?.jobOpening?.title || jobOpening?.jobOpening?.Title || jobOpening?.title || jobOpening?.Title || "-";
-                  }
-                  
-                  // Find offer to get respondedOn date (hired date)
-                  const offer = offers.find(
-                    o => String(o.candidateId || o.CandidateId) === String(candidate.id || candidate.Id || candidate.internalId || candidate.InternalId)
-                  );
-                  const hiredDate = offer?.respondedOn || offer?.RespondedOn || candidate.updatedOn || candidate.UpdatedOn || candidate.appliedOn || candidate.AppliedOn;
-                  
-                  return {
-                    id: candidate.id || candidate.Id || candidate.internalId || candidate.InternalId,
-                    firstName: candidate.firstName || candidate.FirstName || "",
-                    lastName: candidate.lastName || candidate.LastName || "",
-                    email: candidate.email || candidate.Email || "-",
-                    phone: candidate.phone || candidate.Phone || "-",
-                    jobOpeningTitle: jobOpeningTitle,
-                    status: candidate.status !== undefined ? candidate.status : (candidate.Status !== undefined ? candidate.Status : 0),
-                    source: candidate.source || candidate.Source || "Direct",
-                    hiredDate: hiredDate,
-                  };
-                })}
+              rows={hiredCandidates.map((candidate) => {
+                const jobOpeningId = candidate.jobOpeningId ?? candidate.JobOpeningId;
+                const jid = jobOpeningId != null ? String(jobOpeningId) : "";
+                const jobOpeningTitle = (jid && jobOpeningTitles[jid]) || "-";
+                const cid =
+                  candidate.id ?? candidate.Id ?? candidate.internalId ?? candidate.InternalId;
+                const offer = offers.find(
+                  (o) =>
+                    String(o.candidateId || o.CandidateId) === String(cid)
+                );
+                const hiredDate =
+                  offer?.respondedOn ||
+                  offer?.RespondedOn ||
+                  candidate.updatedOn ||
+                  candidate.UpdatedOn ||
+                  candidate.appliedOn ||
+                  candidate.AppliedOn;
+
+                return {
+                  id: cid,
+                  firstName: candidate.firstName || candidate.FirstName || "",
+                  lastName: candidate.lastName || candidate.LastName || "",
+                  email: candidate.email || candidate.Email || "-",
+                  phone: candidate.phone || candidate.Phone || "-",
+                  jobOpeningTitle,
+                  status:
+                    candidate.status !== undefined
+                      ? candidate.status
+                      : candidate.Status !== undefined
+                        ? candidate.Status
+                        : 0,
+                  stage:
+                    candidate.stage !== undefined
+                      ? candidate.stage
+                      : candidate.Stage !== undefined
+                        ? candidate.Stage
+                        : 0,
+                  source: candidate.source || candidate.Source || "Direct",
+                  hiredDate,
+                };
+              })}
               emptyMessage="No hired candidates yet. Candidates will appear here after accepting offers."
             />
+            {hiredCandidatesTotalCount > 0 && (
+              <RecruitmentPaginationBar
+                idSuffix="hired"
+                totalCount={hiredCandidatesTotalCount}
+                page={hiredCandidatesPage}
+                onPageChange={setHiredCandidatesPage}
+                pageSize={recruitmentPageSize}
+                onPageSizeChange={setRecruitmentPageSize}
+              />
+            )}
           </Box>
+          )}
+
+          {/* Kanban Board Section */}
+          {activeTab === 4 && (
+            <Box sx={{ mt: 2 }}>
+              <RecruitmentKanbanBoard embedded />
+            </Box>
+          )}
 
           {/* Add Candidate Form Dialog */}
           <FormDialog
@@ -1650,29 +2668,35 @@ const Recruitment = () => {
               setCandidateFormLoading(true);
               try {
                 const orgId = getOrgId();
-                const headers = createAuthHeaders();
                 const orgIdValue = orgId && !isNaN(orgId) ? parseInt(orgId, 10) : 0;
-                
-                const payload = {
-                  OrgId: orgIdValue,
-                  JobOpeningId: parseInt(candidateFormData.jobOpeningId, 10),
-                  FirstName: candidateFormData.firstName,
-                  LastName: candidateFormData.lastName,
-                  Email: candidateFormData.email || null,
-                  Phone: candidateFormData.phone || null,
-                  ExperienceYears: candidateFormData.experienceYears ? parseFloat(candidateFormData.experienceYears) : null,
-                  CurrentCompany: candidateFormData.currentCompany || null,
-                  Source: candidateFormData.source || "Direct",
-                  Notes: candidateFormData.notes || null,
-                };
-                
+
+                // Use FormData so the CV file can be uploaded alongside fields.
+                // Do NOT set Content-Type manually — the browser will set the
+                // correct multipart/form-data boundary automatically.
+                const formData = new FormData();
+                formData.append("OrgId", String(orgIdValue));
+                formData.append("JobOpeningId", String(parseInt(candidateFormData.jobOpeningId, 10)));
+                formData.append("FirstName", candidateFormData.firstName || "");
+                formData.append("LastName", candidateFormData.lastName || "");
+                if (candidateFormData.email) formData.append("Email", candidateFormData.email);
+                if (candidateFormData.phone) formData.append("Phone", candidateFormData.phone);
+                if (candidateFormData.experienceYears) {
+                  formData.append("ExperienceYears", String(parseFloat(candidateFormData.experienceYears)));
+                }
+                if (candidateFormData.currentCompany) formData.append("CurrentCompany", candidateFormData.currentCompany);
+                formData.append("Source", candidateFormData.source || "Direct");
+                if (candidateFormData.notes) formData.append("Notes", candidateFormData.notes);
+                if (candidateFormData.cvFile) {
+                  formData.append("CvFile", candidateFormData.cvFile);
+                }
+
+                const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
                 const response = await fetch(`${BASE_URL}/hr/recruitment/candidates`, {
                   method: "POST",
                   headers: {
-                    ...headers,
-                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
                   },
-                  body: JSON.stringify(payload),
+                  body: formData,
                 });
                 
                 const responseData = await response.json();
@@ -1697,30 +2721,15 @@ const Recruitment = () => {
                   currentCompany: "",
                   source: "Direct",
                   notes: "",
+                  cvFile: null,
                 });
                 setCandidateFormErrors({});
                 
                 // Reload data - ensure both are called and awaited
-                console.log("Reloading candidates and recruitment data...");
                 try {
-                  await Promise.all([
-                    loadCandidates(),
-                    loadRecruitmentData(), // Refresh analytics
-                  ]);
-                  console.log("Data reloaded successfully");
+                  await refreshRecruitmentCandidateData();
                 } catch (reloadError) {
                   console.error("Error reloading data after adding candidate:", reloadError);
-                  // Still try to reload individually
-                  try {
-                    await loadCandidates();
-                  } catch (err) {
-                    console.error("Error reloading candidates:", err);
-                  }
-                  try {
-                    await loadRecruitmentData();
-                  } catch (err) {
-                    console.error("Error reloading recruitment data:", err);
-                  }
                 }
               } catch (error) {
                 console.error("Error adding candidate:", error);
@@ -1752,13 +2761,7 @@ const Recruitment = () => {
                 required
                 error={!!candidateFormErrors.jobOpeningId}
                 helperText={candidateFormErrors.jobOpeningId}
-                options={jobOpenings.map(item => {
-                  const opening = item.jobOpening || {};
-                  return {
-                    value: String(opening.id || opening.Id || opening.internalId || opening.InternalId || ""),
-                    label: opening.title || opening.Title || `Job Opening ${opening.id || opening.Id || ""}`
-                  };
-                })}
+                options={jobOpeningFormOptions}
                 xs={12}
               />
               <FormField
@@ -1847,6 +2850,35 @@ const Recruitment = () => {
                 rows={3}
                 xs={12}
               />
+              <Grid item xs={12}>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 500, color: "text.secondary" }}>
+                    CV / Resume
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    size="small"
+                    sx={{ alignSelf: "flex-start", textTransform: "none" }}
+                  >
+                    {candidateFormData.cvFile ? "Change File" : "Upload CV"}
+                    <input
+                      type="file"
+                      hidden
+                      accept=".pdf,.doc,.docx"
+                      onChange={(e) => {
+                        const file = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+                        setCandidateFormData(prev => ({ ...prev, cvFile: file }));
+                      }}
+                    />
+                  </Button>
+                  {candidateFormData.cvFile && (
+                    <Typography variant="caption" color="text.secondary">
+                      Selected: {candidateFormData.cvFile.name}
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
             </Grid>
           </FormDialog>
 
@@ -1906,9 +2938,7 @@ const Recruitment = () => {
                 setInterviewFormOpen(false);
                 toast.success("Interview scheduled successfully!");
                 
-                // Reload data
-                await loadCandidates();
-                await loadRecruitmentData(); // Refresh analytics
+                await refreshRecruitmentCandidateData();
               } catch (error) {
                 toast.error(error.message || "Failed to schedule interview");
               } finally {
@@ -1938,7 +2968,7 @@ const Recruitment = () => {
                 required
                 error={!!interviewFormErrors.candidateId}
                 helperText={interviewFormErrors.candidateId}
-                options={candidates.map(candidate => ({
+                options={dashboardCandidates.map(candidate => ({
                   value: String(candidate.id || candidate.Id || candidate.internalId || candidate.InternalId || ""),
                   label: `${candidate.firstName || candidate.FirstName || ""} ${candidate.lastName || candidate.LastName || ""}`.trim() || `Candidate ${candidate.id || candidate.Id || ""}`
                 }))}
@@ -1962,13 +2992,7 @@ const Recruitment = () => {
                 required
                 error={!!interviewFormErrors.jobOpeningId}
                 helperText={interviewFormErrors.jobOpeningId}
-                options={jobOpenings.map(item => {
-                  const opening = item.jobOpening || {};
-                  return {
-                    value: String(opening.id || opening.Id || opening.internalId || opening.InternalId || ""),
-                    label: opening.title || opening.Title || `Job Opening ${opening.id || opening.Id || ""}`
-                  };
-                })}
+                options={jobOpeningFormOptions}
                 xs={12}
               />
               <FormField
@@ -2095,9 +3119,7 @@ const Recruitment = () => {
                 setOfferFormOpen(false);
                 toast.success("Job offer created successfully!");
                 
-                // Reload data
-                await loadCandidates();
-                await loadRecruitmentData(); // Refresh analytics
+                await refreshRecruitmentCandidateData();
               } catch (error) {
                 toast.error(error.message || "Failed to create offer");
               } finally {
@@ -2127,7 +3149,7 @@ const Recruitment = () => {
                 required
                 error={!!offerFormErrors.candidateId}
                 helperText={offerFormErrors.candidateId}
-                options={candidates.map(candidate => ({
+                options={dashboardCandidates.map(candidate => ({
                   value: String(candidate.id || candidate.Id || candidate.internalId || candidate.InternalId || ""),
                   label: `${candidate.firstName || candidate.FirstName || ""} ${candidate.lastName || candidate.LastName || ""}`.trim() || `Candidate ${candidate.id || candidate.Id || ""}`
                 }))}
@@ -2151,13 +3173,7 @@ const Recruitment = () => {
                 required
                 error={!!offerFormErrors.jobOpeningId}
                 helperText={offerFormErrors.jobOpeningId}
-                options={jobOpenings.map(item => {
-                  const opening = item.jobOpening || {};
-                  return {
-                    value: String(opening.id || opening.Id || opening.internalId || opening.InternalId || ""),
-                    label: opening.title || opening.Title || `Job Opening ${opening.id || opening.Id || ""}`
-                  };
-                })}
+                options={jobOpeningFormOptions}
                 xs={12}
               />
               <FormField
@@ -2252,6 +3268,7 @@ const Recruitment = () => {
             }}
             title="Candidate Details"
             submitLabel="Close"
+            showCancelButton={false}
             onSubmit={(e) => {
               e.preventDefault();
               setCandidateDetailOpen(false);
@@ -2303,36 +3320,44 @@ const Recruitment = () => {
                         </Grid>
                         <Grid item xs={6}>
                           <Typography variant="body2" color="text.secondary">Status</Typography>
-                          <Chip
-                            label={
-                              candidate.status === 0 || candidate.Status === 0 ? "Applied" :
-                              candidate.status === 1 || candidate.Status === 1 ? "Shortlisted" :
-                              candidate.status === 2 || candidate.Status === 2 ? "Interviewing" :
-                              candidate.status === 3 || candidate.Status === 3 ? "Offered" :
-                              candidate.status === 4 || candidate.Status === 4 ? "Hired" :
-                              candidate.status === 5 || candidate.Status === 5 ? "Rejected" :
-                              candidate.status === 6 || candidate.Status === 6 ? "Withdrawn" :
-                              "Applied"
-                            }
-                            size="small"
-                            color={
-                              candidate.status === 4 || candidate.Status === 4 ? "success" :
-                              candidate.status === 5 || candidate.status === 6 || candidate.Status === 5 || candidate.Status === 6 ? "error" :
-                              candidate.status === 2 || candidate.Status === 2 ? "info" :
-                              "default"
-                            }
-                          />
+                          {(() => {
+                            const stageVal = candidate.stage !== undefined ? candidate.stage : candidate.Stage;
+                            const isInterviewed = Number(stageVal) === 7;
+                            const statusVal = candidate.status !== undefined ? candidate.status : candidate.Status;
+                            const label = isInterviewed ? "Interviewed" :
+                              statusVal === 0 ? "Applied" :
+                              statusVal === 1 ? "Shortlisted" :
+                              statusVal === 2 ? "Interviewing" :
+                              statusVal === 3 ? "Offered" :
+                              statusVal === 4 ? "Hired" :
+                              statusVal === 5 ? "Rejected" :
+                              statusVal === 6 ? "Withdrawn" :
+                              "Applied";
+                            const chipColor = isInterviewed ? "warning" :
+                              statusVal === 4 ? "success" :
+                              statusVal === 5 || statusVal === 6 ? "error" :
+                              statusVal === 2 ? "info" :
+                              "default";
+                            return <Chip label={label} size="small" color={chipColor} />;
+                          })()}
                         </Grid>
                         <Grid item xs={6}>
                           <Typography variant="body2" color="text.secondary">Stage</Typography>
                           <Typography variant="body1">
-                            {candidate.stage === 0 || candidate.Stage === 0 ? "Sourcing" :
-                             candidate.stage === 1 || candidate.Stage === 1 ? "Screening" :
-                             candidate.stage === 2 || candidate.Stage === 2 ? "Interview" :
-                             candidate.stage === 3 || candidate.Stage === 3 ? "Offer" :
-                             candidate.stage === 4 || candidate.Stage === 4 ? "Hired" :
-                             candidate.stage === 5 || candidate.Stage === 5 ? "Rejected" :
-                             "Sourcing"}
+                            {(() => {
+                              const stageValue = candidate.stage !== undefined ? candidate.stage : candidate.Stage;
+                              const stageMap = {
+                                0: "Draft",
+                                1: "Sourcing",
+                                2: "Screening",
+                                3: "Interview",
+                                4: "Offer",
+                                5: "Hired",
+                                6: "Rejected",
+                                7: "Interviewed",
+                              };
+                              return stageMap[stageValue] || "Sourcing";
+                            })()}
                           </Typography>
                         </Grid>
                         <Grid item xs={6}>
@@ -2349,6 +3374,119 @@ const Recruitment = () => {
                     </Box>
                   </Grid>
 
+                  {/* CV / Resume Section */}
+                  <Grid item xs={12}>
+                    <Box sx={{ p: 2, border: "1px solid", borderColor: "divider", borderRadius: 1, mb: 2 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                        CV / Resume
+                      </Typography>
+                      {(() => {
+                        const resumeUrl = candidate.resumeUrl || candidate.ResumeUrl || "";
+                        if (!resumeUrl) {
+                          return (
+                            <Typography variant="body2" color="text.secondary">
+                              No CV uploaded for this candidate.
+                            </Typography>
+                          );
+                        }
+
+                        const fileName = (() => {
+                          try {
+                            const pathname = new URL(resumeUrl).pathname;
+                            const segments = pathname.split("/").filter(Boolean);
+                            const last = segments[segments.length - 1] || "";
+                            return decodeURIComponent(last) || "CV";
+                          } catch {
+                            const segs = resumeUrl.split("/").filter(Boolean);
+                            return decodeURIComponent(segs[segs.length - 1] || "CV");
+                          }
+                        })();
+
+                        const candidateName =
+                          `${candidate.firstName || candidate.FirstName || ""} ${candidate.lastName || candidate.LastName || ""}`.trim() ||
+                          "candidate";
+
+                        const handleDownload = async () => {
+                          try {
+                            const response = await fetch(resumeUrl);
+                            if (!response.ok) throw new Error("Failed to fetch CV file");
+                            const blob = await response.blob();
+                            const ext = fileName.includes(".") ? fileName.substring(fileName.lastIndexOf(".")) : "";
+                            const suggestedName = `${candidateName.replace(/\s+/g, "_")}_CV${ext}`;
+                            const objectUrl = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = objectUrl;
+                            a.download = suggestedName;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(objectUrl);
+                          } catch (err) {
+                            console.error("CV download failed:", err);
+                            window.open(resumeUrl, "_blank", "noopener,noreferrer");
+                          }
+                        };
+
+                        return (
+                          <Box
+                            sx={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              alignItems: "center",
+                              gap: 2,
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 1.5,
+                                p: 1.5,
+                                border: "1px solid",
+                                borderColor: "divider",
+                                borderRadius: 1,
+                                bgcolor: "background.default",
+                                flexGrow: 1,
+                                minWidth: 0,
+                              }}
+                            >
+                              <DescriptionIcon color="primary" />
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap title={fileName}>
+                                  {fileName}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  Uploaded CV / Resume
+                                </Typography>
+                              </Box>
+                            </Box>
+                            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                startIcon={<OpenInNewIcon />}
+                                component="a"
+                                href={resumeUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                View
+                              </Button>
+                              <Button
+                                variant="contained"
+                                size="small"
+                                startIcon={<DownloadIcon />}
+                                onClick={handleDownload}
+                              >
+                                Download
+                              </Button>
+                            </Box>
+                          </Box>
+                        );
+                      })()}
+                    </Box>
+                  </Grid>
+
                   {/* Stage History Section */}
                   {stageHistory.length > 0 && (
                     <Grid item xs={12}>
@@ -2358,11 +3496,11 @@ const Recruitment = () => {
                       <ModernTable
                         columns={[
                           { id: "fromStage", label: "From Stage", render: (value) => {
-                            const stageMap = { 0: "Sourcing", 1: "Screening", 2: "Interview", 3: "Offer", 4: "Hired", 5: "Rejected" };
+                            const stageMap = { 0: "Draft", 1: "Sourcing", 2: "Screening", 3: "Interview", 4: "Offer", 5: "Hired", 6: "Rejected", 7: "Interviewed" };
                             return stageMap[value] || value;
                           }},
                           { id: "toStage", label: "To Stage", render: (value) => {
-                            const stageMap = { 0: "Sourcing", 1: "Screening", 2: "Interview", 3: "Offer", 4: "Hired", 5: "Rejected" };
+                            const stageMap = { 0: "Draft", 1: "Sourcing", 2: "Screening", 3: "Interview", 4: "Offer", 5: "Hired", 6: "Rejected", 7: "Interviewed" };
                             return stageMap[value] || value;
                           }},
                           { id: "comment", label: "Comment" },
@@ -2404,6 +3542,54 @@ const Recruitment = () => {
                         }))}
                         emptyMessage="No interviews scheduled"
                       />
+                      {/* Mark as Interviewed — only shown while stage is Interview (3) */}
+                      {(() => {
+                        const stageVal = candidate.stage !== undefined ? candidate.stage : candidate.Stage;
+                        if (Number(stageVal) !== 3) return null;
+                        const candidateId = candidate.id || candidate.Id || candidate.candidateId || candidate.CandidateId;
+                        return (
+                          <Box sx={{ mt: 2, display: "flex", justifyContent: "flex-end" }}>
+                            <Button
+                              variant="contained"
+                              color="warning"
+                              size="small"
+                              disabled={markInterviewedLoading}
+                              startIcon={markInterviewedLoading ? <CircularProgress size={16} color="inherit" /> : <FactCheckIcon />}
+                              onClick={async () => {
+                                setMarkInterviewedLoading(true);
+                                try {
+                                  const headers = createAuthHeaders();
+                                  const response = await fetch(
+                                    `${BASE_URL}/hr/recruitment/candidates/${candidateId}/stage`,
+                                    {
+                                      method: "PATCH",
+                                      headers: { ...headers, "Content-Type": "application/json" },
+                                      body: JSON.stringify({ ToStage: "Interviewed", Comment: "Marked as interviewed from candidate detail view" }),
+                                    }
+                                  );
+                                  const responseData = await response.json().catch(() => null);
+                                  if (response.ok) {
+                                    toast.success("Candidate moved to Interviewed stage.");
+                                    setCandidateDetailOpen(false);
+                                    setSelectedCandidateDetail(null);
+                                    await refreshRecruitmentCandidateData();
+                                  } else {
+                                    toast.error(
+                                      responseData?.message || responseData?.Message || "Failed to update stage."
+                                    );
+                                  }
+                                } catch {
+                                  toast.error("Error updating candidate stage.");
+                                } finally {
+                                  setMarkInterviewedLoading(false);
+                                }
+                              }}
+                            >
+                              Mark as Interviewed
+                            </Button>
+                          </Box>
+                        );
+                      })()}
                     </Grid>
                   )}
 
@@ -2447,7 +3633,10 @@ const Recruitment = () => {
                         <Grid item xs={6}>
                           <Typography variant="body2" color="text.secondary">Salary</Typography>
                           <Typography variant="body1">
-                            {formatCurrencyWithSymbol(offer.salary || offer.Salary || 0)}
+                            {formatAmountForCurrency(
+                              offer.salary || offer.Salary || 0,
+                              offer.currency || offer.Currency
+                            )}
                           </Typography>
                         </Grid>
                         <Grid item xs={6}>
@@ -2466,7 +3655,7 @@ const Recruitment = () => {
                             }
                           />
                         </Grid>
-                        {((offer.status === "Sent" || offer.Status === "Sent" || offer.status === 1 || offer.Status === 1)) && (
+                        {approve1 && ((offer.status === "Sent" || offer.Status === "Sent" || offer.status === 1 || offer.Status === 1)) && (
                           <Grid item xs={12}>
                             <Box display="flex" gap={1}>
                               <Button
@@ -2496,8 +3685,7 @@ const Recruitment = () => {
                                       toast.success("Offer accepted! Candidate will be hired.");
                                       setCandidateDetailOpen(false);
                                       setSelectedCandidateDetail(null);
-                                      await loadCandidates();
-                                      await loadRecruitmentData();
+                                      await refreshRecruitmentCandidateData();
                                     } else {
                                       toast.error(responseData.message || responseData.Message || "Failed to accept offer");
                                     }
@@ -2506,7 +3694,7 @@ const Recruitment = () => {
                                   }
                                 }}
                               >
-                                Accept Offer
+                                Offer Accepted
                               </Button>
                               <Button
                                 variant="contained"
@@ -2535,8 +3723,7 @@ const Recruitment = () => {
                                       toast.success("Offer declined");
                                       setCandidateDetailOpen(false);
                                       setSelectedCandidateDetail(null);
-                                      await loadCandidates();
-                                      await loadRecruitmentData();
+                                      await refreshRecruitmentCandidateData();
                                     } else {
                                       toast.error(responseData.message || responseData.Message || "Failed to decline offer");
                                     }
@@ -2545,7 +3732,7 @@ const Recruitment = () => {
                                   }
                                 }}
                               >
-                                Decline Offer
+                                Offer Declined
                               </Button>
                             </Box>
                           </Grid>
@@ -2569,6 +3756,7 @@ const Recruitment = () => {
             }}
             title={filteredCandidatesTitle}
             submitLabel="Close"
+            showCancelButton={false}
             onSubmit={(e) => {
               e.preventDefault();
               setFilteredCandidatesDialogOpen(false);
@@ -2586,7 +3774,7 @@ const Recruitment = () => {
                 {
                   id: "status",
                   label: "Status",
-                  render: (value) => {
+                  render: (value, row) => {
                     const statusLabels = {
                       0: "Applied",
                       1: "Shortlisted",
@@ -2596,16 +3784,24 @@ const Recruitment = () => {
                       5: "Rejected",
                       6: "Withdrawn",
                     };
+                    const isInterviewedStage = Number(row?.stage) === 7;
+                    const label = isInterviewedStage
+                      ? "Interviewed"
+                      : (statusLabels[value] || "Applied");
+                    const color = isInterviewedStage
+                      ? "secondary"
+                      : value === 4
+                        ? "success"
+                        : value === 5 || value === 6
+                          ? "error"
+                          : value === 2
+                            ? "info"
+                            : "default";
                     return (
                       <Chip
-                        label={statusLabels[value] || "Applied"}
+                        label={label}
                         size="small"
-                        color={
-                          value === 4 ? "success" :
-                          value === 5 || value === 6 ? "error" :
-                          value === 2 ? "info" :
-                          "default"
-                        }
+                        color={color}
                         sx={{ fontWeight: 600 }}
                       />
                     );
@@ -2679,6 +3875,7 @@ const Recruitment = () => {
                   phone: candidate.phone || candidate.Phone || "-",
                   jobOpeningTitle: jobOpeningTitle,
                   status: candidate.status !== undefined ? candidate.status : (candidate.Status !== undefined ? candidate.Status : 0),
+                  stage: candidate.stage !== undefined ? candidate.stage : (candidate.Stage !== undefined ? candidate.Stage : 0),
                   source: candidate.source || candidate.Source || "Direct",
                 };
               })}

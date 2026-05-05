@@ -126,8 +126,10 @@ import { ThemeProvider, CssBaseline, CircularProgress } from "@mui/material";
 import Layout from "@/components/_App/Layout";
 import { useRouter } from "next/router";
 import { ProjectNo } from "Base/catelogue";
+import BASE_URL from "Base/api";
 import Calendar from "./reservation/calendar";
 import getSettingValueByName from "@/components/utils/getSettingValueByName";
+import logoutUser, { touchSessionActivity } from "@/components/utils/logoutUser";
 
 
 const DEFAULT_INACTIVITY_TIMEOUT_MINUTES = 12 * 60;
@@ -156,7 +158,7 @@ function MyApp({ Component, pageProps }) {
     localStorage.setItem("lastActivityTime", Date.now().toString());
   }, []);
 
-  const handleForceLogout = useCallback(() => {
+  const handleForceLogout = useCallback(async () => {
     if (typeof window === "undefined") {
       return;
     }
@@ -164,17 +166,19 @@ function MyApp({ Component, pageProps }) {
       return;
     }
     hasLoggedOutRef.current = true;
-    localStorage.clear();
-    sessionStorage.removeItem("holidayGreetingShown");
     setToken(null);
-    router.replace("/authentication/sign-in/");
+    await logoutUser({ router });
   }, [router]);
 
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const token = localStorage.getItem("token");
-      setToken(token);
+      const nextToken = localStorage.getItem("token");
+      setToken(nextToken);
+      if (nextToken && sessionStorage.getItem("justLoggedIn") === "true") {
+        touchSessionActivity();
+        sessionStorage.removeItem("justLoggedIn");
+      }
       const timeoutId = setTimeout(() => setHydrated(true), 100);
       return () => clearTimeout(timeoutId);
     }
@@ -220,6 +224,32 @@ function MyApp({ Component, pageProps }) {
   }, [token]);
 
   useEffect(() => {
+    if (typeof window === "undefined" || token != null) {
+      return;
+    }
+
+    const appOrigin = window.location.origin;
+    if (!appOrigin) {
+      return;
+    }
+
+    fetch(`${BASE_URL}/AppSetting/SaveCorsLink`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        webLink: appOrigin,
+        isActive: true,
+      }),
+    })
+      .then((response) => response.json())
+      .catch(() => {
+        // Non-blocking fire-and-forget for landing flow.
+      });
+  }, [token]);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -242,6 +272,12 @@ function MyApp({ Component, pageProps }) {
       if (inactivityTimerRef.current) {
         clearTimeout(inactivityTimerRef.current);
       }
+      return;
+    }
+
+    // Avoid evaluating stale idle timestamps before the shell has hydrated; otherwise
+    // a post-login full reload can clear the new session immediately.
+    if (!hydrated) {
       return;
     }
 
@@ -327,7 +363,7 @@ function MyApp({ Component, pageProps }) {
         inactivityTimerRef.current = null;
       }
     };
-  }, [handleForceLogout, markActivity, token, INACTIVITY_TIMEOUT_MS]);
+  }, [handleForceLogout, markActivity, token, INACTIVITY_TIMEOUT_MS, hydrated]);
 
 
   function clearLocalStorageDaily() {
@@ -341,10 +377,9 @@ function MyApp({ Component, pageProps }) {
     }
 
     var timeUntilClear = clearTime.getTime() - now.getTime();
-    setTimeout(function () {
-      localStorage.clear();
+    setTimeout(async function () {
+      await logoutUser({ router });
       clearLocalStorageDaily();
-      window.location.reload();
     }, timeUntilClear);
   }
   clearLocalStorageDaily();
@@ -357,7 +392,12 @@ function MyApp({ Component, pageProps }) {
     );
   }
 
-  if (token == null && landingVisible) {
+  // Exclude standalone print/share pages from layout and token check
+    const noLayoutRoutes = ["/crm/customer/quote", "/crm/customer/invoice", "/inventory/purchase-order/print", "/inventory/grn/print", "/inventory/shipment/print", "/inventory/stock-cycle-count/print", "/sales/sales-quotation/print", "/quotations/tech-pack/sewing/packing-print", "/quotations/tech-pack/sewing/emb-sub-print", "/quotations/tech-pack/sewing/cutting-print", "/verified", "/userverified", "/authentication/forgot-password", "/sales/sales-order/print"];
+  const shouldUseLayout = !noLayoutRoutes.includes(router.pathname);
+  const shouldCheckToken = !noLayoutRoutes.includes(router.pathname);
+
+  if (token == null && landingVisible && shouldCheckToken) {
     return (
       <div className={`landing-page ${landingSlideUp ? "slide-up" : ""}`}>
         <div className="landing-content">
@@ -367,11 +407,6 @@ function MyApp({ Component, pageProps }) {
       </div>
     );
   }
-
-  // Exclude customer/quote and customer/invoice pages from layout and token check
-  const noLayoutRoutes = ["/crm/customer/quote", "/crm/customer/invoice", "/verified", "/userverified"];
-  const shouldUseLayout = !noLayoutRoutes.includes(router.pathname);
-  const shouldCheckToken = !noLayoutRoutes.includes(router.pathname);
 
   if (token == null && shouldCheckToken) {
     if (ProjectNo === 1) {
@@ -388,10 +423,10 @@ function MyApp({ Component, pageProps }) {
         <CssBaseline />
         {shouldUseLayout ? (
           <Layout>
-            <Component {...pageProps} />
+            <Component key={router.asPath} {...pageProps} />
           </Layout>
         ) : (
-          <Component {...pageProps} />
+          <Component key={router.asPath} {...pageProps} />
         )}
       </ThemeProvider>
     </>

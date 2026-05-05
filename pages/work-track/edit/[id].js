@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import styles from "@/styles/PageTitle.module.css";
@@ -18,6 +18,7 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import Pagination from "@mui/material/Pagination";
 import Paper from "@mui/material/Paper";
 import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
@@ -68,8 +69,18 @@ import { Search, StyledInputBase } from "@/styles/main/search-styles";
 
 export default function EditWorkTrack() {
   const router = useRouter();
-  const { id } = router.query;
-  const hasFetched = useRef(false);
+
+  const resolvedWorkTrackId = useMemo(() => {
+    if (!router.isReady) return null;
+    const pathOnly = router.asPath.split("?")[0].split("#")[0];
+    const fromPath = pathOnly.match(/\/work-track\/edit\/([^/]+)/);
+    if (fromPath?.[1]) return fromPath[1];
+    const q = router.query.id;
+    if (q == null) return null;
+    return Array.isArray(q) ? q[0] : q;
+  }, [router.isReady, router.asPath, router.query.id]);
+
+  const id = resolvedWorkTrackId;
 
   const [loading, setLoading] = useState(true);
   const [workTrackData, setWorkTrackData] = useState(null);
@@ -81,7 +92,6 @@ export default function EditWorkTrack() {
   const [detailToDelete, setDetailToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [sourceFilter, setSourceFilter] = useState("All"); // "All", "Manual", "Excel"
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [previewData, setPreviewData] = useState(null);
   const [previewTab, setPreviewTab] = useState(0);
@@ -89,8 +99,37 @@ export default function EditWorkTrack() {
   const [confirmingUpload, setConfirmingUpload] = useState(false);
   const [replaceDuplicates, setReplaceDuplicates] = useState(false);
   const [showErrorEntries, setShowErrorEntries] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [technicians, setTechnicians] = useState([]);
   const fileInputRef = useRef(null);
+
+  // Server-side paginated forms (Skip/Take)
+  const [pagedForms, setPagedForms] = useState([]);
+  const [pagedTotalCount, setPagedTotalCount] = useState(0);
+  const [serverPage, setServerPage] = useState(1);
+  const [serverPageSize, setServerPageSize] = useState(10);
+  const [serverSearch, setServerSearch] = useState("");
+  const [serverSourceFilter, setServerSourceFilter] = useState("All"); // "All", "Manual", "Excel"
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    const loadTechnicians = async () => {
+      try {
+        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+        const res = await fetch(`${BASE_URL}/WorkTrackDetail/GetTechnicians`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const json = await res.json();
+        let list = [];
+        if (Array.isArray(json?.data)) list = json.data;
+        else if (Array.isArray(json?.result)) list = json.result;
+        setTechnicians(list);
+      } catch (e) {
+        console.error("Failed to load technicians for template:", e);
+        setTechnicians([]);
+      }
+    };
+    loadTechnicians();
+  }, [router.isReady]);
 
   // Debug: Log when dialog state changes
   useEffect(() => {
@@ -100,12 +139,11 @@ export default function EditWorkTrack() {
 
   // Fetch work track data and its details
   useEffect(() => {
-    if (!id) return;
-    if (hasFetched.current) return;
-    hasFetched.current = true;
+    if (!router.isReady || !id) return;
 
     const fetchData = async () => {
       try {
+        setLoading(true);
         // Fetch work track info
         const workTrackResponse = await fetch(`${BASE_URL}/WorkTrack/GetWorkTrackById?id=${id}`, {
           headers: {
@@ -141,7 +179,7 @@ export default function EditWorkTrack() {
     };
 
     fetchData();
-  }, [id]);
+  }, [id, router.isReady]);
 
   const fetchDetails = async () => {
     try {
@@ -208,7 +246,7 @@ export default function EditWorkTrack() {
 
       const result = await response.json();
       if (result?.status === 1) {
-        await fetchDetails();
+        await refreshAllForms();
         toast("Form deleted successfully!", { type: "success", autoClose: 3000 });
       } else {
         toast(result?.message || "Failed to delete form", { type: "error", autoClose: 3000 });
@@ -279,8 +317,8 @@ export default function EditWorkTrack() {
         setEditingDetail(null);
         resetForm();
         
-        // Refresh the details list using the same fetchDetails function
-        await fetchDetails();
+        // Refresh both the unpaged stats list and the current paged page
+        await refreshAllForms();
         
         // Show success message
         alert("Form saved successfully!");
@@ -417,12 +455,16 @@ export default function EditWorkTrack() {
         setReplaceDuplicates(false);
         setShowErrorEntries(false);
         
-        // Switch to Excel filter to show the imported data
-        setSourceFilter("Excel");
+        // Switch to Excel filter to show the imported data and reset to first page
+        setServerSourceFilter("Excel");
+        setServerPage(1);
         
-        // Refresh the details list to show newly imported data
+        // Refresh both the unpaged stats list and the paged forms (with the new filter)
         try {
-          await fetchDetails();
+          await Promise.all([
+            fetchDetails(),
+            fetchPagedForms(1, serverSearch, serverPageSize, "Excel"),
+          ]);
           
           // Show success message after data is refreshed
           const message = result?.message || "Excel data imported successfully!";
@@ -461,9 +503,69 @@ export default function EditWorkTrack() {
     setPreviewTab(0);
   };
 
-  const handleDownloadTemplate = () => {
-    // Define the template columns based on WorkTrackDetail fields
-    const templateHeaders = [
+  const formatTemplateCell = (value) => {
+    if (value == null || value === "") return "";
+    return String(value);
+  };
+
+  const formatDetailDateForSheet = (value) => {
+    if (!value) return "";
+    const parsed = dayjs(value);
+    return parsed.isValid() ? parsed.format("YYYY-MM-DD") : formatTemplateCell(value);
+  };
+
+  /** Column A text must match backend `ExcelUploadExtendedFirstHeader` so import uses the extended layout. */
+  const WORK_TRACK_UPLOAD_HEADERS = [
+    "Customer Name (parent)",
+    "Project Name (parent)",
+    "Parent Track ID",
+    "Work Track Remarks (parent)",
+    "Track ID",
+    "Manufacturer ID",
+    "Model Year",
+    "Model ID",
+    "Equipment Description",
+    "License Number",
+    "Latest Meter 1 Reading",
+    "Serial Number",
+    "Status Code",
+    "Status",
+    "Date Completed",
+    "MAC",
+    "SIM",
+    "SSID",
+    "Wifi Key",
+    "Notes",
+    "Assignee (Technician List)",
+    "Task Complete Percentage",
+  ];
+
+  const handleDownloadTemplate = async () => {
+    const wt = workTrackData || {};
+    let techRows = technicians;
+    if (!techRows?.length) {
+      try {
+        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+        const res = await fetch(`${BASE_URL}/WorkTrackDetail/GetTechnicians`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const json = await res.json();
+        if (Array.isArray(json?.data)) techRows = json.data;
+        else if (Array.isArray(json?.result)) techRows = json.result;
+        else techRows = [];
+        if (techRows.length) setTechnicians(techRows);
+      } catch (e) {
+        console.error(e);
+        techRows = [];
+      }
+    }
+
+    // Sheet 1: headers only (empty grid). API reads first worksheet only.
+    const uploadSheet = XLSX.utils.aoa_to_sheet([WORK_TRACK_UPLOAD_HEADERS]);
+    uploadSheet["!cols"] = WORK_TRACK_UPLOAD_HEADERS.map((h) => ({ wch: Math.max(h.length + 3, 14) }));
+
+    const existingWorksHeaders = [
+      "Detail Id",
       "Track ID",
       "Manufacturer ID",
       "Model Year",
@@ -477,55 +579,118 @@ export default function EditWorkTrack() {
       "Date Completed",
       "MAC",
       "SIM",
-      "SSID",
-      "Wifi Key",
       "Notes",
       "Assignee",
-      "Task Complete Percentage",
+      "Task %",
+      "Source",
     ];
+    const existingWorksRows =
+      details.length > 0
+        ? details.map((d) => [
+            formatTemplateCell(d.id),
+            formatTemplateCell(d.trackId),
+            formatTemplateCell(d.manufacturerId),
+            formatTemplateCell(d.modelYear),
+            formatTemplateCell(d.modelId),
+            formatTemplateCell(d.equipmentDescription),
+            formatTemplateCell(d.licenseNumber),
+            d.latestMeter1Reading != null && d.latestMeter1Reading !== ""
+              ? String(d.latestMeter1Reading)
+              : "",
+            formatTemplateCell(d.serialNumber),
+            formatTemplateCell(d.statusCode),
+            formatTemplateCell(d.status),
+            formatDetailDateForSheet(d.dateCompleted),
+            formatTemplateCell(d.mac),
+            formatTemplateCell(d.sim),
+            formatTemplateCell(d.notes),
+            formatTemplateCell(d.assignee),
+            d.taskCompletePercentage != null && d.taskCompletePercentage !== ""
+              ? String(d.taskCompletePercentage)
+              : "",
+            formatTemplateCell(d.source),
+          ])
+        : [
+            Array.from({ length: existingWorksHeaders.length }, (_, i) =>
+              i === 0 ? "No saved forms yet for this work track." : ""
+            ),
+          ];
 
-    // Create worksheet with headers and one example row
-    const worksheetData = [
-      templateHeaders,
-      // Example row with sample data
+    const parentRows = [
+      ["Field", "Value"],
+      ["Work track database ID", formatTemplateCell(wt.id)],
+      ["Customer Name (parent)", formatTemplateCell(wt.customerName)],
+      ["Project Name (parent)", formatTemplateCell(wt.projectName)],
+      ["Parent Track ID", formatTemplateCell(wt.trackId)],
+      ["Work Track Remarks (parent)", formatTemplateCell(wt.remarks)],
+      ["Model Year (header)", formatTemplateCell(wt.modelYear)],
+      ["Model ID (header)", formatTemplateCell(wt.modelId)],
+      ["Equipment description (header)", formatTemplateCell(wt.equipmentDescription)],
+      ["License number (header)", formatTemplateCell(wt.licenseNumber)],
+      ["Serial number (header)", formatTemplateCell(wt.serialNumber)],
+      ["Status (header)", formatTemplateCell(wt.status)],
+      [],
       [
-        "TRK-001",
-        "MFR-001",
-        "2024",
-        "MDL-001",
-        "Equipment description here",
-        "LIC-12345",
-        "1000",
-        "SN-001",
-        "ACTIVE",
-        "In Progress",
-        "2024-12-31",
-        "AA:BB:CC:DD:EE:FF",
-        "1234567890",
-        "WiFi_Network",
-        "password123",
-        "Notes here",
-        "John Doe",
-        "50",
+        "Copy the four parent values from this sheet into columns A–D on each new row on \"Work Track Upload\" so they match this work track (required if those cells are filled).",
       ],
+      [],
+      ["Existing works (saved forms on this work track) — reference only; not imported"],
+      [],
+      existingWorksHeaders,
+      ...existingWorksRows,
     ];
-
-    const worksheet = XLSX.utils.aoa_to_array ? 
-      XLSX.utils.aoa_to_sheet(worksheetData) : 
-      XLSX.utils.aoa_to_sheet(worksheetData);
-
-    // Set column widths for better readability
-    worksheet["!cols"] = templateHeaders.map((header) => ({
-      wch: Math.max(header.length + 5, 15),
+    const parentSheet = XLSX.utils.aoa_to_sheet(parentRows);
+    parentSheet["!cols"] = existingWorksHeaders.map((h, idx) => ({
+      wch: Math.min(Math.max(h.length + 3, idx < 2 ? 32 : 12), 48),
     }));
 
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "WorkTrack Template");
+    const techHeader = [
+      "Technician Id",
+      "Full name (paste this into Assignee column)",
+      "Email",
+      "User name",
+    ];
+    const techBody = (techRows || []).map((t) => {
+      const full =
+        t.fullName ||
+        t.FullName ||
+        [t.firstName || t.FirstName, t.lastName || t.LastName].filter(Boolean).join(" ").trim() ||
+        "";
+      return [
+        formatTemplateCell(t.id ?? t.Id),
+        full,
+        formatTemplateCell(t.email ?? t.Email),
+        formatTemplateCell(t.userName ?? t.UserName),
+      ];
+    });
+    const techIntro = [
+      [
+        "Use the Full name (or Email or User name) exactly as shown in column B–D in the Assignee column on sheet \"Work Track Upload\". The server links Assignee to Assigned Technician automatically.",
+      ],
+      [],
+      techHeader,
+      ...techBody,
+    ];
+    const techSheet = XLSX.utils.aoa_to_sheet(techIntro);
+    techSheet["!cols"] = [{ wch: 10 }, { wch: 36 }, { wch: 28 }, { wch: 22 }];
 
-    // Download the file
-    XLSX.writeFile(workbook, "WorkTrack_Upload_Template.xlsx");
-    
-    toast("Template downloaded successfully!", { type: "success", autoClose: 2000 });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, uploadSheet, "Work Track Upload");
+    XLSX.utils.book_append_sheet(workbook, parentSheet, "Parent work track");
+    XLSX.utils.book_append_sheet(workbook, techSheet, "Technician list");
+
+    const fileName =
+      wt.trackId != null && String(wt.trackId).trim()
+        ? `WorkTrack_Upload_${String(wt.trackId).replace(/[/\\?%*:|"<>]/g, "_")}.xlsx`
+        : `WorkTrack_Upload_Template_${id}.xlsx`;
+
+    XLSX.writeFile(workbook, fileName);
+    toast(
+      details.length
+        ? `Downloaded template: sheet \"Parent work track\" includes ${details.length} existing form(s).`
+        : "Downloaded 3-sheet template (no existing forms yet — Parent work track shows headers only for works).",
+      { type: "success", autoClose: 4000 }
+    );
   };
 
   const formInitialValues = {
@@ -549,43 +714,93 @@ export default function EditWorkTrack() {
     taskCompletePercentage: editingDetail?.taskCompletePercentage || "",
   };
 
-  // Filter details based on source filter
+  // Source counters (used for the dropdown labels and dashboard cards) come
+  // from the full unpaged `details` collection.
   const allForms = details;
   const manualForms = details.filter((d) => d.source === "Manual" || !d.source);
   const excelForms = details.filter((d) => d.source === "Excel");
-  
-  // Get forms based on source filter
-  const getFilteredBySource = () => {
-    if (sourceFilter === "Manual") return manualForms;
-    if (sourceFilter === "Excel") return excelForms;
-    return allForms; // "All"
+
+  // Server-side paginated fetch using SkipCount/MaxResultCount on the backend.
+  const fetchPagedForms = useCallback(
+    async (pageNum = serverPage, term = serverSearch, size = serverPageSize, sourceFilter = serverSourceFilter) => {
+      if (!id) return;
+      const skip = (pageNum - 1) * size;
+      const searchParam = term ? encodeURIComponent(term) : "null";
+      const filterParam =
+        sourceFilter && sourceFilter !== "All" ? encodeURIComponent(sourceFilter) : "null";
+      try {
+        const url =
+          `${BASE_URL}/WorkTrackDetail/GetAllDetailsByWorkTrackIdPaged` +
+          `?workTrackId=${id}&SkipCount=${skip}&MaxResultCount=${size}` +
+          `&Search=${searchParam}&Filter=${filterParam}`;
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+        const json = await res.json();
+        const r = json?.result ?? json?.data ?? json;
+        let items = [];
+        let total = 0;
+        if (r && Array.isArray(r.items)) {
+          items = r.items;
+          total = r.totalCount ?? items.length;
+        } else if (Array.isArray(r)) {
+          items = r;
+          total = r.length;
+        }
+        setPagedForms(items);
+        setPagedTotalCount(total);
+      } catch (e) {
+        console.error("Error fetching paged forms:", e);
+        setPagedForms([]);
+        setPagedTotalCount(0);
+      }
+    },
+    [id, serverPage, serverSearch, serverPageSize, serverSourceFilter]
+  );
+
+  // Initial paged fetch when work track id becomes available.
+  useEffect(() => {
+    if (id) {
+      fetchPagedForms(1, "", serverPageSize, serverSourceFilter);
+      setServerPage(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  const handleFormsSearchChange = (e) => {
+    const v = e.target.value;
+    setServerSearch(v);
+    setServerPage(1);
+    fetchPagedForms(1, v, serverPageSize, serverSourceFilter);
   };
-  
-  // Filter by search term
-  const filterBySearch = (forms) => {
-    if (!searchTerm.trim()) return forms;
-    const term = searchTerm.toLowerCase().trim();
-    return forms.filter((form) => {
-      return (
-        (form.trackId && form.trackId.toLowerCase().includes(term)) ||
-        (form.manufacturerId && form.manufacturerId.toLowerCase().includes(term)) ||
-        (form.modelYear && form.modelYear.toLowerCase().includes(term)) ||
-        (form.modelId && form.modelId.toLowerCase().includes(term)) ||
-        (form.equipmentDescription && form.equipmentDescription.toLowerCase().includes(term)) ||
-        (form.licenseNumber && form.licenseNumber.toLowerCase().includes(term)) ||
-        (form.serialNumber && form.serialNumber.toLowerCase().includes(term)) ||
-        (form.status && form.status.toLowerCase().includes(term)) ||
-        (form.statusCode && form.statusCode.toLowerCase().includes(term)) ||
-        (form.mac && form.mac.toLowerCase().includes(term)) ||
-        (form.sim && form.sim.toLowerCase().includes(term)) ||
-        (form.ssid && form.ssid.toLowerCase().includes(term)) ||
-        (form.wifiKey && form.wifiKey.toLowerCase().includes(term)) ||
-        (form.notes && form.notes.toLowerCase().includes(term))
-      );
-    });
+
+  const handleFormsSourceFilterChange = (e) => {
+    const v = e.target.value;
+    setServerSourceFilter(v);
+    setServerPage(1);
+    fetchPagedForms(1, serverSearch, serverPageSize, v);
   };
-  
-  const displayedForms = filterBySearch(getFilteredBySource());
+
+  const handleFormsPageChange = (event, value) => {
+    setServerPage(value);
+    fetchPagedForms(value, serverSearch, serverPageSize, serverSourceFilter);
+  };
+
+  const handleFormsPageSizeChange = (event) => {
+    const size = event.target.value;
+    setServerPageSize(size);
+    setServerPage(1);
+    fetchPagedForms(1, serverSearch, size, serverSourceFilter);
+  };
+
+  // Refresh both the unpaged stats list and the current paged page (after CRUD).
+  const refreshAllForms = useCallback(async () => {
+    await Promise.all([
+      fetchDetails(),
+      fetchPagedForms(serverPage, serverSearch, serverPageSize, serverSourceFilter),
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchPagedForms, serverPage, serverSearch, serverPageSize, serverSourceFilter]);
 
   // Dashboard Statistics
   const totalItems = details.length;
@@ -1066,14 +1281,14 @@ export default function EditWorkTrack() {
       <Card>
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={2}>
-            <Typography variant="h6">Saved Forms ({displayedForms.length})</Typography>
+            <Typography variant="h6">Saved Forms ({pagedTotalCount})</Typography>
             <Box display="flex" gap={2} alignItems="center">
               <FormControl size="small" sx={{ minWidth: 150 }}>
                 <InputLabel>Filter by Source</InputLabel>
                 <Select
-                  value={sourceFilter}
+                  value={serverSourceFilter}
                   label="Filter by Source"
-                  onChange={(e) => setSourceFilter(e.target.value)}
+                  onChange={handleFormsSourceFilterChange}
                 >
                   <MenuItem value="All">All ({allForms.length})</MenuItem>
                   <MenuItem value="Manual">Manual ({manualForms.length})</MenuItem>
@@ -1085,8 +1300,8 @@ export default function EditWorkTrack() {
                   <StyledInputBase
                     placeholder="Search forms..."
                     inputProps={{ "aria-label": "search" }}
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    value={serverSearch}
+                    onChange={handleFormsSearchChange}
                   />
                 </Search>
               </Box>
@@ -1113,20 +1328,20 @@ export default function EditWorkTrack() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {displayedForms.length === 0 ? (
+                {pagedForms.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={13} align="center">
                       <Typography color="textSecondary" py={3}>
-                        {sourceFilter === "Manual" 
+                        {serverSourceFilter === "Manual" 
                           ? 'No manual forms found. Click "New Work Track Form" to add one.'
-                          : sourceFilter === "Excel"
+                          : serverSourceFilter === "Excel"
                           ? 'No forms imported from Excel found. Click "Upload Excel" to import.'
                           : 'No forms found. Click "New Work Track Form" to add one or "Upload Excel" to import.'}
                       </Typography>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  displayedForms.map((detail) => (
+                  pagedForms.map((detail) => (
                     <TableRow 
                       key={detail.id} 
                       hover 
@@ -1183,6 +1398,25 @@ export default function EditWorkTrack() {
                 )}
               </TableBody>
             </Table>
+            {pagedTotalCount > 0 && (
+              <Grid container justifyContent="space-between" alignItems="center" mt={2} mb={2}>
+                <Pagination
+                  count={Math.max(1, Math.ceil(pagedTotalCount / serverPageSize))}
+                  page={serverPage}
+                  onChange={handleFormsPageChange}
+                  color="primary"
+                  shape="rounded"
+                />
+                <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+                  <InputLabel>Page Size</InputLabel>
+                  <Select value={serverPageSize} label="Page Size" onChange={handleFormsPageSizeChange}>
+                    <MenuItem value={5}>5</MenuItem>
+                    <MenuItem value={10}>10</MenuItem>
+                    <MenuItem value={25}>25</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
           </TableContainer>
         </CardContent>
       </Card>

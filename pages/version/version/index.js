@@ -3,79 +3,58 @@ import Grid from "@mui/material/Grid";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import {
+  Pagination,
+  FormControl,
+  Typography,
+  InputLabel,
+  MenuItem,
+  Select,
   Paper,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
-  TablePagination,
   TableRow,
-  Typography,
 } from "@mui/material";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
-import BASE_URL from "Base/api";
 import { toast, ToastContainer } from "react-toastify";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
+import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 
 export default function Version() {
   const cId = sessionStorage.getItem("category");
   const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
-  const [versions, setVersions] = useState([]);
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [searchTerm, setSearchTerm] = useState("");
+  const {
+    data: versions,
+    totalCount,
+    page,
+    pageSize,
+    search,
+    setPage,
+    setPageSize,
+    setSearch,
+    fetchData: fetchVersions,
+  } = usePaginatedFetch("Version/GetAllVersionsPage", "", 10, false, false);
 
-  const fetchVersions = async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/Version/GetAllVersions`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch versions");
-      }
-
-      const data = await response.json();
-      setVersions(data);
-    } catch (error) {
-      console.error("Error fetching versions:", error);
-      toast.error("Error fetching versions");
-    }
+  const handleSearchChange = (event) => {
+    setSearch(event.target.value);
+    fetchVersions(1, event.target.value, pageSize);
+    setPage(1);
   };
 
-  useEffect(() => {
-    fetchVersions();
-  }, []);
-
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
+  const handleChangePage = (event, value) => {
+    setPage(value);
+    fetchVersions(value, search, pageSize);
   };
 
   const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
+    const size = event.target.value;
+    setPageSize(size);
+    setPage(1);
+    fetchVersions(1, search, size);
   };
-
-  const handleSearchChange = (event) => {
-    setSearchTerm(event.target.value);
-  };
-
-  const filteredData = versions.filter(
-    (item) =>
-      item.versionNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const paginatedData = filteredData.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
-  );
 
   if (!navigate) {
     return <AccessDenied />;
@@ -103,7 +82,7 @@ export default function Version() {
             <StyledInputBase
               placeholder="Search here.."
               inputProps={{ "aria-label": "search" }}
-              value={searchTerm}
+              value={search}
               onChange={handleSearchChange}
             />
           </Search>
@@ -121,7 +100,7 @@ export default function Version() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {paginatedData.length === 0 ? (
+                {!versions || versions.length === 0 ? (
                   <TableRow
                     sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                   >
@@ -130,13 +109,13 @@ export default function Version() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedData.map((version, index) => (
+                  versions.map((version, index) => (
                     <TableRow
                       key={version.id}
                       sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                     >
                       <TableCell component="th" scope="row">
-                        {page * rowsPerPage + index + 1}
+                        {(page - 1) * pageSize + index + 1}
                       </TableCell>
                       <TableCell>{version.versionNumber}</TableCell>
                       <TableCell>{version.description || "-"}</TableCell>
@@ -162,15 +141,27 @@ export default function Version() {
                 )}
               </TableBody>
             </Table>
-            <TablePagination
-              rowsPerPageOptions={[5, 10, 25]}
-              component="div"
-              count={filteredData.length}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-            />
+            <Grid container justifyContent="space-between" mt={2} mb={2}>
+              <Pagination
+                count={totalCount ? Math.ceil(totalCount / pageSize) : 1}
+                page={page}
+                onChange={handleChangePage}
+                color="primary"
+                shape="rounded"
+              />
+              <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+                <InputLabel>Page Size</InputLabel>
+                <Select
+                  value={pageSize}
+                  label="Page Size"
+                  onChange={handleChangeRowsPerPage}
+                >
+                  <MenuItem value={5}>5</MenuItem>
+                  <MenuItem value={10}>10</MenuItem>
+                  <MenuItem value={25}>25</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
           </TableContainer>
         </Grid>
       </Grid>

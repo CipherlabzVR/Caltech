@@ -17,6 +17,7 @@ import BASE_URL from "Base/api";
 import KeyIcon from '@mui/icons-material/Key';
 import { useRouter } from "next/router";
 import PersonIcon from '@mui/icons-material/Person';
+import logoutUser from "@/components/utils/logoutUser";
 
 const Profile = () => {
   const [anchorEl, setAnchorEl] = React.useState(null);
@@ -61,13 +62,12 @@ const Profile = () => {
     setAnchorEl(null);
   };
 
-  const handleLogout = () => {
-    localStorage.clear();
-    window.location.href = "/authentication/sign-in/";
+  const handleLogout = async () => {
+    await logoutUser({ router });
   };
 
   const navigateToChangePassword = () => {
-    router.push('/change-password/');
+    router.push('/profile/?section=settings');
   };
 
   const navigateToProfile = () => {

@@ -21,10 +21,12 @@ import { Catelogue } from "Base/catelogue";
 import ShareReports from "@/components/UIElements/Modal/Reports/ShareReports";
 import { Report } from "Base/report";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
-// import UpdateConfirmQuotation from "@/components/UIElements/Modal/UpdateConfirmQuotation";
+import BorderColorIcon from "@mui/icons-material/BorderColor";
+import { useRouter } from "next/router";
 import { projectStatusType } from "@/components/types/types";
 
 export default function TechPackList() {
+    const router = useRouter();
     const cId = sessionStorage.getItem("category")
     const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
     const [quotationList, setQuotationList] = useState([]);
@@ -35,6 +37,61 @@ export default function TechPackList() {
     const name = localStorage.getItem("name");
     const [tabValue, setTabValue] = useState(0);
     const { data: InvoiceReportName } = GetReportSettingValueByName("ProformaInvoiceReport");
+
+    const openSewingPackingPrint = (item) => {
+        const params = new URLSearchParams({
+            inquiryId: String(item.inquiryId ?? ""),
+            optionId: String(item.optionId ?? ""),
+            sentQuotationId: String(item.id ?? ""),
+            startDate: String(item.startDate ?? ""),
+            workingDays: String(item.workingDays ?? ""),
+            styleName: String(item.styleName ?? ""),
+            customerName: String(item.customerName ?? ""),
+            optionName: String(item.optionName ?? ""),
+            selectedOption: String(item.selectedOption ?? ""),
+        });
+
+        window.open(`/quotations/tech-pack/sewing/packing-print?${params.toString()}`, "_blank", "noopener,noreferrer");
+    };
+
+    const openEmbSubPrint = (item) => {
+        const params = new URLSearchParams({
+            inquiryId: String(item.inquiryId ?? ""),
+            optionId: String(item.optionId ?? ""),
+            sentQuotationId: String(item.id ?? ""),
+            startDate: String(item.startDate ?? ""),
+            workingDays: String(item.workingDays ?? ""),
+            styleName: String(item.styleName ?? ""),
+            customerName: String(item.customerName ?? ""),
+            optionName: String(item.optionName ?? ""),
+            selectedOption: String(item.selectedOption ?? ""),
+        });
+
+        window.open(`/quotations/tech-pack/sewing/emb-sub-print?${params.toString()}`, "_blank", "noopener,noreferrer");
+    };
+
+    const openCuttingPrint = (item) => {
+        const params = new URLSearchParams({
+            inquiryId: String(item.inquiryId ?? ""),
+            optionId: String(item.optionId ?? ""),
+            sentQuotationId: String(item.id ?? ""),
+            startDate: String(item.startDate ?? ""),
+            workingDays: String(item.workingDays ?? ""),
+            styleName: String(item.styleName ?? ""),
+            customerName: String(item.customerName ?? ""),
+            optionName: String(item.optionName ?? ""),
+            selectedOption: String(item.selectedOption ?? ""),
+        });
+
+        window.open(`/quotations/tech-pack/sewing/cutting-print?${params.toString()}`, "_blank", "noopener,noreferrer");
+    };
+
+    const navigateToEdit = (inquiryId, optionId, sentQuotationId) => {
+        router.push({
+            pathname: "/quotations/tech-pack/edit",
+            query: { inquiryId, optionId, sentQuotationId }
+        });
+    };
 
 
     const handleTabChange = (event, newValue) => {
@@ -64,7 +121,7 @@ export default function TechPackList() {
 
     const fetchQuotationList = async (page = 1, search = "", size = pageSize, tab = tabValue) => {
         try {
-            const type = tab === 1 ? 7 : 3;
+            const type = tab === 1 ? 4 : 3;
             const token = localStorage.getItem("token");
             const skip = (page - 1) * size;
             const query = `${BASE_URL}/Inquiry/GetAllQuotationsByType?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}&type=${type}`;
@@ -108,7 +165,7 @@ export default function TechPackList() {
             </div>
             <Tabs value={tabValue} onChange={handleTabChange}>
                 <Tab label="Pending" />
-                <Tab label="Rejected" />
+                <Tab label="Approved" />
             </Tabs>
 
             <Grid mt={1} container rowSpacing={1} columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}>
@@ -127,23 +184,29 @@ export default function TechPackList() {
                         <Table aria-label="simple table" className="dark-table">
                             <TableHead>
                                 <TableRow>
-                                    <TableCell>Document No</TableCell>
-                                    <TableCell>Customer Name</TableCell>
                                     <TableCell>Inquiry Code</TableCell>
+                                    <TableCell>Customer Name</TableCell>
                                     <TableCell>Option Name</TableCell>
                                     <TableCell>Style Name</TableCell>
                                     <TableCell>Start Date</TableCell>
-                                    <TableCell>Working Days</TableCell>
-                                    <TableCell>Selected Option</TableCell>
-                                    <TableCell>Document</TableCell>
+                                    {tabValue === 0 && (
+                                        <>
+                                            <TableCell>Working Days</TableCell>
+                                            <TableCell>Selected Option</TableCell>
+                                            <TableCell>Document</TableCell>
+                                        </>
+                                    )}
                                     <TableCell>Status</TableCell>
-                                    {tabValue === 1 ? <TableCell align="right">Rejected Reason</TableCell> : <TableCell align="right">Action</TableCell>}
+                                    {tabValue === 1 && <TableCell align="center">Sewing/Packing</TableCell>}
+                                    {tabValue === 1 && <TableCell align="center">Emb/Sub</TableCell>}
+                                    {tabValue === 1 && <TableCell align="center">Cutting</TableCell>}
+                                    {tabValue === 0 && <TableCell align="right">Action</TableCell>}
                                 </TableRow>
                             </TableHead>
                             <TableBody>
                                 {quotationList.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={12}>
+                                        <TableCell colSpan={tabValue === 0 ? 10 : 9}>
                                             <Typography color="error">No Quotations Available</Typography>
                                         </TableCell>
                                     </TableRow>
@@ -154,24 +217,52 @@ export default function TechPackList() {
 
                                         return (
                                             <TableRow key={index}>
-                                                <TableCell>{item.documentNo}</TableCell>
-                                                <TableCell>{item.customerName}</TableCell>
                                                 <TableCell>{item.inquiryCode}</TableCell>
+                                                <TableCell>{item.customerName}</TableCell>
                                                 <TableCell>{item.optionName}</TableCell>
                                                 <TableCell>{item.styleName}</TableCell>
                                                 <TableCell>{formatDate(item.startDate)}</TableCell>
-                                                <TableCell>{item.workingDays}</TableCell>
-                                                <TableCell>{item.selectedOption}</TableCell>
-                                                <TableCell>
-                                                    <a href={`${item.documentURL}`} target="_blank">
-                                                        view
-                                                    </a>
-                                                </TableCell>
+                                                {tabValue === 0 && (
+                                                    <>
+                                                        <TableCell>{item.workingDays}</TableCell>
+                                                        <TableCell>{item.selectedOption}</TableCell>
+                                                        <TableCell>
+                                                            <a href={`${item.documentURL}`} target="_blank">
+                                                                view
+                                                            </a>
+                                                        </TableCell>
+                                                    </>
+                                                )}
                                                 <TableCell>{projectStatusType(item.projectStatusType)}</TableCell>
 
-                                                {tabValue === 1 ?
-                                                    <TableCell align="right">{item.rejectedReason}</TableCell>
-                                                    :
+                                                {tabValue === 1 && (
+                                                    <TableCell
+                                                        align="center"
+                                                        onClick={() => openSewingPackingPrint(item)}
+                                                        sx={{ cursor: "pointer", textDecoration: "underline", color: "primary.main" }}
+                                                    >
+                                                        Open
+                                                    </TableCell>
+                                                )}
+                                                {tabValue === 1 && (
+                                                    <TableCell
+                                                        align="center"
+                                                        onClick={() => openEmbSubPrint(item)}
+                                                        sx={{ cursor: "pointer", textDecoration: "underline", color: "primary.main" }}
+                                                    >
+                                                        Open
+                                                    </TableCell>
+                                                )}
+                                                {tabValue === 1 && (
+                                                    <TableCell
+                                                        align="center"
+                                                        onClick={() => openCuttingPrint(item)}
+                                                        sx={{ cursor: "pointer", textDecoration: "underline", color: "primary.main" }}
+                                                    >
+                                                        Open
+                                                    </TableCell>
+                                                )}
+                                                {tabValue === 0 && (
                                                     <TableCell align="right">
                                                         <Box display="flex" gap={1}>
                                                             <ShareReports url={whatsapp} mobile={item.sentWhatsappNumber} />
@@ -183,27 +274,27 @@ export default function TechPackList() {
                                                                         </IconButton>
                                                                     </a>
                                                                 </Tooltip></> : ""}
-                                                            {/* <UpdateConfirmQuotation
-                                                                fetchItems={fetchQuotationList}
-                                                                sentQuotId={item.id}
-                                                                type={7}
-                                                                isConfirm={false}
-                                                            />
-                                                            <UpdateConfirmQuotation
-                                                                fetchItems={fetchQuotationList}
-                                                                sentQuotId={item.id}
-                                                                type={4}
-                                                                isConfirm={true}
-                                                            /> */}
+                                                            {update ? (
+                                                                <Tooltip title="Edit Tech Pack" placement="top">
+                                                                    <IconButton 
+                                                                        aria-label="edit" 
+                                                                        size="small"
+                                                                        onClick={() => navigateToEdit(item.inquiryId, item.optionId, item.id)}
+                                                                    >
+                                                                        <BorderColorIcon color="primary" fontSize="medium" />
+                                                                    </IconButton>
+                                                                </Tooltip>
+                                                            ) : ""}
                                                         </Box>
                                                     </TableCell>
-                                                }
+                                                )}
                                             </TableRow>
                                         )
                                     })
                                 )}
                             </TableBody>
                         </Table>
+
                         <Grid container justifyContent="space-between" mt={2} mb={2}>
                             <Pagination
                                 count={Math.ceil(totalCount / pageSize)}

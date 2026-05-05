@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import styles from "@/styles/PageTitle.module.css";
@@ -79,13 +79,59 @@ import RestaurantIcon from "@mui/icons-material/Restaurant";
 import CoffeeIcon from "@mui/icons-material/Coffee";
 import BASE_URL from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import SignatureCanvas from "react-signature-canvas";
 import CameraCaptureModal from "@/components/work-track/CameraCaptureModal";
 
+/** Extract checklist array from ApiResponse / alternate shapes */
+function extractChecklistArrayFromResponse(result) {
+  const candidates = [
+    result?.data,
+    result?.result,
+    result?.Data,
+    result?.Result,
+  ];
+  for (const c of candidates) {
+    if (Array.isArray(c)) return c;
+    if (c && Array.isArray(c.items)) return c.items;
+    if (c && Array.isArray(c.Items)) return c.Items;
+  }
+  return Array.isArray(result) ? result : [];
+}
+
+/** API may send camelCase, PascalCase, or strings; missing means this row only (false). */
+function normalizeAppliesToEntireWorkTrack(cl) {
+  const v = cl?.appliesToEntireWorkTrack ?? cl?.AppliesToEntireWorkTrack;
+  if (v === true || v === 1) return true;
+  if (v === false || v === 0) return false;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (s === "true" || s === "1") return true;
+    if (s === "false" || s === "0") return false;
+  }
+  return false;
+}
+
 export default function WorkTrackDetailView() {
   const router = useRouter();
-  const { id } = router.query;
-  const hasFetched = useRef(false);
+  /**
+   * Next.js can lag updating router.query during client navigations; router.asPath matches the URL immediately.
+   * Without this, fetches may still use the previous detail id (wrong checklists / summary).
+   */
+  const resolvedDetailId = useMemo(() => {
+    if (!router.isReady) return null;
+    const pathOnly = router.asPath.split("?")[0].split("#")[0];
+    const fromPath = pathOnly.match(/\/work-track\/detail\/([^/]+)/);
+    if (fromPath?.[1]) return fromPath[1];
+    const q = router.query.id;
+    if (q == null) return null;
+    return Array.isArray(q) ? q[0] : q;
+  }, [router.isReady, router.asPath, router.query.id]);
+
+  const id = resolvedDetailId;
+
+  /** Invalidates in-flight fetches when route id changes so slower responses cannot overwrite newer detail data */
+  const detailNavSeqRef = useRef(0);
 
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState(null);
@@ -97,6 +143,7 @@ export default function WorkTrackDetailView() {
   const [editingChecklist, setEditingChecklist] = useState(null);
   const [checklistTitle, setChecklistTitle] = useState("");
   const [checklistDescription, setChecklistDescription] = useState("");
+  const [checklistAppliesToEntireWorkTrack, setChecklistAppliesToEntireWorkTrack] = useState(false);
   const [savingChecklist, setSavingChecklist] = useState(false);
 
   // Checklist Item modals
@@ -109,6 +156,7 @@ export default function WorkTrackDetailView() {
   const [newOption, setNewOption] = useState("");
   const [itemDescription, setItemDescription] = useState("");
   const [itemIsRequired, setItemIsRequired] = useState(false);
+  const [itemApplyToAllDetailRecords, setItemApplyToAllDetailRecords] = useState(false);
   const [savingItem, setSavingItem] = useState(false);
   
   // Image/Camera capture
@@ -188,10 +236,11 @@ export default function WorkTrackDetailView() {
     }
   }, [id]);
 
-  const loadBreaksFromAPI = useCallback(async () => {
-    if (!id) return null;
+  const loadBreaksFromAPI = useCallback(async (detailIdOverride) => {
+    const wid = detailIdOverride ?? id;
+    if (!wid) return null;
     try {
-      const response = await fetch(`${BASE_URL}/WorkTrackDetail/GetBreakData?workTrackDetailId=${id}`, {
+      const response = await fetch(`${BASE_URL}/WorkTrackDetail/GetBreakData?workTrackDetailId=${wid}`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
@@ -250,25 +299,35 @@ export default function WorkTrackDetailView() {
   const isPendingApproval = detail?.submissionStatus === "PendingApproval";
   const isReadOnly = isCompleted;
 
+  // App setting: when enabled, removes time tracking (start/end work, breaks, timers, sessions UI)
+  const { data: removeTimeTrackSetting } = IsAppSettingEnabled("RemoveTimeTrackFromWorkTrackDetail");
+  const isTimeTrackingHidden = removeTimeTrackSetting === true || removeTimeTrackSetting === "true";
+
   useEffect(() => {
-    if (!id) return;
-    if (hasFetched.current) return;
-    hasFetched.current = true;
+    if (!router.isReady || !id) return;
+    const detailKey = String(id);
 
-    fetchData();
+    detailNavSeqRef.current += 1;
+    const loadSeq = detailNavSeqRef.current;
+
+    fetchData(loadSeq, detailKey);
     fetchTechnicians();
-  }, [id]);
+  }, [id, router.isReady]);
 
-  const fetchData = async () => {
+  const fetchData = async (loadSeq, detailKey) => {
     try {
       setLoading(true);
-      // Fetch work track detail
-      const detailResponse = await fetch(`${BASE_URL}/WorkTrackDetail/GetWorkTrackDetailById?id=${id}`, {
+      setChecklists([]);
+      setExpandedChecklists({});
+
+      const detailResponse = await fetch(`${BASE_URL}/WorkTrackDetail/GetWorkTrackDetailById?id=${detailKey}`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
       });
       const detailResult = await detailResponse.json();
+
+      if (loadSeq !== detailNavSeqRef.current) return;
 
       let detailData = null;
       if (detailResult?.data) {
@@ -287,19 +346,31 @@ export default function WorkTrackDetailView() {
         return;
       }
 
-      // Fetch checklists
-      await fetchChecklists();
-      
-      // Fetch work summary
-      await fetchWorkSummary();
-      
+      if (loadSeq !== detailNavSeqRef.current) return;
+
+      await fetchChecklists(loadSeq, detailKey);
+
+      if (loadSeq !== detailNavSeqRef.current) return;
+
+      await fetchWorkSummary(loadSeq, detailKey);
+
       // Note: Break sync is handled by the polling useEffect which syncs immediately on mount
     } catch (error) {
       console.error("Error fetching data:", error);
       toast("Failed to load data", { type: "error" });
     } finally {
-      setLoading(false);
+      if (loadSeq === detailNavSeqRef.current) {
+        setLoading(false);
+      }
     }
+  };
+
+  const reloadCurrentDetailFromRoute = async () => {
+    const dk = detail?.id ?? id;
+    if (dk == null) return;
+    detailNavSeqRef.current += 1;
+    const loadSeq = detailNavSeqRef.current;
+    await fetchData(loadSeq, String(dk));
   };
 
   const fetchTechnicians = async () => {
@@ -321,63 +392,62 @@ export default function WorkTrackDetailView() {
     }
   };
 
-  const fetchWorkSummary = async () => {
+  const fetchWorkSummary = async (loadSeq, detailKeyOverride) => {
+    const seqMarker = loadSeq ?? detailNavSeqRef.current;
+    const detailKey = detailKeyOverride ?? id;
+    if (!detailKey) return;
     try {
-      const response = await fetch(`${BASE_URL}/WorkTrackWorkSession/GetWorkSummary?workTrackDetailId=${id}`, {
+      const response = await fetch(`${BASE_URL}/WorkTrackWorkSession/GetWorkSummary?workTrackDetailId=${detailKey}`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
       });
       const result = await response.json();
-      
+
+      if (seqMarker !== detailNavSeqRef.current) return;
+
       let summaryData = null;
       if (result?.data) {
         summaryData = result.data;
       } else if (result?.result) {
         summaryData = result.result;
       }
-      
+
+      if (seqMarker !== detailNavSeqRef.current) return;
+
       setWorkSummary(summaryData);
-      
+
       // Start live timer ONLY if work is actively in progress (not on break/hold)
       if (summaryData?.currentStatus === "Started") {
-        // Use totalWorkDuration (excludes break time)
         startLiveTimer(summaryData.totalWorkDuration || 0);
-        // Note: Don't clear break state here - let syncBreaksFromAPI handle it
-        // This avoids race conditions where status updates before break data
       } else if (summaryData?.currentStatus === "Held") {
-        // Stop work timer when on break
         stopLiveTimer();
         setLiveTimer(summaryData?.totalWorkDuration || 0);
-        // Break countdown is handled by syncBreaksFromAPI
       } else if (summaryData?.currentStatus === "Completed") {
-        // Work completed - show summary
         stopLiveTimer();
         setLiveTimer(summaryData?.totalWorkDuration || 0);
-        
-        // Set work ended summary from the work summary data and break data
-        const apiBreaks = await loadBreaksFromAPI();
+
+        const apiBreaks = await loadBreaksFromAPI(detailKey);
+        if (seqMarker !== detailNavSeqRef.current) return;
         if (apiBreaks) {
-          const totalBreakTime = 
-            (apiBreaks.first?.duration || 0) + 
-            (apiBreaks.lunch?.duration || 0) + 
+          const totalBreakTime =
+            (apiBreaks.first?.duration || 0) +
+            (apiBreaks.lunch?.duration || 0) +
             (apiBreaks.second?.duration || 0);
-          
+
           setWorkEndedSummary({
             totalWorkTime: summaryData?.totalWorkDuration || 0,
             firstBreak: apiBreaks.first?.duration || 0,
             lunchBreak: apiBreaks.lunch?.duration || 0,
             secondBreak: apiBreaks.second?.duration || 0,
             totalBreakTime: totalBreakTime,
-            totalDuration: (summaryData?.totalWorkDuration || 0) + totalBreakTime
+            totalDuration: (summaryData?.totalWorkDuration || 0) + totalBreakTime,
           });
         }
       } else {
-        // Not started
         stopLiveTimer();
         setLiveTimer(summaryData?.totalWorkDuration || 0);
       }
-      // Break state is managed exclusively by syncBreaksFromAPI
     } catch (error) {
       console.error("Error fetching work summary:", error);
     }
@@ -881,7 +951,7 @@ export default function WorkTrackDetailView() {
         });
         
         await fetchWorkSummary();
-        await fetchChecklists(); // Refresh to update completion percentage
+        await refreshChecklists(); // Refresh to update completion percentage
       } else {
         toast(result?.message || "Failed to end work", { type: "error" });
       }
@@ -913,7 +983,7 @@ export default function WorkTrackDetailView() {
       
       if (result?.statusCode === 200) {
         toast("Technician assigned successfully!", { type: "success" });
-        await fetchData();
+        await reloadCurrentDetailFromRoute();
       } else {
         toast(result?.message || "Failed to assign technician", { type: "error" });
       }
@@ -962,7 +1032,7 @@ export default function WorkTrackDetailView() {
       if (result?.statusCode === 200) {
         toast("Submitted to admin successfully!", { type: "success" });
         setSubmitModalOpen(false);
-        await fetchData();
+        await reloadCurrentDetailFromRoute();
       } else {
         toast(result?.message || "Failed to submit", { type: "error" });
       }
@@ -1009,7 +1079,7 @@ export default function WorkTrackDetailView() {
         const displayType = signatureType === "Admin" ? "Manager on Duty" : signatureType;
         toast(`${displayType} signature added successfully!`, { type: "success" });
         setSignatureModalOpen(false);
-        await fetchData();
+        await reloadCurrentDetailFromRoute();
       } else {
         toast(result?.message || "Failed to save signature", { type: "error" });
       }
@@ -1065,35 +1135,60 @@ export default function WorkTrackDetailView() {
     }
   };
 
-  const fetchChecklists = async () => {
+  const fetchChecklists = async (loadSeq, workTrackDetailId) => {
+    const seqMarker = loadSeq ?? detailNavSeqRef.current;
+    const wid = String(workTrackDetailId);
     try {
-      const response = await fetch(`${BASE_URL}/WorkTrackChecklist/GetChecklistsByWorkTrackDetailId?workTrackDetailId=${id}`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
+      const response = await fetch(
+        `${BASE_URL}/WorkTrackChecklist/GetChecklistsByWorkTrackDetailId?workTrackDetailId=${wid}`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
       const result = await response.json();
 
-      let checklistData = [];
-      if (result?.data && Array.isArray(result.data)) {
-        checklistData = result.data;
-      } else if (result?.result && Array.isArray(result.result)) {
-        checklistData = result.result;
-      } else if (Array.isArray(result)) {
-        checklistData = result;
-      }
+      if (seqMarker !== detailNavSeqRef.current) return;
+
+      let checklistData = extractChecklistArrayFromResponse(result);
+
+      checklistData = checklistData.map((cl) => {
+        const rawItems = cl.items ?? cl.Items;
+        const items = Array.isArray(rawItems) ? rawItems : [];
+        return {
+          ...cl,
+          appliesToEntireWorkTrack: normalizeAppliesToEntireWorkTrack(cl),
+          items: items.map((item) => ({
+            ...item,
+            optionsList: Array.isArray(item.optionsList)
+              ? item.optionsList
+              : Array.isArray(item.OptionsList)
+                ? item.OptionsList
+                : [],
+          })),
+        };
+      });
+
+      if (seqMarker !== detailNavSeqRef.current) return;
 
       setChecklists(checklistData);
-      
-      // Auto-expand all checklists by default
+
       const expanded = {};
-      checklistData.forEach(cl => {
+      checklistData.forEach((cl) => {
         expanded[cl.id] = true;
       });
       setExpandedChecklists(expanded);
     } catch (error) {
       console.error("Error fetching checklists:", error);
     }
+  };
+
+  /** Refresh checklists for the detail currently on screen (after CRUD); respects navigation seq */
+  const refreshChecklists = async () => {
+    const dk = detail?.id ?? id;
+    if (dk == null) return;
+    return fetchChecklists(detailNavSeqRef.current, String(dk));
   };
 
   const goBack = () => {
@@ -1117,6 +1212,9 @@ export default function WorkTrackDetailView() {
     setEditingChecklist(checklist);
     setChecklistTitle(checklist?.title || "");
     setChecklistDescription(checklist?.description || "");
+    setChecklistAppliesToEntireWorkTrack(
+      checklist ? normalizeAppliesToEntireWorkTrack(checklist) : false
+    );
     setChecklistModalOpen(true);
   };
 
@@ -1125,6 +1223,7 @@ export default function WorkTrackDetailView() {
     setEditingChecklist(null);
     setChecklistTitle("");
     setChecklistDescription("");
+    setChecklistAppliesToEntireWorkTrack(false);
   };
 
   const handleSaveChecklist = async () => {
@@ -1142,12 +1241,15 @@ export default function WorkTrackDetailView() {
             description: checklistDescription,
             isCompleted: editingChecklist.isCompleted,
             sortOrder: editingChecklist.sortOrder,
+            appliesToEntireWorkTrack: Boolean(checklistAppliesToEntireWorkTrack),
+            workTrackDetailContextId: Number(detail?.id ?? id),
           }
         : {
-            workTrackDetailId: parseInt(id),
+            workTrackDetailId: Number(detail?.id ?? id),
             title: checklistTitle,
             description: checklistDescription,
             sortOrder: checklists.length,
+            appliesToEntireWorkTrack: Boolean(checklistAppliesToEntireWorkTrack),
           };
 
       const url = editingChecklist
@@ -1167,7 +1269,7 @@ export default function WorkTrackDetailView() {
 
       if (result?.statusCode === 200 || response.ok) {
         handleCloseChecklistModal();
-        await fetchChecklists();
+        await refreshChecklists();
         toast(editingChecklist ? "Checklist updated!" : "Checklist added!", { type: "success" });
       } else {
         toast(result?.message || "Failed to save checklist", { type: "error" });
@@ -1207,10 +1309,13 @@ export default function WorkTrackDetailView() {
       for (let i = 0; i < duplicateCount; i++) {
         // Create the checklist copy
         const checklistPayload = {
-          workTrackDetailId: parseInt(id),
+          workTrackDetailId: Number(detail?.id ?? id),
           title: `${duplicateChecklist.title} (Copy ${i + 1})`,
           description: duplicateChecklist.description || "",
           sortOrder: checklists.length + i,
+          appliesToEntireWorkTrack: Boolean(
+            normalizeAppliesToEntireWorkTrack(duplicateChecklist)
+          ),
         };
 
         const checklistResponse = await fetch(`${BASE_URL}/WorkTrackChecklist/CreateChecklist`, {
@@ -1255,7 +1360,7 @@ export default function WorkTrackDetailView() {
       }
 
       handleCloseDuplicateModal();
-      await fetchChecklists();
+      await refreshChecklists();
       toast(`Successfully created ${successCount} duplicate${successCount > 1 ? 's' : ''}!`, { type: "success" });
     } catch (error) {
       console.error("Error duplicating checklist:", error);
@@ -1314,7 +1419,7 @@ export default function WorkTrackDetailView() {
       if (result?.statusCode === 200 || response.ok) {
         toast("Summary updated successfully!", { type: "success" });
         handleCloseEditSummaryModal();
-        await fetchData();
+        await reloadCurrentDetailFromRoute();
       } else {
         toast(result?.message || "Failed to update summary", { type: "error" });
       }
@@ -1336,6 +1441,7 @@ export default function WorkTrackDetailView() {
     setItemOptions(item?.optionsList || []);
     setItemDescription(item?.description || "");
     setItemIsRequired(item?.isRequired || false);
+    setItemApplyToAllDetailRecords(false);
     setNewOption("");
     setItemModalOpen(true);
   };
@@ -1350,6 +1456,7 @@ export default function WorkTrackDetailView() {
     setNewOption("");
     setItemDescription("");
     setItemIsRequired(false);
+    setItemApplyToAllDetailRecords(false);
   };
 
   const handleAddOption = () => {
@@ -1399,6 +1506,7 @@ export default function WorkTrackDetailView() {
             options: (itemType === "Radio" || itemType === "Dropdown") ? itemOptions : null,
             description: itemDescription || null,
             isRequired: itemIsRequired,
+            applyToAllDetailRecords: itemApplyToAllDetailRecords,
           };
 
       const url = editingItem
@@ -1418,8 +1526,13 @@ export default function WorkTrackDetailView() {
 
       if (result?.statusCode === 200 || response.ok) {
         handleCloseItemModal();
-        await fetchChecklists();
-        toast(editingItem ? "Item updated!" : "Item added!", { type: "success" });
+        await refreshChecklists();
+        const successMessage = editingItem
+          ? "Item updated!"
+          : (result?.message && /applied to \d+ other detail/i.test(result.message)
+              ? result.message
+              : "Item added!");
+        toast(successMessage, { type: "success" });
       } else {
         toast(result?.message || "Failed to save item", { type: "error" });
       }
@@ -1435,7 +1548,7 @@ export default function WorkTrackDetailView() {
   const handleUpdateItemValue = async (itemId, selectedValue) => {
     if (isReadOnly) return;
     
-    if (!isPendingApproval && workSummary?.currentStatus !== "Started") {
+    if (!isTimeTrackingHidden && !isPendingApproval && workSummary?.currentStatus !== "Started") {
       toast("Please start work before updating items", { type: "warning" });
       return;
     }
@@ -1447,11 +1560,15 @@ export default function WorkTrackDetailView() {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ id: itemId, selectedValue }),
+        body: JSON.stringify({
+          id: itemId,
+          selectedValue,
+          workTrackDetailId: detail?.id != null ? Number(detail.id) : Number(id),
+        }),
       });
 
       if (response.ok) {
-        await fetchChecklists();
+        await refreshChecklists();
       }
     } catch (error) {
       console.error("Error updating item value:", error);
@@ -1462,7 +1579,7 @@ export default function WorkTrackDetailView() {
   const openCameraModal = (itemId) => {
     if (isReadOnly) return;
     
-    if (!isPendingApproval && workSummary?.currentStatus !== "Started") {
+    if (!isTimeTrackingHidden && !isPendingApproval && workSummary?.currentStatus !== "Started") {
       toast("Please start work before capturing images", { type: "warning" });
       return;
     }
@@ -1481,12 +1598,16 @@ export default function WorkTrackDetailView() {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ id: cameraItemId, imageData }),
+        body: JSON.stringify({
+          id: cameraItemId,
+          imageData,
+          workTrackDetailId: detail?.id != null ? Number(detail.id) : Number(id),
+        }),
       });
 
       const result = await response.json();
       if (result?.statusCode === 200 || response.ok) {
-        await fetchChecklists();
+        await refreshChecklists();
         toast("Photo captured and uploaded successfully!", { type: "success" });
       } else {
         toast(result?.message || "Failed to upload photo", { type: "error" });
@@ -1501,7 +1622,8 @@ export default function WorkTrackDetailView() {
     if (isReadOnly) return;
     
     // Only allow toggling if work has started OR pending approval (Manager on Duty editing)
-    if (!isPendingApproval && workSummary?.currentStatus !== "Started") {
+    // When time tracking is hidden via app setting, allow toggling without started status
+    if (!isTimeTrackingHidden && !isPendingApproval && workSummary?.currentStatus !== "Started") {
       toast("Please start work before ticking checklist items", { type: "warning" });
       return;
     }
@@ -1513,11 +1635,15 @@ export default function WorkTrackDetailView() {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ id: itemId, isCompleted }),
+        body: JSON.stringify({
+          id: itemId,
+          isCompleted,
+          workTrackDetailId: detail?.id != null ? Number(detail.id) : Number(id),
+        }),
       });
 
       if (response.ok) {
-        await fetchChecklists();
+        await refreshChecklists();
       }
     } catch (error) {
       console.error("Error toggling item:", error);
@@ -1547,7 +1673,7 @@ export default function WorkTrackDetailView() {
       });
 
       if (response.ok) {
-        await fetchChecklists();
+        await refreshChecklists();
         toast(`${deleteType === "checklist" ? "Checklist" : "Item"} deleted!`, { type: "success" });
       } else {
         toast("Failed to delete", { type: "error" });
@@ -1636,7 +1762,7 @@ export default function WorkTrackDetailView() {
       />
 
       {/* Previous Clock In/Out History - Show when there was a clock out */}
-      {detail?.clockOutTime && (
+      {!isTimeTrackingHidden && detail?.clockOutTime && (
         <Card sx={{ mb: 3, bgcolor: '#f8fafc', border: '1px solid #e2e8f0' }}>
           <CardContent>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -1732,7 +1858,7 @@ export default function WorkTrackDetailView() {
       )}
 
       {/* Work Completed Summary Dashboard - Same as technician page */}
-      {(workEndedSummary || workSummary?.currentStatus === "Completed") && (
+      {!isTimeTrackingHidden && (workEndedSummary || workSummary?.currentStatus === "Completed") && (
         <Card sx={{ mb: 3, bgcolor: '#f0fdf4', border: '2px solid #22c55e' }}>
           <CardContent>
             <Box display="flex" alignItems="center" mb={2}>
@@ -2109,52 +2235,54 @@ export default function WorkTrackDetailView() {
             </Grid>
 
             {/* Work Time */}
-            <Grid item xs={6} sm={4} md={2}>
-              <Paper 
-                elevation={0}
-                sx={{ 
-                  p: 2.5, 
-                  textAlign: "center", 
-                  background: isCompleted 
-                    ? "rgba(255,255,255,0.15)" 
-                    : "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
-                  backdropFilter: "blur(10px)",
-                  borderRadius: 3,
-                  border: isCompleted 
-                    ? "1px solid rgba(255,255,255,0.2)" 
-                    : "none",
-                  transition: "transform 0.2s, box-shadow 0.2s",
-                  "&:hover": {
-                    transform: "translateY(-4px)",
-                    boxShadow: "0 8px 25px rgba(0,0,0,0.15)"
-                  }
-                }}
-              >
-                <Box 
+            {!isTimeTrackingHidden && (
+              <Grid item xs={6} sm={4} md={2}>
+                <Paper 
+                  elevation={0}
                   sx={{ 
-                    width: 45, 
-                    height: 45, 
-                    borderRadius: "50%", 
+                    p: 2.5, 
+                    textAlign: "center", 
                     background: isCompleted 
-                      ? "rgba(255,255,255,0.25)" 
-                      : "rgba(255,255,255,0.2)", 
-                    display: "flex", 
-                    alignItems: "center", 
-                    justifyContent: "center",
-                    mx: "auto",
-                    mb: 1.5
+                      ? "rgba(255,255,255,0.15)" 
+                      : "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                    backdropFilter: "blur(10px)",
+                    borderRadius: 3,
+                    border: isCompleted 
+                      ? "1px solid rgba(255,255,255,0.2)" 
+                      : "none",
+                    transition: "transform 0.2s, box-shadow 0.2s",
+                    "&:hover": {
+                      transform: "translateY(-4px)",
+                      boxShadow: "0 8px 25px rgba(0,0,0,0.15)"
+                    }
                   }}
                 >
-                  <AccessTimeIcon sx={{ color: "white", fontSize: 24 }} />
-                </Box>
-                <Typography variant="h5" fontWeight="bold" sx={{ color: "white", lineHeight: 1.2 }}>
-                  {workSummary?.formattedTotalDuration || "0s"}
-                </Typography>
-                <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.85)", mt: 0.5, fontWeight: 500 }}>
-                  Work Time
-                </Typography>
-              </Paper>
-            </Grid>
+                  <Box 
+                    sx={{ 
+                      width: 45, 
+                      height: 45, 
+                      borderRadius: "50%", 
+                      background: isCompleted 
+                        ? "rgba(255,255,255,0.25)" 
+                        : "rgba(255,255,255,0.2)", 
+                      display: "flex", 
+                      alignItems: "center", 
+                      justifyContent: "center",
+                      mx: "auto",
+                      mb: 1.5
+                    }}
+                  >
+                    <AccessTimeIcon sx={{ color: "white", fontSize: 24 }} />
+                  </Box>
+                  <Typography variant="h5" fontWeight="bold" sx={{ color: "white", lineHeight: 1.2 }}>
+                    {workSummary?.formattedTotalDuration || "0s"}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: "rgba(255,255,255,0.85)", mt: 0.5, fontWeight: 500 }}>
+                    Work Time
+                  </Typography>
+                </Paper>
+              </Grid>
+            )}
           </Grid>
 
           {/* Overall Progress Section */}
@@ -2294,7 +2422,7 @@ export default function WorkTrackDetailView() {
                   </Typography>
                 </Box>
               )}
-              {workSummary?.sessionCount > 0 && (
+              {!isTimeTrackingHidden && workSummary?.sessionCount > 0 && (
                 <Box>
                   <Typography variant="caption" sx={{ color: isCompleted ? "rgba(255,255,255,0.7)" : "#64748b" }}>
                     Work Sessions
@@ -2334,8 +2462,8 @@ export default function WorkTrackDetailView() {
         </CardContent>
       </Card>
 
-      {/* Work Session Card - Hide if completed */}
-      {!isCompleted && (
+      {/* Work Session Card - Hide if completed or when time tracking removed by setting */}
+      {!isCompleted && !isTimeTrackingHidden && (
         <Card sx={{ mb: 3, border: isWorkActive ? '2px solid' : 'none', borderColor: workSummary?.currentStatus === 'Started' ? 'success.main' : 'warning.main' }}>
           <CardContent>
             <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
@@ -2864,6 +2992,11 @@ export default function WorkTrackDetailView() {
             </Box>
           </Box>
 
+          <Alert severity="info" sx={{ mb: 2 }} variant="outlined">
+            Tick &quot;Apply to entire work track&quot; to show the same checklist on every equipment line. Each line
+            keeps its own completion; finishing items on this Track ID does not complete them on other lines.
+          </Alert>
+
           {checklists.length === 0 ? (
             <Box textAlign="center" py={4}>
               <Typography color="textSecondary">
@@ -2892,9 +3025,14 @@ export default function WorkTrackDetailView() {
                         {expandedChecklists[checklist.id] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                       </IconButton>
                       <Box ml={1} flex={1}>
-                        <Typography variant="subtitle1" fontWeight="medium">
-                          {checklist.title}
-                        </Typography>
+                        <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                          <Typography variant="subtitle1" fontWeight="medium">
+                            {checklist.title}
+                          </Typography>
+                          {!checklist.appliesToEntireWorkTrack && (
+                            <Chip label="This row only" size="small" variant="outlined" color="secondary" />
+                          )}
+                        </Box>
                         {checklist.description && (
                           <Typography variant="body2" color="textSecondary">
                             {checklist.description}
@@ -2985,14 +3123,14 @@ export default function WorkTrackDetailView() {
                               <Box display="flex" alignItems="center" flex={1}>
                                 {/* Checkbox Type */}
                                 {(!item.itemType || item.itemType === "Checkbox") && (
-                                  <Tooltip title={isReadOnly ? "" : (workSummary?.currentStatus !== "Started" ? "Start work to tick items" : "")}>
+                                  <Tooltip title={isReadOnly ? "" : ((!isTimeTrackingHidden && workSummary?.currentStatus !== "Started") ? "Start work to tick items" : "")}>
                                     <span>
                                       <Checkbox
                                         checked={item.isCompleted}
                                         onChange={(e) => handleToggleItem(item.id, e.target.checked)}
                                         icon={<RadioButtonUncheckedIcon />}
                                         checkedIcon={<CheckCircleIcon color="success" />}
-                                        disabled={isReadOnly || (!isPendingApproval && workSummary?.currentStatus !== "Started")}
+                                        disabled={isReadOnly || (!isTimeTrackingHidden && !isPendingApproval && workSummary?.currentStatus !== "Started")}
                                       />
                                     </span>
                                   </Tooltip>
@@ -3062,7 +3200,7 @@ export default function WorkTrackDetailView() {
                                       value={option}
                                       control={<Radio size="small" />}
                                       label={option}
-                                      disabled={isReadOnly || (!isPendingApproval && workSummary?.currentStatus !== "Started")}
+                                      disabled={isReadOnly || (!isTimeTrackingHidden && !isPendingApproval && workSummary?.currentStatus !== "Started")}
                                     />
                                   ))}
                                 </RadioGroup>
@@ -3078,7 +3216,7 @@ export default function WorkTrackDetailView() {
                                     value={item.selectedValue || ""}
                                     label="Select an option"
                                     onChange={(e) => handleUpdateItemValue(item.id, e.target.value)}
-                                    disabled={isReadOnly || (!isPendingApproval && workSummary?.currentStatus !== "Started")}
+                                    disabled={isReadOnly || (!isTimeTrackingHidden && !isPendingApproval && workSummary?.currentStatus !== "Started")}
                                   >
                                     <MenuItem value="">
                                       <em>None</em>
@@ -3108,7 +3246,7 @@ export default function WorkTrackDetailView() {
                                         border: "1px solid #ddd",
                                       }}
                                     />
-                                    {!isReadOnly && (isPendingApproval || workSummary?.currentStatus === "Started") && (
+                                    {!isReadOnly && (isTimeTrackingHidden || isPendingApproval || workSummary?.currentStatus === "Started") && (
                                       <Box mt={1}>
                                         <Button
                                           variant="outlined"
@@ -3133,11 +3271,11 @@ export default function WorkTrackDetailView() {
                                   >
                                     <CameraAltIcon sx={{ fontSize: 40, color: "#aaa", mb: 1 }} />
                                     <Typography variant="body2" color="textSecondary" gutterBottom>
-                                      {isReadOnly || (!isPendingApproval && workSummary?.currentStatus !== "Started")
+                                      {isReadOnly || (!isTimeTrackingHidden && !isPendingApproval && workSummary?.currentStatus !== "Started")
                                         ? "No photo captured"
                                         : "Tap to capture photo"}
                                     </Typography>
-                                    {!isReadOnly && (isPendingApproval || workSummary?.currentStatus === "Started") && (
+                                    {!isReadOnly && (isTimeTrackingHidden || isPendingApproval || workSummary?.currentStatus === "Started") && (
                                       <Button
                                         variant="contained"
                                         size="small"
@@ -3195,6 +3333,17 @@ export default function WorkTrackDetailView() {
             size="small"
             multiline
             rows={2}
+            sx={{ mb: 1 }}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={checklistAppliesToEntireWorkTrack}
+                onChange={(e) => setChecklistAppliesToEntireWorkTrack(e.target.checked)}
+                color="primary"
+              />
+            }
+            label="Apply to entire work track (checklist visible on every line; completion is per line)"
           />
         </DialogContent>
         <DialogActions>
@@ -3340,6 +3489,32 @@ export default function WorkTrackDetailView() {
             }
             label="This item is required"
           />
+
+          {/* Apply to all other detail records (only when adding a new item to a row-only checklist) */}
+          {!editingItem && (() => {
+            const parentChecklist = checklists.find((c) => c.id === parentChecklistId);
+            if (!parentChecklist || parentChecklist.appliesToEntireWorkTrack) {
+              return null;
+            }
+            return (
+              <Box sx={{ mt: 1 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={itemApplyToAllDetailRecords}
+                      onChange={(e) => setItemApplyToAllDetailRecords(e.target.checked)}
+                    />
+                  }
+                  label="Apply to all other detail records (same checklist title)"
+                />
+                <Typography variant="caption" color="textSecondary" sx={{ display: "block", ml: 4 }}>
+                  Adds the same item to every other equipment line that has a checklist titled
+                  &nbsp;<strong>&quot;{parentChecklist.title}&quot;</strong>, so you don&apos;t have to
+                  add it one by one.
+                </Typography>
+              </Box>
+            );
+          })()}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseItemModal} color="inherit">

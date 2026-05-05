@@ -111,7 +111,14 @@ const Category = () => {
               </Search>
             </Grid>
             <Grid display="flex" justifyContent="end" item xs={12} md={6} lg={7} order={{ xs: 1, lg: 2 }}>
-              {create ? <AddCategory fetchItems={fetchCategoryList} IsEcommerceWebSiteAvailable={IsEcommerceWebSiteAvailable} /> : ""}
+              {create ? (
+                <AddCategory
+                  fetchItems={() => fetchCategoryList()}
+                  IsEcommerceWebSiteAvailable={IsEcommerceWebSiteAvailable}
+                />
+              ) : (
+                ""
+              )}
             </Grid>
           </Grid>
         </Grid>

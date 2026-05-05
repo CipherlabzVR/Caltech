@@ -26,6 +26,7 @@ import { ToastContainer } from "react-toastify";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import DeleteIcon from "@mui/icons-material/Delete";
+import AddIcon from "@mui/icons-material/Add";
 import BASE_URL from "Base/api";
 import { useRouter } from "next/router";
 import getNext from "@/components/utils/getNext";
@@ -35,6 +36,7 @@ import LoadingButton from "@/components/UIElements/Buttons/LoadingButton";
 import SearchDropdown from "@/components/utils/SearchDropdown";
 import { v4 as uuidv4 } from 'uuid';
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
+import AddSupplier from "@/pages/master/supplier/AddSupplier";
 
 const POCreate = () => {
   var isSubmitted = false;
@@ -56,6 +58,7 @@ const POCreate = () => {
   const [poType, setPOType] = useState("");
   const [isDisable, setIsDisable] = useState(false);
   const [isCredit, setIsCredit] = useState(false);
+  const supplierButtonRef = useRef(null);
 
   const navigateToBack = () => {
     router.push({
@@ -77,6 +80,35 @@ const POCreate = () => {
 
   const { data: IsEnableCreditGRN } =
     IsAppSettingEnabled("IsEnableCreditGRN");
+  const { data: banks } = useApi("/Bank/GetAllBanks");
+  const { data: chartOfAccounts } = useApi("/ChartOfAccounts/GetAllChartOfAccountsForDropdown");
+  const { data: IsPOSSystem } = IsAppSettingEnabled("IsPOSSystem");
+  const { data: IsBankRequired } = IsAppSettingEnabled("IsBankRequired");
+
+  const refreshSupplierList = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${BASE_URL}/Supplier/GetAllSupplier`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const json = await response.json();
+        const list = json?.result || json?.data || json || [];
+        setSuppliers(Array.isArray(list) ? list : []);
+      }
+    } catch (err) {
+      console.error("Error refreshing suppliers:", err);
+    }
+  };
+
+  const handleOpenSupplierModal = () => {
+    if (supplierButtonRef.current) {
+      const button = supplierButtonRef.current.querySelector("button");
+      if (button) {
+        button.click();
+      }
+    }
+  };
 
   const handleSubmit = async () => {
     if (!isSubmitted) {
@@ -111,6 +143,9 @@ const POCreate = () => {
           Batch: row.batchNumber,
           ExpDate: row.expDate,
           Qty: row.quantity,
+          UnitPrice: row.unitPrice ? parseFloat(row.unitPrice) : 0,
+          AdditionalCost: row.freightDutyCost ? parseFloat(row.freightDutyCost) : 0,
+          CostPrice: row.costPrice ? parseFloat(row.costPrice) : 0,
           Status: "Approval",
           Remark: row.remark,
           ReceivedQty: 0,
@@ -314,9 +349,62 @@ const POCreate = () => {
               <Autocomplete
                 sx={{ width: "60%" }}
                 options={suppliers}
-                getOptionLabel={(option) => option.name || ""}
+                getOptionLabel={(option) => {
+                  if (option?.isCreateOption) return "";
+                  return option.name || "";
+                }}
                 value={supplier}
-                onChange={(event, newValue) => setSupplier(newValue)}
+                isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                disableClearable
+                filterOptions={(options, params) => {
+                  const hasInput = params.inputValue?.trim();
+                  let filtered;
+                  if (!hasInput) {
+                    filtered = options.slice(0, 5);
+                  } else {
+                    filtered = options.filter((option) =>
+                      option.name?.toLowerCase().includes(params.inputValue.toLowerCase())
+                    );
+                  }
+                  return [...filtered, { isCreateOption: true, id: "create-supplier" }];
+                }}
+                ListboxProps={{
+                  sx: { maxHeight: 280, "& .create-option-sticky": { position: "sticky", bottom: 0, background: "background.paper", borderTop: "1px solid", borderColor: "divider", zIndex: 1 } },
+                }}
+                renderOption={(props, option) => {
+                  if (option.isCreateOption) {
+                    return (
+                      <Box
+                        component="li"
+                        {...props}
+                        className="create-option-sticky"
+                        sx={{
+                          color: "primary.main",
+                          fontWeight: 500,
+                          py: 1.25,
+                          px: 2,
+                          cursor: "pointer",
+                          "&:hover": { bgcolor: "action.hover" },
+                        }}
+                      >
+                        <AddIcon sx={{ mr: 1, fontSize: "1.2rem", verticalAlign: "middle" }} />
+                        Create Supplier
+                      </Box>
+                    );
+                  }
+                  return (
+                    <Box component="li" {...props}>
+                      {option.name}
+                    </Box>
+                  );
+                }}
+                onChange={(event, newValue) => {
+                  if (newValue?.isCreateOption) {
+                    handleOpenSupplierModal();
+                    return;
+                  }
+                  setSupplier(newValue || "");
+                }}
                 renderInput={(params) => (
                   <TextField
                     {...params}
@@ -487,7 +575,14 @@ const POCreate = () => {
                       <TableCell sx={{ color: "#fff" }}>
                         Exp&nbsp;Date
                       </TableCell>
-                      <TableCell sx={{ color: "#fff" }}>Qty</TableCell>                      
+                      <TableCell sx={{ color: "#fff" }}>Qty</TableCell>
+                      {poType === "1" && (
+                        <>
+                          <TableCell sx={{ color: "#fff" }}>Unit&nbsp;Price</TableCell>
+                          <TableCell sx={{ color: "#fff" }}>Freight&nbsp;Duty && Transport</TableCell>
+                          <TableCell sx={{ color: "#fff" }}>Cost&nbsp;Price</TableCell>
+                        </>
+                      )}
                       <TableCell sx={{ color: "#fff" }}>Remark</TableCell>
                     </TableRow>
                   </TableHead>
@@ -572,6 +667,45 @@ const POCreate = () => {
                             }}
                           />
                         </TableCell>
+                        {poType === "1" && (
+                          <>
+                            <TableCell sx={{ p: 1 }}>
+                              <TextField
+                                sx={{ width: "120px" }}
+                                type="number"
+                                size="small"
+                                value={row.unitPrice || ""}
+                                onChange={(e) => {
+                                  const updatedRows = [...selectedRows];
+                                  const unitPrice = parseFloat(e.target.value) || 0;
+                                  const freightCost = parseFloat(updatedRows[index].freightDutyCost) || 0;
+                                  updatedRows[index].unitPrice = e.target.value;
+                                  updatedRows[index].costPrice = (unitPrice + freightCost).toFixed(2);
+                                  setSelectedRows(updatedRows);
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell sx={{ p: 1 }}>
+                              <TextField
+                                sx={{ width: "120px" }}
+                                type="number"
+                                size="small"
+                                value={row.freightDutyCost || ""}
+                                onChange={(e) => {
+                                  const updatedRows = [...selectedRows];
+                                  const freightCost = parseFloat(e.target.value) || 0;
+                                  const unitPrice = parseFloat(updatedRows[index].unitPrice) || 0;
+                                  updatedRows[index].freightDutyCost = e.target.value;
+                                  updatedRows[index].costPrice = (unitPrice + freightCost).toFixed(2);
+                                  setSelectedRows(updatedRows);
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell sx={{ p: 1 }}>
+                              {row.costPrice || "0.00"}
+                            </TableCell>
+                          </>
+                        )}
                         <TableCell sx={{ p: 1 }}>
                           <TextField
                             size="small"
@@ -600,6 +734,24 @@ const POCreate = () => {
           </Grid>
         </Grid>
       </Grid>
+
+      <Box sx={{ display: "none" }}>
+        <div ref={supplierButtonRef}>
+          <AddSupplier
+            fetchItems={refreshSupplierList}
+            isPOSSystem={IsPOSSystem}
+            banks={banks || []}
+            isBankRequired={IsBankRequired}
+            chartOfAccounts={chartOfAccounts || []}
+            onCreated={(created) => {
+              if (created?.id != null) {
+                setSupplier(created);
+                refreshSupplierList();
+              }
+            }}
+          />
+        </div>
+      </Box>
     </>
   );
 };

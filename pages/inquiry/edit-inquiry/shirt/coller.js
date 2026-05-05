@@ -113,6 +113,40 @@ export default function SelectColler() {
     }
   }, [inquiry]);
 
+  const saveDefaultSleeveAndNext = async () => {
+    if (!inquiry) return;
+    try {
+      await fetch(
+        `${BASE_URL}/InquirySleeve/AddOrUpdateSleeve`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            InquiryID: inquiry.inquiryId,
+            InqCode: inquiry.inquiryCode,
+            OptionId: inquiry.optionId,
+            InqOptionName: inquiry.optionName,
+            WindowType: inquiry.windowType,
+            Wrangler: "0",
+            Normal: "0",
+            Short: 1,
+            ShortType: 9,
+            Long: 0,
+            LongType: 9,
+            ShortSize: 0,
+            LongSize: 0,
+          }),
+        }
+      );
+    } catch (error) {
+      console.error("Error saving default sleeve:", error);
+    }
+    router.push(`/inquiry/edit-inquiry/shirt/sleeve/?id=${inquiry.inquiryId}&option=${inquiry.optionId}`);
+  };
+
   const handleFullCLRChange = async (event, value) => {
     setIsFullCLRSelected(event.target.checked);
     const isChecked = event.target.checked;
@@ -218,6 +252,7 @@ export default function SelectColler() {
       <DashboardHeader
         customerName={inquiry ? inquiry.customerName : ""}
         optionName={inquiry ? inquiry.optionName : ""}
+        windowType={inquiry ? inquiry.windowType : null}
         href="/inquiry/inquries/"
         link="Inquiries"
         title="Coller"
@@ -235,15 +270,15 @@ export default function SelectColler() {
                 previous
               </Button>
             </Link>
-            <Link href={`/inquiry/edit-inquiry/shirt/sleeve/?id=${inquiry ? inquiry.inquiryId : ""}&option=${inquiry ? inquiry.optionId: ""}`}>
-              <Button
-                variant="outlined"
-                color="primary"
-                endIcon={<NavigateNextIcon />}
-              >
-                next
-              </Button>
-            </Link>
+            <Button
+              variant="outlined"
+              color="primary"
+              endIcon={<NavigateNextIcon />}
+              onClick={saveDefaultSleeveAndNext}
+              disabled={!inquiry}
+            >
+              next
+            </Button>
           </Box>
         </Grid>
         <Grid item xs={12}>

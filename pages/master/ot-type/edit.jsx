@@ -1,9 +1,13 @@
 import React, { useEffect, useRef } from "react";
 import {
   Checkbox,
+  FormControl,
   FormControlLabel,
   Grid,
   IconButton,
+  InputLabel,
+  MenuItem,
+  Select,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -18,6 +22,11 @@ import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
 
+const PER_RATE_OPTIONS = [
+  { value: 1, label: "Per Hour" },
+  { value: 2, label: "Per Minute" },
+];
+
 const style = {
   position: "absolute",
   top: "50%",
@@ -31,6 +40,8 @@ const style = {
 
 const validationSchema = Yup.object().shape({
   Name: Yup.string().trim().required("Name is required"),
+  GracePeriodMinutes: Yup.number().nullable().min(0, "Must be 0 or more"),
+  PerRateAmount: Yup.number().nullable().min(0, "Must be 0 or more"),
 });
 
 export default function EditOTType({ fetchItems, item }) {
@@ -53,9 +64,22 @@ export default function EditOTType({ fetchItems, item }) {
   };
 
   const handleSubmit = (values) => {
+    const payload = {
+      ...values,
+      GracePeriodMinutes:
+        values.GracePeriodMinutes === "" || values.GracePeriodMinutes == null
+          ? null
+          : Number(values.GracePeriodMinutes),
+      PerRateAmount:
+        values.PerRateAmount === "" || values.PerRateAmount == null
+          ? null
+          : Number(values.PerRateAmount),
+      PerRateType: values.PerRateType ?? 1,
+    };
+
     fetch(`${BASE_URL}/OTType/UpdateOTType`, {
       method: "POST",
-      body: JSON.stringify(values),
+      body: JSON.stringify(payload),
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -95,7 +119,12 @@ export default function EditOTType({ fetchItems, item }) {
               Id: item.id,
               Name: item.name || "",
               Description: item.description || "",
-              IsActive: item.IsActive || false,
+              GracePeriodMinutes:
+                item.gracePeriodMinutes != null ? item.gracePeriodMinutes : "",
+              PerRateAmount:
+                item.perRateAmount != null ? item.perRateAmount : "",
+              PerRateType: item.perRateType ?? 1,
+              IsActive: item.isActive ?? item.IsActive ?? false,
             }}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
@@ -151,12 +180,86 @@ export default function EditOTType({ fetchItems, item }) {
                           minRows={2}
                         />
                       </Grid>
+                      <Grid item xs={12}>
+                        <Typography
+                          sx={{ fontWeight: "500", mb: "5px" }}
+                        >
+                          Grace Period (mins)
+                        </Typography>
+                        <Field
+                          as={TextField}
+                          name="GracePeriodMinutes"
+                          fullWidth
+                          type="number"
+                          inputProps={{ min: 0, step: 0.01 }}
+                          placeholder="e.g. 15"
+                          error={
+                            touched.GracePeriodMinutes &&
+                            Boolean(errors.GracePeriodMinutes)
+                          }
+                          helperText={
+                            touched.GracePeriodMinutes &&
+                            errors.GracePeriodMinutes
+                          }
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Typography
+                          sx={{ fontWeight: "500", mb: "5px" }}
+                        >
+                          Per Rate
+                        </Typography>
+                        <Grid container spacing={1}>
+                          <Grid item xs={7}>
+                            <Field
+                              as={TextField}
+                              name="PerRateAmount"
+                              fullWidth
+                              type="number"
+                              inputProps={{ min: 0, step: 0.01 }}
+                              placeholder="Amount"
+                              error={
+                                touched.PerRateAmount &&
+                                Boolean(errors.PerRateAmount)
+                              }
+                              helperText={
+                                touched.PerRateAmount && errors.PerRateAmount
+                              }
+                            />
+                          </Grid>
+                          <Grid item xs={5}>
+                            <FormControl fullWidth size="small">
+                              <InputLabel>Unit</InputLabel>
+                              <Select
+                                name="PerRateType"
+                                label="Unit"
+                                value={values.PerRateType ?? 1}
+                                onChange={(e) =>
+                                  setFieldValue(
+                                    "PerRateType",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              >
+                                {PER_RATE_OPTIONS.map((opt) => (
+                                  <MenuItem
+                                    key={opt.value}
+                                    value={opt.value}
+                                  >
+                                    {opt.label}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                        </Grid>
+                      </Grid>
                       <Grid item xs={12} mt={1} p={1}>
                         <FormControlLabel
                           control={
                             <Field
                               as={Checkbox}
-                              name="IsLeave"
+                              name="IsActive"
                               checked={values.IsActive}
                               onChange={() =>
                                 setFieldValue("IsActive", !values.IsActive)

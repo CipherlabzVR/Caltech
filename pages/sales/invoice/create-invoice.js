@@ -78,6 +78,11 @@ const InvoiceCreate = () => {
   const [rows, setRows] = useState([]);
   const [rowsCC, setRowsCC] = useState([]);
   const [paymentType, setPaymentType] = useState(null);
+  const [salesOrderModalOpen, setSalesOrderModalOpen] = useState(false);
+  const [salesOrderSearch, setSalesOrderSearch] = useState("");
+  const [salesOrderList, setSalesOrderList] = useState([]);
+  const [loadingSalesOrders, setLoadingSalesOrders] = useState(false);
+  const [selectedSalesOrderId, setSelectedSalesOrderId] = useState(null);
   const guidRef = useRef(uuidv4());
   const { result: shiftResult, message: shiftMessage } = useShiftCheck(); 
   const { data: POSInvoiceReportName } = GetReportSettingValueByName("POSInvoice");
@@ -313,6 +318,117 @@ const InvoiceCreate = () => {
 
   const handleClose = () => setOpen(false);
 
+  const loadSalesOrderList = async (keyword = "") => {
+    try {
+      setLoadingSalesOrders(true);
+      const response = await fetch(`${BASE_URL}/SalesOrder/SearchSalesOrdersForInvoice?keyword=${encodeURIComponent(keyword)}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to load sales orders");
+      }
+
+      const data = await response.json();
+      setSalesOrderList(data?.result || []);
+    } catch (error) {
+      toast.error(error.message || "Failed to load sales orders");
+      setSalesOrderList([]);
+    } finally {
+      setLoadingSalesOrders(false);
+    }
+  };
+
+  const handleOpenSalesOrderModal = () => {
+    setSalesOrderSearch("");
+    setSalesOrderModalOpen(true);
+    loadSalesOrderList("");
+  };
+
+  const handleSelectSalesOrder = async (salesOrderId) => {
+    try {
+      const response = await fetch(`${BASE_URL}/SalesOrder/GetSalesOrderById?id=${salesOrderId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to load sales order details");
+      }
+
+      const data = await response.json();
+      const salesOrder = data?.result;
+      if (!salesOrder) {
+        throw new Error("Sales order not found");
+      }
+
+      const matchedCustomer = (customers || []).find((c) => c.id === salesOrder.customerID || c.id === salesOrder.customerId);
+      setCustomer(matchedCustomer || {
+        id: salesOrder.customerID || salesOrder.customerId,
+        firstName: salesOrder.customerName || "",
+        addressLine1: salesOrder.billToline1 || "",
+        addressLine2: salesOrder.billToline2 || "",
+        addressLine3: salesOrder.billToline3 || "",
+      });
+      setAddress1(salesOrder.billToline1 || "");
+      setAddress2(salesOrder.billToline2 || "");
+      setAddress3(salesOrder.billToline3 || "");
+      setAddress4(salesOrder.billToline4 || "");
+      setRemark(salesOrder.remark || "");
+
+      const matchedSalesPerson = (salesPersonList || []).find((s) => s.id === salesOrder.salesPersonId);
+      setSalesPerson(matchedSalesPerson || null);
+
+      const mappedRows = (salesOrder.salesOrderLineDetails || [])
+        .filter((line) => !line.isDeleted)
+        .map((line, index) => ({
+          lineKey: `sales-order-line-${line.id || index}-${Date.now()}`,
+          id: line.stockBalanceId ?? 0,
+          productId: line.productId,
+          productName: line.productName || "",
+          productCode: line.productCode || "",
+          quantity: Number(line.qty || 0),
+          totalPrice: Number(line.lineTotal || 0),
+          sellingPrice: Number(line.unitPrice || 0),
+          costPrice: 0,
+          stockBalanceId: line.stockBalanceId ?? 0,
+          batchNumber: "",
+          packageName: line.productName || "",
+          isNonInventory: !line.stockBalanceId || line.stockBalanceId === 0,
+          bookBalanceQuantity: Number.MAX_SAFE_INTEGER,
+        }));
+
+      setRows([]);
+      setRowsCC([]);
+      setSelectedRows(mappedRows);
+      setSelectedSalesOrderId(salesOrder.id);
+      setSalesOrderModalOpen(false);
+    } catch (error) {
+      toast.error(error.message || "Failed to load sales order details");
+    }
+  };
+
+  const handleClearSalesOrderSelection = () => {
+    setCustomer(null);
+    setAddress1("");
+    setAddress2("");
+    setAddress3("");
+    setAddress4("");
+    setRemark("");
+    setSalesPerson(null);
+    setSelectedRows([]);
+    setRows([]);
+    setRowsCC([]);
+    setSelectedSalesOrderId(null);
+  };
+
   const handleSubmit = async () => {
     if (shiftResult) {
       toast.warning(shiftMessage);
@@ -325,18 +441,17 @@ const InvoiceCreate = () => {
       return;
     }
 
-    // Check if customer credit limit is required by app setting
-    if (isCustomerCreditLimit && customer) {
+    // Credit limit validation for credit payments only (PaymentType = 7)
+    if (isCustomerCreditLimit && paymentType === 7 && customer) {
       const creditLimit = customer.creditLimit || 0;
+      
+      // Check if customer has a valid credit limit set
       if (creditLimit <= 0) {
         toast.error("Cannot create invoice. Customer must have a Credit Limit set. Please update customer details.");
         return;
       }
-    }
 
-    // Credit limit validation for credit payments
-    if (paymentType === 7 && customer) {
-      const creditLimit = customer.creditLimit || 0;
+      // Check if invoice amount exceeds available credit balance
       const outstandingAmount = customer.outstandingAmount || 0;
       const availableBalance = creditLimit - outstandingAmount;
       
@@ -426,7 +541,7 @@ const InvoiceCreate = () => {
         DiscountPercentage: 0.0,
         LineTotal: row.totalPrice,
         SequanceNo: i + 1,
-        StockBalanceId: row.id,
+        StockBalanceId: row.isNonInventory ? 0 : row.id,
         Machine: null,
         ItemType: 1,
       })),
@@ -494,7 +609,11 @@ const InvoiceCreate = () => {
 
     try {
       setIsSubmitting(true);
-      const res = await fetch(`${BASE_URL}/SalesInvoice/CreateSalesInvoice`, {
+      const createInvoiceUrl = selectedSalesOrderId
+        ? `${BASE_URL}/SalesInvoice/CreateSalesInvoiceFromSalesOrder?salesOrderId=${selectedSalesOrderId}`
+        : `${BASE_URL}/SalesInvoice/CreateSalesInvoice`;
+
+      const res = await fetch(createInvoiceUrl, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -516,6 +635,7 @@ const InvoiceCreate = () => {
         setAddress3("");
         setRemark("");
         setSalesPerson(null);
+        setSelectedSalesOrderId(null);
         setRows([]);
         setRowsCC([]);
 
@@ -545,6 +665,54 @@ const InvoiceCreate = () => {
     setProductName(item.name);
     setProductCode(item.code);
     setSelectedIndex(0);
+  };
+
+  const handleAddNonInventoryLine = (item) => {
+    if (!customer) {
+      toast.error("Customer information is missing!");
+      return;
+    }
+    const unitPrice = parseFloat(item.averagePrice) || 0;
+    const existingItem = selectedRows.find(
+      (row) => row.isNonInventory && row.productId === item.id
+    );
+    if (existingItem) {
+      toast.error("This item already exists in the table. Cannot add duplicate items.");
+      return;
+    }
+
+    const newRow = {
+      lineKey: `noninv-${item.id}-${Date.now()}`,
+      id: 0,
+      productId: item.id,
+      productName: item.name,
+      productCode: item.code,
+      quantity: "",
+      totalPrice: 0,
+      sellingPrice: unitPrice,
+      costPrice: unitPrice,
+      stockBalanceId: null,
+      batchNumber: "",
+      packageName: item.name,
+      isNonInventory: true,
+      bookBalanceQuantity: Number.MAX_SAFE_INTEGER,
+    };
+
+    setSelectedRows((prevRows) => [...prevRows, newRow]);
+  };
+
+  const handleSearchItemSelect = (item) => {
+    if (isOutlet) {
+      handleItemStock(item);
+    } else if (item.stockBalanceId == null) {
+      handleAddNonInventoryLine(item);
+    } else {
+      handleCheckStockBalance(item);
+    }
+    setTimeout(() => {
+      const newIndex = selectedRows.length;
+      qtyRefs.current[newIndex]?.focus();
+    }, 100);
   };
 
   const handleAddRow = (item) => {
@@ -714,6 +882,7 @@ const InvoiceCreate = () => {
           { value: 7, label: "Credit" },
         ];
   // --- END OF UPDATED SECTION ---
+  const isSalesOrderSelected = Boolean(selectedSalesOrderId);
 
   return (
     <>
@@ -735,15 +904,29 @@ const InvoiceCreate = () => {
       >
         <Grid item xs={12} sx={{ background: "#fff" }}>
           <Grid container p={1}>
-            <Grid item xs={12} gap={2} display="flex" justifyContent="end">
-              <Button variant="outlined" disabled>
-                <Typography sx={{ fontWeight: "bold" }}>
-                  Invoice No: {invNo}
-                </Typography>
-              </Button>
-              <Button variant="outlined" onClick={() => navigateToBack()}>
-                <Typography sx={{ fontWeight: "bold" }}>Go Back</Typography>
-              </Button>
+            <Grid item xs={12} display="flex" justifyContent="space-between" alignItems="center">
+              <Box display="flex" gap={2}>
+                <Button variant="outlined" disabled>
+                  <Typography sx={{ fontWeight: "bold" }}>
+                    Invoice No: {invNo}
+                  </Typography>
+                </Button>
+                <Button variant="outlined" onClick={handleOpenSalesOrderModal}>
+                  <Typography sx={{ fontWeight: "bold" }}>Sales Order</Typography>
+                </Button>
+              </Box>
+              <Box display="flex" gap={2}>
+                {selectedSalesOrderId ? (
+                  <Button variant="outlined" color="error" onClick={handleClearSalesOrderSelection}>
+                    <Typography sx={{ fontWeight: "bold" }}>Clear Form</Typography>
+                  </Button>
+                ) : (
+                  ""
+                )}
+                <Button variant="outlined" onClick={() => navigateToBack()}>
+                  <Typography sx={{ fontWeight: "bold" }}>Go Back</Typography>
+                </Button>
+              </Box>
             </Grid>
 
             <Grid item xs={12} lg={6} display="flex" flexDirection="column">
@@ -772,6 +955,7 @@ const InvoiceCreate = () => {
                     options={customers || []}
                     getOptionLabel={(option) => option.firstName || ""}
                     value={customer}
+                    disabled={isSalesOrderSelected}
                     onChange={(event, newValue) => {
                       setCustomer(newValue);
                       if (newValue) {
@@ -793,7 +977,7 @@ const InvoiceCreate = () => {
                       />
                     )}
                   />
-                  <AddCustomerDialog fetchItems={fetchCustomers} showIconOnly={true} />
+                  {!isSalesOrderSelected ? <AddCustomerDialog fetchItems={fetchCustomers} showIconOnly={true} /> : ""}
                 </Box>
               </Grid>
               <Grid item xs={12} display="flex" flexDirection="column" mt={1}>
@@ -819,6 +1003,7 @@ const InvoiceCreate = () => {
                     sx={{ width: "60%" }}
                     size="small"
                     fullWidth
+                    disabled={isSalesOrderSelected}
                     placeholder="Address Line 1"
                     value={address1}
                     onChange={(e) => setAddress1(e.target.value)}
@@ -829,6 +1014,7 @@ const InvoiceCreate = () => {
                     sx={{ width: "60%" }}
                     size="small"
                     fullWidth
+                    disabled={isSalesOrderSelected}
                     placeholder="Address Line 2"
                     value={address2}
                     onChange={(e) => setAddress2(e.target.value)}
@@ -839,6 +1025,7 @@ const InvoiceCreate = () => {
                     sx={{ width: "60%" }}
                     size="small"
                     fullWidth
+                    disabled={isSalesOrderSelected}
                     placeholder="Address Line 3"
                     value={address3}
                     onChange={(e) => setAddress3(e.target.value)}
@@ -849,6 +1036,7 @@ const InvoiceCreate = () => {
                     sx={{ width: "60%" }}
                     size="small"
                     fullWidth
+                    disabled={isSalesOrderSelected}
                     placeholder="Address Line 4"
                     value={address4}
                     onChange={(e) => setAddress4(e.target.value)}
@@ -883,6 +1071,7 @@ const InvoiceCreate = () => {
                     size="small"
                     type="date"
                     fullWidth
+                    disabled={isSalesOrderSelected}
                     value={invoiceDate}
                     onChange={(e) => setInvoiceDate(e.target.value)}
                   />
@@ -1070,59 +1259,49 @@ const InvoiceCreate = () => {
 
             <Grid item xs={12} mt={3}>
               <Grid item xs={12} gap={1} mt={3} mb={1} display="flex">
-                {isBookingSystem ?
-                  (!isItemSearch ?
-                    <SearchPackageByName
+                <Box sx={isSalesOrderSelected ? { pointerEvents: "none", opacity: 0.6, width: "100%" } : { width: "100%" }}>
+                  {isBookingSystem ?
+                    (!isItemSearch ?
+                      <SearchPackageByName
+                        ref={searchRef}
+                        label="Search"
+                        placeholder="Search Items by name"
+                        fetchUrl={`${BASE_URL}/Package/GetPackagesByname`}
+                        onSelect={(item) => {
+                          handleAddPackage(item);
+                          setTimeout(() => {
+                            const newIndex = selectedRows.length;
+                            qtyRefs.current[newIndex]?.focus();
+                          }, 100);
+                        }}
+                      /> :
+                      <SearchItemByName
+                        ref={searchRef}
+                        label="Search"
+                        placeholder="Search Items by name"
+                        fetchUrl={`${BASE_URL}/Items/GetAllItemsWithoutZeroQty`}
+                        onSelect={handleSearchItemSelect}
+                      />
+                    ) : <SearchItemByName
                       ref={searchRef}
                       label="Search"
                       placeholder="Search Items by name"
-                      fetchUrl={`${BASE_URL}/Package/GetPackagesByname`}
-                      onSelect={(item) => {
-                        handleAddPackage(item);
-                        setTimeout(() => {
-                          const newIndex = selectedRows.length;
-                          qtyRefs.current[newIndex]?.focus();
-                        }, 100);
-                      }}
-                    /> :
-                    <SearchItemByName
-                      ref={searchRef}
-                      label="Search"
-                      placeholder="Search Items by name"
-                      fetchUrl={`${BASE_URL}/Items/GetAllItemsWithoutZeroQty`}
-                      onSelect={(item) => {
-                        isOutlet ? handleItemStock(item) : handleCheckStockBalance(item);
-                        setTimeout(() => {
-                          const newIndex = selectedRows.length;
-                          qtyRefs.current[newIndex]?.focus();
-                        }, 100);
-                      }}
-                    />
-                  ) : <SearchItemByName
-                    ref={searchRef}
-                    label="Search"
-                    placeholder="Search Items by name"
-                    fetchUrl={isOutlet ? `${BASE_URL}/Outlet/GetAllOutletByProductName` : `${BASE_URL}/Items/GetAllItemsWithoutZeroQty`}
-                    onSelect={(item) => {
-                      isOutlet ? handleItemStock(item) : handleCheckStockBalance(item);
-                      setTimeout(() => {
-                        const newIndex = selectedRows.length;
-                        qtyRefs.current[newIndex]?.focus();
-                      }, 100);
-                    }}
-                  />}
+                      fetchUrl={isOutlet ? `${BASE_URL}/Outlet/GetAllOutletByProductName` : `${BASE_URL}/Items/GetAllItemsWithoutZeroQty`}
+                      onSelect={handleSearchItemSelect}
+                    />}
+                </Box>
                 {isBookingSystem && (
-                  <Button variant={isItemSearch ? "contained" : "outlined"} size="small" color={isItemSearch ? "warning" : "secondary"} onClick={() => { setIsItemSearch(prev => !prev); setStock([]); setSelectedItem(); }}>
+                  <Button disabled={isSalesOrderSelected} variant={isItemSearch ? "contained" : "outlined"} size="small" color={isItemSearch ? "warning" : "secondary"} onClick={() => { setIsItemSearch(prev => !prev); setStock([]); setSelectedItem(); }}>
                     Items
                   </Button>
                 )}
                 {IsOutletAvailable && (
-                  <Button variant={isOutlet ? "contained" : "outlined"} size="small" color={isOutlet ? "warning" : "secondary"} onClick={() => { setIsOutlet(prev => !prev); setStock([]); setSelectedItem(); }}>
+                  <Button disabled={isSalesOrderSelected} variant={isOutlet ? "contained" : "outlined"} size="small" color={isOutlet ? "warning" : "secondary"} onClick={() => { setIsOutlet(prev => !prev); setStock([]); setSelectedItem(); }}>
                     Outlet
                   </Button>
                 )}
                 {IsCustomColorMachineAvailable && (
-                  <Button variant="contained" size="small" color="success" onClick={handleAddCustomColor}>
+                  <Button disabled={isSalesOrderSelected} variant="contained" size="small" color="success" onClick={handleAddCustomColor}>
                     Custom
                   </Button>
                 )}
@@ -1167,7 +1346,7 @@ const InvoiceCreate = () => {
                   <TableBody>
                     {selectedRows.map((row, index) => (
                       <TableRow
-                        key={row.id}
+                        key={row.lineKey ?? row.id}
                         sx={{
                           "&:last-child td, &:last-child th": { border: 0 },
                         }}
@@ -1175,6 +1354,7 @@ const InvoiceCreate = () => {
                         <TableCell sx={{ p: 1 }}>
                           <Tooltip title="Delete" placement="top">
                             <IconButton
+                              disabled={isSalesOrderSelected}
                               onClick={() => handleDeleteRow(index)}
                               aria-label="delete"
                               size="small"
@@ -1219,10 +1399,11 @@ const InvoiceCreate = () => {
                             sx={{ width: "100px" }}
                             type="number"
                             size="small"
+                            disabled={isSalesOrderSelected}
                             value={row.quantity}
                             inputProps={{
                               min: 1,
-                              max: row.bookBalanceQuantity,
+                              max: row.isNonInventory ? undefined : row.bookBalanceQuantity,
                             }}
                             onChange={(e) => {
                               const inputValue = e.target.value;
@@ -1233,7 +1414,7 @@ const InvoiceCreate = () => {
 
                               let newValue = Number(inputValue);
 
-                              if (newValue > row.bookBalanceQuantity) {
+                              if (!row.isNonInventory && newValue > row.bookBalanceQuantity) {
                                 newValue = row.bookBalanceQuantity;
                               }
 
@@ -1261,6 +1442,7 @@ const InvoiceCreate = () => {
                             sx={{ width: "100px" }}
                             type="number"
                             size="small"
+                            disabled={isSalesOrderSelected}
                             value={isBookingSystem ? row.rate : row.sellingPrice}
                             onChange={(e) => handleSellingPriceChange(index, e.target.value)}
                             onKeyDown={(e) => {
@@ -1313,6 +1495,76 @@ const InvoiceCreate = () => {
           </Grid>
         </Grid>
       </Grid>
+
+      <Modal
+        open={salesOrderModalOpen}
+        onClose={() => setSalesOrderModalOpen(false)}
+        aria-labelledby="sales-order-modal-title"
+        aria-describedby="sales-order-modal-description"
+      >
+        <Box sx={salesOrderStyle} className="bg-black">
+          <Typography sx={{ fontWeight: "bold", my: 1, fontSize: "1.1rem" }}>
+            Select Sales Order
+          </Typography>
+          <TextField
+            size="small"
+            fullWidth
+            placeholder="Search by Order No or Customer"
+            value={salesOrderSearch}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSalesOrderSearch(value);
+              loadSalesOrderList(value);
+            }}
+            sx={{ mb: 2 }}
+          />
+          <TableContainer component={Paper} sx={{ maxHeight: "50vh", overflowY: "auto" }}>
+            <Table size="small" className="dark-table">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Order No</TableCell>
+                  <TableCell>Date</TableCell>
+                  <TableCell>Customer</TableCell>
+                  <TableCell>Total</TableCell>
+                  <TableCell align="right">Action</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {loadingSalesOrders ? (
+                  <TableRow>
+                    <TableCell colSpan={5}>Loading...</TableCell>
+                  </TableRow>
+                ) : salesOrderList.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5}>
+                      <Typography color="error">No Sales Orders Available</Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  salesOrderList.map((order) => (
+                    <TableRow key={order.id}>
+                      <TableCell>{order.documentNo}</TableCell>
+                      <TableCell>{formatDate(order.documentDate)}</TableCell>
+                      <TableCell>{order.customerName}</TableCell>
+                      <TableCell>{formatCurrency(order.netTotal)}</TableCell>
+                      <TableCell align="right">
+                        <Button size="small" variant="contained" onClick={() => handleSelectSalesOrder(order.id)}>
+                          Select
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <Box mt={2} display="flex" justifyContent="flex-end">
+            <Button variant="outlined" onClick={() => setSalesOrderModalOpen(false)}>
+              Close
+            </Button>
+          </Box>
+        </Box>
+      </Modal>
 
       <Modal
         open={open}
@@ -1444,6 +1696,17 @@ const style = {
   left: "50%",
   transform: "translate(-50%, -50%)",
   width: { lg: 800, xs: 350 },
+  bgcolor: "background.paper",
+  boxShadow: 24,
+  p: 2,
+};
+
+const salesOrderStyle = {
+  position: "absolute",
+  top: "50%",
+  left: "50%",
+  transform: "translate(-50%, -50%)",
+  width: { lg: 620, xs: 330 },
   bgcolor: "background.paper",
   boxShadow: 24,
   p: 2,

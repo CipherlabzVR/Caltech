@@ -29,17 +29,49 @@ const style = {
   p: 2,
 };
 
+/** Optional leading + then digits only (e.g. +94771234567). */
+function sanitizeSupplierMobileInput(raw) {
+  const s = String(raw ?? "");
+  const digits = s.replace(/\D/g, "");
+  return s.trim().startsWith("+") ? `+${digits}` : digits;
+}
+
 const validationSchema = Yup.object().shape({
   Name: Yup.string().required("Name is required"),
   MobileNo: Yup.string()
     .required("Mobile No is required")
+    .matches(
+      /^\+?\d+$/,
+      "Use digits only; you may start with + for country code"
+    ),
 });
 
-export default function AddSupplier({ fetchItems, isPOSSystem, banks, isBankRequired, chartOfAccounts, onCreated }) {
-  const [open, setOpen] = useState(false);
+export default function AddSupplier({
+  fetchItems,
+  isPOSSystem,
+  banks,
+  isBankRequired,
+  chartOfAccounts,
+  onCreated,
+  hideButton = false,
+  open: controlledOpen,
+  onClose: controlledOnClose,
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = typeof controlledOpen === "boolean";
+  const open = isControlled ? controlledOpen : internalOpen;
   const [selectedBank, setSelectedBank] = useState();
-  const handleOpen = () => setOpen(true);
-  const handleClose = () => setOpen(false);
+  const handleOpen = () => {
+    if (!isControlled) setInternalOpen(true);
+  };
+  const handleClose = () => {
+    if (isControlled) {
+      controlledOnClose?.();
+    } else {
+      setInternalOpen(false);
+    }
+    setSelectedBank(undefined);
+  };
 
   const inputRef = useRef(null);
 
@@ -63,6 +95,7 @@ export default function AddSupplier({ fetchItems, isPOSSystem, banks, isBankRequ
 
     const payload = {
       ...values,
+      MobileNo: sanitizeSupplierMobileInput(values.MobileNo),
       BankId: selectedBank?.id || null,
       BankName: selectedBank?.name || "",
       BankAccountUserName: selectedBank?.accountUsername || "",
@@ -79,13 +112,17 @@ export default function AddSupplier({ fetchItems, isPOSSystem, banks, isBankRequ
     })
       .then((response) => response.json())
       .then((data) => {
-        if (data.statusCode == 200) {
-          toast.success(data.message);
-          setOpen(false);
-          fetchItems?.();
-          onCreated?.(data.result);
+        const sc = data.statusCode ?? data.StatusCode;
+        const msg = data.message ?? data.Message ?? "";
+        if (sc === 200) {
+          toast.success(msg);
+          const result = data.result ?? data.Result;
+          const newId = result?.id ?? result?.Id;
+          onCreated?.(result);
+          handleClose();
+          fetchItems?.(newId);
         } else {
-          toast.error(data.message);
+          toast.error(msg);
         }
       })
       .catch((error) => {
@@ -95,9 +132,11 @@ export default function AddSupplier({ fetchItems, isPOSSystem, banks, isBankRequ
 
   return (
     <>
-      <Button variant="outlined" onClick={handleOpen}>
-        + new supplier
-      </Button>
+      {!hideButton && (
+        <Button variant="outlined" onClick={handleOpen}>
+          + new supplier
+        </Button>
+      )}
       <Modal
         open={open}
         onClose={handleClose}
@@ -106,6 +145,7 @@ export default function AddSupplier({ fetchItems, isPOSSystem, banks, isBankRequ
       >
         <Box sx={style} className="bg-black">
           <Formik
+            key={String(open)}
             initialValues={{
               Name: "",
               MobileNo: "",
@@ -160,14 +200,23 @@ export default function AddSupplier({ fetchItems, isPOSSystem, banks, isBankRequ
                       >
                         Mobile No
                       </Typography>
-                      <Field
-                        as={TextField}
-                        fullWidth
-                        name="MobileNo"
-                        size="small"
-                        error={touched.MobileNo && Boolean(errors.MobileNo)}
-                        helperText={touched.MobileNo && errors.MobileNo}
-                      />
+                      <Field name="MobileNo">
+                        {({ field, meta }) => (
+                          <TextField
+                            fullWidth
+                            name={field.name}
+                            value={field.value}
+                            onBlur={field.onBlur}
+                            onChange={(e) =>
+                              setFieldValue("MobileNo", sanitizeSupplierMobileInput(e.target.value))
+                            }
+                            size="small"
+                            inputProps={{ inputMode: "tel", autoComplete: "tel" }}
+                            error={meta.touched && Boolean(meta.error)}
+                            helperText={meta.touched && meta.error}
+                          />
+                        )}
+                      </Field>
                     </Grid>
                     {isPOSSystem && (
                       <>
@@ -283,6 +332,7 @@ export default function AddSupplier({ fetchItems, isPOSSystem, banks, isBankRequ
                 </Box>
                 <Box display="flex" justifyContent="space-between">
                   <Button
+                    type="button"
                     variant="contained"
                     color="error"
                     onClick={handleClose}

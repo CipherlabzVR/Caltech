@@ -86,16 +86,39 @@ const styles = StyleSheet.create({
     marginBottom: "5px",
     marginLeft: "40px",
   },
+  tableContainer: {
+    border: "1px solid black",
+  },
+  tableRow: {
+    flexDirection: "row",
+    minHeight: "25px",
+  },
+  tableHeaderRow: {
+    flexDirection: "row",
+    minHeight: "25px",
+    borderBottom: "1px solid black",
+  },
   tablecell: {
     fontSize: "12px",
-    border: "1px solid black",
     padding: "5px",
+    borderRight: "1px solid black",
+    justifyContent: "center",
+  },
+  tablecellLast: {
+    fontSize: "12px",
+    padding: "5px",
+    justifyContent: "center",
   },
   tablecell2: {
     fontSize: "12px",
-    border: "1px solid black",
     padding: "5px",
-    borderTop: "none",
+    borderRight: "1px solid black",
+    justifyContent: "center",
+  },
+  tablecell2Last: {
+    fontSize: "12px",
+    padding: "5px",
+    justifyContent: "center",
   },
   contact: {
     fontSize: "12px",
@@ -117,6 +140,22 @@ const styles = StyleSheet.create({
     marginRight: "85px",
     // fontFamily: "CustomFont",
   },
+  pointsContainer: {
+    flexDirection: "row",
+    marginLeft: "40px",
+    marginRight: "85px",
+    marginBottom: "8px",
+  },
+  pointNumber: {
+    fontSize: "12px",
+    fontWeight: "bold",
+    width: "20px",
+    flexShrink: 0,
+  },
+  pointText: {
+    fontSize: "12px",
+    flex: 1,
+  },
   highlight: {
     color: "red",
   },
@@ -136,6 +175,50 @@ function formatDateTime(date) {
   );
 }
 
+// Format number with thousand separators for quotation PDF
+function formatNumberWithSeparator(value) {
+  if (value === null || value === undefined) return "0.00";
+  const num = Number(value);
+  if (isNaN(num)) return "0.00";
+  return num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatQuantity(value) {
+  if (value === null || value === undefined) return "0";
+  const num = Number(value);
+  if (isNaN(num)) return "0";
+  return num.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+// Get embellishment name from type (all uppercase)
+function getEmbellishmentName(type) {
+  switch (type) {
+    case 1:
+      return "EMBROIDER";
+    case 2:
+      return "SUBLIMATION";
+    case 3:
+      return "SCREEN PRINT";
+    case 4:
+      return "DTF";
+    default:
+      return "";
+  }
+}
+
+// Format multiple embellishments as numbered list (1. SUBLIMATION\n2. EMBROIDER)
+function formatEmbellishments(types) {
+  if (!types || !Array.isArray(types) || types.length === 0) return "-";
+  // Filter out invalid types (null, undefined, 0) and get valid embellishment names
+  const validTypes = types.filter(type => type != null && type !== 0 && getEmbellishmentName(type) !== "");
+  if (validTypes.length === 0) return "-";
+  // Return numbered list with embellishment names
+  return validTypes
+    .sort((a, b) => a - b)
+    .map((type, index) => `${index + 1}. ${getEmbellishmentName(type)}`)
+    .join("\n");
+}
+
 
 export default function ViewQuotation({
   quotDetails,
@@ -153,7 +236,8 @@ export default function ViewQuotation({
   const today = new Date();
   const [open, setOpen] = useState(false);
   const [fabs, setFabs] = useState([]);
-  const [doc, setDoc] = useState();
+  const [docs, setDocs] = useState([]);
+  const [sleeveLabel, setSleeveLabel] = useState("");
   const [shareURL, setShareURL] = useState(url);
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
@@ -244,23 +328,74 @@ export default function ViewQuotation({
       }
       const data = await response.json();
       const excluded = [5, 6, 7];
-      const filteredData = data.result.filter(
-        (item) => !excluded.includes(item.documentSubContentType)
-      );
-      const firstResult = filteredData.length > 0 ? filteredData[0] : null;
-      if (firstResult) {
-        setDoc(firstResult.documentSubContentType);
+      let docList = [];
+      if (data.result && Array.isArray(data.result)) {
+        docList = data.result;
+      } else if (Array.isArray(data)) {
+        docList = data;
       }
+      const filteredData = docList.filter(
+        (item) => item.documentSubContentType && !excluded.includes(item.documentSubContentType)
+      );
+      // Get unique document types for embellishments
+      const uniqueTypes = [...new Set(filteredData.map(item => item.documentSubContentType).filter(Boolean))];
+      setDocs(uniqueTypes);
     } catch (error) {
       console.error("Error:", error);
     }
   };
 
+  const fetchSleeve = async () => {
+    const inquiryId = quotDetails?.inquiryID ?? quotDetails?.inquiryId;
+    const optionId = quotDetails?.optionId;
+    const windowType = quotDetails?.windowType;
+    if (inquiryId == null || optionId == null) return;
+    if (windowType !== 1 && windowType !== 2) return;
+    setSleeveLabel("");
+    try {
+      const response = await fetch(
+        `${BASE_URL}/InquirySleeve/GetSleeve?InquiryID=${inquiryId}&OptionId=${optionId}&WindowType=${windowType}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      if (!response.ok) {
+        if (windowType === 2) setSleeveLabel("Short");
+        return;
+      }
+      const data = await response.json();
+      // API may return result (camelCase) or Result (PascalCase)
+      const raw = data.result ?? data.Result;
+      const list = Array.isArray(raw) && raw.length > 0 ? raw[0] : Array.isArray(raw) ? null : raw;
+      if (!list || (typeof list !== "object")) {
+        if (windowType === 2) setSleeveLabel("Short");
+        return;
+      }
+      // API returns Short/Long (PascalCase) or short/long (camelCase); values can be 1, "1", or true
+      const shortVal = list.Short ?? list.short;
+      const longVal = list.Long ?? list.long;
+      const short = shortVal === 1 || shortVal === "1" || shortVal === true;
+      const long = longVal === 1 || longVal === "1" || longVal === true;
+      const label = short ? "Short" : long ? "Long" : (windowType === 2 ? "Short" : "");
+      setSleeveLabel(label);
+    } catch (error) {
+      console.error("Error fetching sleeve:", error);
+      if (windowType === 2) setSleeveLabel("Short");
+    }
+  };
+
   useEffect(() => {
+    const inquiryId = quotDetails?.inquiryID ?? quotDetails?.inquiryId;
+    if (!inquiryId) return;
     fetchCustomerDetails();
     fetchDocuments();
     fetchFabricValueList();
-  }, []);
+    fetchSleeve();
+  }, [quotDetails?.inquiryID ?? quotDetails?.inquiryId, quotDetails?.optionId, quotDetails?.windowType]);
 
   const handleOpenWhatsappTemp = (documentUrl) => {
     const encodedMessage = encodeURIComponent(`${documentUrl}`);
@@ -268,6 +403,7 @@ export default function ViewQuotation({
   };
 
   const handleShareNow = async () => {
+    setLoading(true);
     const cus = quotDetails.customerDetails;
 
     const data = {
@@ -309,7 +445,7 @@ export default function ViewQuotation({
       const phoneNumber = whatsappNo;
       if (IsShareWhatsAppAPIThrough) {
         try {
-          const apiUrl = `https://api.textmebot.com/send.php?recipient=${phoneNumber}&apikey=781LrdZkpdLh&document=${encodeURIComponent(
+          const apiUrl = `${process.env.NEXT_PUBLIC_WHATSAPP_API_URL}?recipient=${phoneNumber}&apikey=${process.env.NEXT_PUBLIC_WHATSAPP_API_KEY}&document=${encodeURIComponent(
             url
           )}`;
           const response = await fetch(apiUrl, {
@@ -331,8 +467,6 @@ export default function ViewQuotation({
       setOpen(false);
 
       try {
-        setLoading(true);
-
         const res = await fetch(`${BASE_URL}/Inquiry/CreateSentQuotation`, {
           method: "POST",
           headers: {
@@ -374,6 +508,7 @@ export default function ViewQuotation({
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      setLoading(false);
     } else {
       const messengerLink =
         "https://www.facebook.com/dialog/share?app_id=YourAppID&href=" +
@@ -385,6 +520,7 @@ export default function ViewQuotation({
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      setLoading(false);
     }
   };
 
@@ -427,137 +563,157 @@ export default function ViewQuotation({
               "Invalid Customer"
             )}
           </Text>
-          <Text style={styles.addDesi}>
-            {quotDetails.customerDetails ? (
-              <>{quotDetails.customerDetails.designation},</>
-            ) : (
-              ""
-            )}
-          </Text>
-          <Text style={styles.add}>
-            {quotDetails.customerDetails ? (
-              <>{quotDetails.customerDetails.company},</>
-            ) : (
-              ""
-            )}
-          </Text>
-          <Text style={styles.add}>
-            {quotDetails.customerDetails ? (
-              <>
-                {quotDetails.customerDetails.addressLine1}
-                {quotDetails.customerDetails.addressLine2 &&
-                  `, ${quotDetails.customerDetails.addressLine2}`}
-                {quotDetails.customerDetails.addressLine3 &&
-                  `, ${quotDetails.customerDetails.addressLine3}`}
-              </>
-            ) : (
-              ""
-            )}
-          </Text>
+          {quotDetails.customerDetails?.designation?.trim() && (
+            <Text style={styles.addDesi}>
+              {quotDetails.customerDetails.designation},
+            </Text>
+          )}
+          {quotDetails.customerDetails?.company?.trim() && (
+            <Text style={styles.add}>
+              {quotDetails.customerDetails.company},
+            </Text>
+          )}
+          {quotDetails.customerDetails &&
+            [quotDetails.customerDetails.addressLine1, quotDetails.customerDetails.addressLine2, quotDetails.customerDetails.addressLine3]
+              .filter(Boolean)
+              .join(", ")
+              .trim() && (
+            <Text style={styles.add}>
+              {quotDetails.customerDetails.addressLine1}
+              {quotDetails.customerDetails.addressLine2 &&
+                `, ${quotDetails.customerDetails.addressLine2}`}
+              {quotDetails.customerDetails.addressLine3 &&
+                `, ${quotDetails.customerDetails.addressLine3}`}
+            </Text>
+          )}
           <View
             style={{
-              flexDirection: "row",
+              ...styles.tableContainer,
               marginTop: "10px",
               marginLeft: "40px",
-              marginRight: "85px",
+              marginRight: "100px",
             }}
           >
-            <View style={{ flexGrow: 1 }}>
-              <Text style={styles.tablecell}>QTY</Text>
-              <Text style={styles.tablecell2}>
-                {quotDetails.apprvedTotalUnits || quotDetails.totalUnits}
-              </Text>
+            {/* Header Row */}
+            <View style={styles.tableHeaderRow}>
+              <View style={{ ...styles.tablecell, width: "40px" }}>
+                <Text style={{ textAlign: "right" }}>QTY</Text>
+              </View>
+              <View style={{ ...styles.tablecell, width: "55px" }}>
+                <Text>Item</Text>
+              </View>
+              <View style={{ ...styles.tablecell, width: "80px" }}>
+                <Text>Material</Text>
+              </View>
+              <View style={{ ...styles.tablecell, flex: 1 }}>
+                <Text>Emblishment</Text>
+              </View>
+              <View style={{ ...styles.tablecell, width: "65px", textAlign: "right" }}>
+                <Text style={{ textAlign: "right" }}>Unit Price (LKR)</Text>
+              </View>
+              <View style={{ ...styles.tablecellLast, width: "65px" }}>
+                <Text style={{ textAlign: "right" }}>Amount (LKR)</Text>
+              </View>
             </View>
-            <View style={{ flexGrow: 1 }}>
-              <Text
-                style={{ ...styles.tablecell, borderLeft: 0, borderRight: 0 }}
-              >
-                Item
-              </Text>
-              <Text
-                style={{ ...styles.tablecell2, borderLeft: 0, borderRight: 0 }}
-              >
-                {windowType}
-              </Text>
-            </View>
-            <View style={{ flexGrow: 1 }}>
-              <Text style={styles.tablecell}>Material</Text>
-              <Text style={styles.tablecell2}>
-                {fabs.length === 0
-                  ? "-"
-                  : fabs.map((fab, index) => (
-                    <React.Fragment key={index}>
-                      {fab.fabricName}
-                      {index < fabs.length - 1 ? ", " : ""}
-                    </React.Fragment>
-                  ))}
-              </Text>
-            </View>
-            <View style={{ flexGrow: 1 }}>
-              <Text
-                style={{ ...styles.tablecell, borderLeft: 0, borderRight: 0 }}
-              >
-                Emblishment
-              </Text>
-              <Text
-                style={{ ...styles.tablecell2, borderLeft: 0, borderRight: 0 }}
-              >
-                <DocSubType type={doc} />
-              </Text>
-            </View>
-            <View style={{ flexGrow: 1 }}>
-              <Text style={styles.tablecell}>Unit Price (LKR)</Text>
-              <Text style={styles.tablecell2}>
-                {quotDetails.apprvedSellingPrice}
-              </Text>
-            </View>
-            <View style={{ flexGrow: 1 }}>
-              <Text style={{ ...styles.tablecell, borderLeft: 0 }}>
-                Amount (LKR)
-              </Text>
-              <Text style={{ ...styles.tablecell2, borderLeft: 0 }}>
-                {quotDetails.apprvedRevanue}
-              </Text>
+            {/* Data Row */}
+            <View style={styles.tableRow}>
+              <View style={{ ...styles.tablecell2, width: "40px" }}>
+                <Text style={{ textAlign: "right" }}>{formatQuantity(quotDetails.apprvedTotalUnits || quotDetails.totalUnits)}</Text>
+              </View>
+              <View style={{ ...styles.tablecell2, width: "55px" }}>
+                <Text>
+                  {(() => {
+                    const effectiveSleeve = sleeveLabel || (quotDetails.windowType === 2 ? "Short" : "");
+                    return effectiveSleeve ? `${windowType} - ${effectiveSleeve}` : windowType;
+                  })()}
+                </Text>
+              </View>
+              <View style={{ ...styles.tablecell2, width: "80px" }}>
+                <Text>
+                  {fabs.length === 0
+                    ? "-"
+                    : fabs.map((fab, index) => (
+                      <React.Fragment key={index}>
+                        {fab.fabricName}
+                        {index < fabs.length - 1 ? ", " : ""}
+                      </React.Fragment>
+                    ))}
+                </Text>
+              </View>
+              <View style={{ ...styles.tablecell2, flex: 1 }}>
+                {docs && Array.isArray(docs) && docs.length > 0 ? (
+                  (() => {
+                    const formatted = formatEmbellishments(docs);
+                    if (formatted && formatted !== "-") {
+                      return formatted.split("\n").map((line, idx) => (
+                        <Text key={idx}>{line}</Text>
+                      ));
+                    }
+                    return <Text>-</Text>;
+                  })()
+                ) : (
+                  <Text>-</Text>
+                )}
+              </View>
+              <View style={{ ...styles.tablecell2, width: "65px" }}>
+                <Text style={{ textAlign: "right" }}>{formatNumberWithSeparator(quotDetails.apprvedSellingPrice)}</Text>
+              </View>
+              <View style={{ ...styles.tablecell2Last, width: "65px" }}>
+                <Text style={{ textAlign: "right" }}>{formatNumberWithSeparator(quotDetails.apprvedRevanue)}</Text>
+              </View>
             </View>
           </View>
 
           <Text style={styles.heading}>Terms & Conditions</Text>
           {selectedOption === "1" ? (
-            <Text style={styles.points}>
-              1. {percentage}% advance payment with the confirmation of the
-              order & balance is due on prior to collection.
-            </Text>
+            <View style={styles.pointsContainer}>
+              <Text style={styles.pointNumber}>1.</Text>
+              <Text style={styles.pointText}>
+                {percentage}% advance payment with the confirmation of the order & balance is due on prior to collection.
+              </Text>
+            </View>
           ) : selectedOption === "2" ? (
-            <Text style={styles.points}>
-              1. {percentage}% advance payment with the confirmation of the
-              order & balance is due within {termDay} days credit after the
-              delivery.
-            </Text>
+            <View style={styles.pointsContainer}>
+              <Text style={styles.pointNumber}>1.</Text>
+              <Text style={styles.pointText}>
+                {percentage}% advance payment with the confirmation of the order & balance is due within {termDay} days credit after the delivery.
+              </Text>
+            </View>
           ) : selectedOption === "3" ? (
-            <Text style={styles.points}>
-              1. Purchase Order (PO) with the confirmation of the order &
-              payment is due within {termDay} days credit after the delivery.
-            </Text>
+            <View style={styles.pointsContainer}>
+              <Text style={styles.pointNumber}>1.</Text>
+              <Text style={styles.pointText}>
+                Purchase Order (PO) with the confirmation of the order & payment is due within {termDay} days credit after the delivery.
+              </Text>
+            </View>
           ) : (
             ""
           )}
 
-          <Text style={styles.points}>
-            2. This quotation is valid {validDate} days from {startDate}
-          </Text>
-          <Text style={styles.points}>
-            3. The above mentioned prices are given by calculating for an
-            average size ratio, if they doesn't match with our calculations the
-            prices might get differ.
-          </Text>
-          <Text style={styles.points}>
-            4. To handover the order on your required date the order must be
-            placed {handoverDate} working days prior to the date of delivery.
-          </Text>
-          <Text style={styles.points}>
-            5. Please be kind enough to issue the cheques for the payment
-            regarding this order to the following account.
-          </Text>
+          <View style={styles.pointsContainer}>
+            <Text style={styles.pointNumber}>2.</Text>
+            <Text style={styles.pointText}>
+              This quotation is valid {validDate} days from {startDate}
+            </Text>
+          </View>
+          <View style={styles.pointsContainer}>
+            <Text style={styles.pointNumber}>3.</Text>
+            <Text style={styles.pointText}>
+              The above mentioned prices are given by calculating for an average size ratio, if they doesn't match with our calculations the prices might get differ.
+            </Text>
+          </View>
+          <View style={styles.pointsContainer}>
+            <Text style={styles.pointNumber}>4.</Text>
+            <Text style={styles.pointText}>
+              To handover the order on your required date the order must be placed {handoverDate} working days prior to the date of delivery.
+            </Text>
+          </View>
+          <View style={styles.pointsContainer}>
+            <Text style={styles.pointNumber}>5.</Text>
+            <Text style={styles.pointText}>
+              Please be kind enough to issue the cheques for the payment regarding this order to the following account.
+            </Text>
+          </View>
 
           <View style={{ marginTop: "10px" }}>
             <Text style={styles.add}>Tailor Made apparels,</Text>
@@ -694,7 +850,11 @@ export default function ViewQuotation({
               {message ? message : ""}
             </Typography>
             <Grid item xs={12}>
-              <PDFViewer width={800} height={500}>
+              <PDFViewer
+                key={`${quotDetails?.inquiryID}-${quotDetails?.optionId}-${sleeveLabel}`}
+                width={800}
+                height={500}
+              >
                 {MyDocument}
               </PDFViewer>
             </Grid>

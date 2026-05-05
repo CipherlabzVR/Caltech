@@ -20,6 +20,7 @@ import Modules from "./Modules";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import Reports from "./Reports";
+import NotificationTypeMapping from "./NotificationTypeMapping";
 
 export default function Roles() {
   const cId = sessionStorage.getItem("category")
@@ -133,6 +134,7 @@ export default function Roles() {
                         <Box display="flex" gap={1} justifyContent="end">
                           {update ? <Reports item={item} /> : ""}
                           {update ? <Modules item={item} /> : ""}
+                          {update ? <NotificationTypeMapping role={item} /> : ""}
                           {update ? <EditRoles fetchItems={fetchRolesList} item={item} /> : ""}
                           {remove ? <DeleteConfirmationById id={item.id} controller={controller} fetchItems={fetchRolesList} /> : ""}
                         </Box>

@@ -7,7 +7,7 @@ import AddIcon from "@mui/icons-material/Add";
 import Grid from "@mui/material/Grid";
 import { Formik, Form, Field } from "formik";
 import * as Yup from "yup";
-import { toast, ToastContainer } from "react-toastify";
+import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import {
   Checkbox,
@@ -24,8 +24,12 @@ import {
 import BASE_URL from "Base/api";
 
 const validationSchema = Yup.object().shape({
-  FirstName: Yup.string().required("First Name is required"),
-  LastName: Yup.string().required("Last Name is required"),
+  FirstName: Yup.string()
+    .matches(/^[a-zA-Z\s]+$/, "First Name must contain only letters")
+    .required("First Name is required"),
+  LastName: Yup.string()
+    .matches(/^[a-zA-Z\s]+$/, "Last Name must contain only letters")
+    .required("Last Name is required"),
   Email: Yup.string().email("Invalid email").required("Email is required"),
   Address: Yup.string().required("Address is required"),
   MobileNumber: Yup.string()
@@ -179,7 +183,6 @@ export default function AddUserDialog({ fetchItems, warehouses, roles }) {
 
   return (
     <>
-      <ToastContainer />
       <Button onClick={handleClickOpen("paper")} variant="outlined">
         <AddIcon
           sx={{

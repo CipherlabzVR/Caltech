@@ -149,7 +149,7 @@ export default function InvoiceView({
 
     if (selectedCard === 0) {
       try {
-        const apiUrl = `https://api.textmebot.com/send.php?recipient=${formattedPhoneNumber}&apikey=781LrdZkpdLh&document=${encodeURIComponent(
+        const apiUrl = `${process.env.NEXT_PUBLIC_WHATSAPP_API_URL}?recipient=${formattedPhoneNumber}&apikey=${process.env.NEXT_PUBLIC_WHATSAPP_API_KEY}&document=${encodeURIComponent(
           documentUrl
         )}&text=${message}`;
         const response = await fetch(apiUrl, {

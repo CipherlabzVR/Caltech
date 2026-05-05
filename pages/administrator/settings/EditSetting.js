@@ -43,9 +43,6 @@ export default function EditSetting({ item, fetchItems }) {
           toast.success(data.message);
           fetchItems();
           setOpen(false);
-          setTimeout(() => {
-            window.location.reload();
-          }, 2000);
         } else {
           toast.error(data.message);
         }

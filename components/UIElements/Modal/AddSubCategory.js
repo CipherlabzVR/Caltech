@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Checkbox,
   FormControl,
@@ -36,11 +36,29 @@ const validationSchema = Yup.object().shape({
   CategoryId: Yup.number().required("Category is required"),
 });
 
-export default function AddSubCategory({ fetchItems, IsEcommerceWebSiteAvailable }) {
-  const [open, setOpen] = React.useState(false);
-  const handleOpen = () => setOpen(true);
+export default function AddSubCategory({
+  fetchItems,
+  IsEcommerceWebSiteAvailable,
+  hideButton = false,
+  open: controlledOpen,
+  onClose: controlledOnClose,
+  initialCategoryId,
+}) {
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const isControlled = typeof controlledOpen === "boolean";
+  const open = isControlled ? controlledOpen : internalOpen;
 
-  const handleClose = () => setOpen(false);
+  const handleOpen = () => {
+    if (!isControlled) setInternalOpen(true);
+  };
+
+  const handleClose = () => {
+    if (isControlled) {
+      controlledOnClose?.();
+    } else {
+      setInternalOpen(false);
+    }
+  };
 
   const [categoryList, setCategoryList] = useState([]);
 
@@ -66,8 +84,24 @@ export default function AddSubCategory({ fetchItems, IsEcommerceWebSiteAvailable
   };
   const inputRef = useRef(null);
 
+  const formInitialValues = useMemo(() => {
+    const cat =
+      initialCategoryId !== undefined &&
+      initialCategoryId !== null &&
+      initialCategoryId !== ""
+        ? initialCategoryId
+        : "";
+    return {
+      Name: "",
+      CategoryId: cat,
+      IsActive: true,
+      IsWebView: false,
+    };
+  }, [open, initialCategoryId]);
+
   useEffect(() => {
     if (open) {
+      fetchCategoryList();
       setTimeout(() => {
         if (inputRef.current) {
           inputRef.current.focus();
@@ -75,10 +109,6 @@ export default function AddSubCategory({ fetchItems, IsEcommerceWebSiteAvailable
       }, 100);
     }
   }, [open]);
-
-  useEffect(() => {
-    fetchCategoryList();
-  }, []);
 
   const handleSubmit = (values) => {
     fetch(`${BASE_URL}/SubCategory/CreateSubCategory`, {
@@ -91,12 +121,19 @@ export default function AddSubCategory({ fetchItems, IsEcommerceWebSiteAvailable
     })
       .then((response) => response.json())
       .then((data) => {
-        if (data.statusCode == 200) {
-          toast.success(data.message);
-          setOpen(false);
-          fetchItems();
+        const sc = data.statusCode ?? data.StatusCode;
+        const msg = data.message ?? data.Message ?? "";
+        if (sc === 200) {
+          toast.success(msg);
+          const newId =
+            data.result?.id ??
+            data.result?.Id ??
+            data.Result?.id ??
+            data.Result?.Id;
+          handleClose();
+          fetchItems?.(newId);
         } else {
-          toast.error(data.message);
+          toast.error(msg);
         }
       })
       .catch((error) => {
@@ -106,9 +143,11 @@ export default function AddSubCategory({ fetchItems, IsEcommerceWebSiteAvailable
 
   return (
     <>
-      <Button variant="outlined" onClick={handleOpen}>
-        + new sub category
-      </Button>
+      {!hideButton && (
+        <Button variant="outlined" onClick={handleOpen}>
+          + new sub category
+        </Button>
+      )}
       <Modal
         open={open}
         onClose={handleClose}
@@ -117,12 +156,8 @@ export default function AddSubCategory({ fetchItems, IsEcommerceWebSiteAvailable
       >
         <Box sx={style} className="bg-black">
           <Formik
-            initialValues={{
-              Name: "",
-              CategoryId: "",
-              IsActive: true,
-              IsWebView: false,
-            }}
+            enableReinitialize
+            initialValues={formInitialValues}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
@@ -143,7 +178,7 @@ export default function AddSubCategory({ fetchItems, IsEcommerceWebSiteAvailable
                         Category
                       </Typography>
                       <FormControl fullWidth>
-                        <InputLabel id="demo-simple-select-label">
+                        <InputLabel id="category-select-label">
                           Category
                         </InputLabel>
                         <Field
@@ -244,7 +279,7 @@ export default function AddSubCategory({ fetchItems, IsEcommerceWebSiteAvailable
                 </Box>
                 <Box display="flex" justifyContent="space-between">
                   <Button
-                    type="submit"
+                    type="button"
                     variant="contained"
                     onClick={handleClose}
                     color="error"

@@ -12,6 +12,11 @@ const options = {
       },
     },
   },
+  scales: {
+    y: {
+      beginAtZero: true,
+    },
+  },
 };
 
 const getFirstDayOfMonth = () => {

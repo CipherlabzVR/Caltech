@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import styles from "@/styles/PageTitle.module.css";
@@ -58,13 +58,39 @@ import ClockInOutModal from "@/components/work-track/ClockInOutModal";
 import CameraCaptureModal from "@/components/work-track/CameraCaptureModal";
 import BASE_URL from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
+
+function extractChecklistArrayFromResponse(result) {
+  const candidates = [
+    result?.data,
+    result?.result,
+    result?.Data,
+    result?.Result,
+  ];
+  for (const c of candidates) {
+    if (Array.isArray(c)) return c;
+    if (c && Array.isArray(c.items)) return c.items;
+    if (c && Array.isArray(c.Items)) return c.Items;
+  }
+  return Array.isArray(result) ? result : [];
+}
 
 export default function TechnicianWorkTrackDetailView() {
   const router = useRouter();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const { id } = router.query;
-  const hasFetched = useRef(false);
+
+  const resolvedDetailId = useMemo(() => {
+    if (!router.isReady) return null;
+    const pathOnly = router.asPath.split("?")[0].split("#")[0];
+    const fromPath = pathOnly.match(/\/work-track\/technician\/([^/]+)/);
+    if (fromPath?.[1]) return fromPath[1];
+    const q = router.query.id;
+    if (q == null) return null;
+    return Array.isArray(q) ? q[0] : q;
+  }, [router.isReady, router.asPath, router.query.id]);
+
+  const id = resolvedDetailId;
 
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState(null);
@@ -97,6 +123,10 @@ export default function TechnicianWorkTrackDetailView() {
   // Camera capture modal
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [cameraItemId, setCameraItemId] = useState(null);
+
+  // App setting: when enabled, removes time tracking (start/end work, breaks, timers, sessions UI)
+  const { data: removeTimeTrackSetting } = IsAppSettingEnabled("RemoveTimeTrackFromWorkTrackDetail");
+  const isTimeTrackingHidden = removeTimeTrackSetting === true || removeTimeTrackSetting === "true";
 
   // Break API functions - save to database for cross-browser sync
   const saveBreaksToAPI = useCallback(async (breaks, currentBreakType = null) => {
@@ -168,12 +198,10 @@ export default function TechnicianWorkTrackDetailView() {
   }, [id]);
 
   useEffect(() => {
-    if (!id) return;
-    if (hasFetched.current) return;
-    
+    if (!router.isReady || !id) return;
+
     const initialize = async () => {
       await fetchCurrentUser();
-      hasFetched.current = true;
       // Load breaks from API (database)
       const apiBreaks = await loadBreaksFromAPI();
       if (apiBreaks) {
@@ -197,9 +225,9 @@ export default function TechnicianWorkTrackDetailView() {
       }
       await fetchData();
     };
-    
+
     initialize();
-  }, [id, loadBreaksFromAPI]);
+  }, [id, router.isReady, loadBreaksFromAPI]);
 
   // Sync breaks from API (database) - only used to START countdowns from API, not stop them
   const syncBreaksFromAPI = useCallback(async () => {
@@ -365,14 +393,23 @@ export default function TechnicianWorkTrackDetailView() {
       });
       const result = await response.json();
 
-      let checklistData = [];
-      if (result?.data && Array.isArray(result.data)) {
-        checklistData = result.data;
-      } else if (result?.result && Array.isArray(result.result)) {
-        checklistData = result.result;
-      } else if (Array.isArray(result)) {
-        checklistData = result;
-      }
+      let checklistData = extractChecklistArrayFromResponse(result);
+
+      checklistData = checklistData.map((cl) => {
+        const rawItems = cl.items ?? cl.Items;
+        const items = Array.isArray(rawItems) ? rawItems : [];
+        return {
+          ...cl,
+          items: items.map((item) => ({
+            ...item,
+            optionsList: Array.isArray(item.optionsList)
+              ? item.optionsList
+              : Array.isArray(item.OptionsList)
+                ? item.OptionsList
+                : [],
+          })),
+        };
+      });
 
       setChecklists(checklistData);
       const expanded = {};
@@ -893,7 +930,7 @@ export default function TechnicianWorkTrackDetailView() {
   };
 
   const handleToggleItem = async (itemId, isCompleted) => {
-    if (!clockedIn || workSummary?.currentStatus !== "Started") {
+    if (!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")) {
       toast("Please clock in and start work before ticking checklist items", { type: "warning" });
       return;
     }
@@ -905,7 +942,7 @@ export default function TechnicianWorkTrackDetailView() {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ id: itemId, isCompleted }),
+        body: JSON.stringify({ id: itemId, isCompleted, workTrackDetailId: Number(id) }),
       });
 
       if (response.ok) {
@@ -917,7 +954,7 @@ export default function TechnicianWorkTrackDetailView() {
   };
 
   const handleUpdateItemValue = async (itemId, selectedValue) => {
-    if (!clockedIn || workSummary?.currentStatus !== "Started") {
+    if (!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")) {
       toast("Please clock in and start work before updating items", { type: "warning" });
       return;
     }
@@ -929,7 +966,7 @@ export default function TechnicianWorkTrackDetailView() {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ id: itemId, selectedValue }),
+        body: JSON.stringify({ id: itemId, selectedValue, workTrackDetailId: Number(id) }),
       });
 
       if (response.ok) {
@@ -941,7 +978,7 @@ export default function TechnicianWorkTrackDetailView() {
   };
 
   const openCameraModal = (itemId) => {
-    if (!clockedIn || workSummary?.currentStatus !== "Started") {
+    if (!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")) {
       toast("Please clock in and start work before capturing images", { type: "warning" });
       return;
     }
@@ -959,7 +996,7 @@ export default function TechnicianWorkTrackDetailView() {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ id: cameraItemId, imageData }),
+        body: JSON.stringify({ id: cameraItemId, imageData, workTrackDetailId: Number(id) }),
       });
 
       const result = await response.json();
@@ -1029,7 +1066,7 @@ export default function TechnicianWorkTrackDetailView() {
       <ToastContainer />
 
       {/* Previous Clock In/Out History - Show when there was a previous session */}
-      {detail?.clockOutTime && !clockedIn && (
+      {!isTimeTrackingHidden && detail?.clockOutTime && !clockedIn && (
         <Card sx={{ mb: 3, bgcolor: '#f8fafc', border: '1px solid #e2e8f0' }}>
           <CardContent>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -1111,6 +1148,7 @@ export default function TechnicianWorkTrackDetailView() {
       )}
 
       {/* Clock In/Out Status */}
+      {!isTimeTrackingHidden && (
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Box 
@@ -1160,8 +1198,10 @@ export default function TechnicianWorkTrackDetailView() {
           </Box>
         </CardContent>
       </Card>
+      )}
 
       {/* Work Session Card */}
+      {!isTimeTrackingHidden && (
       <Card sx={{ mb: 3, border: isWorkActive ? "2px solid" : "none", borderColor: "success.main" }}>
         <CardContent>
           <Box 
@@ -1430,9 +1470,10 @@ export default function TechnicianWorkTrackDetailView() {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Work Completed Summary Dashboard */}
-      {workCompletedSummary && (
+      {!isTimeTrackingHidden && workCompletedSummary && (
         <Card sx={{ mb: 3, bgcolor: '#f0fdf4', border: '2px solid #22c55e' }}>
           <CardContent>
             <Box display="flex" alignItems="center" mb={2}>
@@ -1578,6 +1619,9 @@ export default function TechnicianWorkTrackDetailView() {
             <ListAltIcon sx={{ mr: 1, verticalAlign: "middle" }} />
             Checklists
           </Typography>
+          <Alert severity="info" sx={{ mb: 2 }} variant="outlined">
+            Same checklists as other equipment lines on this work track.
+          </Alert>
 
           {checklists.length === 0 ? (
             <Alert severity="info">No checklists available for this work assignment.</Alert>
@@ -1657,7 +1701,7 @@ export default function TechnicianWorkTrackDetailView() {
                               onChange={(e) => handleToggleItem(item.id, e.target.checked)}
                               icon={<RadioButtonUncheckedIcon />}
                               checkedIcon={<CheckCircleIcon color="success" />}
-                              disabled={!clockedIn || workSummary?.currentStatus !== "Started"}
+                              disabled={!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")}
                               sx={{ flexShrink: 0, mt: 0.5 }}
                             />
                           )}
@@ -1721,7 +1765,7 @@ export default function TechnicianWorkTrackDetailView() {
                                   value={option}
                                   control={<Radio size="small" />}
                                   label={<Typography variant={isMobile ? "body2" : "body1"}>{option}</Typography>}
-                                  disabled={!clockedIn || workSummary?.currentStatus !== "Started"}
+                                  disabled={!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")}
                                   sx={{ mb: 0.5 }}
                                 />
                               ))}
@@ -1738,7 +1782,7 @@ export default function TechnicianWorkTrackDetailView() {
                                 value={item.selectedValue || ""}
                                 label="Select an option"
                                 onChange={(e) => handleUpdateItemValue(item.id, e.target.value)}
-                                disabled={!clockedIn || workSummary?.currentStatus !== "Started"}
+                                disabled={!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")}
                               >
                                 <MenuItem value="">
                                   <em>None</em>
@@ -1769,7 +1813,7 @@ export default function TechnicianWorkTrackDetailView() {
                                     display: "block",
                                   }}
                                 />
-                                {clockedIn && workSummary?.currentStatus === "Started" && (
+                                {(isTimeTrackingHidden || (clockedIn && workSummary?.currentStatus === "Started")) && (
                                   <Box mt={1}>
                                     <Button
                                       variant="outlined"
@@ -1793,11 +1837,11 @@ export default function TechnicianWorkTrackDetailView() {
                               >
                                 <CameraAltIcon sx={{ fontSize: 40, color: "#aaa", mb: 1 }} />
                                 <Typography variant="body2" color="textSecondary" gutterBottom>
-                                  {!clockedIn || workSummary?.currentStatus !== "Started"
+                                  {!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")
                                     ? "No photo captured"
                                     : "Tap to capture photo"}
                                 </Typography>
-                                {clockedIn && workSummary?.currentStatus === "Started" && (
+                                {(isTimeTrackingHidden || (clockedIn && workSummary?.currentStatus === "Started")) && (
                                   <Button
                                     variant="contained"
                                     startIcon={<CameraAltIcon />}

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -23,7 +23,29 @@ import {
   DialogActions,
   Divider,
   Box,
+  Card,
+  CardContent,
+  Stack,
+  Tabs,
+  Tab,
+  Stepper,
+  Step,
+  StepLabel,
+  CircularProgress,
+  TextField,
 } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
+import TrendingUpIcon from "@mui/icons-material/TrendingUp";
+import UndoIcon from "@mui/icons-material/Undo";
+import HowToRegIcon from "@mui/icons-material/HowToReg";
+import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
+import ScheduleIcon from "@mui/icons-material/Schedule";
+import CancelIcon from "@mui/icons-material/Cancel";
+import BlockIcon from "@mui/icons-material/Block";
+import PaymentsIcon from "@mui/icons-material/Payments";
 import { ToastContainer, toast } from "react-toastify";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
@@ -34,7 +56,205 @@ import { formatDate } from "@fullcalendar/core";
 import Chip from "@mui/material/Chip";
 import BASE_URL from "Base/api";
 
+const STATUS_TABS = [
+  { value: "1", label: "Queued" },
+  { value: "2", label: "In Progress" },
+  { value: "3", label: "Dispatched" },
+  { value: "4", label: "Delivered" },
+  { value: "5", label: "Completed" },
+  { value: "6", label: "Cancelled" },
+  { value: "all", label: "All" },
+];
+
+const ORDER_FLOW_STEPS = [
+  "Queued",
+  "In Progress",
+  "Dispatched",
+  "Delivered",
+  "Completed",
+];
+
+/** Backend serializes enums as strings (JsonStringEnumConverter), e.g. "InProgress", not 2. */
+const ORDER_STATUS_NAME_TO_NUM = {
+  queued: 1,
+  inprogress: 2,
+  dispatched: 3,
+  delivered: 4,
+  completed: 5,
+  cancelled: 6,
+};
+
+const PAYMENT_NAME_TO_NUM = {
+  cashondelivery: 1,
+  card: 2,
+  banktransfer: 3,
+};
+
+const REFUND_STATUS_NAME_TO_NUM = {
+  notapplicable: 0,
+  pending: 1,
+  processing: 2,
+  completed: 3,
+  failed: 4,
+};
+
+const REFUND_STATUS_META = {
+  0: { label: "Not applicable", color: "default" },
+  1: { label: "Refund pending", color: "warning" },
+  2: { label: "Refund processing", color: "info" },
+  3: { label: "Refund completed", color: "success" },
+  4: { label: "Refund failed", color: "error" },
+};
+
+function parseRefundStatus(raw) {
+  if (raw == null || raw === "") return 0;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const n = Number(raw);
+    if (Number.isFinite(n)) return n;
+    const key = normalizeEnumKey(raw);
+    if (REFUND_STATUS_NAME_TO_NUM[key] != null) return REFUND_STATUS_NAME_TO_NUM[key];
+  }
+  return 0;
+}
+
+function normalizeEnumKey(raw) {
+  if (raw == null) return "";
+  const s = String(raw).trim();
+  const tail = s.includes(".") ? s.split(".").pop() : s;
+  return tail.replace(/\s+/g, "").toLowerCase();
+}
+
+function parseOrderStatus(raw) {
+  if (raw == null || raw === "") return NaN;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return raw >= 1 && raw <= 6 ? raw : NaN;
+  }
+  if (typeof raw === "string") {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 1 && n <= 6) return n;
+    const key = normalizeEnumKey(raw);
+    if (ORDER_STATUS_NAME_TO_NUM[key] != null) return ORDER_STATUS_NAME_TO_NUM[key];
+  }
+  return NaN;
+}
+
+function parsePaymentOption(raw) {
+  if (raw == null || raw === "") return NaN;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const n = Number(raw);
+    if (Number.isFinite(n)) return n;
+    const key = normalizeEnumKey(raw);
+    if (PAYMENT_NAME_TO_NUM[key] != null) return PAYMENT_NAME_TO_NUM[key];
+  }
+  return NaN;
+}
+
+/** API may send camelCase or PascalCase for enriched line pricing. */
+function lineWholesaleApplied(line) {
+  return !!(line?.wholesaleApplied ?? line?.WholesaleApplied);
+}
+
+function lineRetailLineTotal(line) {
+  const v = line?.retailLineTotal ?? line?.RetailLineTotal;
+  return typeof v === "number" ? v : null;
+}
+
+function lineWholesaleUnit(line) {
+  const v = line?.wholesaleUnitPrice ?? line?.WholesaleUnitPrice;
+  return typeof v === "number" ? v : null;
+}
+
+function lineWholesaleMoq(line) {
+  const v = line?.wholesaleMinimumQuantity ?? line?.WholesaleMinimumQuantity;
+  return typeof v === "number" ? v : null;
+}
+
+function extraQueryForStatusTab(tabValue) {
+  return tabValue === "all" ? {} : { OrderStatus: Number(tabValue) };
+}
+
+function formatStatusHistoryAction(action) {
+  const a = (action ?? "").trim();
+  if (a === "Created") return "Order placed";
+  if (a === "Advance") return "Status advanced";
+  if (a === "Revert") return "Status reverted";
+  if (a === "Cancel") return "Order cancelled";
+  if (a === "CustomerConfirm") return "Customer confirmed completion";
+  return a || "Update";
+}
+
+/** Short, friendly labels + icon + MUI palette key for accents */
+function getStatusHistoryVisuals(action) {
+  const a = (action ?? "").trim();
+  if (a === "Created") {
+    return {
+      title: "Order placed",
+      description: "This order was created in the system.",
+      palette: "info",
+      Icon: ReceiptLongIcon,
+    };
+  }
+  if (a === "Advance") {
+    return {
+      title: "Moved forward",
+      description: "Fulfillment moved to the next step.",
+      palette: "success",
+      Icon: TrendingUpIcon,
+    };
+  }
+  if (a === "Revert") {
+    return {
+      title: "Rolled back",
+      description: "The order was moved to an earlier step.",
+      palette: "warning",
+      Icon: UndoIcon,
+    };
+  }
+  if (a === "CustomerConfirm") {
+    return {
+      title: "Customer confirmed",
+      description: "The buyer marked this order as completed.",
+      palette: "success",
+      Icon: HowToRegIcon,
+    };
+  }
+  if (a === "Cancel") {
+    return {
+      title: "Order cancelled",
+      description: "Fulfillment was stopped and the customer was notified.",
+      palette: "error",
+      Icon: CancelIcon,
+    };
+  }
+  return {
+    title: formatStatusHistoryAction(action),
+    description: "Status update recorded.",
+    palette: "grey",
+    Icon: MoreHorizIcon,
+  };
+}
+
+async function readOrderStatusApiResult(response) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.message ?? data?.Message ?? `Request failed (${response.status})`);
+  }
+  const code = data?.statusCode ?? data?.StatusCode;
+  const failed =
+    code === -99 ||
+    code === "-99" ||
+    code === "FAILED" ||
+    (typeof code === "string" && code.toUpperCase() === "FAILED");
+  if (failed) {
+    throw new Error(data?.message ?? data?.Message ?? "Request failed");
+  }
+  return data;
+}
+
 export default function Orders() {
+  const theme = useTheme();
   const cId = sessionStorage.getItem("category")
   const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
   const {
@@ -46,18 +266,33 @@ export default function Orders() {
     setPage,
     setPageSize,
     setSearch,
+    setExtraQuery,
     fetchData: fetchOrders,
   } = usePaginatedFetch("ECommerce/GetAllOnlineOrders");
 
+  const [statusTab, setStatusTab] = useState("all");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
+  const [revertingOrderId, setRevertingOrderId] = useState(null);
+  const [statusHistory, setStatusHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [revertDialogOpen, setRevertDialogOpen] = useState(false);
+  const [revertTargetOrderId, setRevertTargetOrderId] = useState(null);
+  const [revertReason, setRevertReason] = useState("");
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelTargetOrder, setCancelTargetOrder] = useState(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancellingOrderId, setCancellingOrderId] = useState(null);
 
   const STATUS_META = useMemo(
     () => ({
       1: { label: "Queued", color: "default" },
       2: { label: "In Progress", color: "info" },
-      3: { label: "Shipping", color: "warning" },
-      4: { label: "Completed", color: "success" },
+      3: { label: "Dispatched", color: "warning" },
+      4: { label: "Delivered", color: "secondary" },
+      5: { label: "Completed", color: "success" },
+      6: { label: "Cancelled", color: "error" },
     }),
     []
   );
@@ -66,6 +301,7 @@ export default function Orders() {
     () => ({
       1: "Cash on Delivery",
       2: "Card",
+      3: "Bank Transfer",
     }),
     []
   );
@@ -76,24 +312,51 @@ export default function Orders() {
     }
 
     return ordersList.map((order) => {
+      const statusRaw = order.orderStatus ?? order.OrderStatus;
+      const statusValue = parseOrderStatus(statusRaw);
       const statusMeta =
-        STATUS_META[order.orderStatus] ?? { label: "Unknown", color: "default" };
-      const createdOnDate = order.createdOn ? new Date(order.createdOn) : null;
+        STATUS_META[statusValue] ?? { label: "Unknown", color: "default" };
+      const createdOnRaw = order.createdOn ?? order.CreatedOn;
+      const createdOnDate = createdOnRaw ? new Date(createdOnRaw) : null;
+      const paymentOpt = parsePaymentOption(order.paymentOption ?? order.PaymentOption);
 
       return {
         ...order,
+        orderStatus: Number.isFinite(statusValue) ? statusValue : statusRaw,
         statusLabel: statusMeta.label,
         statusColor: statusMeta.color,
-        paymentLabel: PAYMENT_MAPPER[order.paymentOption] ?? "Unknown",
+        paymentLabel: PAYMENT_MAPPER[paymentOpt] ?? "Unknown",
         createdOnDate,
+        orderId: order.orderId ?? order.OrderId,
+        orderNo: order.orderNo ?? order.OrderNo,
+        subTotal: order.subTotal ?? order.SubTotal,
+        deliveryCharge: order.deliveryCharge ?? order.DeliveryCharge,
+        netTotal: order.netTotal ?? order.NetTotal,
+        checkoutAddress: order.checkoutAddress ?? order.CheckoutAddress,
+        customerName: order.customerName ?? order.CustomerName,
+        lines: order.lines ?? order.Lines ?? [],
+        customerFeedback: order.customerFeedback ?? order.CustomerFeedback ?? "",
+        customerFeedbackOn: order.customerFeedbackOn ?? order.CustomerFeedbackOn ?? null,
+        cancellation: order.cancellation ?? order.Cancellation ?? null,
+        paymentOption: paymentOpt,
       };
     });
   }, [ordersList, STATUS_META, PAYMENT_MAPPER]);
 
+  const handleStatusTabChange = (_event, value) => {
+    setStatusTab(value);
+    const nextExtra = extraQueryForStatusTab(value);
+    setExtraQuery(nextExtra);
+    setPage(1);
+    fetchOrders(1, search, pageSize, undefined, undefined, nextExtra);
+  };
+
   const handleSearchChange = (event) => {
     setSearch(event.target.value);
     setPage(1);
-    fetchOrders(1, event.target.value, pageSize);
+    const nextExtra = extraQueryForStatusTab(statusTab);
+    setExtraQuery(nextExtra);
+    fetchOrders(1, event.target.value, pageSize, undefined, undefined, nextExtra);
   };
 
   const handlePageChange = (event, value) => {
@@ -114,7 +377,46 @@ export default function Orders() {
 
   const handleCloseItems = () => {
     setSelectedOrder(null);
+    setStatusHistory([]);
   };
+
+  useEffect(() => {
+    const orderId = selectedOrder?.orderId ?? selectedOrder?.OrderId;
+    if (!orderId) {
+      setStatusHistory([]);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      setHistoryLoading(true);
+      try {
+        const response = await fetch(
+          `${BASE_URL}/ECommerce/GetOnlineOrderStatusHistory?orderId=${orderId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+            },
+          }
+        );
+        const data = await readOrderStatusApiResult(response);
+        const list = data?.result ?? data?.Result ?? [];
+        if (!cancelled) {
+          setStatusHistory(Array.isArray(list) ? list : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setStatusHistory([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setHistoryLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedOrder?.orderId, selectedOrder?.OrderId, historyRefreshKey]);
 
   const handleUpdateStatus = async (orderId) => {
     try {
@@ -129,17 +431,123 @@ export default function Orders() {
           },
         }
       );
-
-      if (!response.ok) {
-        throw new Error("Failed to update order status");
-      }
-
-      toast.success("Order status updated");
-      fetchOrders(page, search, pageSize);
+      await readOrderStatusApiResult(response);
+      toast.success("Order status advanced");
+      fetchOrders(page, search, pageSize, undefined, undefined, extraQueryForStatusTab(statusTab));
     } catch (error) {
       toast.error(error.message || "Unable to update status");
     } finally {
       setUpdatingOrderId(null);
+    }
+  };
+
+  const handleOpenRevertDialog = (orderId) => {
+    setRevertTargetOrderId(orderId);
+    setRevertReason("");
+    setRevertDialogOpen(true);
+  };
+
+  const handleCloseRevertDialog = () => {
+    if (revertingOrderId != null) return;
+    setRevertDialogOpen(false);
+    setRevertTargetOrderId(null);
+    setRevertReason("");
+  };
+
+  const handleOpenCancelDialog = (order) => {
+    setCancelTargetOrder(order);
+    setCancelReason("");
+    setCancelDialogOpen(true);
+  };
+
+  const handleCloseCancelDialog = () => {
+    if (cancellingOrderId != null) return;
+    setCancelDialogOpen(false);
+    setCancelTargetOrder(null);
+    setCancelReason("");
+  };
+
+  const handleConfirmCancel = async () => {
+    const order = cancelTargetOrder;
+    const orderId = order?.orderId ?? order?.OrderId;
+    const reason = cancelReason.trim();
+    if (!orderId) return;
+    if (!reason) {
+      toast.error("Please provide a reason before cancelling this order.");
+      return;
+    }
+    try {
+      setCancellingOrderId(orderId);
+      const response = await fetch(`${BASE_URL}/ECommerce/CancelOnlineOrder`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          OrderId: orderId,
+          Reason: reason,
+        }),
+      });
+      const result = await readOrderStatusApiResult(response);
+      const refundStatus = parseRefundStatus(
+        result?.result?.refundStatus ?? result?.Result?.RefundStatus
+      );
+      if (refundStatus === 1) {
+        toast.success(
+          "Order cancelled. Remember to refund the customer manually on the WebXPay dashboard."
+        );
+      } else {
+        toast.success("Order cancelled and the customer has been notified.");
+      }
+      setCancelDialogOpen(false);
+      setCancelTargetOrder(null);
+      setCancelReason("");
+      fetchOrders(page, search, pageSize, undefined, undefined, extraQueryForStatusTab(statusTab));
+      if (selectedOrder?.orderId === orderId || selectedOrder?.OrderId === orderId) {
+        setHistoryRefreshKey((k) => k + 1);
+      }
+    } catch (error) {
+      toast.error(error.message || "Unable to cancel this order.");
+    } finally {
+      setCancellingOrderId(null);
+    }
+  };
+
+  const handleConfirmRevert = async () => {
+    const orderId = revertTargetOrderId;
+    const reason = revertReason.trim();
+    if (!orderId) return;
+    if (!reason) {
+      toast.error("Please enter a reason for reverting this order.");
+      return;
+    }
+    try {
+      setRevertingOrderId(orderId);
+      const response = await fetch(`${BASE_URL}/ECommerce/RevertOnlineOrderStatus`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          OrderId: orderId,
+          Reason: reason,
+        }),
+      });
+      await readOrderStatusApiResult(response);
+      toast.success("Order status reverted");
+      setRevertDialogOpen(false);
+      setRevertTargetOrderId(null);
+      setRevertReason("");
+      fetchOrders(page, search, pageSize, undefined, undefined, extraQueryForStatusTab(statusTab));
+      if (selectedOrder?.orderId === orderId || selectedOrder?.OrderId === orderId) {
+        setHistoryRefreshKey((k) => k + 1);
+      }
+    } catch (error) {
+      toast.error(error.message || "Unable to revert status");
+    } finally {
+      setRevertingOrderId(null);
     }
   };
 
@@ -170,8 +578,44 @@ export default function Orders() {
             />
           </Search>
         </Grid>
-        
+
         <Grid item xs={12} order={{ xs: 3, lg: 3 }}>
+          <Paper
+            elevation={0}
+            sx={{
+              borderRadius: 1,
+              border: "1px solid",
+              borderColor: "divider",
+              mb: 2,
+              overflow: "hidden",
+            }}
+          >
+            <Tabs
+              value={statusTab}
+              onChange={handleStatusTabChange}
+              variant="scrollable"
+              scrollButtons="auto"
+              allowScrollButtonsMobile
+              aria-label="Order status filters"
+              sx={{
+                minHeight: 48,
+                px: { xs: 0, sm: 1 },
+                "& .MuiTab-root": {
+                  textTransform: "none",
+                  fontWeight: 600,
+                  fontSize: "0.875rem",
+                  minHeight: 48,
+                },
+              }}
+            >
+              {STATUS_TABS.map((t) => (
+                <Tab key={t.value} label={t.label} value={t.value} />
+              ))}
+            </Tabs>
+          </Paper>
+        </Grid>
+        
+        <Grid item xs={12} order={{ xs: 4, lg: 4 }}>
           <TableContainer component={Paper}>
             <Table aria-label="simple table" className="dark-table">
               <TableHead>
@@ -183,14 +627,15 @@ export default function Orders() {
                   <TableCell>Payment</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Created On</TableCell>
-                  <TableCell>Checkout Address</TableCell>
+                  <TableCell>Mobile No</TableCell>
+                  <TableCell align="center">View</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {orders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9}>
+                    <TableCell colSpan={10}>
                       <Typography color="error">No Orders Available</Typography>
                     </TableCell>
                   </TableRow>
@@ -228,42 +673,104 @@ export default function Orders() {
                           : "-"}
                       </TableCell>
                       <TableCell>
-                        {item.checkoutAddress ? (
-                          <Box>
-                            <Typography variant="body2">
-                              {[item.checkoutAddress.addressLine1, item.checkoutAddress.addressLine2, item.checkoutAddress.addressLine3]
-                                .filter(Boolean)
-                                .join(", ")}
-                            </Typography>
-                            <Typography variant="caption" display="block" color="text.secondary">
-                              {item.checkoutAddress.postalCode}
-                            </Typography>
-                            <Typography variant="caption" display="block" color="text.secondary">
-                              {item.checkoutAddress.mobileNo}
-                            </Typography>
-                            <Typography variant="caption" display="block" color="text.secondary">
-                              {item.checkoutAddress.email}
-                            </Typography>
-                          </Box>
-                        ) : (
-                          "-"
-                        )}
+                        {item.checkoutAddress?.mobileNo ?? item.checkoutAddress?.MobileNo ?? "-"}
+                      </TableCell>
+                      <TableCell align="center">
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => handleOpenItems(item)}
+                          sx={{
+                            textTransform: "uppercase",
+                            fontWeight: 700,
+                            fontSize: "0.75rem",
+                            letterSpacing: "0.04em",
+                            borderRadius: 1.5,
+                            px: 1.75,
+                            py: 0.5,
+                            borderColor: "primary.main",
+                            color: "primary.main",
+                            bgcolor: "transparent",
+                            "&:hover": {
+                              borderColor: "primary.dark",
+                              color: "primary.dark",
+                              bgcolor: (theme) =>
+                                theme.palette.mode === "dark"
+                                  ? "rgba(144, 202, 249, 0.08)"
+                                  : "rgba(25, 118, 210, 0.06)",
+                            },
+                          }}
+                        >
+                          View
+                        </Button>
                       </TableCell>
                       <TableCell align="right">
                         <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1, flexWrap: "wrap" }}>
-                          <Button variant="outlined" size="small" onClick={() => handleOpenItems(item)}>
-                            View Items
-                          </Button>
-                          {item.orderStatus !== 4 && (
-                            <Button
-                              variant="contained"
-                              size="small"
-                              onClick={() => handleUpdateStatus(item.orderId)}
-                              disabled={updatingOrderId === item.orderId}
-                            >
-                              {updatingOrderId === item.orderId ? "Updating..." : "Update Status"}
-                            </Button>
-                          )}
+                          {(() => {
+                            const statusNum = parseOrderStatus(item.orderStatus);
+                            const isCancelled = statusNum === 6;
+                            if (isCancelled) {
+                              return (
+                                <Chip
+                                  size="small"
+                                  color="error"
+                                  variant="outlined"
+                                  icon={<BlockIcon sx={{ fontSize: 16 }} />}
+                                  label="Cancelled"
+                                  sx={{ fontWeight: 700 }}
+                                />
+                              );
+                            }
+                            return (
+                              <>
+                                {statusNum === 1 && (
+                                  <Button
+                                    variant="outlined"
+                                    color="error"
+                                    size="small"
+                                    startIcon={<CancelIcon />}
+                                    onClick={() => handleOpenCancelDialog(item)}
+                                    disabled={
+                                      cancellingOrderId === item.orderId ||
+                                      updatingOrderId === item.orderId ||
+                                      revertingOrderId === item.orderId
+                                    }
+                                  >
+                                    {cancellingOrderId === item.orderId ? "Cancelling…" : "Cancel order"}
+                                  </Button>
+                                )}
+                                {statusNum > 1 && (
+                                  <Button
+                                    variant="outlined"
+                                    color="warning"
+                                    size="small"
+                                    onClick={() => handleOpenRevertDialog(item.orderId)}
+                                    disabled={
+                                      revertingOrderId === item.orderId ||
+                                      updatingOrderId === item.orderId ||
+                                      cancellingOrderId === item.orderId
+                                    }
+                                  >
+                                    {revertingOrderId === item.orderId ? "Reverting…" : "Revert status"}
+                                  </Button>
+                                )}
+                                {statusNum !== 5 && (
+                                  <Button
+                                    variant="contained"
+                                    size="small"
+                                    onClick={() => handleUpdateStatus(item.orderId)}
+                                    disabled={
+                                      updatingOrderId === item.orderId ||
+                                      revertingOrderId === item.orderId ||
+                                      cancellingOrderId === item.orderId
+                                    }
+                                  >
+                                    {updatingOrderId === item.orderId ? "Updating…" : "Update status"}
+                                  </Button>
+                                )}
+                              </>
+                            );
+                          })()}
                         </Box>
                       </TableCell>
                     </TableRow>
@@ -295,35 +802,1036 @@ export default function Orders() {
       <Dialog
         open={Boolean(selectedOrder)}
         onClose={handleCloseItems}
-        maxWidth="sm"
+        maxWidth="lg"
         fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            boxShadow: "0 12px 40px rgba(15, 23, 42, 0.12)",
+            background: (theme) =>
+              theme.palette.mode === "dark"
+                ? theme.palette.background.paper
+                : "linear-gradient(180deg, #fafbff 0%, #ffffff 48%)",
+          },
+        }}
       >
-        <DialogTitle>Order Items</DialogTitle>
-        <DialogContent dividers>
-          {selectedOrder?.lines?.length ? (
-            selectedOrder.lines.map((line, index) => (
-              <Box key={line.lineId ?? index} sx={{ mb: index === selectedOrder.lines.length - 1 ? 0 : 2 }}>
-                <Typography variant="subtitle2">
-                  {line.productName ?? `Item ${index + 1}`}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Qty: {line.quantity ?? 0} &mdash; Price:{" "}
-                  {typeof line.price === "number" ? line.price.toLocaleString() : "-"}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Total: {typeof line.lineTotal === "number" ? line.lineTotal.toLocaleString() : "-"}
-                </Typography>
-                {index !== selectedOrder.lines.length - 1 && <Divider sx={{ mt: 1 }} />}
-              </Box>
-            ))
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              No items available for this order.
+        <DialogTitle
+          sx={{
+            fontWeight: 700,
+            fontSize: "1.35rem",
+            color: "primary.main",
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            pb: 1.5,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 1,
+          }}
+        >
+          <Box>
+            Order overview
+            <Typography variant="body2" color="text.secondary" fontWeight={500} sx={{ mt: 0.5 }}>
+              {selectedOrder?.orderNo ?? selectedOrder?.OrderNo ?? "—"}
             </Typography>
+          </Box>
+          <Chip
+            label={
+              STATUS_META[parseOrderStatus(selectedOrder?.orderStatus ?? selectedOrder?.OrderStatus)]
+                ?.label ?? "Unknown"
+            }
+            color={
+              STATUS_META[parseOrderStatus(selectedOrder?.orderStatus ?? selectedOrder?.OrderStatus)]
+                ?.color ?? "default"
+            }
+            variant={
+              STATUS_META[parseOrderStatus(selectedOrder?.orderStatus ?? selectedOrder?.OrderStatus)]
+                ?.color === "default"
+                ? "outlined"
+                : "filled"
+            }
+            size="small"
+            sx={{ fontWeight: 600 }}
+          />
+        </DialogTitle>
+        <DialogContent dividers sx={{ px: { xs: 2, sm: 3 }, py: 2.5 }}>
+          {selectedOrder && (
+            <Grid container spacing={2.5}>
+              <Grid item xs={12} md={8}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 2,
+                    borderRadius: 2,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    bgcolor: "background.paper",
+                    height: "100%",
+                  }}
+                >
+                  <Typography variant="overline" color="primary" fontWeight={700} letterSpacing={0.6}>
+                    Fulfillment progress
+                  </Typography>
+                  {(() => {
+                    const sNum = parseOrderStatus(
+                      selectedOrder.orderStatus ?? selectedOrder.OrderStatus
+                    );
+                    if (sNum === 6) {
+                      return (
+                        <Box
+                          sx={{
+                            mt: 1.5,
+                            p: 1.75,
+                            borderRadius: 2,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1.25,
+                            bgcolor: (t) => alpha(t.palette.error.main, 0.08),
+                            border: "1px solid",
+                            borderColor: (t) => alpha(t.palette.error.main, 0.3),
+                          }}
+                        >
+                          <BlockIcon color="error" />
+                          <Box>
+                            <Typography variant="subtitle2" fontWeight={800} color="error.dark">
+                              This order has been cancelled
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              See cancellation details below for the recorded reason and refund state.
+                            </Typography>
+                          </Box>
+                        </Box>
+                      );
+                    }
+                    return (
+                      <Box sx={{ overflowX: "auto", py: 1.5, mx: -0.5 }}>
+                        <Stepper
+                          activeStep={Math.min(
+                            4,
+                            Math.max(0, (Number.isFinite(sNum) ? sNum : 1) - 1)
+                          )}
+                          alternativeLabel
+                          sx={{
+                            minWidth: { xs: 520, sm: "100%" },
+                            "& .MuiStepLabel-label": { fontSize: "0.7rem", fontWeight: 600 },
+                          }}
+                        >
+                          {ORDER_FLOW_STEPS.map((label) => (
+                            <Step key={label}>
+                              <StepLabel>{label}</StepLabel>
+                            </Step>
+                          ))}
+                        </Stepper>
+                      </Box>
+                    );
+                  })()}
+
+                  <Typography variant="overline" color="text.secondary" fontWeight={700} sx={{ mt: 1, display: "block" }}>
+                    Line items
+                  </Typography>
+                  {(selectedOrder.lines ?? selectedOrder.Lines)?.length ? (
+                    <Stack spacing={1.25} sx={{ mt: 1 }}>
+                      {(selectedOrder.lines ?? selectedOrder.Lines).map((line, index) => (
+                        <Card
+                          key={line.lineId ?? line.LineId ?? index}
+                          variant="outlined"
+                          sx={{
+                            borderRadius: 1.5,
+                            borderColor: "divider",
+                            transition: "box-shadow 0.2s ease, border-color 0.2s ease",
+                            "&:hover": {
+                              borderColor: "primary.light",
+                              boxShadow: "0 2px 12px rgba(25, 118, 210, 0.08)",
+                            },
+                          }}
+                        >
+                          <CardContent sx={{ py: 1.25, px: 1.75, "&:last-child": { pb: 1.25 } }}>
+                            <Box
+                              sx={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "flex-start",
+                                gap: 1,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 0.75 }}>
+                              <Typography variant="subtitle2" fontWeight={700}>
+                                {line.productName ?? line.ProductName ?? `Item ${index + 1}`}
+                              </Typography>
+                              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                                {lineWholesaleApplied(line) && (
+                                  <Chip
+                                    size="small"
+                                    label="Wholesale price"
+                                    color="secondary"
+                                    variant="outlined"
+                                    sx={{ fontWeight: 600, fontSize: "0.65rem", height: 22 }}
+                                  />
+                                )}
+                                {(line.promotionId ?? line.PromotionId) != null &&
+                                  Number(line.totalDiscount ?? line.TotalDiscount) > 0 && (
+                                    <Chip
+                                      size="small"
+                                      label="Promotion"
+                                      color="success"
+                                      variant="outlined"
+                                      sx={{ fontWeight: 600, fontSize: "0.65rem", height: 22 }}
+                                    />
+                                  )}
+                              </Box>
+                              </Box>
+                              <Box sx={{ textAlign: "right" }}>
+                              {(() => {
+                                const gross = line.lineTotal ?? line.LineTotal;
+                                const sub = line.subTotal ?? line.SubTotal;
+                                const disc = line.totalDiscount ?? line.TotalDiscount;
+                                const hasPromo =
+                                  typeof disc === "number" &&
+                                  disc > 0 &&
+                                  typeof sub === "number";
+                                if (hasPromo && typeof gross === "number") {
+                                  return (
+                                    <>
+                                      <Typography
+                                        variant="caption"
+                                        sx={{ display: "block", textDecoration: "line-through", color: "text.secondary" }}
+                                      >
+                                        {formatCurrency(gross)}
+                                      </Typography>
+                                      <Typography variant="body2" fontWeight={700} color="primary.main">
+                                        {formatCurrency(sub)}
+                                      </Typography>
+                                    </>
+                                  );
+                                }
+                                return (
+                                  <Typography variant="body2" fontWeight={700} color="primary.main">
+                                    {typeof gross === "number" ? formatCurrency(gross) : "—"}
+                                  </Typography>
+                                );
+                              })()}
+                            </Box>
+                            </Box>
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+                              Qty {line.quantity ?? line.Quantity ?? 0}
+                              {" · "}
+                              Unit {formatCurrency(line.price ?? line.Price)}
+                              {lineWholesaleApplied(line) &&
+                                lineWholesaleUnit(line) != null &&
+                                lineWholesaleMoq(line) != null && (
+                                  <>
+                                    {" · "}
+                                    Wholesale MOQ {lineWholesaleMoq(line)} @ {formatCurrency(lineWholesaleUnit(line))}/unit
+                                  </>
+                                )}
+                              {(line.promotionId ?? line.PromotionId) != null &&
+                                Number(line.totalDiscount ?? line.TotalDiscount) > 0 && (
+                                  <>
+                                    {" · "}
+                                    Promo #{line.promotionId ?? line.PromotionId}
+                                  </>
+                                )}
+                            </Typography>
+                            {lineWholesaleApplied(line) && lineRetailLineTotal(line) != null && (
+                              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.25, display: "block", fontStyle: "italic" }}>
+                                List (standard) value for this qty would be {formatCurrency(lineRetailLineTotal(line))}; order
+                                used wholesale rate.
+                              </Typography>
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </Stack>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                      No items available for this order.
+                    </Typography>
+                  )}
+
+                  <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 2 }}>
+                    <Paper
+                      elevation={0}
+                      sx={{
+                        px: 2,
+                        py: 1.5,
+                        borderRadius: 2,
+                        bgcolor: "primary.main",
+                        color: "primary.contrastText",
+                        minWidth: { xs: "100%", sm: 220 },
+                      }}
+                    >
+                      <Typography variant="caption" sx={{ opacity: 0.9 }}>
+                        Order total
+                      </Typography>
+                      <Typography variant="h6" fontWeight={800}>
+                        {selectedOrder.netTotal != null ? formatCurrency(selectedOrder.netTotal) : "—"}
+                      </Typography>
+                    </Paper>
+                  </Box>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 2,
+                    borderRadius: 2,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    bgcolor: (theme) =>
+                      theme.palette.mode === "dark" ? theme.palette.background.paper : "grey.50",
+                    height: "100%",
+                  }}
+                >
+                  <Typography variant="overline" color="primary" fontWeight={700} letterSpacing={0.6}>
+                    Customer & delivery
+                  </Typography>
+                  <Stack spacing={1.25} sx={{ mt: 1.5 }}>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                        Name
+                      </Typography>
+                      <Typography variant="body2" fontWeight={600}>
+                        {(selectedOrder.customerName ?? selectedOrder.CustomerName) || "—"}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                        Email
+                      </Typography>
+                      <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
+                        {(selectedOrder.checkoutAddress?.email ?? selectedOrder.checkoutAddress?.Email) || "—"}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                        Mobile No
+                      </Typography>
+                      <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
+                        {(selectedOrder.checkoutAddress?.mobileNo ??
+                          selectedOrder.checkoutAddress?.MobileNo) ||
+                          "—"}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                        Address
+                      </Typography>
+                      <Typography variant="body2">
+                        {selectedOrder.checkoutAddress
+                          ? (() => {
+                              const addr = selectedOrder.checkoutAddress;
+                              const line = [
+                                addr.addressLine1 ?? addr.AddressLine1,
+                                addr.addressLine2 ?? addr.AddressLine2,
+                                addr.addressLine3 ?? addr.AddressLine3,
+                              ]
+                                .filter(Boolean)
+                                .join(", ");
+                              const pc = addr.postalCode ?? addr.PostalCode;
+                              return [line, pc].filter(Boolean).join(" ") || "—";
+                            })()
+                          : "—"}
+                      </Typography>
+                    </Box>
+                  </Stack>
+
+                  <Divider sx={{ my: 2 }} />
+
+                  <Typography variant="overline" color="text.secondary" fontWeight={700}>
+                    Totals
+                  </Typography>
+                  <Stack spacing={0.75} sx={{ mt: 1 }}>
+                    {(() => {
+                      const lines = selectedOrder.lines ?? selectedOrder.Lines ?? [];
+                      const merchandiseGross = Array.isArray(lines)
+                        ? lines.reduce(
+                            (s, l) => s + (Number(l.lineTotal ?? l.LineTotal) || 0),
+                            0,
+                          )
+                        : null;
+                      const disc = Number(
+                        selectedOrder.discountAmount ?? selectedOrder.DiscountAmount,
+                      );
+                      const couponRaw =
+                        selectedOrder.couponDiscountAmount ?? selectedOrder.CouponDiscountAmount;
+                      const couponDisc =
+                        Number.isFinite(Number(couponRaw)) && Number(couponRaw) > 0
+                          ? Number(couponRaw)
+                          : 0;
+                      const couponCode = String(
+                        selectedOrder.couponCode ?? selectedOrder.CouponCode ?? "",
+                      ).trim();
+                      const promoDisc =
+                        Number.isFinite(disc) && disc > 0 && couponDisc > 0
+                          ? Math.max(0, disc - couponDisc)
+                          : Number.isFinite(disc) && disc > 0
+                            ? disc
+                            : 0;
+                      const showDisc = Number.isFinite(disc) && disc > 0;
+                      const showPromoLine = promoDisc > 0;
+                      const showCouponLine = couponDisc > 0;
+                      return (
+                        <>
+                          {showDisc && merchandiseGross != null && merchandiseGross > 0 && (
+                            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1 }}>
+                              <Box>
+                                <Typography variant="body2" color="text.secondary">
+                                  Order (checkout prices, before promo)
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: "block", opacity: 0.85 }}>
+                                  Includes wholesale unit rates where applicable
+                                </Typography>
+                              </Box>
+                              <Typography variant="body2" fontWeight={600}>
+                                {formatCurrency(merchandiseGross)}
+                              </Typography>
+                            </Box>
+                          )}
+                          {showPromoLine && (
+                            <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                              <Typography variant="body2" color="success.main" fontWeight={600}>
+                                Promotion discount (categories / products / tiers)
+                              </Typography>
+                              <Typography variant="body2" fontWeight={600} color="success.main">
+                                −{formatCurrency(promoDisc)}
+                              </Typography>
+                            </Box>
+                          )}
+                          {showCouponLine && (
+                            <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                              <Typography variant="body2" color="success.main" fontWeight={600}>
+                                Coupon discount{couponCode ? ` (${couponCode})` : ""}
+                              </Typography>
+                              <Typography variant="body2" fontWeight={600} color="success.main">
+                                −{formatCurrency(couponDisc)}
+                              </Typography>
+                            </Box>
+                          )}
+                        </>
+                      );
+                    })()}
+                    <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Subtotal
+                      </Typography>
+                      <Typography variant="body2" fontWeight={600}>
+                        {selectedOrder.subTotal != null ? formatCurrency(selectedOrder.subTotal) : "—"}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Delivery
+                      </Typography>
+                      <Typography variant="body2" fontWeight={600}>
+                        {selectedOrder.deliveryCharge != null
+                          ? formatCurrency(selectedOrder.deliveryCharge)
+                          : "—"}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", pt: 1, borderTop: "1px dashed", borderColor: "divider" }}>
+                      <Typography variant="subtitle2" fontWeight={700}>
+                        Net total
+                      </Typography>
+                      <Typography variant="subtitle2" fontWeight={800} color="primary.main">
+                        {selectedOrder.netTotal != null ? formatCurrency(selectedOrder.netTotal) : "—"}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </Paper>
+              </Grid>
+
+              {(() => {
+                const cancel = selectedOrder.cancellation ?? selectedOrder.Cancellation;
+                if (!cancel) return null;
+                const refundStatusNum = parseRefundStatus(
+                  cancel.refundStatus ?? cancel.RefundStatus
+                );
+                const refundMeta =
+                  REFUND_STATUS_META[refundStatusNum] ?? REFUND_STATUS_META[0];
+                const cancelledOnRaw = cancel.cancelledOn ?? cancel.CancelledOn;
+                const cancelledOn = cancelledOnRaw ? new Date(cancelledOnRaw) : null;
+                const refundProcessedRaw = cancel.refundProcessedOn ?? cancel.RefundProcessedOn;
+                const refundProcessedOn = refundProcessedRaw ? new Date(refundProcessedRaw) : null;
+                const refundAmount = cancel.refundAmount ?? cancel.RefundAmount;
+                const refundReference = cancel.refundReference ?? cancel.RefundReference;
+                const refundNote = cancel.refundNote ?? cancel.RefundNote;
+                return (
+                  <Grid item xs={12}>
+                    <Paper
+                      elevation={0}
+                      sx={{
+                        p: 2,
+                        borderRadius: 2,
+                        border: "1px solid",
+                        borderColor: (t) => alpha(t.palette.error.main, 0.3),
+                        bgcolor: (t) => alpha(t.palette.error.main, 0.04),
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                          mb: 1.5,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <CancelIcon color="error" />
+                        <Typography
+                          variant="overline"
+                          color="error.dark"
+                          fontWeight={800}
+                          letterSpacing={0.6}
+                        >
+                          Cancellation details
+                        </Typography>
+                        <Chip
+                          size="small"
+                          color={refundMeta.color === "default" ? "default" : refundMeta.color}
+                          variant={refundMeta.color === "default" ? "outlined" : "filled"}
+                          icon={<PaymentsIcon sx={{ fontSize: 16 }} />}
+                          label={refundMeta.label}
+                          sx={{ fontWeight: 700 }}
+                        />
+                      </Box>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                            Cancelled by
+                          </Typography>
+                          <Typography variant="body2" fontWeight={600}>
+                            {cancel.cancelledBy ?? cancel.CancelledBy ?? "—"}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                            Cancelled on
+                          </Typography>
+                          <Typography variant="body2" fontWeight={600}>
+                            {cancelledOn
+                              ? formatDate(cancelledOn, {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "2-digit",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : "—"}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={12}>
+                          <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                            Reason
+                          </Typography>
+                          <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                            {(cancel.reason ?? cancel.Reason ?? "—").trim() || "—"}
+                          </Typography>
+                        </Grid>
+                        {(refundStatusNum !== 0 || refundAmount != null) && (
+                          <>
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                Refund amount
+                              </Typography>
+                              <Typography variant="body2" fontWeight={700} color="error.dark">
+                                {refundAmount != null ? formatCurrency(refundAmount) : "—"}
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                Refund processed on
+                              </Typography>
+                              <Typography variant="body2" fontWeight={600}>
+                                {refundProcessedOn
+                                  ? formatDate(refundProcessedOn, {
+                                      year: "numeric",
+                                      month: "short",
+                                      day: "2-digit",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })
+                                  : refundStatusNum === 1
+                                  ? "Pending — refund manually via WebXPay dashboard"
+                                  : "—"}
+                              </Typography>
+                            </Grid>
+                            {refundReference && (
+                              <Grid item xs={12} sm={6}>
+                                <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                  Gateway reference
+                                </Typography>
+                                <Typography variant="body2" sx={{ wordBreak: "break-all" }}>
+                                  {refundReference}
+                                </Typography>
+                              </Grid>
+                            )}
+                            {refundNote && (
+                              <Grid item xs={12}>
+                                <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                  Note
+                                </Typography>
+                                <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                                  {refundNote}
+                                </Typography>
+                              </Grid>
+                            )}
+                          </>
+                        )}
+                      </Grid>
+                    </Paper>
+                  </Grid>
+                );
+              })()}
+
+              <Grid item xs={12}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 2,
+                    borderRadius: 2,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    bgcolor: (theme) =>
+                      theme.palette.mode === "dark" ? theme.palette.background.paper : "grey.50",
+                  }}
+                >
+                  <Typography variant="overline" color="primary" fontWeight={700} letterSpacing={0.6}>
+                    Customer feedback
+                  </Typography>
+                  {(() => {
+                    const fb = String(
+                      selectedOrder.customerFeedback ?? selectedOrder.CustomerFeedback ?? ""
+                    ).trim();
+                    const rawOn =
+                      selectedOrder.customerFeedbackOn ?? selectedOrder.CustomerFeedbackOn ?? null;
+                    const onDate = rawOn ? new Date(rawOn) : null;
+                    const isCompleted =
+                      parseOrderStatus(
+                        selectedOrder.orderStatus ?? selectedOrder.OrderStatus
+                      ) === 5;
+                    if (fb) {
+                      return (
+                        <Box sx={{ mt: 1.5 }}>
+                          <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                            {fb}
+                          </Typography>
+                          {onDate ? (
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+                              Submitted{" "}
+                              {formatDate(onDate, {
+                                year: "numeric",
+                                month: "short",
+                                day: "2-digit",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </Typography>
+                          ) : null}
+                        </Box>
+                      );
+                    }
+                    return (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                        {isCompleted
+                          ? "No feedback submitted for this order yet."
+                          : "Feedback can be submitted by the customer after the order is completed."}
+                      </Typography>
+                    );
+                  })()}
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 2,
+                    borderRadius: 2,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    background: (t) =>
+                      t.palette.mode === "dark"
+                        ? alpha(t.palette.primary.main, 0.04)
+                        : alpha(t.palette.primary.main, 0.02),
+                  }}
+                >
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      mb: 2,
+                      flexWrap: "wrap",
+                      gap: 1,
+                    }}
+                  >
+                    <Box>
+                      <Typography variant="overline" color="primary" fontWeight={800} letterSpacing={1}>
+                        Status history
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>
+                        Newest events appear first
+                      </Typography>
+                    </Box>
+                    {historyLoading && <CircularProgress size={22} thickness={5} />}
+                  </Box>
+                  {!historyLoading && statusHistory.length === 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      No status changes recorded yet. History appears after the database table is deployed and new
+                      updates occur.
+                    </Typography>
+                  )}
+                  {!historyLoading && statusHistory.length > 0 && (
+                    <Stack spacing={0} sx={{ position: "relative" }}>
+                      {statusHistory.map((row, idx) => {
+                        const fromS = Number(row.fromStatus ?? row.FromStatus ?? 0);
+                        const toS = Number(row.toStatus ?? row.ToStatus ?? 0);
+                        const fromLabel =
+                          fromS > 0 ? STATUS_META[fromS]?.label ?? `Status ${fromS}` : "Start";
+                        const toLabel = STATUS_META[toS]?.label ?? `Status ${toS}`;
+                        const fromChipColor = fromS > 0 ? STATUS_META[fromS]?.color ?? "default" : "default";
+                        const toChipColor = STATUS_META[toS]?.color ?? "default";
+                        const actor = row.actor ?? row.Actor ?? "—";
+                        const action = row.action ?? row.Action ?? "";
+                        const reasonText = (row.reason ?? row.Reason ?? "").trim();
+                        const createdRaw = row.createdOn ?? row.CreatedOn;
+                        const createdDate = createdRaw ? new Date(createdRaw) : null;
+                        const visuals = getStatusHistoryVisuals(action);
+                        const IconCmp = visuals.Icon;
+                        const pal = visuals.palette;
+                        const mainColor =
+                          pal === "grey" ? theme.palette.text.secondary : theme.palette[pal].main;
+                        const softBg =
+                          pal === "grey"
+                            ? alpha(theme.palette.action.hover, 0.6)
+                            : alpha(theme.palette[pal].main, 0.12);
+                        const isLast = idx === statusHistory.length - 1;
+                        return (
+                          <Box
+                            key={row.id ?? row.Id ?? idx}
+                            sx={{
+                              display: "flex",
+                              gap: { xs: 1.5, sm: 2 },
+                              pb: isLast ? 0 : 2,
+                              position: "relative",
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                width: 48,
+                                flexShrink: 0,
+                              }}
+                            >
+                              <Box
+                                sx={{
+                                  width: 44,
+                                  height: 44,
+                                  borderRadius: "50%",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  bgcolor: softBg,
+                                  color: mainColor,
+                                  border: "2px solid",
+                                  borderColor:
+                                    pal === "grey"
+                                      ? theme.palette.divider
+                                      : alpha(theme.palette[pal].main, 0.35),
+                                  zIndex: 1,
+                                }}
+                              >
+                                <IconCmp sx={{ fontSize: 22 }} />
+                              </Box>
+                              {!isLast && (
+                                <Box
+                                  sx={{
+                                    width: 2,
+                                    flex: 1,
+                                    minHeight: 12,
+                                    mt: 0.5,
+                                    mb: -1,
+                                    borderRadius: 1,
+                                    bgcolor: alpha(theme.palette.primary.main, 0.15),
+                                  }}
+                                />
+                              )}
+                            </Box>
+                            <Paper
+                              elevation={0}
+                              sx={{
+                                flex: 1,
+                                minWidth: 0,
+                                p: { xs: 1.5, sm: 2 },
+                                borderRadius: 2,
+                                border: "1px solid",
+                                borderColor: "divider",
+                                borderLeftWidth: 4,
+                                borderLeftColor: mainColor,
+                                bgcolor: "background.paper",
+                                boxShadow: (t) =>
+                                  t.palette.mode === "dark" ? "none" : "0 1px 4px rgba(15, 23, 42, 0.06)",
+                              }}
+                            >
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  flexDirection: { xs: "column", sm: "row" },
+                                  alignItems: { sm: "flex-start" },
+                                  justifyContent: "space-between",
+                                  gap: 1,
+                                  mb: 1.25,
+                                }}
+                              >
+                                <Box>
+                                  <Typography variant="subtitle1" fontWeight={800} sx={{ lineHeight: 1.3 }}>
+                                    {visuals.title}
+                                  </Typography>
+                                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                                    {visuals.description}
+                                  </Typography>
+                                </Box>
+                                {createdDate ? (
+                                  <Box
+                                    sx={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 0.5,
+                                      px: 1.25,
+                                      py: 0.5,
+                                      borderRadius: 10,
+                                      bgcolor: alpha(theme.palette.primary.main, 0.08),
+                                      alignSelf: { xs: "flex-start", sm: "flex-start" },
+                                    }}
+                                  >
+                                    <ScheduleIcon sx={{ fontSize: 16, color: "primary.main", opacity: 0.85 }} />
+                                    <Typography variant="caption" fontWeight={600} color="primary.dark">
+                                      {formatDate(createdDate, {
+                                        year: "numeric",
+                                        month: "short",
+                                        day: "2-digit",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </Typography>
+                                  </Box>
+                                ) : null}
+                              </Box>
+                              <Stack
+                                direction="row"
+                                alignItems="center"
+                                spacing={1}
+                                flexWrap="wrap"
+                                useFlexGap
+                                sx={{ gap: 1, mb: 1.25 }}
+                              >
+                                <Chip
+                                  size="small"
+                                  label={fromLabel}
+                                  color={fromChipColor}
+                                  variant={fromS > 0 ? "filled" : "outlined"}
+                                  sx={{ fontWeight: 700 }}
+                                />
+                                <ArrowForwardIcon sx={{ fontSize: 18, color: "text.disabled" }} />
+                                <Chip size="small" label={toLabel} color={toChipColor} sx={{ fontWeight: 700 }} />
+                              </Stack>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 0.75,
+                                  color: "text.secondary",
+                                }}
+                              >
+                                <PersonOutlineIcon sx={{ fontSize: 18, opacity: 0.75 }} />
+                                <Typography variant="caption" sx={{ wordBreak: "break-all" }}>
+                                  <Box component="span" fontWeight={600} color="text.primary">
+                                    By{" "}
+                                  </Box>
+                                  {actor}
+                                </Typography>
+                              </Box>
+                              {(action === "Revert" || action === "Cancel") && reasonText ? (
+                                <Box
+                                  sx={{
+                                    mt: 1.5,
+                                    p: 1.5,
+                                    borderRadius: 2,
+                                    bgcolor: alpha(
+                                      action === "Cancel"
+                                        ? theme.palette.error.main
+                                        : theme.palette.warning.main,
+                                      0.1
+                                    ),
+                                    border: "1px solid",
+                                    borderColor: alpha(
+                                      action === "Cancel"
+                                        ? theme.palette.error.main
+                                        : theme.palette.warning.main,
+                                      0.28
+                                    ),
+                                  }}
+                                >
+                                  <Typography
+                                    variant="caption"
+                                    fontWeight={800}
+                                    color={action === "Cancel" ? "error.dark" : "warning.dark"}
+                                    display="block"
+                                    sx={{ mb: 0.5, letterSpacing: 0.3 }}
+                                  >
+                                    {action === "Cancel" ? "Cancellation reason" : "Revert reason"}
+                                  </Typography>
+                                  <Typography variant="body2" color="text.primary" sx={{ whiteSpace: "pre-wrap" }}>
+                                    {reasonText}
+                                  </Typography>
+                                </Box>
+                              ) : null}
+                            </Paper>
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  )}
+                </Paper>
+              </Grid>
+            </Grid>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseItems}>Close</Button>
+        <DialogActions sx={{ px: 3, py: 2, borderTop: "1px solid", borderColor: "divider" }}>
+          <Button variant="contained" onClick={handleCloseItems} sx={{ px: 3, fontWeight: 700 }}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={revertDialogOpen}
+        onClose={handleCloseRevertDialog}
+        maxWidth="sm"
+        fullWidth
+        disableEscapeKeyDown={revertingOrderId != null}
+        PaperProps={{ sx: { borderRadius: 2 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>Revert order status</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Please provide a reason. This will be stored in the order status history for your team&apos;s records.
+          </Typography>
+          <TextField
+            autoFocus
+            required
+            fullWidth
+            multiline
+            minRows={3}
+            label="Reason"
+            placeholder="e.g. Customer requested cancellation, stock issue, duplicate order…"
+            value={revertReason}
+            onChange={(e) => setRevertReason(e.target.value)}
+            inputProps={{ maxLength: 500 }}
+            helperText={`${revertReason.length}/500`}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseRevertDialog} disabled={revertingOrderId != null}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={handleConfirmRevert}
+            disabled={revertingOrderId != null || !revertReason.trim()}
+          >
+            {revertingOrderId != null ? "Reverting…" : "Revert status"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={cancelDialogOpen}
+        onClose={handleCloseCancelDialog}
+        maxWidth="sm"
+        fullWidth
+        disableEscapeKeyDown={cancellingOrderId != null}
+        PaperProps={{ sx: { borderRadius: 2 } }}
+      >
+        <DialogTitle
+          sx={{
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            color: "error.dark",
+          }}
+        >
+          <CancelIcon color="error" />
+          Cancel order {cancelTargetOrder?.orderNo ? `#${cancelTargetOrder.orderNo}` : ""}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            This action will:
+          </Typography>
+          <Box component="ul" sx={{ pl: 3, m: 0, mb: 2, color: "text.secondary" }}>
+            <li>
+              <Typography variant="body2">
+                Mark the order as <strong>Cancelled</strong> for the customer.
+              </Typography>
+            </li>
+            <li>
+              <Typography variant="body2">
+                Email the customer with the reason you provide below.
+              </Typography>
+            </li>
+            {cancelTargetOrder?.paymentOption === 2 && (
+              <li>
+                <Typography variant="body2" color="error.dark">
+                  Flag this card-paid order (
+                  <strong>{formatCurrency(cancelTargetOrder?.netTotal ?? 0)}</strong>) as{" "}
+                  <strong>Refund pending</strong>. You&apos;ll need to issue the refund manually
+                  from the WebXPay merchant dashboard.
+                </Typography>
+              </li>
+            )}
+            {cancelTargetOrder?.paymentOption !== 2 && (
+              <li>
+                <Typography variant="body2">
+                  No refund is needed because the order was not paid online.
+                </Typography>
+              </li>
+            )}
+          </Box>
+          <TextField
+            autoFocus
+            required
+            fullWidth
+            multiline
+            minRows={3}
+            label="Reason for cancellation"
+            placeholder="e.g. Out of stock, customer requested cancellation, payment failure…"
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            inputProps={{ maxLength: 500 }}
+            helperText={`${cancelReason.length}/500 — required, will be shown to the customer.`}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseCancelDialog} disabled={cancellingOrderId != null}>
+            Keep order
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<CancelIcon />}
+            onClick={handleConfirmCancel}
+            disabled={cancellingOrderId != null || !cancelReason.trim()}
+          >
+            {cancellingOrderId != null ? "Cancelling…" : "Cancel order"}
+          </Button>
         </DialogActions>
       </Dialog>
     </>

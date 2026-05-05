@@ -39,15 +39,29 @@ const validationSchema = Yup.object().shape({
   Name: Yup.string().required("Category Name is required"),
 });
 
-export default function AddCategory({ fetchItems, IsEcommerceWebSiteAvailable }) {
-  const [open, setOpen] = React.useState(false);
+export default function AddCategory({
+  fetchItems,
+  IsEcommerceWebSiteAvailable,
+  hideButton = false,
+  open: controlledOpen,
+  onClose: controlledOnClose,
+}) {
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const isControlled = typeof controlledOpen === "boolean";
+  const open = isControlled ? controlledOpen : internalOpen;
   const [image, setImage] = useState("");
   const [file, setFile] = useState(null);
-  const handleOpen = () => setOpen(true);
+  const handleOpen = () => {
+    if (!isControlled) setInternalOpen(true);
+  };
   const handleClose = () => {
-    setOpen(false);
+    if (isControlled) {
+      controlledOnClose?.();
+    } else {
+      setInternalOpen(false);
+    }
     setImage("");
-    setFile(null)
+    setFile(null);
   };
 
   const inputRef = useRef(null);
@@ -63,7 +77,10 @@ export default function AddCategory({ fetchItems, IsEcommerceWebSiteAvailable })
   }, [open]);
 
   const handleSubmit = (values) => {
-    setOpen(false);
+    if (values.IsWebView && !file) {
+      toast.warning("Please upload a category image before enabling Show in web.");
+      return;
+    }
     const formData = new FormData();
 
     formData.append("Name", values.Name);
@@ -81,14 +98,19 @@ export default function AddCategory({ fetchItems, IsEcommerceWebSiteAvailable })
     })
       .then((response) => response.json())
       .then((data) => {
-        if (data.statusCode == 200) {
-          toast.success(data.message);
-          setOpen(false);
-          fetchItems();
-          setImage("");
-          setFile(null);
+        const sc = data.statusCode ?? data.StatusCode;
+        const msg = data.message ?? data.Message ?? "";
+        if (sc === 200) {
+          toast.success(msg);
+          const newId =
+            data.result?.id ??
+            data.result?.Id ??
+            data.Result?.id ??
+            data.Result?.Id;
+          handleClose();
+          fetchItems?.(newId);
         } else {
-          toast.error(data.message);
+          toast.error(msg);
         }
       })
       .catch((error) => {
@@ -98,9 +120,11 @@ export default function AddCategory({ fetchItems, IsEcommerceWebSiteAvailable })
 
   return (
     <>
-      <Button variant="outlined" onClick={handleOpen}>
-        + new category
-      </Button>
+      {!hideButton && (
+        <Button variant="outlined" onClick={handleOpen}>
+          + new category
+        </Button>
+      )}
       <Modal
         open={open}
         onClose={handleClose}
@@ -209,12 +233,22 @@ export default function AddCategory({ fetchItems, IsEcommerceWebSiteAvailable })
                         {IsEcommerceWebSiteAvailable && (
                           <Grid item xs={12} lg={6} mt={1}>
                             <FormControlLabel
+                              disabled={!file && !values.IsWebView}
                               control={
                                 <Field
                                   as={Checkbox}
                                   name="IsWebView"
                                   checked={values.IsWebView}
-                                  onChange={() => setFieldValue("IsWebView", !values.IsWebView)}
+                                  disabled={!file && !values.IsWebView}
+                                  onChange={() => {
+                                    if (!values.IsWebView && !file) {
+                                      toast.warning(
+                                        "Please upload a category image before enabling Show in web."
+                                      );
+                                      return;
+                                    }
+                                    setFieldValue("IsWebView", !values.IsWebView);
+                                  }}
                                 />
                               }
                               label="Show in web"
@@ -227,7 +261,7 @@ export default function AddCategory({ fetchItems, IsEcommerceWebSiteAvailable })
                 </Box>
                 <Box display="flex" justifyContent="space-between">
                   <Button
-                    type="submit"
+                    type="button"
                     variant="contained"
                     onClick={handleClose}
                     color="error"

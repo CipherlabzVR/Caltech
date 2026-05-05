@@ -14,8 +14,7 @@ import { alpha } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import ChecklistOutlinedIcon from "@mui/icons-material/ChecklistOutlined";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
-import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
+import LabelIcon from "@mui/icons-material/Label";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
 const TaskCard = ({
@@ -36,7 +35,6 @@ const TaskCard = ({
     totalChecklist > 0
       ? Math.round((completedChecklist / totalChecklist) * 100)
       : 0;
-  const checklistPreview = (task.checklist ?? []).slice(0, 3);
 
   const handleOpenChecklist = () => {
     onOpenChecklist?.(task);
@@ -100,6 +98,11 @@ const TaskCard = ({
     >
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
         <Box>
+          {task.taskNumber ? (
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5, fontWeight: 500 }}>
+              {task.taskNumber}
+            </Typography>
+          ) : null}
           <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
             {task.title}
           </Typography>
@@ -139,6 +142,26 @@ const TaskCard = ({
           {task.description}
         </Typography>
       ) : null}
+      {Array.isArray(task.labels) && task.labels.length > 0 && (
+        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+          {task.labels.map((label) => (
+            <Chip
+              key={label.labelId ?? label.name}
+              icon={<LabelIcon sx={{ fontSize: 14 }} />}
+              label={label.name}
+              size="small"
+              sx={{
+                height: 22,
+                fontSize: "0.7rem",
+                fontWeight: 600,
+                bgcolor: label.color ?? "#6366F1",
+                color: "#fff",
+                "& .MuiChip-icon": { color: "rgba(255,255,255,0.8)" },
+              }}
+            />
+          ))}
+        </Stack>
+      )}
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
         {Array.isArray(task.assignees) && task.assignees.length > 0 ? (
           <>
@@ -207,44 +230,6 @@ const TaskCard = ({
                 bgcolor: "action.disabledBackground",
               }}
             />
-            <Stack spacing={0.5}>
-              {checklistPreview.map((item) => (
-                <Stack
-                  key={item.checklistItemId ?? item.title}
-                  direction="row"
-                  alignItems="center"
-                  spacing={1}
-                >
-                  {item.isCompleted ? (
-                    <CheckCircleOutlineIcon
-                      fontSize="small"
-                      color="success"
-                    />
-                  ) : (
-                    <RadioButtonUncheckedIcon
-                      fontSize="small"
-                      color="disabled"
-                    />
-                  )}
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{
-                      textDecoration: item.isCompleted
-                        ? "line-through"
-                        : "none",
-                    }}
-                  >
-                    {item.title}
-                  </Typography>
-                </Stack>
-              ))}
-              {totalChecklist > checklistPreview.length ? (
-                <Typography variant="caption" color="text.secondary">
-                  +{totalChecklist - checklistPreview.length} more
-                </Typography>
-              ) : null}
-            </Stack>
           </Stack>
         </Box>
       ) : (

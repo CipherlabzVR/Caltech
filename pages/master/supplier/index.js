@@ -157,13 +157,17 @@ export default function Supplier() {
           justifyContent="end"
           order={{ xs: 1, lg: 2 }}
         >
-          {create ? <AddSupplier
-            fetchItems={fetchSupplierList}
-            isPOSSystem={isPOSSystem}
-            isBankRequired={isBankAccountRequiredToSupplier}
-            banks={banks}
-            chartOfAccounts={chartOfAccounts}
-          /> : ""}
+          {create ? (
+            <AddSupplier
+              fetchItems={() => fetchSupplierList()}
+              isPOSSystem={isPOSSystem}
+              isBankRequired={isBankAccountRequiredToSupplier}
+              banks={banks}
+              chartOfAccounts={chartOfAccounts}
+            />
+          ) : (
+            ""
+          )}
         </Grid>
         <Grid item xs={12} order={{ xs: 3, lg: 3 }}>
           <TableContainer component={Paper}>

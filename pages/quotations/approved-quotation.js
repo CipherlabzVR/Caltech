@@ -36,6 +36,15 @@ export default function ApprovedQuotation() {
     setSearchTerm(value);
     setPage(1);
     fetchQuotationList(1, value, pageSize);
+    
+    // Update URL with keyword parameter
+    const query = { ...router.query };
+    if (value && value.trim()) {
+      query.keyword = value.trim();
+    } else {
+      delete query.keyword;
+    }
+    router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
   };
 
   const handlePageChange = (event, value) => {
@@ -48,13 +57,24 @@ export default function ApprovedQuotation() {
     setPageSize(newSize);
     setPage(1);
     fetchQuotationList(1, searchTerm, newSize);
+    
+    // Update URL with pageSize parameter
+    const query = { ...router.query };
+    if (newSize && newSize !== 10) {
+      query.pageSize = newSize;
+    } else {
+      delete query.pageSize;
+    }
+    router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
   };
 
   const fetchQuotationList = async (page = 1, search = "", size = pageSize) => {
     try {
       const token = localStorage.getItem("token");
       const skip = (page - 1) * size;
-      const query = `${BASE_URL}/Inquiry/GetAllInquirySummeryHeaders?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}&approvedstatus=1`;
+      // API expects "null" as string when no search, or the actual search term
+      const searchParam = search && search.trim() ? encodeURIComponent(search.trim()) : "null";
+      const query = `${BASE_URL}/Inquiry/GetAllInquirySummeryHeaders?SkipCount=${skip}&MaxResultCount=${size}&Search=${searchParam}&approvedstatus=1`;
 
       const response = await fetch(query, {
         method: "GET",
@@ -75,20 +95,44 @@ export default function ApprovedQuotation() {
   };
 
   useEffect(() => {
-    fetchQuotationList();
-  }, []);
+    // Read pageSize and keyword from URL query parameters
+    if (router.isReady) {
+      const urlPageSize = router.query.pageSize ? parseInt(router.query.pageSize) : 10;
+      const urlKeyword = router.query.keyword || "";
+      
+      // Update state and fetch data
+      setPageSize(urlPageSize);
+      setSearchTerm(urlKeyword);
+      fetchQuotationList(1, urlKeyword, urlPageSize);
+    }
+  }, [router.isReady, router.query.pageSize, router.query.keyword]);
 
   const navigateToEdit = (quotation) => {
+    // Pass pageSize and keyword as query parameters
+    const queryParams = {
+      id: quotation ? quotation.inquiryID : "",
+      status: 1,
+      option: quotation ? quotation.optionId : ""
+    };
+    
+    // Add pageSize and keyword if they exist
+    if (pageSize && pageSize !== 10) {
+      queryParams.pageSize = pageSize;
+    }
+    if (searchTerm && searchTerm.trim()) {
+      queryParams.keyword = searchTerm.trim();
+    }
+    
     router.push({
       pathname: "/quotations/edit",
-      query: { id: quotation ? quotation.inquiryID : "", status: 1, option: quotation ? quotation.optionId : "" },
+      query: queryParams,
     });
   };
 
   const navigateToComparison = (quotation) => {
     router.push({
       pathname: "/quotations/comparison",
-      query: { status: 1, id: quotation ? quotation.inquiryID : "", option: quotation ? quotation.optionId : "" },
+      query: { status: 1, id: quotation ? quotation.inquiryID : "", option: quotation ? quotation.optionId : "", from: "approved-quotation" },
     });
   };
 

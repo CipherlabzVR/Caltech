@@ -8,6 +8,7 @@ import {
   MenuItem,
   Select,
   Typography,
+  Chip,
 } from "@mui/material";
 import DialogContent from "@mui/material/DialogContent";
 import TextField from "@mui/material/TextField";
@@ -66,9 +67,12 @@ const getValidationSchema = (isCustomerNICRequired, isCustomerCreditLimitRequire
   ),
 });
 
-export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
-  const [open, setOpen] = React.useState(false);
+export default function AddCustomerDialog({ fetchItems, chartOfAccounts, externalOpen, onClose: externalOnClose, showButton = true }) {
+  const [internalOpen, setInternalOpen] = React.useState(false);
   const [scroll, setScroll] = React.useState("paper");
+  
+  // Use external open state if provided, otherwise use internal
+  const open = externalOpen !== undefined ? externalOpen : internalOpen;
   const [titleList, setTitleList] = useState([]);
   const [currencyList, setCurrencyList] = useState([]);
   const { data: isCustomerNICRequired } = IsAppSettingEnabled("IsCustomerNICRequired");
@@ -77,6 +81,8 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
     { ContactName: "", ContactNo: "", EmailAddress: "" },
   ]);
   const [birthdate, setBirthdate] = useState("");
+  const [formKey, setFormKey] = useState(0);
+  const [distributorList, setDistributorList] = useState([]);
 
   const fetchTitleList = async () => {
     try {
@@ -129,6 +135,33 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
     }
   };
 
+  const fetchDistributorList = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/Distributor/GetAllDistributors?MaxResultCount=1000`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch Distributor List");
+      }
+
+      const data = await response.json();
+      let distributors = [];
+      if (data.result && data.result.items) {
+        distributors = data.result.items;
+      } else if (Array.isArray(data.result)) {
+        distributors = data.result;
+      }
+      setDistributorList(distributors);
+    } catch (error) {
+      console.error("Error fetching Distributor List:", error);
+    }
+  };
+
 
   const handleAddContact = () => {
     const newContact = { ContactName: "", ContactNo: "", EmailAddress: "" };
@@ -143,16 +176,36 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
   };
 
   const handleClickOpen = (scrollType) => () => {
-    setOpen(true);
+    if (externalOpen === undefined) {
+      setInternalOpen(true);
+    }
     setScroll(scrollType);
     fetchTitleList();
     fetchCurrencyList();
+    fetchDistributorList();
   };
 
   const handleClose = () => {
-    setOpen(false);
+    if (externalOnClose) {
+      externalOnClose();
+    } else if (externalOpen === undefined) {
+      setInternalOpen(false);
+    }
     setBirthdate("");
+    // Reset contacts to initial state
+    setContacts([{ ContactName: "", ContactNo: "", EmailAddress: "" }]);
+    // Increment form key to reset Formik form
+    setFormKey(prev => prev + 1);
   };
+  
+  // Fetch data when externally opened
+  React.useEffect(() => {
+    if (open && externalOpen !== undefined) {
+      fetchTitleList();
+      fetchCurrencyList();
+      fetchDistributorList();
+    }
+  }, [open, externalOpen]);
 
   const descriptionElementRef = React.useRef(null);
   React.useEffect(() => {
@@ -181,8 +234,23 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
       .then((data) => {
         if (data.statusCode == 200) {
           toast.success(data.message);
-          setOpen(false);
-          fetchItems();
+          handleClose();
+          if (fetchItems) {
+            const newCustomer = data.result || data.data || { 
+              id: data.id,
+              firstName: values.FirstName,
+              lastName: values.LastName,
+              displayName: values.DisplayName || `${values.FirstName} ${values.LastName}`.trim(),
+              company: values.Company,
+            };
+            // External modal usage (e.g. help-desk) needs created customer details.
+            // Internal usage (master customer list) only needs a list refresh.
+            if (externalOpen !== undefined) {
+              fetchItems(newCustomer);
+            } else {
+              fetchItems();
+            }
+          }
         } else {
           toast.error(data.message);
         }
@@ -247,16 +315,18 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
 
   return (
     <>
-      <Button variant="outlined" onClick={handleClickOpen("paper")}>
-        <AddIcon
-          sx={{
-            position: "relative",
-            top: "-2px",
-          }}
-          className="mr-5px"
-        />{" "}
-        Create New Customer
-      </Button>
+      {showButton && (
+        <Button variant="outlined" onClick={handleClickOpen("paper")}>
+          <AddIcon
+            sx={{
+              position: "relative",
+              top: "-2px",
+            }}
+            className="mr-5px"
+          />{" "}
+          Create New Customer
+        </Button>
+      )}
 
       <Dialog
         open={open}
@@ -270,6 +340,7 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
           <DialogTitle id="scroll-dialog-title">Create Customer</DialogTitle>
           <DialogContent>
             <Formik
+              key={formKey}
               initialValues={{
                 Title: "",
                 FirstName: "",
@@ -286,6 +357,7 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
                 CurrencyId: null,
                 CreditLimit: 0,
                 IsManufacture: false,
+                DistributorIds: [],
                 CustomerContactDetails: contacts.map(() => ({
                   ContactName: "",
                   EmailAddress: "",
@@ -294,6 +366,7 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
               }}
               validationSchema={getValidationSchema(isCustomerNICRequired, isCustomerCreditLimit)}
               onSubmit={handleSubmit}
+              enableReinitialize
             >
               {({ errors, touched, values, setFieldValue }) => (
                 <Form>
@@ -650,6 +723,43 @@ export default function AddCustomerDialog({ fetchItems, chartOfAccounts }) {
                               error={touched.Company && Boolean(errors.Company)}
                               helperText={touched.Company && errors.Company}
                             />
+                          </Grid>
+                          <Grid item xs={12}>
+                            <Typography
+                              component="label"
+                              sx={{
+                                fontWeight: "500",
+                                fontSize: "14px",
+                                mb: "10px",
+                                display: "block",
+                              }}
+                            >
+                              Distributors
+                            </Typography>
+                            <FormControl fullWidth>
+                              <InputLabel id="distributors-label">Select Distributors</InputLabel>
+                              <Select
+                                labelId="distributors-label"
+                                multiple
+                                value={values.DistributorIds || []}
+                                onChange={(e) => setFieldValue("DistributorIds", e.target.value)}
+                                label="Select Distributors"
+                                renderValue={(selected) => (
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                    {selected.map((value) => {
+                                      const distributor = distributorList.find(d => d.id === value);
+                                      return <Chip key={value} label={distributor ? distributor.name : value} size="small" />;
+                                    })}
+                                  </Box>
+                                )}
+                              >
+                                {distributorList.map((distributor) => (
+                                  <MenuItem key={distributor.id} value={distributor.id}>
+                                    {distributor.name}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
                           </Grid>
                           {contacts.map((contact, index) => (
                             <React.Fragment key={index}>

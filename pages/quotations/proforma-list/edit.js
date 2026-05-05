@@ -133,31 +133,33 @@ const InvoiceCreate = () => {
 
   const fetchQuotationList = async (inquiry) => {
       try {
-        // Try status 12 (ProformaInvoiceProcessing) first - quotations move here after invoice creation
-        let response = await fetch(`${BASE_URL}/Inquiry/GetAllQuotationsByInquiryIdAndStatus?status=12&inquiryId=${inquiry}`, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        });
-  
-        let data = await response.json();
-        let quotations = data.result || [];
+        // Try multiple statuses to get all confirmed quotations for this proforma invoice
+        // Status 12 = ProformaInvoiceProcessing, Status 10 = ProformaInvoiceCreated, Status 2 = QuotationConfirmed
+        const statusesToTry = [12, 10, 2];
+        let allQuotations = [];
         
-        // If no quotations found with status 12, try status 10 (ProformaInvoiceCreated) as fallback
-        if (!quotations || quotations.length === 0) {
-          response = await fetch(`${BASE_URL}/Inquiry/GetAllQuotationsByInquiryIdAndStatus?status=10&inquiryId=${inquiry}`, {
+        for (const status of statusesToTry) {
+          const response = await fetch(`${BASE_URL}/Inquiry/GetAllQuotationsByInquiryIdAndStatus?status=${status}&inquiryId=${inquiry}`, {
             method: "GET",
             headers: {
               Authorization: `Bearer ${localStorage.getItem("token")}`,
               "Content-Type": "application/json",
             },
           });
-          
-          data = await response.json();
-          quotations = data.result || [];
+    
+          if (response.ok) {
+            const data = await response.json();
+            const items = data.result || [];
+            if (items.length > 0) {
+              allQuotations = [...allQuotations, ...items];
+            }
+          }
         }
+        
+        // Remove duplicates based on ID
+        const quotations = allQuotations.filter(
+          (quotation, index, self) => index === self.findIndex((q) => q.id === quotation.id)
+        );
         
         // Map quotations to include advanceAmount and balanceAmount if not present
         const updatedResult = quotations.map(item => {

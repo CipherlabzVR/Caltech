@@ -20,12 +20,22 @@ import TextField from "@mui/material/TextField";
 import { Field, Form, Formik } from "formik";
 import * as Yup from "yup";
 import BASE_URL from "Base/api";
+import { useRouter } from "next/router";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import DeleteIcon from "@mui/icons-material/Delete";
+import DownloadIcon from "@mui/icons-material/Download";
 import AddIcon from "@mui/icons-material/Add";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
+
+/** Optional leading + then digits only (e.g. +94771234567). */
+function sanitizeSupplierMobileInput(raw) {
+  const s = String(raw ?? "");
+  const digits = s.replace(/\D/g, "");
+  return s.trim().startsWith("+") ? `+${digits}` : digits;
+}
 
 // Controlled Category Modal Component
 const CreateCategoryModal = ({ open, onClose, fetchItems, IsEcommerceWebSiteAvailable }) => {
@@ -65,7 +75,12 @@ const CreateCategoryModal = ({ open, onClose, fetchItems, IsEcommerceWebSiteAvai
         if (data.statusCode == 200) {
           toast.success(data.message);
           onClose();
-          if (fetchItems) fetchItems();
+          const newId =
+            data.result?.id ??
+            data.result?.Id ??
+            data.Result?.id ??
+            data.Result?.Id;
+          if (fetchItems) fetchItems(newId);
         } else {
           toast.error(data.message);
         }
@@ -383,6 +398,7 @@ const CreateSupplierModal = ({ open, onClose, fetchItems, isPOSSystem, banks, is
     }
     const payload = {
       ...values,
+      MobileNo: sanitizeSupplierMobileInput(values.MobileNo),
       BankId: selectedBank?.id || null,
       BankName: selectedBank?.name || "",
       BankAccountUserName: selectedBank?.accountUsername || "",
@@ -426,7 +442,12 @@ const CreateSupplierModal = ({ open, onClose, fetchItems, isPOSSystem, banks, is
           }}
           validationSchema={Yup.object().shape({
             Name: Yup.string().required("Name is required"),
-            MobileNo: Yup.string().required("Mobile No is required"),
+            MobileNo: Yup.string()
+              .required("Mobile No is required")
+              .matches(
+                /^\+?\d+$/,
+                "Use digits only; you may start with + for country code"
+              ),
           })}
           onSubmit={handleSubmit}
         >
@@ -457,14 +478,23 @@ const CreateSupplierModal = ({ open, onClose, fetchItems, isPOSSystem, banks, is
                     <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>
                       Mobile No
                     </Typography>
-                    <Field
-                      as={TextField}
-                      fullWidth
-                      name="MobileNo"
-                      size="small"
-                      error={touched.MobileNo && Boolean(errors.MobileNo)}
-                      helperText={touched.MobileNo && errors.MobileNo}
-                    />
+                    <Field name="MobileNo">
+                      {({ field, meta }) => (
+                        <TextField
+                          fullWidth
+                          name={field.name}
+                          value={field.value}
+                          onBlur={field.onBlur}
+                          onChange={(e) =>
+                            setFieldValue("MobileNo", sanitizeSupplierMobileInput(e.target.value))
+                          }
+                          size="small"
+                          inputProps={{ inputMode: "tel", autoComplete: "tel" }}
+                          error={meta.touched && Boolean(meta.error)}
+                          helperText={meta.touched && meta.error}
+                        />
+                      )}
+                    </Field>
                   </Grid>
                   {isPOSSystem && (
                     <Grid item xs={12} mt={1}>
@@ -562,9 +592,13 @@ const CreateUOMModal = ({ open, onClose, fetchItems }) => {
   }, [open]);
 
   const handleSubmit = (values) => {
+    const payload = {
+      ...values,
+      Value: Math.max(0, Number(values.Value) || 0),
+    };
     fetch(`${BASE_URL}/UnitOfMeasure/CreateUnitOfMeasure`, {
       method: "POST",
-      body: JSON.stringify(values),
+      body: JSON.stringify(payload),
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -600,6 +634,10 @@ const CreateUOMModal = ({ open, onClose, fetchItems }) => {
           validationSchema={Yup.object().shape({
             Description: Yup.string().required("Description is required"),
             Name: Yup.string().required("Name is required"),
+            Value: Yup.number()
+              .typeError("Value must be a number")
+              .min(0, "Value cannot be negative")
+              .required("Value is required"),
           })}
           onSubmit={handleSubmit}
         >
@@ -637,7 +675,32 @@ const CreateUOMModal = ({ open, onClose, fetchItems }) => {
                   </Grid>
                   <Grid item xs={12} mt={1}>
                     <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>Value</Typography>
-                    <Field as={TextField} fullWidth type="number" name="Value" size="small" />
+                    <Field name="Value">
+                      {({ field, meta, form }) => (
+                        <TextField
+                          fullWidth
+                          type="number"
+                          name={field.name}
+                          value={field.value === "" || field.value === undefined ? "" : field.value}
+                          onBlur={field.onBlur}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === "") {
+                              form.setFieldValue("Value", "");
+                              return;
+                            }
+                            const n = Number(raw);
+                            if (!Number.isNaN(n)) {
+                              form.setFieldValue("Value", Math.max(0, n));
+                            }
+                          }}
+                          size="small"
+                          inputProps={{ min: 0, step: "any" }}
+                          error={meta.touched && Boolean(meta.error)}
+                          helperText={meta.touched && meta.error}
+                        />
+                      )}
+                    </Field>
                   </Grid>
                   <Grid item xs={12} mt={1}>
                     <FormControlLabel
@@ -684,12 +747,85 @@ const validationSchema = Yup.object().shape({
   SubCategoryId: Yup.number().required("Sub Category is required"),
   Supplier: Yup.number().required("Supplier is required"),
   UOM: Yup.number().required("Unit of Measure is required"),
+  ReorderLevel: Yup.mixed()
+    .nullable()
+    .test(
+      "reorder-non-negative",
+      "Reorder Level cannot be negative",
+      (val) => {
+        if (val === null || val === undefined || val === "") return true;
+        const n = Number(val);
+        if (Number.isNaN(n)) return false;
+        return n >= 0;
+      }
+    ),
 });
 
-export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarmentSystem, chartOfAccounts, barcodeEnabled, IsEcommerceWebSiteAvailable }) {
+export default function EditItems({
+  fetchItems,
+  item,
+  isPOSSystem,
+  uoms,
+  isGarmentSystem,
+  chartOfAccounts,
+  barcodeEnabled,
+  IsEcommerceWebSiteAvailable,
+  onDuplicateRequest,
+  approve1 = false,
+}) {
+  const router = useRouter();
+  const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
   const [open, setOpen] = React.useState(false);
-  const handleOpen = () => setOpen(true);
-  const handleClose = () => setOpen(false);
+  const [subImages, setSubImages] = useState([]); // { id, preview|imgUrl, file?, price, description, isExisting }
+  const [subImageIdsToRemove, setSubImageIdsToRemove] = useState([]);
+  const subImageInputRef = useRef(null);
+  const handleOpen = async () => {
+    setOpen(true);
+    try {
+      const res = await fetch(`${BASE_URL}/Items/GetItemById?id=${item.id}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      const data = await res.json();
+      const subImgs = data.result?.itemSubImages ?? data.result?.ItemSubImages ?? [];
+      if (subImgs?.length) {
+        const existing = subImgs.map((s) => ({
+          id: s.id ?? s.Id,
+          imgUrl: s.imgUrl ?? s.ImgUrl ?? "",
+          price: s.price ?? s.Price ?? "",
+          description: s.description ?? s.Description ?? "",
+          isOutOfStock: !!(s.isOutOfStock ?? s.IsOutOfStock),
+          isExisting: true,
+        }));
+        setSubImages(existing);
+      } else {
+        setSubImages([]);
+      }
+      setSubImageIdsToRemove([]);
+    } catch {
+      setSubImages([]);
+      setSubImageIdsToRemove([]);
+    }
+  };
+  const handleClose = () => {
+    setSubImages((prev) => {
+      prev.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
+      return [];
+    });
+    setSubImageIdsToRemove([]);
+    setOpen(false);
+  };
+  const handleDuplicateItem = () => {
+    localStorage.setItem("duplicateItemId", String(item.id));
+    handleClose();
+    if (onDuplicateRequest) {
+      onDuplicateRequest();
+    } else {
+      router.push({
+        pathname: "/master/items/",
+        query: { duplicate: "1", t: String(Date.now()) },
+      });
+    }
+  };
   const [selectedCat, setSelectedCat] = useState();
   const [categoryList, setCategoryList] = useState([]);
   const [subCategoryList, setSubCategoryList] = useState([]);
@@ -746,7 +882,7 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
     }
   };
 
-  const fetchSubCategoryList = async () => {
+  const fetchSubCategoryList = async (categoryIdOverride) => {
     try {
       const response = await fetch(
         `${BASE_URL}/SubCategory/GetAllSubCategory`,
@@ -764,8 +900,14 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
       }
 
       const data = await response.json();
+      const id =
+        categoryIdOverride !== undefined &&
+        categoryIdOverride !== null &&
+        categoryIdOverride !== ""
+          ? categoryIdOverride
+          : catId;
       const filteredItems = data.result.filter(
-        (item) => item.categoryId === catId
+        (item) => item.categoryId == id
       );
       setSubCategoryList(filteredItems);
     } catch (error) {
@@ -841,9 +983,10 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
   };
 
   const handleCategorySelect = (event) => {
-    setSelectedCat(event.target.value);
-    setCatId(event.target.value);
-    fetchSubCategoryList();
+    const v = event.target.value;
+    setSelectedCat(v);
+    setCatId(v);
+    fetchSubCategoryList(v);
   };
 
   const handleTabChange = (event, newValue) => {
@@ -864,12 +1007,90 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
     setSelectedFile(null);
   };
 
-  const handleCategoryCreated = async () => {
+  const handleDownloadImage = async (imageUrl, filename = "item-image") => {
+    try {
+      if (!imageUrl) return;
+      if (imageUrl.startsWith("blob:")) {
+        const response = await fetch(imageUrl);
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = `${filename || "item-image"}.png`;
+        a.click();
+        URL.revokeObjectURL(blobUrl);
+      } else {
+        const proxyUrl = `${BASE_URL}/Items/DownloadImage?url=${encodeURIComponent(imageUrl)}&filename=${encodeURIComponent((filename || "item-image") + ".png")}`;
+        const response = await fetch(proxyUrl, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+        if (!response.ok) throw new Error("Failed to fetch image");
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = `${filename || "item-image"}.png`;
+        a.click();
+        URL.revokeObjectURL(blobUrl);
+      }
+      toast.success("Image downloaded");
+    } catch (err) {
+      toast.error("Failed to download image");
+    }
+  };
+
+  const handleSubImagesUpload = (event) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    const newSubImages = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file.type.startsWith("image/")) continue;
+      const id = `new_${Date.now()}_${i}_${Math.random().toString(36).slice(2)}`;
+      newSubImages.push({
+        id,
+        preview: URL.createObjectURL(file),
+        file,
+        price: "",
+        description: "",
+        isOutOfStock: false,
+        isExisting: false,
+      });
+    }
+    setSubImages((prev) => [...prev, ...newSubImages]);
+    event.target.value = "";
+  };
+
+  const updateSubImageMeta = (id, field, value) => {
+    setSubImages((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, [field]: value } : s))
+    );
+  };
+
+  const removeSubImage = (id) => {
+    const s = subImages.find((p) => p.id === id);
+    if (s?.isExisting && typeof s.id === "number") {
+      setSubImageIdsToRemove((r) => [...r, s.id]);
+    }
+    setSubImages((prev) => {
+      const found = prev.find((p) => p.id === id);
+      if (found?.preview) URL.revokeObjectURL(found.preview);
+      return prev.filter((p) => p.id !== id);
+    });
+  };
+
+  const handleCategoryCreated = async (setFieldValue, createdId) => {
     await fetchCategoryList();
+    if (createdId == null || createdId === "" || !setFieldValue) return;
+    setFieldValue("CategoryId", createdId);
+    setSelectedCat(createdId);
+    setCatId(createdId);
+    setFieldValue("SubCategoryId", "");
+    await fetchSubCategoryList(createdId);
   };
 
   const handleSubCategoryCreated = async (setFieldValue, createdId) => {
-    await fetchSubCategoryList();
+    await fetchSubCategoryList(catId);
     if (createdId && setFieldValue) {
       setFieldValue("SubCategoryId", createdId);
     }
@@ -895,7 +1116,26 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
       return;
     }
 
-    
+    const wp =
+      values.WholesalePrice !== null && values.WholesalePrice !== ""
+        ? Number(values.WholesalePrice)
+        : NaN;
+    const wq =
+      values.WholesaleMinimumQuantity !== null && values.WholesaleMinimumQuantity !== ""
+        ? Number(values.WholesaleMinimumQuantity)
+        : NaN;
+    if (Number.isFinite(wp) && wp > 0) {
+      if (!Number.isFinite(wq) || wq <= 0) {
+        toast.warning("Enter wholesale minimum quantity when wholesale price is set.");
+        return;
+      }
+    }
+    if (Number.isFinite(wq) && wq > 0) {
+      if (!Number.isFinite(wp) || wp <= 0) {
+        toast.warning("Enter wholesale price when wholesale minimum quantity is set.");
+        return;
+      }
+    }
 
     const formData = new FormData();
 
@@ -903,8 +1143,26 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
     formData.append("Name", values.Name);
     formData.append("Code", values.Code);
     formData.append("AveragePrice", values.AveragePrice);
+    formData.append(
+      "WholesalePrice",
+      values.WholesalePrice !== null && values.WholesalePrice !== "" ? values.WholesalePrice : "",
+    );
+    formData.append(
+      "WholesaleMinimumQuantity",
+      values.WholesaleMinimumQuantity !== null && values.WholesaleMinimumQuantity !== ""
+        ? values.WholesaleMinimumQuantity
+        : "",
+    );
     formData.append("ShipmentTarget", values.ShipmentTarget ? values.ShipmentTarget : "");
-    formData.append("ReorderLevel", values.ReorderLevel ?values.ReorderLevel : "");
+    {
+      const rl = values.ReorderLevel;
+      const rlNum =
+        rl != null && rl !== "" ? Math.max(0, Number(rl)) : null;
+      formData.append(
+        "ReorderLevel",
+        rlNum != null && !Number.isNaN(rlNum) ? String(rlNum) : ""
+      );
+    }
     formData.append("CategoryId", values.CategoryId);
     formData.append("SubCategoryId", values.SubCategoryId);
     formData.append("Supplier", values.Supplier);
@@ -922,7 +1180,38 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
     formData.append("IsNonInventoryItem", values.IsNonInventoryItem);
     formData.append("HasSerialNumbers", values.HasSerialNumbers);
     formData.append("IsWebView", values.IsWebView);
+    formData.append("IsOutOfStock", values.IsOutOfStock);
+    formData.append("IsItemEndInvolve", values.IsItemEndInvolve);
     formData.append("ProductImage", selectedFile ? selectedFile : null);
+    (subImages || []).forEach((s) => {
+      if (s.file) formData.append("SubImages", s.file);
+    });
+    const subImagesMeta = (subImages || [])
+      .filter((s) => s.file)
+      .map((s) => {
+        const priceVal = s.price !== "" && s.price != null ? parseFloat(s.price) : NaN;
+        return {
+          price: !isNaN(priceVal) ? priceVal : null,
+          description: (s.description || "").trim() || null,
+          isOutOfStock: !!s.isOutOfStock,
+        };
+      });
+    formData.append("SubImagesMeta", JSON.stringify(subImagesMeta));
+    const existingSubImagesMeta = (subImages || [])
+      .filter((s) => s.isExisting && typeof s.id === "number")
+      .map((s) => {
+        const priceVal = s.price !== "" && s.price != null ? parseFloat(s.price) : NaN;
+        return {
+          id: s.id,
+          price: !isNaN(priceVal) ? priceVal : null,
+          description: (s.description || "").trim() || null,
+          isOutOfStock: !!s.isOutOfStock,
+        };
+      });
+    formData.append("ExistingSubImagesMeta", JSON.stringify(existingSubImagesMeta));
+    if (subImageIdsToRemove.length > 0) {
+      formData.append("SubImageIdsToRemove", subImageIdsToRemove.join(","));
+    }
     if (values.Description && values.Description.trim() !== "") {
       formData.append("Description", values.Description);
     }
@@ -936,8 +1225,13 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
     })
       .then((response) => response.json())
       .then((data) => {
-        if (data.statusCode == 200) {
+        if (data?.statusCode == 200) {
           toast.success(data.message);
+          setSubImages((prev) => {
+            prev.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
+            return [];
+          });
+          setSubImageIdsToRemove([]);
           setOpen(false);
           fetchItems();
         } else {
@@ -968,10 +1262,17 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
               Name: item.name || "",
               Code: item.code || "",
               AveragePrice: item.averagePrice || null,
+              WholesalePrice: item.wholesalePrice ?? null,
+              WholesaleMinimumQuantity: item.wholesaleMinimumQuantity ?? null,
               CategoryId: item.categoryId || "",
               SubCategoryId: item.subCategoryId || "",
               ShipmentTarget: item.shipmentTarget || null,
-              ReorderLevel: item.reorderLevel || null,
+              ReorderLevel: (() => {
+                const raw = item.reorderLevel;
+                if (raw == null || raw === "") return null;
+                const n = Number(raw);
+                return Number.isNaN(n) ? null : Math.max(0, n);
+              })(),
               Supplier: item.supplier || "",
               UOM: item.uom || "",
               Barcode: item.barcode || null,
@@ -983,6 +1284,8 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
               IsNonInventoryItem: item.isNonInventoryItem,
               HasSerialNumbers: item.hasSerialNumbers,
               IsWebView: item.isWebView,
+              IsOutOfStock: item.isOutOfStock || false,
+              IsItemEndInvolve: item.isItemEndInvolve || false,
               Description: item.description
             }}
             validationSchema={validationSchema}
@@ -995,15 +1298,33 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
               <Form>
                 <Grid container>
                   <Grid item xs={12} mb={2}>
-                    <Typography
-                      variant="h5"
+                    <Box
                       sx={{
-                        fontWeight: "500",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
                         mb: "5px",
                       }}
                     >
-                      Edit Item
-                    </Typography>
+                      <Typography
+                        variant="h5"
+                        sx={{
+                          fontWeight: "500",
+                        }}
+                      >
+                        Edit Item
+                      </Typography>
+                      {approve1 ? (
+                        <Button
+                          type="button"
+                          variant="contained"
+                          size="small"
+                          onClick={handleDuplicateItem}
+                        >
+                          Duplicate
+                        </Button>
+                      ) : null}
+                    </Box>
                   </Grid>
                   <Grid item xs={12} mb={2}>
                     <Tabs value={tabValue} onChange={handleTabChange} aria-label="item tabs">
@@ -1208,7 +1529,7 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
                         </Box>
                       </Grid>
 
-                      {isPOSSystem && (
+                      {IsEcommerceWebSiteAvailable && (
                         <>
                           <Grid item xs={12} mt={1} lg={6} p={1}>
                             <Typography
@@ -1225,6 +1546,52 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
                               fullWidth
                               name="AveragePrice"
                               size="small"
+                            />
+                          </Grid>
+                          <Grid item xs={12} mt={1} lg={6} p={1}>
+                            <Typography
+                              sx={{
+                                fontWeight: "500",
+                                fontSize: "14px",
+                                mb: "5px",
+                              }}
+                            >
+                              Wholesale price
+                            </Typography>
+                            <Field
+                              as={TextField}
+                              fullWidth
+                              name="WholesalePrice"
+                              size="small"
+                              type="number"
+                              inputProps={{ min: 0, step: "any" }}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setFieldValue("WholesalePrice", value === "" ? null : value);
+                              }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} mt={1} lg={6} p={1}>
+                            <Typography
+                              sx={{
+                                fontWeight: "500",
+                                fontSize: "14px",
+                                mb: "5px",
+                              }}
+                            >
+                              Wholesale minimum quantity
+                            </Typography>
+                            <Field
+                              as={TextField}
+                              fullWidth
+                              name="WholesaleMinimumQuantity"
+                              size="small"
+                              type="number"
+                              inputProps={{ min: 0, step: "any" }}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setFieldValue("WholesaleMinimumQuantity", value === "" ? null : value);
+                              }}
                             />
                           </Grid>
                         </>
@@ -1245,10 +1612,20 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
                           name="ReorderLevel"
                           size="small"
                           type="number"
+                          inputProps={{ min: 0, step: 1 }}
                           onChange={(e) => {
                             const value = e.target.value;
-                            setFieldValue("ReorderLevel", value === '' ? null : value);
+                            if (value === "") {
+                              setFieldValue("ReorderLevel", null);
+                              return;
+                            }
+                            const n = Number(value);
+                            if (!Number.isNaN(n)) {
+                              setFieldValue("ReorderLevel", Math.max(0, n));
+                            }
                           }}
+                          error={touched.ReorderLevel && Boolean(errors.ReorderLevel)}
+                          helperText={touched.ReorderLevel && errors.ReorderLevel}
                         />
                       </Grid>
                       {isGarmentSystem && (
@@ -1559,6 +1936,22 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
                               />
                             </Grid>
                           )}
+
+                          {isItemEndInvolveEnable && (
+                            <Grid item xs={12} lg={6} mt={1}>
+                              <FormControlLabel
+                                control={
+                                  <Field
+                                    as={Checkbox}
+                                    name="IsItemEndInvolve"
+                                    checked={values.IsItemEndInvolve}
+                                    onChange={() => setFieldValue("IsItemEndInvolve", !values.IsItemEndInvolve)}
+                                  />
+                                }
+                                label="Is Item End Involve"
+                              />
+                            </Grid>
+                          )}
                         </Grid>
                       </Grid>
                     </Grid>
@@ -1602,7 +1995,7 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
                                   borderRadius: "8px",
                                   overflow: "hidden",
                                   height: "250px",
-                                  "&:hover .delete-icon": {
+                                  "&:hover .image-action-icon": {
                                     opacity: 1,
                                   },
                                 }}
@@ -1616,27 +2009,63 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
                                     objectFit: "cover",
                                   }}
                                 />
-                                <IconButton
-                                  className="delete-icon"
-                                  onClick={handleRemoveImage}
-                                  sx={{
-                                    position: "absolute",
-                                    top: 5,
-                                    right: 5,
-                                    backgroundColor: "rgba(255, 255, 255, 0.9)",
-                                    opacity: 0,
-                                    transition: "opacity 0.3s",
-                                    "&:hover": {
-                                      backgroundColor: "rgba(255, 255, 255, 1)",
-                                    },
-                                  }}
-                                  size="small"
-                                >
-                                  <DeleteIcon fontSize="small" color="error" />
-                                </IconButton>
+                                <Tooltip title="Download">
+                                  <IconButton
+                                    className="image-action-icon"
+                                    onClick={() => handleDownloadImage(selectedImage, item?.code || item?.name || "item-image")}
+                                    sx={{
+                                      position: "absolute",
+                                      top: 5,
+                                      right: 45,
+                                      backgroundColor: "rgba(255, 255, 255, 0.9)",
+                                      opacity: 0,
+                                      transition: "opacity 0.3s",
+                                      "&:hover": {
+                                        backgroundColor: "rgba(255, 255, 255, 1)",
+                                      },
+                                    }}
+                                    size="small"
+                                  >
+                                    <DownloadIcon fontSize="small" color="primary" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Delete">
+                                  <IconButton
+                                    className="image-action-icon"
+                                    onClick={handleRemoveImage}
+                                    sx={{
+                                      position: "absolute",
+                                      top: 5,
+                                      right: 5,
+                                      backgroundColor: "rgba(255, 255, 255, 0.9)",
+                                      opacity: 0,
+                                      transition: "opacity 0.3s",
+                                      "&:hover": {
+                                        backgroundColor: "rgba(255, 255, 255, 1)",
+                                      },
+                                    }}
+                                    size="small"
+                                  >
+                                    <DeleteIcon fontSize="small" color="error" />
+                                  </IconButton>
+                                </Tooltip>
                               </Box>
                             </Grid>
                           </Grid>
+                          {IsEcommerceWebSiteAvailable && (
+                            <FormControlLabel
+                              sx={{ mt: 1, display: "block" }}
+                              control={
+                                <Field
+                                  as={Checkbox}
+                                  name="IsOutOfStock"
+                                  checked={values.IsOutOfStock}
+                                  onChange={() => setFieldValue("IsOutOfStock", !values.IsOutOfStock)}
+                                />
+                              }
+                              label="Out of Stock (main image)"
+                            />
+                          )}
                         </Grid>
                       )}
                       
@@ -1658,9 +2087,156 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
                             <Typography variant="body2" color="textSecondary">
                               Click "Choose Image" button to upload
                             </Typography>
+                            {IsEcommerceWebSiteAvailable && (
+                              <FormControlLabel
+                                sx={{ mt: 2, justifyContent: "center" }}
+                                control={
+                                  <Field
+                                    as={Checkbox}
+                                    name="IsOutOfStock"
+                                    checked={values.IsOutOfStock}
+                                    onChange={() => setFieldValue("IsOutOfStock", !values.IsOutOfStock)}
+                                  />
+                                }
+                                label="Out of Stock (main image)"
+                              />
+                            )}
                           </Box>
                         </Grid>
                       )}
+
+                      {/* Sub Images section */}
+                      <Grid item xs={12} sx={{ mt: 3 }}>
+                        <Typography variant="h6" sx={{ mb: 2 }}>
+                          Sub Images
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          component="label"
+                          startIcon={<CloudUploadIcon />}
+                          sx={{ mb: 2 }}
+                        >
+                          Choose Image
+                          <input
+                            ref={subImageInputRef}
+                            type="file"
+                            hidden
+                            accept="image/*"
+                            multiple
+                            onChange={handleSubImagesUpload}
+                          />
+                        </Button>
+                        {subImages.length > 0 ? (
+                          <Grid container spacing={2}>
+                            {subImages.map((s) => (
+                              <Grid item xs={12} sm={6} md={4} key={s.id}>
+                                <Box
+                                  sx={{
+                                    position: "relative",
+                                    border: "2px solid #e0e0e0",
+                                    borderRadius: "8px",
+                                    overflow: "hidden",
+                                    "&:hover .delete-icon, &:hover .download-icon": { opacity: 1 },
+                                  }}
+                                >
+                                  <Box sx={{ height: "140px", position: "relative", backgroundColor: "#f5f5f5" }}>
+                                    <img
+                                      src={s.imgUrl || s.preview}
+                                      alt="Sub"
+                                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                    />
+                                    <IconButton
+                                      className="delete-icon"
+                                      onClick={() => removeSubImage(s.id)}
+                                      sx={{
+                                        position: "absolute",
+                                        top: 5,
+                                        right: 5,
+                                        backgroundColor: "rgba(255, 255, 255, 0.9)",
+                                        opacity: 0,
+                                        transition: "opacity 0.3s",
+                                        "&:hover": { backgroundColor: "rgba(255, 255, 255, 1)" },
+                                      }}
+                                      size="small"
+                                    >
+                                      <DeleteIcon fontSize="small" color="error" />
+                                    </IconButton>
+                                    <Tooltip title="Download">
+                                      <IconButton
+                                        className="download-icon"
+                                        onClick={() => handleDownloadImage(s.imgUrl || s.preview, `sub-${s.id}`)}
+                                        sx={{
+                                          position: "absolute",
+                                          top: 5,
+                                          right: 45,
+                                          backgroundColor: "rgba(255, 255, 255, 0.9)",
+                                          opacity: 0,
+                                          transition: "opacity 0.3s",
+                                          "&:hover": { backgroundColor: "rgba(255, 255, 255, 1)" },
+                                        }}
+                                        size="small"
+                                      >
+                                        <DownloadIcon fontSize="small" color="primary" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </Box>
+                                  <Box sx={{ p: 1.5 }}>
+                                    <TextField
+                                      fullWidth
+                                      size="small"
+                                      label="Price"
+                                      type="number"
+                                      inputProps={{ min: 0, step: 0.01 }}
+                                      value={s.price ?? ""}
+                                      onChange={(e) => updateSubImageMeta(s.id, "price", e.target.value)}
+                                      sx={{ mb: 1 }}
+                                    />
+                                    <TextField
+                                      fullWidth
+                                      size="small"
+                                      label="Description"
+                                      multiline
+                                      rows={2}
+                                      value={s.description ?? ""}
+                                      onChange={(e) => updateSubImageMeta(s.id, "description", e.target.value)}
+                                    />
+                                    {IsEcommerceWebSiteAvailable && (
+                                      <FormControlLabel
+                                        sx={{ mt: 0.5, alignItems: "flex-start", ml: 0 }}
+                                        control={
+                                          <Checkbox
+                                            size="small"
+                                            checked={!!s.isOutOfStock}
+                                            onChange={(e) =>
+                                              updateSubImageMeta(s.id, "isOutOfStock", e.target.checked)
+                                            }
+                                          />
+                                        }
+                                        label="Out of Stock"
+                                      />
+                                    )}
+                                  </Box>
+                                </Box>
+                              </Grid>
+                            ))}
+                          </Grid>
+                        ) : (
+                          <Box
+                            sx={{
+                              border: "2px dashed #ccc",
+                              borderRadius: "8px",
+                              p: 3,
+                              textAlign: "center",
+                              backgroundColor: "#f9f9f9",
+                            }}
+                          >
+                            <CloudUploadIcon sx={{ fontSize: 48, color: "#999", mb: 1 }} />
+                            <Typography variant="body2" color="textSecondary">
+                              No sub images. Click &quot;Choose Image&quot; to add multiple images.
+                            </Typography>
+                          </Box>
+                        )}
+                      </Grid>
                     </Grid>
                   </Box>
                   )}
@@ -1697,7 +2273,9 @@ export default function EditItems({ fetchItems, item, isPOSSystem, uoms, isGarme
         <CreateCategoryModal
           open={createCategoryOpen}
           onClose={() => setCreateCategoryOpen(false)}
-          fetchItems={handleCategoryCreated}
+          fetchItems={(createdId) =>
+            handleCategoryCreated(window.currentSetFieldValue, createdId)
+          }
           IsEcommerceWebSiteAvailable={IsEcommerceWebSiteAvailable}
         />
       )}

@@ -6,6 +6,7 @@ import {
   Box,
   TextField,
   Button,
+  Alert,
   FormControlLabel,
   Checkbox,
   InputAdornment,
@@ -19,11 +20,64 @@ import "react-toastify/dist/ReactToastify.css";
 import FacebookIcon from '@mui/icons-material/Facebook';
 import LinkedInIcon from '@mui/icons-material/LinkedIn';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
+import getDeviceName from "@/components/utils/getDeviceName";
+import { getDeviceIdentity } from "@/components/utils/getDeviceId";
+import DeviceNameDialog from "@/components/Authentication/DeviceNameDialog";
+import TwoFactorChallengeDialog from "@/components/Authentication/TwoFactorChallengeDialog";
 
 const SignInForm = () => {
   const [showError, setShowError] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [loginNote, setLoginNote] = useState("");
+  const [deviceDialogOpen, setDeviceDialogOpen] = useState(false);
+  const [deviceNameInput, setDeviceNameInput] = useState("");
+  const [loginResult, setLoginResult] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [twoFactorState, setTwoFactorState] = useState({
+    open: false,
+    email: "",
+    challengeToken: "",
+    availableChannels: [],
+    sentChannel: "",
+    sentRecipient: "",
+    expiresInMinutes: 10,
+    initialLocked: false,
+    initialLockoutEndsAt: "",
+    initialError: "",
+  });
   const router = useRouter();
+
+  const finalizeLogin = (result) => {
+    localStorage.setItem("token", result.accessToken);
+    localStorage.setItem("user", result.email);
+    localStorage.setItem("userid", result.id);
+    localStorage.setItem("name", result.firstName);
+    localStorage.setItem("type", result.userType);
+    localStorage.setItem("warehouse", result.warehouseId);
+    localStorage.setItem("company", result.companyId);
+    localStorage.setItem("role", result.userRole);
+
+    sessionStorage.removeItem("holidayGreetingShown");
+    sessionStorage.setItem("justLoggedIn", "true");
+
+    fetch(`${BASE_URL}/Company/CreateCompanyHostingFeeIfDue`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${result.accessToken}`,
+        "Content-Type": "application/json",
+      },
+    }).catch(() => {});
+
+    if (result.isNewDevice) {
+      setLoginResult(result);
+      setDeviceNameInput(getDeviceName());
+      setDeviceDialogOpen(true);
+      return;
+    }
+
+    router.push("/");
+    window.location.reload();
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -36,41 +90,275 @@ const SignInForm = () => {
       return;
     }
 
+    setLoginNote("");
+    setSubmitting(true);
+
     try {
+      const identity = await getDeviceIdentity();
       const response = await fetch(`${BASE_URL}/User/SignIn`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Email: email, Password: password }),
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(identity.deviceFingerprint
+            ? { "X-Device-Fingerprint": identity.deviceFingerprint }
+            : {}),
+          ...(identity.browserInstanceId
+            ? { "X-Browser-Instance-Id": identity.browserInstanceId }
+            : {}),
+        },
+        body: JSON.stringify({
+          Email: email,
+          Password: password,
+          DeviceName: getDeviceName(),
+          DeviceIdentifier: identity.deviceIdentifier,
+          DeviceId: identity.deviceIdentifier,
+          DeviceFingerprint: identity.deviceFingerprint,
+          BrowserInstanceId: identity.browserInstanceId,
+        }),
       });
-
-      if (!response.ok) throw new Error("Invalid email or password");
       const responseData = await response.json();
 
-      localStorage.setItem("token", responseData.result.accessToken);
-      localStorage.setItem("user", responseData.result.email);
-      localStorage.setItem("userid", responseData.result.id);
-      localStorage.setItem("name", responseData.result.firstName);
-      localStorage.setItem("type", responseData.result.userType);
-      localStorage.setItem("warehouse", responseData.result.warehouseId);
-      localStorage.setItem("company", responseData.result.companyId);
-      localStorage.setItem("role", responseData.result.userRole);
+      if (!response.ok) {
+        throw new Error(responseData.message || "Login failed");
+      }
 
-      sessionStorage.removeItem("holidayGreetingShown");
-      sessionStorage.setItem("justLoggedIn", "true");
+      const result = responseData.result;
 
-      fetch(`${BASE_URL}/Company/CreateCompanyHostingFeeIfDue`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${responseData.result.accessToken}`,
-          "Content-Type": "application/json",
-        },
-      }).catch(() => {});
+      // Backend returned a FAILED ApiResponse (e.g. lockout). HTTP is still 200
+      // because the controller wraps responses in Ok(...). Inspect statusCode +
+      // result.locked so we can show the locked dialog instead of a generic toast.
+      if (responseData.statusCode !== 200) {
+        if (result?.locked) {
+          setTwoFactorState({
+            open: true,
+            email,
+            challengeToken: "",
+            availableChannels: [],
+            sentChannel: "",
+            sentRecipient: "",
+            expiresInMinutes: 10,
+            initialLocked: true,
+            initialLockoutEndsAt: result.lockoutEndsAt || "",
+            initialError: responseData.message || "Account temporarily locked.",
+          });
+          setSubmitting(false);
+          return;
+        }
+        throw new Error(responseData.message || "Login failed");
+      }
 
-      router.push("/");
-      window.location.reload();
+      if (result?.requiresTwoFactor) {
+        setTwoFactorState({
+          open: true,
+          email,
+          challengeToken: result.twoFactorChallengeToken || "",
+          availableChannels: result.availableTwoFactorChannels || [],
+          sentChannel: result.twoFactorSentChannel || "",
+          sentRecipient: result.twoFactorSentRecipient || "",
+          expiresInMinutes: result.twoFactorOtpExpiresInMinutes || 10,
+          initialLocked: false,
+          initialLockoutEndsAt: "",
+          initialError: "",
+        });
+        // No OTP is sent yet — the user picks a channel inside the dialog,
+        // which then triggers SendTwoFactorLoginOtp. So no "code sent" toast here.
+        setSubmitting(false);
+        return;
+      }
+
+      finalizeLogin(result);
     } catch (error) {
-      toast.error(error.message);
+      const message = error.message || "Login failed";
+
+      const lowered = message.toLowerCase();
+      if (
+        lowered.includes("registered device") ||
+        lowered.includes("device limit") ||
+        lowered.includes("maximum") ||
+        lowered.includes("contact admin")
+      ) {
+        setLoginNote(message);
+        setSubmitting(false);
+        return;
+      }
+
+      toast.error(message);
+      setSubmitting(false);
     }
+  };
+
+  const isLockoutMessage = (msg) => {
+    if (!msg) return false;
+    const lower = msg.toLowerCase();
+    return lower.includes("too many") || lower.includes("try again in") || lower.includes("temporarily locked");
+  };
+
+  // Extract structured lockout fields from the API result so the dialog can show
+  // "X attempts left" and the lockout end-time even if the backend stops including
+  // them inline in the message.
+  const extractLockoutInfo = (data, msg) => {
+    const r = data?.result || {};
+    const locked = !!r.locked || isLockoutMessage(msg);
+    return {
+      locked,
+      lockoutEndsAt: r.lockoutEndsAt || "",
+      attemptsLeft: typeof r.attemptsLeft === "number" ? r.attemptsLeft : null,
+      maxAttempts: typeof r.maxAttempts === "number" ? r.maxAttempts : null,
+      lockoutMinutes: typeof r.lockoutMinutes === "number" ? r.lockoutMinutes : null,
+    };
+  };
+
+  const handleResendTwoFactorOtp = async (channel) => {
+    try {
+      const response = await fetch(`${BASE_URL}/User/SendTwoFactorLoginOtp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          Email: twoFactorState.email,
+          ChallengeToken: twoFactorState.challengeToken,
+          Channel: channel,
+        }),
+      });
+      const data = await response.json();
+      if (data?.statusCode === 200) {
+        toast.success(data.message || "Verification code sent.");
+        setTwoFactorState((prev) => ({
+          ...prev,
+          sentChannel: data?.result?.channel || channel,
+          sentRecipient: data?.result?.recipient || "",
+          expiresInMinutes: data?.result?.expiresInMinutes || prev.expiresInMinutes,
+        }));
+        return { success: true };
+      }
+      const msg = data?.message || "Could not send the verification code.";
+      toast.error(msg);
+      return { success: false, message: msg, ...extractLockoutInfo(data, msg) };
+    } catch (error) {
+      const msg = error.message || "Could not send the verification code.";
+      toast.error(msg);
+      return { success: false, message: msg, locked: isLockoutMessage(msg) };
+    }
+  };
+
+  const handleVerifyTwoFactorLogin = async (otp) => {
+    try {
+      const identity = await getDeviceIdentity();
+      const response = await fetch(`${BASE_URL}/User/VerifyTwoFactorLogin`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(identity.deviceFingerprint
+            ? { "X-Device-Fingerprint": identity.deviceFingerprint }
+            : {}),
+          ...(identity.browserInstanceId
+            ? { "X-Browser-Instance-Id": identity.browserInstanceId }
+            : {}),
+        },
+        body: JSON.stringify({
+          Email: twoFactorState.email,
+          ChallengeToken: twoFactorState.challengeToken,
+          Channel: twoFactorState.sentChannel,
+          Otp: otp,
+          DeviceName: getDeviceName(),
+          DeviceIdentifier: identity.deviceIdentifier,
+          DeviceId: identity.deviceIdentifier,
+          DeviceFingerprint: identity.deviceFingerprint,
+          BrowserInstanceId: identity.browserInstanceId,
+        }),
+      });
+      const data = await response.json();
+      if (data?.statusCode === 200 && data.result?.accessToken) {
+        toast.success("Verified. Signing you in...");
+        setTwoFactorState((prev) => ({ ...prev, open: false }));
+        finalizeLogin(data.result);
+        return { success: true };
+      }
+      const msg = data?.message || "Verification failed.";
+      toast.error(msg);
+      return { success: false, message: msg, ...extractLockoutInfo(data, msg) };
+    } catch (error) {
+      const msg = error.message || "Verification failed.";
+      toast.error(msg);
+      return { success: false, message: msg, locked: isLockoutMessage(msg) };
+    }
+  };
+
+  const handleCancelTwoFactor = () => {
+    setTwoFactorState((prev) => ({ ...prev, open: false }));
+  };
+
+  const handleDeviceDialogCancel = () => {
+    setDeviceDialogOpen(false);
+    router.push("/");
+    window.location.reload();
+  };
+
+  const handleDeviceDialogConfirm = async () => {
+    const trimmed = deviceNameInput.trim();
+    if (!trimmed || !loginResult) return;
+
+    const token = loginResult.accessToken || loginResult.AccessToken;
+    const deviceRowId =
+      loginResult.currentLoggedInDeviceId ?? loginResult.CurrentLoggedInDeviceId ?? null;
+
+    const isRenameSuccess = (data) => {
+      const sc = data?.statusCode ?? data?.StatusCode;
+      return Number(sc) === 200;
+    };
+
+    try {
+      const identity = await getDeviceIdentity();
+      const idQuery =
+        deviceRowId != null
+          ? `&loggedInDeviceIpId=${encodeURIComponent(String(deviceRowId))}`
+          : "";
+      const renameUrl =
+        `${BASE_URL}/User/RenameCurrentDevice?newDeviceName=${encodeURIComponent(trimmed)}` +
+        `&deviceIdentifier=${encodeURIComponent(identity.deviceIdentifier || "")}` +
+        (identity.deviceFingerprint
+          ? `&deviceFingerprint=${encodeURIComponent(identity.deviceFingerprint)}`
+          : "") +
+        (identity.browserInstanceId
+          ? `&browserInstanceId=${encodeURIComponent(identity.browserInstanceId)}`
+          : "") +
+        idQuery;
+      const response = await fetch(renameUrl, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          ...(identity.deviceFingerprint
+            ? { "X-Device-Fingerprint": identity.deviceFingerprint }
+            : {}),
+          ...(identity.browserInstanceId
+            ? { "X-Browser-Instance-Id": identity.browserInstanceId }
+            : {}),
+        },
+        body: JSON.stringify({
+          NewDeviceName: trimmed,
+          DeviceIdentifier: identity.deviceIdentifier,
+          DeviceId: identity.deviceIdentifier,
+          DeviceFingerprint: identity.deviceFingerprint,
+          BrowserInstanceId: identity.browserInstanceId,
+          ...(deviceRowId != null ? { LoggedInDeviceIpId: deviceRowId } : {}),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !isRenameSuccess(data)) {
+        toast.error(data?.message || "Could not save device name. Please try again.");
+        return;
+      }
+    } catch {
+      toast.error("Could not save device name. Please try again.");
+      return;
+    }
+
+    setDeviceDialogOpen(false);
+    router.push("/");
+    window.location.reload();
   };
 
   return (
@@ -129,6 +417,12 @@ const SignInForm = () => {
               <Typography color="error" fontSize={13} mb={2}>
                 Please fill in all required fields.
               </Typography>
+            )}
+
+            {loginNote && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                {loginNote}
+              </Alert>
             )}
 
             <TextField
@@ -198,6 +492,7 @@ const SignInForm = () => {
               type="submit"
               fullWidth
               variant="contained"
+              disabled={submitting}
               sx={{
                 mt: 3,
                 py: 1.3,
@@ -208,7 +503,7 @@ const SignInForm = () => {
                 "&:hover": { backgroundColor: "#4a6fd0" },
               }}
             >
-              Login
+              {submitting ? "Signing in..." : "Login"}
             </Button>
 
             <Typography
@@ -234,6 +529,26 @@ const SignInForm = () => {
           </Box>
         </Grid>
       </Grid>
+      <DeviceNameDialog
+        open={deviceDialogOpen}
+        value={deviceNameInput}
+        onChange={setDeviceNameInput}
+        onCancel={handleDeviceDialogCancel}
+        onConfirm={handleDeviceDialogConfirm}
+      />
+      <TwoFactorChallengeDialog
+        open={twoFactorState.open}
+        availableChannels={twoFactorState.availableChannels}
+        sentChannel={twoFactorState.sentChannel}
+        sentRecipient={twoFactorState.sentRecipient}
+        expiresInMinutes={twoFactorState.expiresInMinutes}
+        initialLocked={twoFactorState.initialLocked}
+        initialLockoutEndsAt={twoFactorState.initialLockoutEndsAt}
+        initialError={twoFactorState.initialError}
+        onResend={handleResendTwoFactorOtp}
+        onVerify={handleVerifyTwoFactorLogin}
+        onCancel={handleCancelTwoFactor}
+      />
     </Box>
   );
 };

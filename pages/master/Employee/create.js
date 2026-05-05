@@ -25,7 +25,7 @@ const validationSchema = Yup.object().shape({
   AddressLine1: Yup.string().required("Address is required"),
   ContactNumber: Yup.string().required("Contact number is required"),
   Email: Yup.string().email("Invalid email format").required("Email is required"),
-  SupervisorID: Yup.number().required("Supervisor is required"),
+  SupervisorID: Yup.number().nullable(),
 });
 
 export default function AddEmployeeDialog({ fetchEmployees }) {
@@ -38,6 +38,8 @@ export default function AddEmployeeDialog({ fetchEmployees }) {
   const [supervisors, setSupervisors] = useState([]);
   const [contractTypes, setContractTypes] = useState([]);
   const [genders, setGenders] = useState([]);
+  const [shifts, setShifts] = useState([]);
+  const [otTypes, setOtTypes] = useState([]);
 
   const token = localStorage.getItem("token");
 
@@ -56,21 +58,29 @@ export default function AddEmployeeDialog({ fetchEmployees }) {
     try {
       const authHeader = { Authorization: `Bearer ${token}` };
 
-      const [titles, depts, jobs, sups, contracts, genderRes] = await Promise.all([
+      const [titles, depts, jobs, sups, contracts, genderRes, shiftsRes, otTypesRes] = await Promise.all([
         fetch(`${BASE_URL}/Customer/GetAllPersonTitle`, { headers: authHeader }),
         fetch(`${BASE_URL}/Employee/GetAlldepartment`, { headers: authHeader }),
         fetch(`${BASE_URL}/Employee/GetAllJobTitle`, { headers: authHeader }),
         fetch(`${BASE_URL}/Employee/GetAllEmployees`, { headers: authHeader }),
         fetch(`${BASE_URL}/Employee/contract-types`, { headers: authHeader }),
         fetch(`${BASE_URL}/Employee/GetGender`, { headers: authHeader }),
+        fetch(`${BASE_URL}/ShiftMaster/GetAllShifts?Search=&SkipCount=0&MaxResultCount=500`, { headers: authHeader }),
+        fetch(`${BASE_URL}/OTType/GetAllOTType?Search=&SkipCount=0&MaxResultCount=500`, { headers: authHeader }),
       ]);
 
       setTitleList((await titles.json()).result || []);
       setDepartments((await depts.json()).result || []);
       setJobTitles((await jobs.json()).result || []);
-      setSupervisors((await sups.json()).result || []);
+      const allEmployees = (await sups.json()).result || [];
+      setSupervisors(allEmployees.filter((e) => e.isSupervisor === true || e.IsSupervisor === true));
       setContractTypes((await contracts.json()) || []);
       setGenders((await genderRes.json()) || []);
+      const shiftData = await shiftsRes.json();
+      setShifts(shiftData?.result?.items ?? shiftData?.data?.items ?? []);
+      const otTypeData = await otTypesRes.json();
+      const otList = otTypeData?.result?.items ?? otTypeData?.data?.items ?? otTypeData?.items ?? [];
+      setOtTypes(Array.isArray(otList) ? otList : []);
     } catch (err) {
       toast.error("Failed to load dropdown data");
     }
@@ -79,31 +89,33 @@ export default function AddEmployeeDialog({ fetchEmployees }) {
   // Submit
   const handleSubmit = (values, { resetForm }) => {
     const payload = {
-      TitleName: values.TitleName,
-      FirstName: values.FirstName.trim(),
-      LastName: values.LastName.trim(),
-      NIC: values.NIC.trim(),
-      DateOfBirth: values.DateOfBirth || null,
-      Gender: parseInt(values.Gender),
-      JobTitleId: values.JobTitleId ? parseInt(values.JobTitleId) : null,
-      DepartmentId: values.DepartmentId ? parseInt(values.DepartmentId) : null,
-      WarehouseId: values.WarehouseId ? parseInt(values.WarehouseId) : null,
-      ContractType: parseInt(values.ContractType),
-      JoinDate: values.JoinDate,
-      ResignDate: values.ResignDate || null,
-      PermanentDate: values.PermanentDate || null,
-      AddressLine1: values.AddressLine1?.trim(),
-      AddressLine2: values.AddressLine2?.trim() || "",
-      AddressLine3: values.AddressLine3?.trim() || "",
-      ContactNumber: values.ContactNumber?.trim() || "",
-      PersonalNumber: values.PersonalNumber?.trim() || "",
-      Email: values.Email?.trim() || "",
-      SupervisorID: parseInt(values.SupervisorID) || 0,
-      ImageURL: values.ImageURL || "",
-      IsActive: values.IsActive,
-      IsLabour: values.IsLabour,
-      IsSupervisor: values.IsSupervisor,
-      orgid: getOrgId() || values.orgid || "",
+      titleName: values.TitleName,
+      firstName: values.FirstName.trim(),
+      lastName: values.LastName.trim(),
+      nic: values.NIC.trim(),
+      dateOfBirth: values.DateOfBirth || null,
+      gender: parseInt(values.Gender, 10),
+      jobTitleId: values.JobTitleId ? parseInt(values.JobTitleId, 10) : null,
+      departmentId: values.DepartmentId ? parseInt(values.DepartmentId, 10) : null,
+      warehouseId: values.WarehouseId ? parseInt(values.WarehouseId, 10) : null,
+      contractType: parseInt(values.ContractType, 10),
+      joinDate: values.JoinDate || null,
+      resignDate: values.ResignDate || null,
+      permanentDate: values.PermanentDate || null,
+      addressLine1: values.AddressLine1?.trim() ?? "",
+      addressLine2: values.AddressLine2?.trim() ?? "",
+      addressLine3: values.AddressLine3?.trim() ?? "",
+      contactNumber: values.ContactNumber?.trim() ?? "",
+      personalNumber: values.PersonalNumber?.trim() ?? "",
+      email: values.Email?.trim() ?? "",
+      supervisorID: values.SupervisorID ? parseInt(values.SupervisorID, 10) : null,
+      shiftId: values.ShiftId ? parseInt(values.ShiftId, 10) : null,
+      otTypeAvailable: values.OtTypeAvailable ?? false,
+      otTypeId: values.OtTypeAvailable && values.OTTypeId ? parseInt(values.OTTypeId, 10) : null,
+      imageURL: values.ImageURL || "",
+      isActive: values.IsActive,
+      isLabour: values.IsLabour,
+      isSupervisor: values.IsSupervisor,
     };
 
     fetch(`${BASE_URL}/Employee/CreateEmployeescyAsync`, {
@@ -115,10 +127,15 @@ export default function AddEmployeeDialog({ fetchEmployees }) {
       body: JSON.stringify(payload),
     })
       .then(async (res) => {
-        const data = await res.json();
-        // Check for success - ResponseStatus enum: SUCCESS = 200, FAILED = -99
-        // Handle both string and number serialization
-        const statusCode = data.statusCode || data.StatusCode;
+        const text = await res.text();
+        let data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          toast.error(res.ok ? "Invalid response from server" : text?.slice(0, 100) || "Request failed");
+          return;
+        }
+        const statusCode = data.statusCode ?? data.StatusCode;
         const isSuccess = 
           statusCode === 200 || 
           statusCode === "200" ||
@@ -162,6 +179,9 @@ export default function AddEmployeeDialog({ fetchEmployees }) {
               Gender: "",
               JobTitleId: "",
               DepartmentId: "",
+              ShiftId: "",
+              OtTypeAvailable: false,
+              OTTypeId: "",
               ContractType: "",
               JoinDate: "",
               ResignDate: "",
@@ -172,7 +192,7 @@ export default function AddEmployeeDialog({ fetchEmployees }) {
               ContactNumber: "",
               PersonalNumber: "",
               Email: "",
-              SupervisorID: "",
+              SupervisorID: "", // optional
               WarehouseId: "1",
               ImageURL: "",
               IsActive: true,
@@ -269,6 +289,55 @@ export default function AddEmployeeDialog({ fetchEmployees }) {
                       </Grid>
                     ))}
 
+                    {/* Shift (optional) */}
+                    <Grid item xs={12} sm={6}>
+                      <FormControl fullWidth>
+                        <InputLabel>Shift (optional)</InputLabel>
+                        <Select
+                          name="ShiftId"
+                          value={values.ShiftId}
+                          onChange={(e) => setFieldValue("ShiftId", e.target.value)}
+                        >
+                          <MenuItem value=""><em>None</em></MenuItem>
+                          {shifts.map((s) => (
+                            <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+
+                    {/* Is OT available + OT Type */}
+                    <Grid item xs={12} sm={6}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={values.OtTypeAvailable}
+                            onChange={(e) => {
+                              setFieldValue("OtTypeAvailable", e.target.checked);
+                              if (!e.target.checked) setFieldValue("OTTypeId", "");
+                            }}
+                          />
+                        }
+                        label="Is OT available"
+                      />
+                      {values.OtTypeAvailable && (
+                        <FormControl fullWidth size="small" sx={{ mt: 1, minWidth: 200 }}>
+                          <InputLabel>OT Type</InputLabel>
+                          <Select
+                            name="OTTypeId"
+                            label="OT Type"
+                            value={values.OTTypeId ?? ""}
+                            onChange={(e) => setFieldValue("OTTypeId", e.target.value ? Number(e.target.value) : "")}
+                          >
+                            <MenuItem value=""><em>Select OT Type</em></MenuItem>
+                            {otTypes.map((ot) => (
+                              <MenuItem key={ot.id} value={ot.id}>{ot.name}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      )}
+                    </Grid>
+
                     {/* Contract Type */}
                     <Grid item xs={12} sm={6}>
                       <FormControl fullWidth>
@@ -289,44 +358,53 @@ export default function AddEmployeeDialog({ fetchEmployees }) {
                     </Grid>
 
                     {/* Dates */}
-                    {["Join Date", "Resign Date", "Permanent Date"].map((field) => (
-                      <Grid item xs={12} sm={6} key={field}>
+                    {[
+                      { name: "JoinDate", label: "Join Date" },
+                      { name: "ResignDate", label: "Resign Date" },
+                      { name: "PermanentDate", label: "Permanent Date" },
+                    ].map(({ name, label }) => (
+                      <Grid item xs={12} sm={6} key={name}>
                         <Field
                           as={TextField}
                           type="date"
-                          label={field}
-                          name={field}
+                          label={label}
+                          name={name}
                           fullWidth
                           InputLabelProps={{ shrink: true }}
-                          error={touched[field] && Boolean(errors[field])}
-                          helperText={touched[field] && errors[field]}
+                          error={touched[name] && Boolean(errors[name])}
+                          helperText={touched[name] && errors[name]}
                         />
                       </Grid>
                     ))}
 
                     {/* Contact Info */}
-                    {["Contact Number", "Personal Number", "Email"].map((field) => (
-                      <Grid item xs={12} sm={6} key={field}>
+                    {[
+                      { name: "ContactNumber", label: "Contact Number" },
+                      { name: "PersonalNumber", label: "Personal Number" },
+                      { name: "Email", label: "Email" },
+                    ].map(({ name, label }) => (
+                      <Grid item xs={12} sm={6} key={name}>
                         <Field
                           as={TextField}
-                          label={field}
-                          name={field}
+                          label={label}
+                          name={name}
                           fullWidth
-                          error={touched[field] && Boolean(errors[field])}
-                          helperText={touched[field] && errors[field]}
+                          error={touched[name] && Boolean(errors[name])}
+                          helperText={touched[name] && errors[name]}
                         />
                       </Grid>
                     ))}
 
-                    {/* Supervisor Dropdown */}
+                    {/* Supervisor Dropdown (optional) */}
                     <Grid item xs={12} sm={6}>
                       <FormControl fullWidth>
-                        <InputLabel>Supervisor</InputLabel>
+                        <InputLabel>Supervisor (optional)</InputLabel>
                         <Select
                           name="SupervisorID"
-                          value={values.SupervisorID}
-                          onChange={(e) => setFieldValue("SupervisorID", e.target.value)}
+                          value={values.SupervisorID ?? ""}
+                          onChange={(e) => setFieldValue("SupervisorID", e.target.value || "")}
                         >
+                          <MenuItem value=""><em>None</em></MenuItem>
                           {supervisors.map((s) => (
                             <MenuItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</MenuItem>
                           ))}

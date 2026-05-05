@@ -16,6 +16,7 @@ import {
   Tooltip,
   IconButton,
   Modal,
+  Checkbox,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CachedIcon from "@mui/icons-material/Cached";
@@ -55,23 +56,36 @@ export default function EditColorCode() {
 
   const [openGSM, setOpenGSM] = useState(false);
   const [gsmList, setGSMList] = useState([]);
-  const [selectedGSMIndex, setSelectedGSMIndex] = useState(null);
+  const [selectedGSMIndices, setSelectedGSMIndices] = useState([]);
 
   const [openComposition, setOpenComposition] = useState(false);
   const [compositionList, setCompositionList] = useState([]);
-  const [selectedCompositionIndex, setSelectedCompositionIndex] =
-    useState(null);
+  const [selectedCompositionIndices, setSelectedCompositionIndices] = useState([]);
 
   const [openSupplier, setOpenSupplier] = useState(false);
   const [supplierList, setSupplierList] = useState([]);
-  const [selectedSupplierIndex, setSelectedSupplierIndex] = useState(null);
+  const [selectedSupplierIndices, setSelectedSupplierIndices] = useState([]);
 
   const [openColor, setOpenColor] = useState(false);
   const [colorList, setColorList] = useState([]);
-  const [selectedColorIndex, setSelectedColorIndex] = useState(null);
+  const [selectedColorIndices, setSelectedColorIndices] = useState([]);
 
   const [selectedFabricIndex, setSelectedFabricIndex] = useState(null);
   const [fabList, setFabList] = useState([]);
+
+  // Parse comma-separated names string into set of trimmed names
+  const parseNames = (str) => {
+    if (!str || str === "Not Selected") return new Set();
+    return new Set(str.split(",").map((s) => s.trim()).filter(Boolean));
+  };
+  // Initialize modal selection from fabric's comma-separated names
+  const getIndicesFromNames = (list, namesStr) => {
+    const names = parseNames(namesStr);
+    if (names.size === 0) return [];
+    return list
+      .map((item, idx) => (names.has((item && item.name) ? item.name.trim() : "") ? idx : -1))
+      .filter((i) => i >= 0);
+  };
 
   const fetchInquiryById = async () => {
     try {
@@ -97,29 +111,37 @@ export default function EditColorCode() {
   };
 
   useEffect(() => {
-    if (inqId,optId) {
+    if (inqId && optId) {
       fetchInquiryById();
     }
-  }, []);
+  }, [inqId, optId]);
 
   const handleGSMOpen = (index) => {
-    setOpenGSM(true);
     setSelectedFabricIndex(index);
+    const fab = fabList[index];
+    setSelectedGSMIndices(getIndicesFromNames(gsmList, fab?.gsmName || ""));
+    setOpenGSM(true);
   };
 
   const handleCompositionOpen = (index) => {
-    setOpenComposition(true);
     setSelectedFabricIndex(index);
+    const fab = fabList[index];
+    setSelectedCompositionIndices(getIndicesFromNames(compositionList, fab?.compositionName || ""));
+    setOpenComposition(true);
   };
 
   const handleSupplierOpen = (index) => {
-    setOpenSupplier(true);
     setSelectedFabricIndex(index);
+    const fab = fabList[index];
+    setSelectedSupplierIndices(getIndicesFromNames(supplierList, fab?.supplierName || ""));
+    setOpenSupplier(true);
   };
 
   const handleColorOpen = (index) => {
-    setOpenColor(true);
     setSelectedFabricIndex(index);
+    const fab = fabList[index];
+    setSelectedColorIndices(getIndicesFromNames(colorList, fab?.colorCodeName || ""));
+    setOpenColor(true);
   };
 
   const handleGSMClose = () => {
@@ -135,26 +157,31 @@ export default function EditColorCode() {
     setOpenComposition(false);
   };
 
-  const handleGSMSelection = (index) => {
-    setSelectedGSMIndex(index);
+  const toggleGSMSelection = (index) => {
+    setSelectedGSMIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+  };
+
+  const handleGSMApply = () => {
     const selectedFab = fabList[selectedFabricIndex];
-    const selectedGSM = gsmList[index];
+    const selectedItems = selectedGSMIndices.map((i) => gsmList[i]).filter(Boolean);
+    const names = selectedItems.map((x) => x.name).join(", ");
+    const firstId = selectedItems.length > 0 ? selectedItems[0].id : 0;
     const requestBody = {
       InquiryID: inquiry.inquiryId,
       InqCode: inquiry.inquiryCode,
       OptionId: inquiry.optionId,
       FabricId: selectedFab.fabricId,
       WindowType: inquiry.windowType,
-      ColorCodeId:
-        selectedFab.colorCodeId === null ? 0 : selectedFab.colorCodeId,
-      ColorCodeName: selectedFab.colorCodeName,
-      CompositionId:
-        selectedFab.compositionId === null ? 0 : selectedFab.compositionId,
-      CompositionName: selectedFab.compositionName,
-      GSMId: selectedGSM.id,
-      GSMName: selectedGSM.name,
+      ColorCodeId: selectedFab.colorCodeId === null ? 0 : selectedFab.colorCodeId,
+      ColorCodeName: selectedFab.colorCodeName || "",
+      CompositionId: selectedFab.compositionId === null ? 0 : selectedFab.compositionId,
+      CompositionName: selectedFab.compositionName || "",
+      GSMId: firstId,
+      GSMName: names,
       SupplierId: selectedFab.supplierId === null ? 0 : selectedFab.supplierId,
-      SupplierName: selectedFab.supplierName,
+      SupplierName: selectedFab.supplierName || "",
     };
 
     fetch(`${BASE_URL}/Inquiry/UpdateInquiryFabric`, {
@@ -166,39 +193,41 @@ export default function EditColorCode() {
       body: JSON.stringify(requestBody),
     })
       .then((response) => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
+        if (!response.ok) throw new Error("Network response was not ok");
         return response.json();
       })
-      .then((data) => {
+      .then(() => {
         setOpenGSM(false);
         fetchFabricList(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
       })
-      .catch((error) => {
-        console.error("There was a problem with the fetch operation:", error);
-      });
+      .catch((error) => console.error("There was a problem with the fetch operation:", error));
   };
 
-  const handleCompositionSelection = (index) => {
-    setSelectedCompositionIndex(index);
+  const toggleCompositionSelection = (index) => {
+    setSelectedCompositionIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+  };
+
+  const handleCompositionApply = () => {
     const selectedFab = fabList[selectedFabricIndex];
-    const selectedComposition = compositionList[index];
+    const selectedItems = selectedCompositionIndices.map((i) => compositionList[i]).filter(Boolean);
+    const names = selectedItems.map((x) => x.name).join(", ");
+    const firstId = selectedItems.length > 0 ? selectedItems[0].id : 0;
     const requestBody = {
       InquiryID: inquiry.inquiryId,
       InqCode: inquiry.inquiryCode,
       OptionId: inquiry.optionId,
       FabricId: selectedFab.fabricId,
       WindowType: inquiry.windowType,
-      ColorCodeId:
-        selectedFab.colorCodeId === null ? 0 : selectedFab.colorCodeId,
-      ColorCodeName: selectedFab.colorCodeName,
-      CompositionId: selectedComposition.id,
-      CompositionName: selectedComposition.name,
+      ColorCodeId: selectedFab.colorCodeId === null ? 0 : selectedFab.colorCodeId,
+      ColorCodeName: selectedFab.colorCodeName || "",
+      CompositionId: firstId,
+      CompositionName: names,
       GSMId: selectedFab.gsmId === null ? 0 : selectedFab.gsmId,
-      GSMName: selectedFab.gsmName,
+      GSMName: selectedFab.gsmName || "",
       SupplierId: selectedFab.supplierId === null ? 0 : selectedFab.supplierId,
-      SupplierName: selectedFab.supplierName,
+      SupplierName: selectedFab.supplierName || "",
     };
 
     fetch(`${BASE_URL}/Inquiry/UpdateInquiryFabric`, {
@@ -210,40 +239,41 @@ export default function EditColorCode() {
       body: JSON.stringify(requestBody),
     })
       .then((response) => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
+        if (!response.ok) throw new Error("Network response was not ok");
         return response.json();
       })
-      .then((data) => {
-        fetchFabricList(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
+      .then(() => {
         setOpenComposition(false);
+        fetchFabricList(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
       })
-      .catch((error) => {
-        console.error("There was a problem with the fetch operation:", error);
-      });
+      .catch((error) => console.error("There was a problem with the fetch operation:", error));
   };
 
-  const handleSupplierSelection = (index) => {
-    setSelectedSupplierIndex(index);
+  const toggleSupplierSelection = (index) => {
+    setSelectedSupplierIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+  };
+
+  const handleSupplierApply = () => {
     const selectedFab = fabList[selectedFabricIndex];
-    const selectedSupplier = supplierList[index];
+    const selectedItems = selectedSupplierIndices.map((i) => supplierList[i]).filter(Boolean);
+    const names = selectedItems.map((x) => x.name).join(", ");
+    const firstId = selectedItems.length > 0 ? selectedItems[0].id : 0;
     const requestBody = {
       InquiryID: inquiry.inquiryId,
       InqCode: inquiry.inquiryCode,
       OptionId: inquiry.optionId,
       FabricId: selectedFab.fabricId,
       WindowType: inquiry.windowType,
-      ColorCodeId:
-        selectedFab.colorCodeId === null ? 0 : selectedFab.colorCodeId,
-      ColorCodeName: selectedFab.colorCodeName,
-      CompositionId:
-        selectedFab.compositionId === null ? 0 : selectedFab.compositionId,
-      CompositionName: selectedFab.compositionName,
+      ColorCodeId: selectedFab.colorCodeId === null ? 0 : selectedFab.colorCodeId,
+      ColorCodeName: selectedFab.colorCodeName || "",
+      CompositionId: selectedFab.compositionId === null ? 0 : selectedFab.compositionId,
+      CompositionName: selectedFab.compositionName || "",
       GSMId: selectedFab.gsmId === null ? 0 : selectedFab.gsmId,
-      GSMName: selectedFab.gsmName,
-      SupplierId: selectedSupplier.id,
-      SupplierName: selectedSupplier.name,
+      GSMName: selectedFab.gsmName || "",
+      SupplierId: firstId,
+      SupplierName: names,
     };
 
     fetch(`${BASE_URL}/Inquiry/UpdateInquiryFabric`, {
@@ -255,39 +285,41 @@ export default function EditColorCode() {
       body: JSON.stringify(requestBody),
     })
       .then((response) => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
+        if (!response.ok) throw new Error("Network response was not ok");
         return response.json();
       })
-      .then((data) => {
-        fetchFabricList(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
+      .then(() => {
         setOpenSupplier(false);
+        fetchFabricList(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
       })
-      .catch((error) => {
-        console.error("There was a problem with the fetch operation:", error);
-      });
+      .catch((error) => console.error("There was a problem with the fetch operation:", error));
   };
 
-  const handleColorSelection = (index) => {
-    setSelectedColorIndex(index);
+  const toggleColorSelection = (index) => {
+    setSelectedColorIndices((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+    );
+  };
+
+  const handleColorApply = () => {
     const selectedFab = fabList[selectedFabricIndex];
-    const selectedColor = colorList[index];
+    const selectedItems = selectedColorIndices.map((i) => colorList[i]).filter(Boolean);
+    const names = selectedItems.map((x) => x.name).join(", ");
+    const firstId = selectedItems.length > 0 ? selectedItems[0].id : 0;
     const requestBody = {
       InquiryID: inquiry.inquiryId,
       InqCode: inquiry.inquiryCode,
       OptionId: inquiry.optionId,
       FabricId: selectedFab.fabricId,
       WindowType: inquiry.windowType,
-      ColorCodeId: selectedColor.id,
-      ColorCodeName: selectedColor.name,
-      CompositionId:
-        selectedFab.compositionId === null ? 0 : selectedFab.compositionId,
-      CompositionName: selectedFab.compositionName,
+      ColorCodeId: firstId,
+      ColorCodeName: names,
+      CompositionId: selectedFab.compositionId === null ? 0 : selectedFab.compositionId,
+      CompositionName: selectedFab.compositionName || "",
       GSMId: selectedFab.gsmId === null ? 0 : selectedFab.gsmId,
-      GSMName: selectedFab.gsmName,
+      GSMName: selectedFab.gsmName || "",
       SupplierId: selectedFab.supplierId === null ? 0 : selectedFab.supplierId,
-      SupplierName: selectedFab.supplierName,
+      SupplierName: selectedFab.supplierName || "",
     };
 
     fetch(`${BASE_URL}/Inquiry/UpdateInquiryFabric`, {
@@ -299,18 +331,14 @@ export default function EditColorCode() {
       body: JSON.stringify(requestBody),
     })
       .then((response) => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
+        if (!response.ok) throw new Error("Network response was not ok");
         return response.json();
       })
-      .then((data) => {
-        fetchFabricList(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
+      .then(() => {
         setOpenColor(false);
+        fetchFabricList(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
       })
-      .catch((error) => {
-        console.error("There was a problem with the fetch operation:", error);
-      });
+      .catch((error) => console.error("There was a problem with the fetch operation:", error));
   };
 
   const handleReloadRow = (index) => {
@@ -479,6 +507,7 @@ export default function EditColorCode() {
       <DashboardHeader
         customerName={inquiry ? inquiry.customerName : ""}
         optionName={inquiry ? inquiry.optionName : ""}
+        windowType={inquiry ? inquiry.windowType : null}
         href="/inquiry/inquries/"
         link="Inquiries"
         title="Color Code"
@@ -539,31 +568,10 @@ export default function EditColorCode() {
                       </TableRow>
                     ) : (
                       fabList.map((fab, index) => {
-                        const gsmValue =
-                          selectedFabricIndex === index && selectedGSMIndex !== null
-                            ? gsmList[selectedGSMIndex]?.name || fab.gsmName || "Not Selected"
-                            : fab.gsmName || "Not Selected";
-
-                        const compositionValue =
-                          selectedFabricIndex === index && selectedCompositionIndex !== null
-                            ? compositionList[selectedCompositionIndex]?.name ||
-                            fab.compositionName ||
-                            "Not Selected"
-                            : fab.compositionName || "Not Selected";
-
-                        const supplierValue =
-                          selectedFabricIndex === index && selectedSupplierIndex !== null
-                            ? supplierList[selectedSupplierIndex]?.name ||
-                            fab.supplierName ||
-                            "Not Selected"
-                            : fab.supplierName || "Not Selected";
-
-                        const colorValue =
-                          selectedFabricIndex === index && selectedColorIndex !== null
-                            ? colorList[selectedColorIndex]?.name ||
-                            fab.colorCodeName ||
-                            "Not Selected"
-                            : fab.colorCodeName || "Not Selected";
+                        const gsmValue = fab.gsmName && fab.gsmName.trim() ? fab.gsmName.trim() : "Not Selected";
+                        const compositionValue = fab.compositionName && fab.compositionName.trim() ? fab.compositionName.trim() : "Not Selected";
+                        const supplierValue = fab.supplierName && fab.supplierName.trim() ? fab.supplierName.trim() : "Not Selected";
+                        const colorValue = fab.colorCodeName && fab.colorCodeName.trim() ? fab.colorCodeName.trim() : "Not Selected";
 
                         return (
                           <TableRow key={index}>
@@ -630,6 +638,7 @@ export default function EditColorCode() {
                   <Table aria-label="simple table" size="small" className="dark-table">
                     <TableHead>
                       <TableRow>
+                        <TableCell padding="checkbox">Select</TableCell>
                         <TableCell>#</TableCell>
                         <TableCell>GSM</TableCell>
                         <TableCell align="right">Status</TableCell>
@@ -638,7 +647,7 @@ export default function EditColorCode() {
                     <TableBody>
                       {gsmList.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={3} component="th" scope="row">
+                          <TableCell colSpan={4} component="th" scope="row">
                             <Typography color="error">
                               No GSM Available
                             </Typography>
@@ -648,9 +657,15 @@ export default function EditColorCode() {
                         gsmList.map((gsm, index) => (
                           <TableRow
                             key={index}
-                            onClick={() => handleGSMSelection(index)}
+                            onClick={() => toggleGSMSelection(index)}
                             sx={hover}
                           >
+                            <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                              <Checkbox
+                                checked={selectedGSMIndices.includes(index)}
+                                onChange={() => toggleGSMSelection(index)}
+                              />
+                            </TableCell>
                             <TableCell component="th" scope="row">
                               {index + 1}
                             </TableCell>
@@ -669,21 +684,36 @@ export default function EditColorCode() {
                   </Table>
                 </TableContainer>
               </Grid>
-              <Button
-                variant="contained"
-                color="error"
-                onClick={handleGSMClose}
-                sx={{
-                  mt: 2,
-                  textTransform: "capitalize",
-                  borderRadius: "8px",
-                  fontWeight: "500",
-                  fontSize: "13px",
-                  padding: "12px 20px",
-                }}
-              >
-                Cancel
-              </Button>
+              <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleGSMApply}
+                  sx={{
+                    textTransform: "capitalize",
+                    borderRadius: "8px",
+                    fontWeight: "500",
+                    fontSize: "13px",
+                    padding: "12px 20px",
+                  }}
+                >
+                  Apply
+                </Button>
+                <Button
+                  variant="contained"
+                  color="error"
+                  onClick={handleGSMClose}
+                  sx={{
+                    textTransform: "capitalize",
+                    borderRadius: "8px",
+                    fontWeight: "500",
+                    fontSize: "13px",
+                    padding: "12px 20px",
+                  }}
+                >
+                  Cancel
+                </Button>
+              </Box>
             </Grid>
           </Box>
         </Box>
@@ -707,6 +737,7 @@ export default function EditColorCode() {
                   <Table aria-label="simple table" size="small" className="dark-table">
                     <TableHead>
                       <TableRow>
+                        <TableCell padding="checkbox">Select</TableCell>
                         <TableCell>#</TableCell>
                         <TableCell>Composition</TableCell>
                         <TableCell align="right">Status</TableCell>
@@ -719,7 +750,7 @@ export default function EditColorCode() {
                             "&:last-child td, &:last-child th": { border: 0 },
                           }}
                         >
-                          <TableCell colSpan={3} component="th" scope="row">
+                          <TableCell colSpan={4} component="th" scope="row">
                             <Typography color="error">
                               No Compositions Available
                             </Typography>
@@ -729,9 +760,15 @@ export default function EditColorCode() {
                         compositionList.map((composition, index) => (
                           <TableRow
                             key={index}
-                            onClick={() => handleCompositionSelection(index)}
+                            onClick={() => toggleCompositionSelection(index)}
                             sx={hover}
                           >
+                            <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                              <Checkbox
+                                checked={selectedCompositionIndices.includes(index)}
+                                onChange={() => toggleCompositionSelection(index)}
+                              />
+                            </TableCell>
                             <TableCell component="th" scope="row">
                               {index + 1}
                             </TableCell>
@@ -750,21 +787,36 @@ export default function EditColorCode() {
                   </Table>
                 </TableContainer>
               </Grid>
-              <Button
-                variant="contained"
-                color="error"
-                onClick={handleCompositionClose}
-                sx={{
-                  mt: 2,
-                  textTransform: "capitalize",
-                  borderRadius: "8px",
-                  fontWeight: "500",
-                  fontSize: "13px",
-                  padding: "12px 20px",
-                }}
-              >
-                Cancel
-              </Button>
+              <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleCompositionApply}
+                  sx={{
+                    textTransform: "capitalize",
+                    borderRadius: "8px",
+                    fontWeight: "500",
+                    fontSize: "13px",
+                    padding: "12px 20px",
+                  }}
+                >
+                  Apply
+                </Button>
+                <Button
+                  variant="contained"
+                  color="error"
+                  onClick={handleCompositionClose}
+                  sx={{
+                    textTransform: "capitalize",
+                    borderRadius: "8px",
+                    fontWeight: "500",
+                    fontSize: "13px",
+                    padding: "12px 20px",
+                  }}
+                >
+                  Cancel
+                </Button>
+              </Box>
             </Grid>
           </Box>
         </Box>
@@ -788,6 +840,7 @@ export default function EditColorCode() {
                   <Table aria-label="simple table" size="small" className="dark-table">
                     <TableHead>
                       <TableRow>
+                        <TableCell padding="checkbox">Select</TableCell>
                         <TableCell>#</TableCell>
                         <TableCell>Supplier</TableCell>
                         <TableCell align="right">Status</TableCell>
@@ -800,7 +853,7 @@ export default function EditColorCode() {
                             "&:last-child td, &:last-child th": { border: 0 },
                           }}
                         >
-                          <TableCell colSpan={3} component="th" scope="row">
+                          <TableCell colSpan={4} component="th" scope="row">
                             <Typography color="error">
                               No Suppliers Available
                             </Typography>
@@ -810,9 +863,15 @@ export default function EditColorCode() {
                         supplierList.map((supplier, index) => (
                           <TableRow
                             key={index}
-                            onClick={() => handleSupplierSelection(index)}
+                            onClick={() => toggleSupplierSelection(index)}
                             sx={hover}
                           >
+                            <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                              <Checkbox
+                                checked={selectedSupplierIndices.includes(index)}
+                                onChange={() => toggleSupplierSelection(index)}
+                              />
+                            </TableCell>
                             <TableCell component="th" scope="row">
                               {index + 1}
                             </TableCell>
@@ -831,21 +890,36 @@ export default function EditColorCode() {
                   </Table>
                 </TableContainer>
               </Grid>
-              <Button
-                variant="contained"
-                color="error"
-                onClick={handleSupplierClose}
-                sx={{
-                  mt: 2,
-                  textTransform: "capitalize",
-                  borderRadius: "8px",
-                  fontWeight: "500",
-                  fontSize: "13px",
-                  padding: "12px 20px",
-                }}
-              >
-                Cancel
-              </Button>
+              <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleSupplierApply}
+                  sx={{
+                    textTransform: "capitalize",
+                    borderRadius: "8px",
+                    fontWeight: "500",
+                    fontSize: "13px",
+                    padding: "12px 20px",
+                  }}
+                >
+                  Apply
+                </Button>
+                <Button
+                  variant="contained"
+                  color="error"
+                  onClick={handleSupplierClose}
+                  sx={{
+                    textTransform: "capitalize",
+                    borderRadius: "8px",
+                    fontWeight: "500",
+                    fontSize: "13px",
+                    padding: "12px 20px",
+                  }}
+                >
+                  Cancel
+                </Button>
+              </Box>
             </Grid>
           </Box>
         </Box>
@@ -869,6 +943,7 @@ export default function EditColorCode() {
                   <Table aria-label="simple table" size="small" className="dark-table">
                     <TableHead>
                       <TableRow>
+                        <TableCell padding="checkbox">Select</TableCell>
                         <TableCell>#</TableCell>
                         <TableCell>Color</TableCell>
                         <TableCell align="right">Status</TableCell>
@@ -881,7 +956,7 @@ export default function EditColorCode() {
                             "&:last-child td, &:last-child th": { border: 0 },
                           }}
                         >
-                          <TableCell colSpan={3} component="th" scope="row">
+                          <TableCell colSpan={4} component="th" scope="row">
                             <Typography color="error">
                               No Color Codes Available
                             </Typography>
@@ -891,9 +966,15 @@ export default function EditColorCode() {
                         colorList.map((color, index) => (
                           <TableRow
                             key={index}
-                            onClick={() => handleColorSelection(index)}
+                            onClick={() => toggleColorSelection(index)}
                             sx={hover}
                           >
+                            <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                              <Checkbox
+                                checked={selectedColorIndices.includes(index)}
+                                onChange={() => toggleColorSelection(index)}
+                              />
+                            </TableCell>
                             <TableCell component="th" scope="row">
                               {index + 1}
                             </TableCell>
@@ -912,21 +993,36 @@ export default function EditColorCode() {
                   </Table>
                 </TableContainer>
               </Grid>
-              <Button
-                variant="contained"
-                color="error"
-                onClick={handleColorClose}
-                sx={{
-                  mt: 2,
-                  textTransform: "capitalize",
-                  borderRadius: "8px",
-                  fontWeight: "500",
-                  fontSize: "13px",
-                  padding: "12px 20px",
-                }}
-              >
-                Cancel
-              </Button>
+              <Box sx={{ mt: 2, display: "flex", gap: 1 }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleColorApply}
+                  sx={{
+                    textTransform: "capitalize",
+                    borderRadius: "8px",
+                    fontWeight: "500",
+                    fontSize: "13px",
+                    padding: "12px 20px",
+                  }}
+                >
+                  Apply
+                </Button>
+                <Button
+                  variant="contained"
+                  color="error"
+                  onClick={handleColorClose}
+                  sx={{
+                    textTransform: "capitalize",
+                    borderRadius: "8px",
+                    fontWeight: "500",
+                    fontSize: "13px",
+                    padding: "12px 20px",
+                  }}
+                >
+                  Cancel
+                </Button>
+              </Box>
             </Grid>
           </Box>
         </Box>

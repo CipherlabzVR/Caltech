@@ -32,10 +32,21 @@ const style = {
   p: 2,
 };
 
+/** Optional leading + then digits only (e.g. +94771234567). */
+function sanitizeSupplierMobileInput(raw) {
+  const s = String(raw ?? "");
+  const digits = s.replace(/\D/g, "");
+  return s.trim().startsWith("+") ? `+${digits}` : digits;
+}
+
 const validationSchema = Yup.object().shape({
   Name: Yup.string().required("Name is required"),
   MobileNo: Yup.string()
     .required("Mobile No is required")
+    .matches(
+      /^\+?\d+$/,
+      "Use digits only; you may start with + for country code"
+    ),
 });
 
 export default function EditSupplier({
@@ -66,6 +77,7 @@ export default function EditSupplier({
     }
     const payload = {
       ...values,
+      MobileNo: sanitizeSupplierMobileInput(values.MobileNo),
       BankId: selectedBank?.id || null,
       BankName: selectedBank?.name || "",
       BankAccountUserName: selectedBank?.accountUsername || "",
@@ -113,7 +125,7 @@ export default function EditSupplier({
             initialValues={{
               Id: item.id,
               Name: item.name || "",
-              MobileNo: item.mobileNo || "",
+              MobileNo: sanitizeSupplierMobileInput(item.mobileNo),
               Email: item.email || "",
               WarehouseId: item.warehouseId || "",
               PayableAccount: item.payableAccount || null,
@@ -166,14 +178,23 @@ export default function EditSupplier({
                       >
                         Mobile No
                       </Typography>
-                      <Field
-                        as={TextField}
-                        fullWidth
-                        name="MobileNo"
-                        error={touched.MobileNo && Boolean(errors.MobileNo)}
-                        helperText={touched.MobileNo && errors.MobileNo}
-                        size="small"
-                      />
+                      <Field name="MobileNo">
+                        {({ field, meta }) => (
+                          <TextField
+                            fullWidth
+                            name={field.name}
+                            value={field.value}
+                            onBlur={field.onBlur}
+                            onChange={(e) =>
+                              setFieldValue("MobileNo", sanitizeSupplierMobileInput(e.target.value))
+                            }
+                            size="small"
+                            inputProps={{ inputMode: "tel", autoComplete: "tel" }}
+                            error={meta.touched && Boolean(meta.error)}
+                            helperText={meta.touched && meta.error}
+                          />
+                        )}
+                      </Field>
                     </Grid>
                     {isPOSSystem && (
                       <>

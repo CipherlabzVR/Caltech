@@ -22,6 +22,7 @@ const FormDialog = ({
   loading = false,
   submitColor = "primary",
   showActions = true,
+  showCancelButton = true,
   customActions,
 }) => {
   const handleSubmit = (e) => {
@@ -80,15 +81,17 @@ const FormDialog = ({
           >
             {customActions || (
               <>
-                <Button onClick={onClose} disabled={loading}>
-                  {cancelLabel}
-                </Button>
+                {showCancelButton ? (
+                  <Button onClick={onClose} disabled={loading}>
+                    {cancelLabel}
+                  </Button>
+                ) : null}
                 <Button
                   type="submit"
                   variant="contained"
                   color={submitColor}
                   disabled={loading}
-                  sx={{ minWidth: 100 }}
+                  sx={{ minWidth: 100, ...(!showCancelButton ? { ml: "auto" } : {}) }}
                 >
                   {loading ? "Saving..." : submitLabel}
                 </Button>

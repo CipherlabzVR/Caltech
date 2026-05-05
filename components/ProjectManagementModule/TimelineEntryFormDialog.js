@@ -15,6 +15,7 @@ import { DatePicker, LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
 import * as Yup from "yup";
+import { toExactBrowserTimeISOString, fromExactBrowserTime, getBrowserNow } from "@/components/utils/exactBrowserTime";
 
 const sdlcPhases = [
   "Planning",
@@ -61,8 +62,8 @@ const TimelineEntryFormDialog = ({
   const defaults = {
     phaseName: "",
     phaseType: initialValues?.phaseType ?? sdlcPhases[0],
-    startDate: dayjs(),
-    endDate: dayjs().add(3, "day"),
+    startDate: getBrowserNow(),
+    endDate: getBrowserNow().add(3, "day"),
     assignedToMemberId: null,
     memberIds: [],
     notes: "",
@@ -90,8 +91,8 @@ const TimelineEntryFormDialog = ({
             
             const payload = {
               ...values,
-              startDate: dayjs(values.startDate).toISOString(),
-              endDate: dayjs(values.endDate).toISOString(),
+              startDate: toExactBrowserTimeISOString(values.startDate),
+              endDate: toExactBrowserTimeISOString(values.endDate),
               assignedToMemberId: assignedToMemberId,
               memberIds: memberIds,
               phaseType: values.phaseType || null,

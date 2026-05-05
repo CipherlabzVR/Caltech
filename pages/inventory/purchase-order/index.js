@@ -26,8 +26,8 @@ import { useRouter } from "next/router";
 import { formatDate } from "@/components/utils/formatHelper";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
-import { Report } from "Base/report";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import { toast } from "react-toastify";
 import ShareReports from "@/components/UIElements/Modal/Reports/ShareReports";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
@@ -35,6 +35,7 @@ import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { Catelogue } from "Base/catelogue";
 import IsFiscalPeriodAvailable from "@/components/utils/IsFiscalPeriodAvailable";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
+import { Report } from "Base/report";
 
 export default function PurchaseOrder() {
   const name = localStorage.getItem("name");
@@ -42,6 +43,7 @@ export default function PurchaseOrder() {
   const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
   const router = useRouter();
   const { data: ReportName } = GetReportSettingValueByName("PurchaseOrder");
+  const { data: isCustomReportsEnabled } = IsAppSettingEnabled("IsCustomReportsEnabled");
   const { data: isFiscalPeriodAvailable } = IsFiscalPeriodAvailable();
 
   const navigateToCreate = () => {
@@ -60,6 +62,19 @@ export default function PurchaseOrder() {
 
   const navigateToEdit = (id) => {
     router.push(`/inventory/purchase-order/edit-po?id=${id}`);
+  };
+
+  const openPurchaseOrderPrintPopup = (item) => {
+    const query = new URLSearchParams({
+      id: String(item.id ?? ""),
+      documentNumber: item.purchaseOrderNo ?? "",
+    });
+
+    window.open(
+      `/inventory/purchase-order/print?${query.toString()}`,
+      `purchase-order-print-${item.id}`,
+      "popup=yes,width=1200,height=900,scrollbars=yes,resizable=yes"
+    );
   };
 
   const {
@@ -184,13 +199,25 @@ export default function PurchaseOrder() {
                               </IconButton>
                             </Tooltip> : ""}
                             <ShareReports url={whatsapp} mobile={item.supplierMobileNo} />
-                            {print ? <Tooltip title="Print" placement="top">
-                              <a href={`${Report}` + reportLink} target="_blank">
-                                <IconButton aria-label="print" size="small">
+                            {isCustomReportsEnabled ? (
+                              print ? <Tooltip title="Print" placement="top">
+                                <a href={`${Report}${reportLink}`} target="_blank" rel="noopener noreferrer">
+                                  <IconButton aria-label="print" size="small">
+                                    <LocalPrintshopIcon color="primary" fontSize="medium" />
+                                  </IconButton>
+                                </a>
+                              </Tooltip> : ""
+                            ) : (
+                              print ? <Tooltip title="Print" placement="top">
+                                <IconButton
+                                  aria-label="print"
+                                  size="small"
+                                  onClick={() => openPurchaseOrderPrintPopup(item)}
+                                >
                                   <LocalPrintshopIcon color="primary" fontSize="medium" />
                                 </IconButton>
-                              </a>
-                            </Tooltip> : ""}
+                              </Tooltip> : ""
+                            )}
                           </Box>
                         </TableCell>
                       </TableRow>

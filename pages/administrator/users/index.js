@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Grid from "@mui/material/Grid";
 import Typography from "@mui/material/Typography";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
-import { Box, Chip, FormControl, InputLabel, MenuItem, Paper, Select, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button, IconButton, Tooltip } from "@mui/material";
+import { Box, Chip, FormControl, InputLabel, MenuItem, Paper, Select, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button, IconButton, Tooltip, Pagination } from "@mui/material";
 import AddUserDialog from "pages/administrator/users/AddUserDialog";
 import BASE_URL from "Base/api";
 import GetAllWarehouse from "@/components/utils/GetAllWarehouse";
@@ -26,28 +26,41 @@ export default function Users() {
   const [warehouseInfo, setWarehouseInfo] = useState({});
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedUserType, setSelectedUserType] = useState("all");
+  const [selectedUserType, setSelectedUserType] = useState("internal");
   const [isVerificationDialogOpen, setIsVerificationDialogOpen] = useState(false);
   const [selectedUserForVerification, setSelectedUserForVerification] = useState(null);
   const [verificationLoading, setVerificationLoading] = useState(false);
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (
+    currentPage = page,
+    currentSearch = searchTerm,
+    currentRowsPerPage = rowsPerPage,
+    currentUserType = selectedUserType
+  ) => {
     try {
-      const response = await fetch(`${BASE_URL}/User/GetAllUser`, {
+      const skipCount = currentPage * currentRowsPerPage;
+      const searchValue = currentSearch?.trim() ? encodeURIComponent(currentSearch.trim()) : "null";
+      const filterValue = encodeURIComponent(`userType:${currentUserType || "all"}`);
+      const response = await fetch(
+        `${BASE_URL}/User/GetAllUsersPaged?SkipCount=${skipCount}&MaxResultCount=${currentRowsPerPage}&Search=${searchValue}&Filter=${filterValue}`,
+        {
         method: "GET",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json",
         },
-      });
+        }
+      );
 
       if (!response.ok) {
         throw new Error("Failed to fetch usere");
       }
 
       const data = await response.json();
-      setUsersLists(data);
+      setUsersLists(data?.result?.items || []);
+      setTotalCount(data?.result?.totalCount || 0);
     } catch (error) {
       console.error("Error fetching users:", error);
     }
@@ -86,13 +99,12 @@ export default function Users() {
   }, [warehouseList]);
 
   useEffect(() => {
-    fetchUsers();
     fetchRolesList();
   }, []);
 
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
-  };
+  useEffect(() => {
+    fetchUsers(page, searchTerm, rowsPerPage, selectedUserType);
+  }, [page, rowsPerPage, searchTerm, selectedUserType]);
 
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
@@ -104,43 +116,10 @@ export default function Users() {
     setPage(0);
   };
 
-  const userTypeOptions = useMemo(() => {
-    const byId = new Map();
-    usersList.forEach((user) => {
-      if (user?.userType !== null && user?.userType !== undefined) {
-        const key = String(user.userType);
-        if (!byId.has(key)) {
-          byId.set(key, user.userTypeName || "Unknown");
-        }
-      }
-    });
-    return Array.from(byId, ([value, label]) => ({ value, label }));
-  }, [usersList]);
-
   const handleUserTypeFilterChange = (event) => {
     setSelectedUserType(event.target.value);
     setPage(0);
   };
-
-  const filteredData = usersList.filter((item) => {
-    const username = item?.userName || "";
-    const firstName = item?.firstName || "";
-    const lastName = item?.lastName || "";
-    const matchesSearch =
-      username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      `${firstName} ${lastName}`.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesUserType =
-      selectedUserType === "all"
-        ? true
-        : String(item?.userType) === selectedUserType;
-
-    return matchesSearch && matchesUserType;
-  });
-
-  const paginatedData = filteredData.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
-  );
 
   const handleSendVerificationClick = (user) => {
     setSelectedUserForVerification(user);
@@ -250,12 +229,9 @@ export default function Users() {
               value={selectedUserType}
               onChange={handleUserTypeFilterChange}
             >
-              <MenuItem value="all">All User Types</MenuItem>
-              {userTypeOptions.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
+              <MenuItem value="all">All</MenuItem>
+              <MenuItem value="internal">Internal</MenuItem>
+              <MenuItem value="external">External</MenuItem>
             </Select>
           </FormControl>
         </Grid>
@@ -276,18 +252,18 @@ export default function Users() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {paginatedData.length === 0 ? (
+                {usersList.length === 0 ? (
                   <TableRow
                     sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                   >
-                    <TableCell component="th" scope="row" colSpan={8}>
+                    <TableCell component="th" scope="row" colSpan={9}>
                       <Typography color="error">
                         No Users Available
                       </Typography>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedData.map((user, index) => (
+                  usersList.map((user, index) => (
                     <TableRow
                       key={index}
                       sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
@@ -314,7 +290,16 @@ export default function Users() {
                           ) : null}
                         </Box>
                       </TableCell>
-                      <TableCell>{user.address}</TableCell>
+                      <TableCell
+                        sx={{
+                          maxWidth: 320,
+                          whiteSpace: "normal",
+                          overflowWrap: "anywhere",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {user.address}
+                      </TableCell>
                       <TableCell>
                         {user.phoneNumber}
                       </TableCell>
@@ -356,15 +341,23 @@ export default function Users() {
                 )}
               </TableBody>
             </Table>
-            <TablePagination
-              rowsPerPageOptions={[5, 10, 25]}
-              component="div"
-              count={filteredData.length}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-            />
+            <Grid container justifyContent="space-between" mt={2} mb={2}>
+              <Pagination
+                count={Math.max(1, Math.ceil(totalCount / rowsPerPage))}
+                page={page + 1}
+                onChange={(_, value) => setPage(value - 1)}
+                color="primary"
+                shape="rounded"
+              />
+              <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+                <InputLabel>Page Size</InputLabel>
+                <Select value={rowsPerPage} label="Page Size" onChange={handleChangeRowsPerPage}>
+                  <MenuItem value={5}>5</MenuItem>
+                  <MenuItem value={10}>10</MenuItem>
+                  <MenuItem value={25}>25</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
           </TableContainer>
         </Grid>
       </Grid>

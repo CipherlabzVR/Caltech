@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Button,
   Grid,
@@ -7,16 +7,14 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Modal from "@mui/material/Modal";
 import "react-toastify/dist/ReactToastify.css";
 import { Visibility } from "@mui/icons-material";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
 import { Report } from "Base/report";
-import useApi from "@/components/utils/useApi";
 import { Catelogue } from "Base/catelogue";
-import { DEFAULT_PAGE_SIZE, filterTopMatchesWithLoadMore, withAllOption } from "@/components/utils/autocompleteTopMatches";
+import ReportSearchField from "@/components/utils/ReportSearchField";
 
 const style = {
   position: "absolute",
@@ -39,37 +37,11 @@ export default function OutstandingReport({docName,reportName}) {
   const warehouseId = localStorage.getItem("warehouse");
   const name = localStorage.getItem("name");
   const [open, setOpen] = useState(false);
-  const [customers, setCustomers] = useState([]);
   const [customerId, setCustomerId] = useState(0);
-  const [customerLimit, setCustomerLimit] = useState(DEFAULT_PAGE_SIZE);
   const { data: OutstandingReport } = GetReportSettingValueByName(reportName);
 
-  const handleOpen = () => {
-    setCustomerLimit(DEFAULT_PAGE_SIZE);
-    setOpen(true);
-  };
+  const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
-
-  const {
-    data: customerList,
-    loading: Loading,
-    error: Error,
-  } = useApi("/Customer/GetAllCustomer");
-
-  useEffect(() => {
-      if (customerList) {
-        setCustomers(customerList);
-      }
-    }, [customerList]);
-
-  const customerOptions = withAllOption(
-    customers.map((c) => ({
-      id: c.id,
-      label: `${c.firstName || ""} ${c.lastName || ""}`.trim() || String(c.id),
-    })),
-    true
-  );
-  const customerValue = customerOptions.find((o) => o.id === customerId) || null;
 
   return (
     <>
@@ -94,40 +66,14 @@ export default function OutstandingReport({docName,reportName}) {
                 </Typography>
               </Grid>
               <Grid item xs={12}>
-                <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                  Select Customer
-                </Typography>
-                <Autocomplete
-                  disableCloseOnSelect
-                  fullWidth
-                  size="small"
-                  options={customerOptions}
-                  value={customerValue}
-                  onChange={(_, opt) => {
-                    if (opt?.__loadMore) {
-                      setCustomerLimit((v) => v + DEFAULT_PAGE_SIZE);
-                      return;
-                    }
-                    setCustomerId(opt?.id ?? 0);
-                  }}
-                  isOptionEqualToValue={(option, val) => option.id === val.id}
-                  filterOptions={(options, state) =>
-                    filterTopMatchesWithLoadMore(options, state.inputValue, customerLimit)
-                  }
-                  renderOption={(props, option) => (
-                    <li
-                      {...props}
-                      style={
-                        option?.__loadMore ? { justifyContent: "center", fontWeight: 600 } : props.style
-                      }
-                    >
-                      {option.label}
-                    </li>
-                  )}
-                  noOptionsText="No matches"
-                  renderInput={(params) => (
-                    <TextField {...params} placeholder="Type to search..." />
-                  )}
+                <ReportSearchField
+                  filterType="customer"
+                  extraParams={{}}
+                  value={customerId}
+                  onChange={(id) => setCustomerId(id ?? 0)}
+                  allowAll={true}
+                  label="Select Customer"
+                  placeholder="Type to search..."
                 />
               </Grid>
               <Grid item xs={12} display="flex" justifyContent="space-between" mt={2}>

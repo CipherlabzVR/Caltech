@@ -21,6 +21,7 @@ import GetReportSettingValueByName from "@/components/utils/GetReportSettingValu
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import CashInOut from "./create-cash-in-out";
 import ViewCashInOut from "./view-cash-in-out";
+import ShiftItemReport from "./shift-item-report";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { Catelogue } from "Base/catelogue";
@@ -190,18 +191,21 @@ export default function Shift() {
                               <EditShift fetchItems={fetchShifts} item={item} />
                             ) : null
                           ) : (
-                            print ? (
-                              <Tooltip title="Print" placement="top">
-                                <a
-                                  href={`${Report}/PrintShiftEndLocal?InitialCatalog=${Catelogue}&documentNumber=${item.documentNo}&reportName=${ReportName}&warehouseId=${item.warehouseId}&currentUser=${name}`}
-                                  target="_blank"
-                                >
-                                  <IconButton aria-label="print" size="small">
-                                    <LocalPrintshopIcon color="primary" fontSize="inherit" />
-                                  </IconButton>
-                                </a>
-                              </Tooltip>
-                            ) : null
+                            <>
+                              <ShiftItemReport shiftId={item.id} />
+                              {print ? (
+                                <Tooltip title="Print" placement="top">
+                                  <a
+                                    href={`${Report}/PrintShiftEndLocal?InitialCatalog=${Catelogue}&documentNumber=${item.documentNo}&reportName=${ReportName}&warehouseId=${item.warehouseId}&currentUser=${name}`}
+                                    target="_blank"
+                                  >
+                                    <IconButton aria-label="print" size="small">
+                                      <LocalPrintshopIcon color="primary" fontSize="inherit" />
+                                    </IconButton>
+                                  </a>
+                                </Tooltip>
+                              ) : null}
+                            </>
                           )}
                         </Box>
                       </TableCell>

@@ -9,33 +9,25 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
-import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Tooltip, IconButton, Box, Tabs, Tab } from "@mui/material";
+import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Tabs, Tab } from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import BASE_URL from "Base/api";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import { formatDate } from "@/components/utils/formatHelper";
-import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
-import { Catelogue } from "Base/catelogue";
-import ShareReports from "@/components/UIElements/Modal/Reports/ShareReports";
-import { Report } from "Base/report";
-import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import QuotationConfirmationById from "@/components/UIElements/Modal/QuotationConfirmationById";
 import { projectStatusType } from "@/components/types/types";
-// import UpdateConfirmQuotation from "@/components/UIElements/Modal/UpdateConfirmQuotation";
 
 export default function SampleList() {
     const cId = sessionStorage.getItem("category")
-    const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+    const { navigate, create, update, remove } = IsPermissionEnabled(cId);
     const [quotationList, setQuotationList] = useState([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [totalCount, setTotalCount] = useState(0);
-    const name = localStorage.getItem("name");
     const [tabValue, setTabValue] = useState(0);
-    const { data: InvoiceReportName } = GetReportSettingValueByName("ProformaInvoiceReport");
 
     const handleTabChange = (event, newValue) => {
         setTabValue(newValue);
@@ -66,7 +58,7 @@ export default function SampleList() {
         try {
             const token = localStorage.getItem("token");
             const skip = (page - 1) * size;
-            const type = tab === 1 ? 8 : 4;
+            const type = tab === 0 ? 4 : tab === 1 ? 5 : 8;
             const query = `${BASE_URL}/Inquiry/GetAllQuotationsByType?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}&type=${type}`;
 
             const response = await fetch(query, {
@@ -108,6 +100,7 @@ export default function SampleList() {
             </div>
             <Tabs value={tabValue} onChange={handleTabChange}>
                 <Tab label="Pending" />
+                <Tab label="Confirmed" />
                 <Tab label="Rejected" />
             </Tabs>
             <Grid mt={1} container rowSpacing={1} columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}>
@@ -136,7 +129,7 @@ export default function SampleList() {
                                     <TableCell>Selected Option</TableCell>
                                     <TableCell>Document</TableCell>
                                     <TableCell>Status</TableCell>
-                                    {tabValue === 1 ? <TableCell align="right">Rejected Reason</TableCell> : <TableCell align="right">Action</TableCell>}
+                                    {tabValue === 2 ? <TableCell align="right">Rejected Reason</TableCell> : <TableCell align="right">Action</TableCell>}
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -147,59 +140,38 @@ export default function SampleList() {
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    quotationList.map((item, index) => {
-                                        const whatsapp = `/PrintDocuments?InitialCatalog=${Catelogue}&documentNumber=${item.documentNo}&reportName=${InvoiceReportName}&warehouseId=${item.warehouseId}&currentUser=${name}`;
-                                        const invoiceReportLink = `/PrintDocumentsLocal?InitialCatalog=${Catelogue}&documentNumber=${item.documentNo}&reportName=${InvoiceReportName}&warehouseId=${item.warehouseId}&currentUser=${name}`;
+                                    quotationList.map((item, index) => (
+                                        <TableRow key={index}>
+                                            <TableCell>{item.documentNo}</TableCell>
+                                            <TableCell>{item.customerName}</TableCell>
+                                            <TableCell>{item.inquiryCode}</TableCell>
+                                            <TableCell>{item.optionName}</TableCell>
+                                            <TableCell>{item.styleName}</TableCell>
+                                            <TableCell>{formatDate(item.startDate)}</TableCell>
+                                            <TableCell>{item.workingDays}</TableCell>
+                                            <TableCell>{item.selectedOption}</TableCell>
+                                            <TableCell>
+                                                <a href={`${item.documentURL}`} target="_blank">
+                                                    view
+                                                </a>
+                                            </TableCell>
+                                            <TableCell>{projectStatusType(item.projectStatusType)}</TableCell>
 
-                                        return (
-                                            <TableRow key={index}>
-                                                <TableCell>{item.documentNo}</TableCell>
-                                                <TableCell>{item.customerName}</TableCell>
-                                                <TableCell>{item.inquiryCode}</TableCell>
-                                                <TableCell>{item.optionName}</TableCell>
-                                                <TableCell>{item.styleName}</TableCell>
-                                                <TableCell>{formatDate(item.startDate)}</TableCell>
-                                                <TableCell>{item.workingDays}</TableCell>
-                                                <TableCell>{item.selectedOption}</TableCell>
-                                                <TableCell>
-                                                    <a href={`${item.documentURL}`} target="_blank">
-                                                        view
-                                                    </a>
+                                            {tabValue === 2 ? (
+                                                <TableCell align="right">{item.rejectedReason}</TableCell>
+                                            ) : (
+                                                <TableCell align="right">
+                                                    {tabValue === 0 && (
+                                                        <QuotationConfirmationById
+                                                            id={item.quotationId}
+                                                            fetchItems={fetchQuotationList}
+                                                            sentQuotId={item.id}
+                                                        />
+                                                    )}
                                                 </TableCell>
-                                                <TableCell>{projectStatusType(item.projectStatusType)}</TableCell>
-
-                                                {tabValue === 1 ?
-                                                    <TableCell align="right">{item.rejectedReason}</TableCell>
-                                                    :
-                                                    <TableCell align="right">
-                                                        <Box display="flex" gap={1}>
-                                                            <ShareReports url={whatsapp} mobile={item.sentWhatsappNumber} />
-                                                            {print ? <>
-                                                                <Tooltip title="Print" placement="top">
-                                                                    <a href={`${Report}` + invoiceReportLink} target="_blank">
-                                                                        <IconButton aria-label="print" size="small">
-                                                                            <LocalPrintshopIcon color="primary" fontSize="medium" />
-                                                                        </IconButton>
-                                                                    </a>
-                                                                </Tooltip></> : ""}
-                                                            {/* <UpdateConfirmQuotation
-                                                                fetchItems={fetchQuotationList}
-                                                                sentQuotId={item.id}
-                                                                type={8}
-                                                                isConfirm={false}
-                                                            /> */}
-                                                            <QuotationConfirmationById
-                                                                id={item.quotationId}
-                                                                fetchItems={fetchQuotationList}
-                                                                sentQuotId={item.id}
-                                                            />
-                                                        </Box>
-                                                    </TableCell>
-                                                }
-
-                                            </TableRow>
-                                        )
-                                    })
+                                            )}
+                                        </TableRow>
+                                    ))
                                 )}
                             </TableBody>
                         </Table>

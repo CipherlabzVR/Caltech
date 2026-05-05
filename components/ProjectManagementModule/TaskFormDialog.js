@@ -3,6 +3,7 @@ import {
   Autocomplete,
   Box,
   Button,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -15,6 +16,7 @@ import { DatePicker, LocalizationProvider, TimePicker } from "@mui/x-date-picker
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
 import * as Yup from "yup";
+import { toExactBrowserTimeISOString, fromExactBrowserTime } from "@/components/utils/exactBrowserTime";
 
 const sdlcPhases = [
   "Planning",
@@ -46,7 +48,7 @@ const validationSchema = Yup.object().shape({
     .required("Estimated hours is required")
     .moreThan(0, "Estimated hours must be greater than 0"),
   startDate: Yup.date()
-    .nullable()
+    .required("Start date is required")
     .typeError("Please select a valid start date")
     .test("before-due", "Start date must be before or equal to due date", function(value) {
       const { dueDate } = this.parent;
@@ -54,7 +56,7 @@ const validationSchema = Yup.object().shape({
       return dayjs(value).isBefore(dayjs(dueDate)) || dayjs(value).isSame(dayjs(dueDate), "day");
     }),
   dueDate: Yup.date()
-    .nullable()
+    .required("Due date is required")
     .typeError("Please select a valid due date")
     .test("after-start", "Due date must be after or equal to start date", function(value) {
       const { startDate } = this.parent;
@@ -89,6 +91,7 @@ const TaskFormDialog = ({
   teamMembers = [],
   columns = [],
   phases = [],
+  projectLabels = [],
   title = "New Task",
 }) => {
   const columnLocked = Boolean(initialValues?.columnLocked);
@@ -121,8 +124,8 @@ const TaskFormDialog = ({
       : initialValues?.assignedToMemberId != null
       ? [initialValues.assignedToMemberId]
       : [],
-    startDate: initialValues?.startDate ? dayjs(initialValues.startDate) : null,
-    dueDate: initialValues?.dueDate ? dayjs(initialValues.dueDate) : null,
+    startDate: initialValues?.startDate ? fromExactBrowserTime(initialValues.startDate) : null,
+    dueDate: initialValues?.dueDate ? fromExactBrowserTime(initialValues.dueDate) : null,
     phaseName:
       initialValues?.phaseName ||
       initialValues?.PhaseName ||
@@ -134,6 +137,12 @@ const TaskFormDialog = ({
       "",
     checklist: initialValues?.checklist
       ? initialValues.checklist.map((item) => ({ title: item.title }))
+      : [],
+    labelIds: initialValues?.labels
+      ? initialValues.labels.map((l) => l.labelId || l.id)
+      : [],
+    labelNames: initialValues?.labels
+      ? initialValues.labels.map((l) => l.name || "")
       : [],
   };
 
@@ -174,8 +183,9 @@ const TaskFormDialog = ({
                   : Number(values.estimatedHours),
               assignedMemberIds: values.assignedMemberIds?.filter((id) => id != null) ?? [],
               checklist: values.checklist?.filter((item) => item.title.trim()),
-              startDate: values.startDate ? values.startDate.toISOString() : null,
-              dueDate: values.dueDate ? values.dueDate.toISOString() : null,
+              labelNames: values.labelNames?.filter((name) => name && name.trim()) ?? [],
+              startDate: toExactBrowserTimeISOString(values.startDate),
+              dueDate: toExactBrowserTimeISOString(values.dueDate),
               phaseName: values.phaseName ? String(values.phaseName).trim() : null,
               phaseType: values.phaseType ? String(values.phaseType).trim() : null,
             };
@@ -207,6 +217,7 @@ const TaskFormDialog = ({
                       select
                       name="boardColumnId"
                       label="Column"
+                      required
                       fullWidth
                       value={
                         values.boardColumnId === null ||
@@ -242,6 +253,7 @@ const TaskFormDialog = ({
                     <TextField
                       name="title"
                       label="Task Title"
+                      required
                       fullWidth
                       value={values.title}
                       onChange={handleChange}
@@ -266,6 +278,7 @@ const TaskFormDialog = ({
                     <TextField
                       name="estimatedHours"
                       label="Estimated Hours"
+                      required
                       fullWidth
                       type="number"
                       inputProps={{ min: 0, step: 0.25 }}
@@ -305,6 +318,7 @@ const TaskFormDialog = ({
                         <TextField
                           {...params}
                           fullWidth
+                          required
                           error={touched.startDate && Boolean(errors.startDate)}
                           helperText={touched.startDate && errors.startDate}
                         />
@@ -330,6 +344,7 @@ const TaskFormDialog = ({
                         <TextField
                           {...params}
                           fullWidth
+                          required
                           error={touched.dueDate && Boolean(errors.dueDate)}
                           helperText={touched.dueDate && errors.dueDate}
                         />
@@ -393,6 +408,55 @@ const TaskFormDialog = ({
                         </MenuItem>
                       ))}
                     </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Autocomplete
+                      multiple
+                      freeSolo
+                      autoSelect
+                      clearOnBlur
+                      options={
+                        Array.isArray(projectLabels)
+                          ? projectLabels
+                              .map((l) => l.name)
+                              .filter((n) => !(Array.isArray(values.labelNames) ? values.labelNames : []).includes(n))
+                          : []
+                      }
+                      value={Array.isArray(values.labelNames) ? values.labelNames : []}
+                      onChange={(_, newValue) => {
+                        const labelNames = newValue.map((v) =>
+                          typeof v === "string" ? v.trim() : String(v).trim()
+                        ).filter(Boolean);
+                        setFieldValue("labelNames", labelNames);
+                      }}
+                      getOptionLabel={(option) => {
+                        if (typeof option === "string") return option;
+                        return String(option);
+                      }}
+                      renderTags={(value, getTagProps) =>
+                        value.map((option, index) => {
+                          const labelName = typeof option === "string" ? option : String(option);
+                          return (
+                            <Chip
+                              {...getTagProps({ index })}
+                              key={index}
+                              label={labelName}
+                              size="small"
+                              sx={{
+                                backgroundColor: "#6366F1",
+                                color: "white",
+                                "& .MuiChip-deleteIcon": {
+                                  color: "rgba(255, 255, 255, 0.7)",
+                                },
+                              }}
+                            />
+                          );
+                        })
+                      }
+                      renderInput={(params) => (
+                        <TextField {...params} label="Labels" placeholder="Type and press Enter to add labels" />
+                      )}
+                    />
                   </Grid>
                 </Grid>
               </LocalizationProvider>

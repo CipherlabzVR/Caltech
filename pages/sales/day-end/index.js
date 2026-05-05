@@ -18,6 +18,7 @@ import { formatCurrency, formatDate, formatDateWithTime } from "@/components/uti
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
+import DeleteDayEndConfirmation from "./DeleteDayEndConfirmation";
 
 export default function DayEnd() {
   const cId = sessionStorage.getItem("category")
@@ -28,6 +29,9 @@ export default function DayEnd() {
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
   const { data: showCashInvoiceTotalsInShiftAndDayend } = IsAppSettingEnabled("ShowCashInvoiceTotalsInShiftAndDayend");
+
+  const dataColumnCount = 13 + (showCashInvoiceTotalsInShiftAndDayend ? 2 : 0);
+  const tableColumnCount = dataColumnCount + 1;
 
   const handleSearchChange = (event) => {
     const value = event.target.value;
@@ -124,12 +128,13 @@ export default function DayEnd() {
                   <TableCell>Warehouse</TableCell>
                   <TableCell>User</TableCell>
                   <TableCell>Remark</TableCell>
+                  <TableCell align="right">Action</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {dayEndList.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7}>
+                    <TableCell colSpan={tableColumnCount}>
                       <Typography color="error">No Data Available</Typography>
                     </TableCell>
                   </TableRow>
@@ -155,6 +160,16 @@ export default function DayEnd() {
                       <TableCell>{item.warehouseName}</TableCell>
                       <TableCell>{item.userName}</TableCell>
                       <TableCell>{item.remark}</TableCell>
+                      <TableCell align="right">
+                        {remove ? (
+                          <DeleteDayEndConfirmation
+                            id={item.id}
+                            fetchItems={fetchDayEndList}
+                          />
+                        ) : (
+                          ""
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))
                 )}

@@ -2,12 +2,15 @@ import { Typography } from "@mui/material";
 import { Box } from "@mui/system";
 import Button from "@mui/material/Button";
 import { useEffect } from "react";
+import { useRouter } from "next/router";
+import logoutUser from "@/components/utils/logoutUser";
 
 export default function Logout() {
+  const router = useRouter();
+
   useEffect(() => {
-    localStorage.clear();
-    sessionStorage.removeItem("holidayGreetingShown");
-  }, []);
+    logoutUser({ router });
+  }, [router]);
   return (
     <>
       <div className="authenticationBox">

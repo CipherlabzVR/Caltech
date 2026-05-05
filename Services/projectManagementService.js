@@ -211,14 +211,21 @@ export const deleteTeamMember = async (memberId) => {
   return handleResponse(response);
 };
 
-export const getTaskBoard = async (projectId) => {
-  const response = await fetch(
-    `${BASE_URL}/ProjectManagementModule/projects/${projectId}/tasks`,
-    {
-      method: "GET",
-      headers: authHeaders(),
-    }
-  );
+export const getTaskBoard = async (projectId, filters = {}) => {
+  const queryParams = new URLSearchParams();
+  if (filters.memberId) {
+    queryParams.append("memberId", filters.memberId);
+  }
+  if (filters.taskNumber) {
+    queryParams.append("taskNumber", filters.taskNumber);
+  }
+  const queryString = queryParams.toString();
+  const url = `${BASE_URL}/ProjectManagementModule/projects/${projectId}/tasks${queryString ? `?${queryString}` : ""}`;
+  
+  const response = await fetch(url, {
+    method: "GET",
+    headers: authHeaders(),
+  });
   return handleResponse(response);
 };
 
@@ -449,6 +456,53 @@ export const getReportData = async (payload) => {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify(payload),
+    }
+  );
+  return handleResponse(response);
+};
+
+// Labels
+export const getLabels = async (projectId) => {
+  const response = await fetch(
+    `${BASE_URL}/ProjectManagementModule/projects/${projectId}/labels`,
+    {
+      method: "GET",
+      headers: authHeaders(),
+    }
+  );
+  return handleResponse(response);
+};
+
+export const createLabel = async (payload) => {
+  const response = await fetch(
+    `${BASE_URL}/ProjectManagementModule/labels`,
+    {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    }
+  );
+  return handleResponse(response);
+};
+
+export const updateLabel = async (labelId, payload) => {
+  const response = await fetch(
+    `${BASE_URL}/ProjectManagementModule/labels/${labelId}`,
+    {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    }
+  );
+  return handleResponse(response);
+};
+
+export const deleteLabel = async (labelId) => {
+  const response = await fetch(
+    `${BASE_URL}/ProjectManagementModule/labels/${labelId}/delete`,
+    {
+      method: "POST",
+      headers: authHeaders(),
     }
   );
   return handleResponse(response);

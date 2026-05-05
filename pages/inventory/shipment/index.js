@@ -20,15 +20,17 @@ import StatusType from "pages/production/ongoing/Types/StatusType";
 import { useRouter } from "next/router";
 import { formatDate } from "@/components/utils/formatHelper";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
-import { Report } from "Base/report";
 import { Catelogue } from "Base/catelogue";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
+import { Report } from "Base/report";
 
 export default function ShipmentNote() {
   const cId = sessionStorage.getItem("category")
   const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
   const name = localStorage.getItem("name");
   const { data: ReportName } = GetReportSettingValueByName("ShipmentNote");
+  const { data: isCustomReportsEnabled } = IsAppSettingEnabled("IsCustomReportsEnabled");
 
   const {
     data: shipmentList,
@@ -74,6 +76,19 @@ export default function ShipmentNote() {
       pathname: `/inventory/shipment/edit-shipment`,
       query: { id: id },
     });
+  };
+
+  const openShipmentPrintPopup = (item) => {
+    const query = new URLSearchParams({
+      id: String(item.id ?? ""),
+      documentNumber: item.documentNo ?? "",
+    });
+
+    window.open(
+      `/inventory/shipment/print?${query.toString()}`,
+      `shipment-print-${item.id}`,
+      "popup=yes,width=1200,height=900,scrollbars=yes,resizable=yes"
+    );
   };
 
 
@@ -167,14 +182,25 @@ export default function ShipmentNote() {
                           ) : (
                             print ?
                               <>
-                                {/* <ShipmentReport shipment={item} />  */}
-                                <Tooltip title="Print" placement="top">
-                                  <a href={`${Report}` + reportLink} target="_blank">
-                                    <IconButton aria-label="print" size="small">
+                                {isCustomReportsEnabled ? (
+                                  <Tooltip title="Print" placement="top">
+                                    <a href={`${Report}${reportLink}`} target="_blank" rel="noopener noreferrer">
+                                      <IconButton aria-label="print" size="small">
+                                        <LocalPrintshopIcon color="primary" fontSize="medium" />
+                                      </IconButton>
+                                    </a>
+                                  </Tooltip>
+                                ) : (
+                                  <Tooltip title="Print" placement="top">
+                                    <IconButton
+                                      aria-label="print"
+                                      size="small"
+                                      onClick={() => openShipmentPrintPopup(item)}
+                                    >
                                       <LocalPrintshopIcon color="primary" fontSize="medium" />
                                     </IconButton>
-                                  </a>
-                                </Tooltip>
+                                  </Tooltip>
+                                )}
                               </>
                               : null
                           )}

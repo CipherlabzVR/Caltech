@@ -15,6 +15,7 @@ import {
   Checkbox,
   FormControlLabel,
   Divider,
+  Paper,
 } from "@mui/material";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -27,6 +28,8 @@ import "react-toastify/dist/ReactToastify.css";
 import AddIcon from "@mui/icons-material/Add";
 import useApi from "@/components/utils/useApi";
 import RichTextEditor from "@/components/help-desk/RichTextEditor";
+import AddCustomerDialog from "@/pages/master/customers/create";
+import CreateHelpDeskProjectModal from "@/pages/help-desk/projects/create";
 
 const filter = createFilterOptions();
 
@@ -74,7 +77,7 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
   const [customers, setCustomers] = useState([]);
-  const [projectManagementProjects, setProjectManagementProjects] = useState([]);
+  const [masterProjects, setMasterProjects] = useState([]);
   const [assignCustomers, setAssignCustomers] = useState([]);
   const [assignProjects, setAssignProjects] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
@@ -92,6 +95,15 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
   const [categories, setCategories] = useState([]);
   const [refetchCategoriesKey, setRefetchCategoriesKey] = useState(0);
 
+  // State for Create Customer Modal
+  const [createCustomerModalOpen, setCreateCustomerModalOpen] = useState(false);
+  const [customerAutocompleteOpen, setCustomerAutocompleteOpen] = useState(false);
+  
+  // State for Create Project Modal
+  const [createProjectModalOpen, setCreateProjectModalOpen] = useState(false);
+  const [projectAutocompleteOpen, setProjectAutocompleteOpen] = useState(false);
+
+
   // Check if current user is Admin or HelpDeskSupport
   const userType = typeof window !== "undefined" ? localStorage.getItem("type") : null;
   const userTypeNum = userType ? Number(userType) : null;
@@ -100,7 +112,6 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
   const canAssignTicket = isAdmin || isHelpDeskSupportUser;
 
   const { data: categoriesData } = useApi("/HelpDesk/GetAllCategories?SkipCount=0&MaxResultCount=1000&Search=null");
-  // Removed: const { data: projectsData } = useApi("/Project/GetAllProjects") - Now using Project Management projects
   const { data: prioritySettingsData } = useApi("/HelpDesk/GetPrioritySettings");
 
   // Update categories state when categoriesData changes
@@ -499,13 +510,65 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
     fetchCustomers();
   }, []);
 
-  // Fetch project management projects
+  // Refresh customers list function
+  const refreshCustomers = async () => {
+    try {
+      setLoadingCustomers(true);
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${BASE_URL}/Customer/GetAllCustomer`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const customerList = Array.isArray(data) ? data : Array.isArray(data?.result) ? data.result : [];
+        setCustomers(customerList);
+        return customerList;
+      }
+    } catch (error) {
+      console.error("Error fetching customers:", error);
+    } finally {
+      setLoadingCustomers(false);
+    }
+    return [];
+  };
+
+  // Refresh projects list function
+  const refreshProjects = async () => {
+    try {
+      setLoadingProjects(true);
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${BASE_URL}/HelpDesk/GetProjectsForAssign`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const projectList = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : []);
+        setMasterProjects(projectList);
+        return projectList;
+      }
+    } catch (error) {
+      console.error("Error fetching projects:", error);
+    } finally {
+      setLoadingProjects(false);
+    }
+    return [];
+  };
+
+  // Fetch project management projects on mount and when modal opens
   useEffect(() => {
     const fetchProjectManagementProjects = async () => {
       try {
         setLoadingProjects(true);
         const token = localStorage.getItem("token");
-        const response = await fetch(`${BASE_URL}/ProjectManagementModule/projects`, {
+        const response = await fetch(`${BASE_URL}/HelpDesk/GetProjectsForAssign`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -514,8 +577,8 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
         });
         if (response.ok) {
           const data = await response.json();
-          const projectList = Array.isArray(data?.result) ? data.result : [];
-          setProjectManagementProjects(projectList);
+          const projectList = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : []);
+          setMasterProjects(projectList);
         }
       } catch (error) {
         console.error("Error fetching project management projects:", error);
@@ -524,7 +587,7 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
       }
     };
     fetchProjectManagementProjects();
-  }, []);
+  }, [open]);
 
   // Fetch customers for assign category
   const fetchAssignCustomers = async () => {
@@ -551,12 +614,12 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
     }
   };
 
-  // Fetch projects for assign category from Project Management module
+  // Fetch projects for assign category from ProjectManagement
   const fetchAssignProjects = async () => {
     try {
       setLoadingAssignProjects(true);
       const token = localStorage.getItem("token");
-      const response = await fetch(`${BASE_URL}/ProjectManagementModule/projects`, {
+      const response = await fetch(`${BASE_URL}/HelpDesk/GetProjectsForAssign`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -565,8 +628,8 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
       });
       if (response.ok) {
         const data = await response.json();
-        const projectList = Array.isArray(data?.result) ? data.result : [];
-        console.log("Fetched Project Management projects for assign:", projectList);
+        const projectList = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : []);
+        console.log("Fetched project management projects for assign:", projectList);
         setAssignProjects(projectList);
       } else {
         console.error("Failed to fetch projects:", response.status, response.statusText);
@@ -580,13 +643,13 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
     }
   };
 
-  // Fetch projects immediately on component mount (like project customer assign page)
+  // Fetch projects immediately on component mount
   useEffect(() => {
     const fetchProjects = async () => {
       try {
         setLoadingAssignProjects(true);
         const token = localStorage.getItem("token");
-        const response = await fetch(`${BASE_URL}/ProjectManagementModule/projects`, {
+        const response = await fetch(`${BASE_URL}/HelpDesk/GetProjectsForAssign`, {
           method: "GET",
           headers: {
             Authorization: `Bearer ${token}`,
@@ -595,8 +658,8 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
         });
         if (response.ok) {
           const data = await response.json();
-          const projectList = Array.isArray(data?.result) ? data.result : [];
-          console.log("Fetched Project Management projects for assign:", projectList);
+          const projectList = Array.isArray(data?.result) ? data.result : (Array.isArray(data) ? data : []);
+          console.log("Fetched project management projects for assign:", projectList);
           setAssignProjects(projectList);
         } else {
           console.error("Failed to fetch projects:", response.status, response.statusText);
@@ -718,11 +781,26 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
 
   const deriveCustomerName = (project) => {
     const candidateNames = [
+      project.ClientName,
+      project.clientName,
+      project.CustomerName,
       project.customerName,
       project.customer?.displayName,
+      project.customer?.DisplayName,
       project.customer?.name,
+      project.customer?.Name,
       project.customer?.customerName,
+      project.customer?.CustomerName,
       project.customer?.company,
+      project.customer?.Company,
+      project.Customer?.displayName,
+      project.Customer?.DisplayName,
+      project.Customer?.name,
+      project.Customer?.Name,
+      project.Customer?.customerName,
+      project.Customer?.CustomerName,
+      project.Customer?.company,
+      project.Customer?.Company,
       project.customerDetails?.displayName,
       project.customerDetails?.name,
       project.customerInfo?.displayName,
@@ -731,6 +809,9 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
 
     const fromParts = [
       [project.customer?.firstName, project.customer?.lastName],
+      [project.customer?.FirstName, project.customer?.LastName],
+      [project.Customer?.firstName, project.Customer?.lastName],
+      [project.Customer?.FirstName, project.Customer?.LastName],
       [project.customerDetails?.firstName, project.customerDetails?.lastName],
       [project.customerInfo?.firstName, project.customerInfo?.lastName],
     ];
@@ -751,27 +832,32 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
 
   // Use Project Management projects for all project fields
   const normalizedProjects = React.useMemo(() => {
-    // Use projectManagementProjects or assignProjects (both from Project Management module)
-    const sourceProjects = projectManagementProjects.length > 0 ? projectManagementProjects : assignProjects;
+    // Use masterProjects or assignProjects (both from master projects API)
+    const sourceProjects = masterProjects.length > 0 ? masterProjects : assignProjects;
     
     if (!sourceProjects || sourceProjects.length === 0) {
-      console.log("No Project Management projects available");
+      console.log("No master projects available");
       return [];
     }
 
     return sourceProjects.map((project) => {
-      // Project Management projects use 'id' not 'projectId'
-      const projectId = project.id || project.projectId;
+      // Master projects use 'Id' (capital I) or 'id'
+      const projectId = project.Id || project.id || project.projectId;
       
+      // Master projects use 'CustomerId' (capital C) or 'customerId'
       const customerIdCandidates = [
+        project.CustomerId,
         project.customerId,
         project.assignedToCustomerId,
+        project.AssignedToCustomerId,
+        project.customer?.Id,
         project.customer?.id,
         project.customer?.customerId,
-        project.customerDetails?.id,
-        project.customerDetails?.customerId,
-        project.customerInfo?.id,
-        project.customerInfo?.customerId,
+        project.customer?.CustomerId,
+        project.Customer?.Id,
+        project.Customer?.id,
+        project.Customer?.customerId,
+        project.Customer?.CustomerId,
       ];
 
       const customerId =
@@ -782,24 +868,31 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
       return {
         ...project,
         id: toNumericId(projectId), // Ensure id is numeric
-        name: project.name || "",
-        code: project.code || "",
+        name: project.Name || project.name || "",
+        code: project.Code || project.code || "",
         customerIdNormalized: customerId,
         customerNameNormalized: deriveCustomerName(project),
       };
     });
-  }, [projectManagementProjects, assignProjects]);
+  }, [masterProjects, assignProjects]);
 
   // Filter projects by selected customer
   const filteredProjectsByCustomer = React.useMemo(() => {
     return (customerId) => {
       if (!customerId) {
-        // If no customer selected, return empty array (or all projects if you want to show all)
-        return [];
+        // If no customer selected, return all projects
+        return normalizedProjects;
       }
+      // Normalize the customer ID for comparison
+      const normalizedCustomerId = toNumericId(customerId);
+      if (!normalizedCustomerId) {
+        return normalizedProjects;
+      }
+      
       return normalizedProjects.filter((project) => {
         const projectCustomerId = project.customerIdNormalized;
-        return projectCustomerId !== null && projectCustomerId === customerId;
+        // Compare normalized IDs
+        return projectCustomerId !== null && projectCustomerId === normalizedCustomerId;
       });
     };
   }, [normalizedProjects]);
@@ -987,26 +1080,241 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
                   <Grid container spacing={2.5}>
                     {/* Customer Name and Project fields at the top */}
                     <Grid item xs={12} md={6}>
-                      <Field
-                        as={TextField}
-                        fullWidth
-                        name="customerName"
-                        label="Customer Name"
-                        value={values.customerName}
-                        size="small"
-                        disabled={true}
-                        onChange={(e) => {
-                          setFieldValue("customerName", e.target.value);
-                          setFieldValue("customerId", null);
+                      <Autocomplete
+                        id="customer-autocomplete"
+                        open={customerAutocompleteOpen}
+                        onOpen={() => setCustomerAutocompleteOpen(true)}
+                        onClose={() => setCustomerAutocompleteOpen(false)}
+                        options={customers}
+                        getOptionLabel={(option) => {
+                          if (!option) return "";
+                          if (option.isCreateOption) return "";
+                          const displayName = option.displayName || 
+                            (option.firstName && option.lastName 
+                              ? `${option.firstName} ${option.lastName}`.trim() 
+                              : option.firstName || option.lastName || option.name || option.company || "");
+                          return displayName;
                         }}
+                        filterOptions={(options, params) => {
+                          const { inputValue } = params;
+                          
+                          // If no search input, show only first 10 customers (without Create option - it will be fixed at bottom)
+                          if (!inputValue || inputValue.trim() === "") {
+                            return options.slice(0, 10);
+                          }
+                          
+                          // If searching, filter through all customers
+                          const filtered = filter(options, {
+                            ...params,
+                            getOptionLabel: (option) => {
+                              const displayName = option.displayName || 
+                                (option.firstName && option.lastName 
+                                  ? `${option.firstName} ${option.lastName}`.trim() 
+                                  : option.firstName || option.lastName || option.name || option.company || "");
+                              return displayName;
+                            },
+                          });
+
+                          return filtered;
+                        }}
+                        isOptionEqualToValue={(option, value) => {
+                          if (!option || !value) return false;
+                          if (option.isCreateOption || value.isCreateOption) return false;
+                          return option?.id === value?.id;
+                        }}
+                        value={customers.find(c => c.id === values.customerId) || null}
+                        loading={loadingCustomers}
+                        onChange={async (event, newValue) => {
+                          if (newValue && newValue.isCreateOption) {
+                            setCreateCustomerModalOpen(true);
+                            return;
+                          }
+                          
+                          if (newValue) {
+                            const newCustomerId = newValue.id;
+                            setFieldValue("customerId", newCustomerId);
+                            
+                            // Set customer name from displayName or build from firstName/lastName
+                            const customerName = newValue.displayName || 
+                              (newValue.firstName && newValue.lastName 
+                                ? `${newValue.firstName} ${newValue.lastName}`.trim() 
+                                : newValue.firstName || newValue.lastName || newValue.name || newValue.company || "");
+                            setFieldValue("customerName", customerName);
+                            
+                            // Set customer email and phone if available
+                            if (newValue.customerContactDetails && newValue.customerContactDetails.length > 0) {
+                              const contact = newValue.customerContactDetails[0];
+                              setFieldValue("customerEmail", contact.emailAddress || "");
+                              setFieldValue("customerPhone", contact.contactNo || "");
+                            } else {
+                              setFieldValue("customerEmail", newValue.email || "");
+                              setFieldValue("customerPhone", newValue.phone || newValue.contactNo || "");
+                            }
+                            setFieldValue("customerCompany", newValue.company || "");
+                            
+                            // Validate and clear project selection if it doesn't belong to the new customer
+                            if (Array.isArray(values.projectIds) && values.projectIds.length > 0) {
+                              const normalizedCustomerId = toNumericId(newCustomerId);
+                              const currentProject = normalizedProjects.find(p => 
+                                values.projectIds.includes(p.id)
+                              );
+                              
+                              // If current project doesn't belong to new customer, clear it
+                              if (currentProject && normalizedCustomerId) {
+                                const projectCustomerId = currentProject.customerIdNormalized;
+                                if (projectCustomerId !== normalizedCustomerId) {
+                                  setFieldValue("projectIds", []);
+                                }
+                              } else {
+                                setFieldValue("projectIds", []);
+                              }
+                            } else {
+                              setFieldValue("projectIds", []);
+                            }
+                          } else {
+                            // Clear all customer fields when selection is cleared
+                            setFieldValue("customerId", null);
+                            setFieldValue("customerName", "");
+                            setFieldValue("customerEmail", "");
+                            setFieldValue("customerPhone", "");
+                            setFieldValue("customerCompany", "");
+                            setFieldValue("projectIds", []);
+                          }
+                        }}
+                        ListboxProps={{
+                          sx: {
+                            maxHeight: '300px',
+                            overflowY: 'auto',
+                            '&::-webkit-scrollbar': {
+                              width: '8px',
+                            },
+                            '&::-webkit-scrollbar-track': {
+                              background: '#f1f1f1',
+                            },
+                            '&::-webkit-scrollbar-thumb': {
+                              background: '#888',
+                              borderRadius: '4px',
+                            },
+                            '&::-webkit-scrollbar-thumb:hover': {
+                              background: '#555',
+                            },
+                          },
+                        }}
+                        PaperComponent={isAdmin ? (props) => (
+                          <Paper {...props} sx={{ ...props.sx, position: 'relative', overflow: 'hidden' }}>
+                            {props.children}
+                            <Divider />
+                            <Box
+                              sx={{
+                                p: 1.5,
+                                bgcolor: 'background.paper',
+                                borderTop: '1px solid',
+                                borderColor: 'divider',
+                                position: 'sticky',
+                                bottom: 0,
+                                zIndex: 1,
+                                cursor: 'pointer',
+                                '&:hover': {
+                                  bgcolor: 'action.hover',
+                                },
+                              }}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setCustomerAutocompleteOpen(false);
+                                setTimeout(() => {
+                                  setCreateCustomerModalOpen(true);
+                                }, 100);
+                              }}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                            >
+                              <Box sx={{ display: "flex", alignItems: "center", gap: 1, color: "primary.main", fontWeight: 500 }}>
+                                <AddIcon sx={{ fontSize: 18 }} />
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                  Create Customer
+                                </Typography>
+                              </Box>
+                            </Box>
+                          </Paper>
+                        ) : undefined}
+                        renderOption={(props, option) => {
+                          const displayName = option.displayName || 
+                            (option.firstName && option.lastName 
+                              ? `${option.firstName} ${option.lastName}`.trim() 
+                              : option.firstName || option.lastName || option.name || option.company || "");
+                          return (
+                            <li {...props} key={option.id}>
+                              <Box sx={{ display: "flex", flexDirection: "column" }}>
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                  {displayName || "Unnamed Customer"}
+                                </Typography>
+                                {option.company && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    {option.company}
+                                  </Typography>
+                                )}
+                              </Box>
+                            </li>
+                          );
+                        }}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Customer Name"
+                            placeholder="Search customer..."
+                            size="small"
+                            InputProps={{
+                              ...params.InputProps,
+                              endAdornment: (
+                                <>
+                                  {loadingCustomers ? <CircularProgress color="inherit" size={20} /> : null}
+                                  {params.InputProps.endAdornment}
+                                </>
+                              ),
+                            }}
+                          />
+                        )}
+                        noOptionsText="No customers found"
+                        loadingText="Loading customers..."
                       />
                     </Grid>
 
                     <Grid item xs={12} md={6}>
                       <Autocomplete
+                        id="project-autocomplete"
+                        open={projectAutocompleteOpen}
+                        onOpen={() => setProjectAutocompleteOpen(true)}
+                        onClose={() => setProjectAutocompleteOpen(false)}
                         options={values.customerId ? filteredProjectsByCustomer(values.customerId) : normalizedProjects}
-                        getOptionLabel={(option) => `${option?.code || ""} - ${option?.name || ""}`.trim() || ""}
-                        isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                        getOptionLabel={(option) => {
+                          if (!option) return "";
+                          if (option.isCreateOption) return "";
+                          return `${option?.code || ""} - ${option?.name || ""}`.trim() || "";
+                        }}
+                        filterOptions={(options, params) => {
+                          const { inputValue } = params;
+                          
+                          // If no search input, show only first 10 projects
+                          if (!inputValue || inputValue.trim() === "") {
+                            return options.slice(0, 10);
+                          }
+                          
+                          // If searching, filter through all projects
+                          const filtered = filter(options, {
+                            ...params,
+                            getOptionLabel: (option) => `${option?.code || ""} - ${option?.name || ""}`.trim() || "",
+                          });
+                          
+                          return filtered;
+                        }}
+                        isOptionEqualToValue={(option, value) => {
+                          if (!option || !value) return false;
+                          if (option.isCreateOption || value.isCreateOption) return false;
+                          return option?.id === value?.id;
+                        }}
                         value={
                           (values.customerId ? filteredProjectsByCustomer(values.customerId) : normalizedProjects).find((project) =>
                             Array.isArray(values.projectIds)
@@ -1016,6 +1324,13 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
                         }
                         loading={loadingProjects || loadingAssignProjects}
                         onChange={async (event, newValue) => {
+                          if (newValue && newValue.isCreateOption) {
+                            setProjectAutocompleteOpen(false);
+                            setTimeout(() => {
+                              setCreateProjectModalOpen(true);
+                            }, 100);
+                            return;
+                          }
                           const projectId = newValue?.id ?? null;
                           setFieldValue("projectIds", projectId ? [projectId] : []);
 
@@ -1049,20 +1364,20 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
                               
                               // Fallback: Get customerId from project details
                               // Try to get customerId from the normalized project or from the original project data
-                              let customerId = newValue.customerIdNormalized || newValue.customerId || null;
+                              let customerId = newValue.customerIdNormalized || newValue.customerId || newValue.CustomerId || null;
                               
                               // If customerId is not in the normalized data, try to get it from the original project
                               if (!customerId) {
-                                const sourceProjects = projectManagementProjects.length > 0 ? projectManagementProjects : assignProjects;
-                                const originalProject = sourceProjects.find(p => (p.projectId || p.id) === projectId);
+                                const sourceProjects = masterProjects.length > 0 ? masterProjects : assignProjects;
+                                const originalProject = sourceProjects.find(p => (p.Id || p.id || p.projectId) === projectId);
                                 if (originalProject) {
-                                  customerId = originalProject.customerId || null;
+                                  customerId = originalProject.CustomerId || originalProject.customerId || null;
                                 }
                               }
                               
-                              // If still no customerId, fetch project details to get it
+                              // If still no customerId, fetch project details from master projects API
                               if (!customerId) {
-                                const projectResponse = await fetch(`${BASE_URL}/ProjectManagementModule/projects/${projectId}`, {
+                                const projectResponse = await fetch(`${BASE_URL}/Project/GetProjectById?id=${projectId}`, {
                                   method: "GET",
                                   headers: {
                                     Authorization: `Bearer ${token}`,
@@ -1071,8 +1386,8 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
                                 });
                                 if (projectResponse.ok) {
                                   const projectData = await projectResponse.json();
-                                  if (projectData.result && projectData.result.customerId) {
-                                    customerId = projectData.result.customerId;
+                                  if (projectData.result) {
+                                    customerId = projectData.result.CustomerId || projectData.result.customerId || null;
                                   }
                                 }
                               }
@@ -1132,18 +1447,112 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
                             </Box>
                           </li>
                         )}
+                        ListboxProps={{
+                          sx: {
+                            maxHeight: '300px',
+                            overflowY: 'auto',
+                            '&::-webkit-scrollbar': {
+                              width: '8px',
+                            },
+                            '&::-webkit-scrollbar-track': {
+                              background: '#f1f1f1',
+                            },
+                            '&::-webkit-scrollbar-thumb': {
+                              background: '#888',
+                              borderRadius: '4px',
+                            },
+                            '&::-webkit-scrollbar-thumb:hover': {
+                              background: '#555',
+                            },
+                          },
+                        }}
+                        PaperComponent={isAdmin ? (props) => (
+                          <Paper {...props} sx={{ ...props.sx, position: 'relative', overflow: 'hidden' }}>
+                            {props.children}
+                            <Divider />
+                            <Box
+                              component="div"
+                              role="button"
+                              tabIndex={0}
+                              sx={{
+                                p: 1.5,
+                                bgcolor: 'background.paper',
+                                borderTop: '1px solid',
+                                borderColor: 'divider',
+                                position: 'sticky',
+                                bottom: 0,
+                                zIndex: 10,
+                                cursor: 'pointer',
+                                pointerEvents: 'auto',
+                                userSelect: 'none',
+                                '&:hover': {
+                                  bgcolor: 'action.hover',
+                                },
+                                '&:active': {
+                                  bgcolor: 'action.selected',
+                                },
+                              }}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                // Close the autocomplete first
+                                setProjectAutocompleteOpen(false);
+                                // Use requestAnimationFrame to ensure state updates properly
+                                requestAnimationFrame(() => {
+                                  setTimeout(() => {
+                                    setCreateProjectModalOpen(true);
+                                  }, 100);
+                                });
+                              }}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                              onMouseUp={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setProjectAutocompleteOpen(false);
+                                  requestAnimationFrame(() => {
+                                    setTimeout(() => {
+                                      setCreateProjectModalOpen(true);
+                                    }, 100);
+                                  });
+                                }
+                              }}
+                            >
+                              <Box sx={{ display: "flex", alignItems: "center", gap: 1, color: "primary.main", fontWeight: 500 }}>
+                                <AddIcon sx={{ fontSize: 18 }} />
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                  Create Project
+                                </Typography>
+                              </Box>
+                            </Box>
+                          </Paper>
+                        ) : undefined}
                         renderInput={(params) => (
                           <TextField
                             {...params}
                             label="Project"
-                            placeholder="Select project from Project Management"
+                            placeholder={values.customerId ? "Select project for this customer" : "Select project from Project Management"}
                             size="small"
                             error={touched.projectIds && !!errors.projectIds}
-                            helperText={touched.projectIds && errors.projectIds || (values.customerId ? "Showing projects for selected customer" : "")}
+                            helperText={
+                              touched.projectIds && errors.projectIds 
+                                ? errors.projectIds 
+                                : values.customerId 
+                                  ? `Showing projects assigned to selected customer (${filteredProjectsByCustomer(values.customerId).length} available)`
+                                  : "Select a customer first to filter projects"
+                            }
                           />
                         )}
-                        noOptionsText={values.customerId ? "No projects found for this customer" : "No projects found"}
+                        noOptionsText={values.customerId ? "No projects found for the selected customer" : "No projects found"}
                         loadingText="Loading projects..."
+                        key={`project-autocomplete-${values.customerId || 'no-customer'}`}
                       />
                     </Grid>
 
@@ -1830,6 +2239,107 @@ export default function CreateTicketModal({ fetchItems, currentPage = 1, current
           </Formik>
         </Box>
       </Modal>
+
+      {/* Create Customer Modal - Using Master Customer Create Component */}
+      <AddCustomerDialog
+        fetchItems={async (newCustomer) => {
+          // Refresh customer list
+          const updatedCustomers = await refreshCustomers();
+          
+          // If a new customer was created, select it in the form
+          if (newCustomer && mainFormikRef.current) {
+            // Wait a bit for state to update
+            setTimeout(() => {
+              if (mainFormikRef.current) {
+                const customerId = newCustomer.id || newCustomer.Id;
+                if (customerId) {
+                  // Find the customer in the updated list
+                  const foundCustomer = updatedCustomers.find(c => 
+                    (c.id || c.Id) === customerId
+                  ) || newCustomer;
+                  
+                  // Set customer fields
+                  mainFormikRef.current.setFieldValue("customerId", customerId);
+                  
+                  // Set customer name from displayName or build from firstName/lastName
+                  const customerName = foundCustomer.displayName || 
+                    (foundCustomer.firstName && foundCustomer.lastName 
+                      ? `${foundCustomer.firstName} ${foundCustomer.lastName}`.trim() 
+                      : foundCustomer.firstName || foundCustomer.lastName || foundCustomer.name || foundCustomer.company || "");
+                  mainFormikRef.current.setFieldValue("customerName", customerName);
+                  
+                  // Set customer email and phone if available
+                  if (foundCustomer.customerContactDetails && foundCustomer.customerContactDetails.length > 0) {
+                    const contact = foundCustomer.customerContactDetails[0];
+                    mainFormikRef.current.setFieldValue("customerEmail", contact.emailAddress || "");
+                    mainFormikRef.current.setFieldValue("customerPhone", contact.contactNo || "");
+                  } else {
+                    mainFormikRef.current.setFieldValue("customerEmail", foundCustomer.email || "");
+                    mainFormikRef.current.setFieldValue("customerPhone", foundCustomer.phone || foundCustomer.contactNo || "");
+                  }
+                  mainFormikRef.current.setFieldValue("customerCompany", foundCustomer.company || "");
+                  
+                  // Clear project selection when customer changes
+                  mainFormikRef.current.setFieldValue("projectIds", []);
+                }
+              }
+            }, 200);
+          }
+        }}
+        chartOfAccounts={[]}
+        externalOpen={createCustomerModalOpen}
+        onClose={() => setCreateCustomerModalOpen(false)}
+        showButton={false}
+      />
+
+      {/* Create Project Modal - Using HelpDesk Project Create Component */}
+      <CreateHelpDeskProjectModal
+        open={createProjectModalOpen}
+        onClose={() => setCreateProjectModalOpen(false)}
+        fetchItems={async (newProject) => {
+          if (newProject) {
+            const projectId = toNumericId(newProject.id || newProject.Id || newProject.projectId);
+            const customerId = toNumericId(newProject.CustomerId || newProject.customerId || newProject.customerIdNormalized);
+            const projectEntry = {
+              id: projectId,
+              code: newProject.code || newProject.Code || "",
+              name: newProject.name || newProject.Name || "",
+              customerId: customerId,
+              clientName: newProject.clientName || newProject.ClientName || "",
+            };
+            setMasterProjects(prev => {
+              const exists = prev.some(p => toNumericId(p.id || p.Id) === projectId);
+              return exists ? prev : [projectEntry, ...prev];
+            });
+            setAssignProjects(prev => {
+              const exists = prev.some(p => toNumericId(p.id || p.Id) === projectId);
+              return exists ? prev : [projectEntry, ...prev];
+            });
+          }
+
+          refreshProjects();
+
+          if (newProject && mainFormikRef.current) {
+            setTimeout(() => {
+              if (mainFormikRef.current) {
+                const projectId = toNumericId(newProject.id || newProject.Id || newProject.projectId);
+                if (projectId) {
+                  mainFormikRef.current.setFieldValue("projectIds", [projectId]);
+
+                  if (!mainFormikRef.current.values.customerId) {
+                    const customerId = toNumericId(newProject.CustomerId || newProject.customerId || newProject.customerIdNormalized);
+                    if (customerId) {
+                      mainFormikRef.current.setFieldValue("customerId", customerId);
+                    }
+                  }
+                }
+              }
+            }, 200);
+          }
+        }}
+        showButton={false}
+      />
+
     </>
   );
 }

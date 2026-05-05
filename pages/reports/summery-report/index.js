@@ -19,8 +19,11 @@ import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import BASE_URL from "Base/api";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { Search, StyledInputBase } from "@/styles/main/search-styles";
+import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 
 import UnifiedSummaryReportModal from "@/components/UIElements/Modal/Reports/Summery/UnifiedSummaryReportModal";
+import MatrimonialSummaryReportModal from "@/components/UIElements/Modal/Reports/Summery/MatrimonialSummaryReportModal";
 import CompanyWiseProfit from "@/components/UIElements/Modal/Reports/Summery/CompanyWiseProfit";
 import ProfitabilityReport from "@/components/UIElements/Modal/Reports/Summery/ProfitabilityReport";
 import OutstandingReport from "@/components/UIElements/Modal/Reports/Summery/OutstandingReport";
@@ -48,6 +51,9 @@ const componentMap = {
   BankHistoryReport: UnifiedSummaryReportModal,
   ShiftSummaryReport: UnifiedSummaryReportModal,
   StockMovementReport: UnifiedSummaryReportModal,
+  MatrimonialProfileQualityReport: MatrimonialSummaryReportModal,
+  MatrimonialSubscriptionSummaryReport: MatrimonialSummaryReportModal,
+  MatrimonialEngagementSummaryReport: MatrimonialSummaryReportModal,
 };
 
 // Frontend-only categorization for Summary Reports.
@@ -81,6 +87,11 @@ const REPORT_MODULE_MAP = {
   ReservationAppointmentTypeReport: "Reservation",
   ReservationTypeReport: "Reservation",
   ReservationSalesReport: "Reservation",
+
+  // Matrimonial
+  MatrimonialProfileQualityReport: "Matrimonial",
+  MatrimonialSubscriptionSummaryReport: "Matrimonial",
+  MatrimonialEngagementSummaryReport: "Matrimonial",
 };
 
 const getReportModuleName = (report) => {
@@ -96,6 +107,7 @@ const getReportModuleName = (report) => {
     // Force all incoming categories/modules into the 3 requested groups.
     if (norm.includes("invent") || norm.includes("stock") || norm.includes("purchase")) return "Inventory";
     if (norm.includes("reservation")) return "Reservation";
+    if (norm.includes("matrimonial")) return "Matrimonial";
     if (norm.includes("sale") || norm.includes("customer")) return "Sales";
     if (norm.includes("finan") || norm.includes("cash") || norm.includes("bank") || norm.includes("profit") || norm.includes("fiscal") || norm.includes("shift")) return "Finance";
     // Unknown explicit module -> keep visible under Sales by default.
@@ -109,89 +121,68 @@ const getReportModuleName = (report) => {
   return "Sales";
 };
 
+/** Load all enabled summary reports in one request (no UI pagination). */
+const SUMMARY_REPORTS_FETCH_SIZE = 10000;
+
 const SummeryReports = () => {
-  const [reports, setReports] = useState([]);
   const [role, setRole] = useState(null);
   const [expandedModule, setExpandedModule] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
 
-  const fetchReports = async (role) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const token = localStorage.getItem("token");
-      const response = await fetch(
-        `${BASE_URL}/ReportSetting/GetAllEnabledSummaryReportsByRoleId?roleId=${role}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      if (!response.ok) throw new Error("Failed to fetch summary reports");
-      const data = await response.json();
+  const {
+    data: reports,
+    search,
+    setSearch,
+    fetchData: fetchReports,
+    loading,
+    error,
+  } = usePaginatedFetch(
+    role ? `ReportSetting/GetAllEnabledSummaryReportsByRoleIdPage?roleId=${role}` : null,
+    "",
+    SUMMARY_REPORTS_FETCH_SIZE,
+    false,
+    false
+  );
 
-      const rawResult = Array.isArray(data?.result) ? data.result : [];
-
-      // Normalize casing differences just in case backend serialization changes.
-      const normalized = rawResult.map((r) => {
-        const reportName = r?.reportName ?? r?.ReportName ?? r?.report_name ?? "";
-        const title = r?.title ?? r?.Title ?? r?.name ?? r?.Name ?? "";
-        const documentName = r?.documentName ?? r?.DocumentName ?? "";
-        const id = r?.id ?? r?.Id;
-        const isPermissionEnabled =
-          r?.isPermissionEnabled ?? r?.IsPermissionEnabled ?? true;
-
-        return {
-          ...r,
-          id,
-          reportName,
-          title,
-          documentName,
-          isPermissionEnabled,
-        };
-      });
-
-      // Only show enabled reports.
-      const enabledOnly = normalized.filter((r) => r.isPermissionEnabled === true);
-
-      const reportsWithComponents = enabledOnly.map((report) => {
-        const ReportComponent = componentMap[report.reportName];
-        return {
-          ...report,
-          component: ReportComponent
-            ? React.createElement(ReportComponent, {
-                docName: report.documentName,
-                reportName: report.reportName,
-              })
-            : null,
-        };
-      });
-
-      setReports(reportsWithComponents);
-    } catch (error) {
-      console.error("Error:", error);
-      setReports([]);
-      setError(error?.message || "Failed to load summary reports");
-    } finally {
-      setLoading(false);
-    }
+  const handleSearchChange = (event) => {
+    setSearch(event.target.value);
+    fetchReports(1, event.target.value, SUMMARY_REPORTS_FETCH_SIZE);
   };
 
   useEffect(() => {
-    // Avoid SSR crashes (localStorage is client-only).
-    if (typeof window === "undefined") return;
-    setRole(localStorage.getItem("role"));
+    if (typeof window !== "undefined") {
+      setRole(localStorage.getItem("role"));
+    }
   }, []);
 
-  useEffect(() => {
-    if (role) fetchReports(role);
-  }, [role]);
+  const processedReports = useMemo(() => {
+    if (!reports || !Array.isArray(reports)) return [];
+    
+    return reports.map((r) => {
+      const reportName = r?.reportName ?? r?.ReportName ?? r?.report_name ?? "";
+      const title = r?.title ?? r?.Title ?? r?.name ?? r?.Name ?? "";
+      const documentName = r?.documentName ?? r?.DocumentName ?? "";
+      const id = r?.id ?? r?.Id;
+      
+      const ReportComponent = componentMap[reportName];
+      
+      return {
+        ...r,
+        id,
+        reportName,
+        title,
+        documentName,
+        component: ReportComponent
+          ? React.createElement(ReportComponent, {
+              docName: documentName,
+              reportName: reportName,
+            })
+          : null,
+      };
+    });
+  }, [reports]);
 
   const groupedReports = useMemo(() => {
-    const groups = reports.reduce((acc, report) => {
+    const groups = processedReports.reduce((acc, report) => {
       const moduleName = getReportModuleName(report);
       if (!acc[moduleName]) acc[moduleName] = [];
       acc[moduleName].push(report);
@@ -199,9 +190,8 @@ const SummeryReports = () => {
     }, {});
 
     // Keep a consistent module ordering (as requested).
-    const preferredOrder = ["Inventory", "Sales", "Finance", "Reservation"];
+    const preferredOrder = ["Inventory", "Sales", "Finance", "Reservation", "Matrimonial"];
     
-    // Only include modules that have at least 1 report
     const modulesWithReports = Object.keys(groups).filter(
       (moduleName) => groups[moduleName] && groups[moduleName].length > 0
     );
@@ -217,7 +207,7 @@ const SummeryReports = () => {
       moduleName,
       reports: groups[moduleName] || [],
     }));
-  }, [reports]);
+  }, [processedReports]);
 
   return (
     <>
@@ -229,6 +219,25 @@ const SummeryReports = () => {
           </li>
         </ul>
       </div>
+
+      <Grid
+        container
+        rowSpacing={1}
+        columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}
+        alignItems="center"
+        my={2}
+      >
+        <Grid item xs={12} lg={4}>
+          <Search className="search-form">
+            <StyledInputBase
+              placeholder="Search reports.."
+              inputProps={{ "aria-label": "search" }}
+              value={search}
+              onChange={handleSearchChange}
+            />
+          </Search>
+        </Grid>
+      </Grid>
 
       <Grid container my={2} spacing={2}>
         <Grid item xs={12}>

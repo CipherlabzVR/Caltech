@@ -59,7 +59,7 @@ export default function RejectInquiryByInquiryId({ id, controller, fetchItems ,h
       <Button
         onClick={handleOpen}
         color="error"
-        disabled={hasPending || hasConfirmed} // enable only when no pending and nothing confirmed (i.e., all rejected)
+        disabled={hasPending} // disable only when pending quotations exist
         variant="outlined"
       >
         Reject

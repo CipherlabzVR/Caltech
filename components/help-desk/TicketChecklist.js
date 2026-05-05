@@ -249,7 +249,7 @@ export default function TicketChecklist({ ticketId, checklist = [], onChecklistC
 
       {/* Checklist Items */}
       {localChecklist.length > 0 ? (
-        <Paper variant="outlined" sx={{ p: 2 }}>
+        <Paper variant="outlined" sx={{ p: 2, mb: 8 }}>
           {localChecklist.map((item, index) => (
             <Box key={item.id}>
               <Box
@@ -306,6 +306,7 @@ export default function TicketChecklist({ ticketId, checklist = [], onChecklistC
             border: "2px dashed #ddd",
             borderRadius: 2,
             bgcolor: "#fafafa",
+            mb: 3,
           }}
         >
           <Typography variant="body2" color="text.secondary">

@@ -123,7 +123,10 @@ const SubCategory = () => {
               </Search>
             </Grid>
             <Grid item xs={12} md={6} lg={7} display="flex" justifyContent="end" order={{ xs: 1, lg: 2 }}>
-              <AddSubCategory fetchItems={fetchSubCategoryList} IsEcommerceWebSiteAvailable={IsEcommerceWebSiteAvailable} />
+              <AddSubCategory
+                fetchItems={() => fetchSubCategoryList()}
+                IsEcommerceWebSiteAvailable={IsEcommerceWebSiteAvailable}
+              />
             </Grid>
           </Grid>
         </Grid>

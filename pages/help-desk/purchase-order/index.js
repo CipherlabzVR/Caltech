@@ -22,17 +22,14 @@ import {
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
-import DeleteIcon from "@mui/icons-material/Delete";
 import { useRouter } from "next/router";
 import { formatDate } from "@/components/utils/formatHelper";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
-import { toast } from "react-toastify";
-import BASE_URL from "Base/api";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
-import { Catelogue } from "Base/catelogue";
 import IsFiscalPeriodAvailable from "@/components/utils/IsFiscalPeriodAvailable";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
+import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 
 export default function HelpDeskPurchaseOrder() {
   useEffect(() => {
@@ -188,39 +185,11 @@ export default function HelpDeskPurchaseOrder() {
                               ""
                             )}
                             {remove ? (
-                              <Tooltip title="Delete" placement="top">
-                                <IconButton
-                                  onClick={async () => {
-                                    if (window.confirm("Are you sure you want to delete this purchase order?")) {
-                                      try {
-                                        const token = localStorage.getItem("token");
-                                        const response = await fetch(
-                                          `${BASE_URL}/HelpDesk/DeletePurchaseOrder?id=${item.id}`,
-                                          {
-                                            method: "POST",
-                                            headers: {
-                                              Authorization: `Bearer ${token}`,
-                                              "Content-Type": "application/json",
-                                            },
-                                          }
-                                        );
-                                        if (response.ok) {
-                                          toast.success("Purchase Order deleted successfully");
-                                          fetchPOList(page, search, pageSize);
-                                        } else {
-                                          toast.error("Failed to delete Purchase Order");
-                                        }
-                                      } catch (error) {
-                                        toast.error("An error occurred while deleting");
-                                      }
-                                    }
-                                  }}
-                                  aria-label="delete"
-                                  size="small"
-                                >
-                                  <DeleteIcon color="error" fontSize="medium" />
-                                </IconButton>
-                              </Tooltip>
+                              <DeleteConfirmationById
+                                id={item.id}
+                                controller="HelpDesk/DeletePurchaseOrder"
+                                fetchItems={() => fetchPOList(page, search, pageSize)}
+                              />
                             ) : (
                               ""
                             )}

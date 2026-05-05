@@ -24,12 +24,31 @@ const style = {
 const validationSchema = Yup.object().shape({
   Description: Yup.string().required("Description is required"),
   Name: Yup.string().required("Name is required"),
+  Value: Yup.number()
+    .typeError("Value must be a number")
+    .min(0, "Value cannot be negative")
+    .required("Value is required"),
 });
 
-export default function AddUOM({ fetchItems }) {
-  const [open, setOpen] = useState(false);
-  const handleOpen = () => setOpen(true);
-  const handleClose = () => setOpen(false);
+export default function AddUOM({
+  fetchItems,
+  hideButton = false,
+  open: controlledOpen,
+  onClose: controlledOnClose,
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = typeof controlledOpen === "boolean";
+  const open = isControlled ? controlledOpen : internalOpen;
+  const handleOpen = () => {
+    if (!isControlled) setInternalOpen(true);
+  };
+  const handleClose = () => {
+    if (isControlled) {
+      controlledOnClose?.();
+    } else {
+      setInternalOpen(false);
+    }
+  };
 
   const inputRef = useRef(null);
 
@@ -45,9 +64,13 @@ export default function AddUOM({ fetchItems }) {
 
   const handleSubmit = (values) => {
     const token = localStorage.getItem("token");
+    const payload = {
+      ...values,
+      Value: Math.max(0, Number(values.Value) || 0),
+    };
     fetch(`${BASE_URL}/UnitOfMeasure/CreateUnitOfMeasure`, {
       method: "POST",
-      body: JSON.stringify(values),
+      body: JSON.stringify(payload),
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
@@ -55,12 +78,16 @@ export default function AddUOM({ fetchItems }) {
     })
       .then((response) => response.json())
       .then((data) => {
-        if (data.statusCode == 200) {
-          toast.success(data.message);
-          setOpen(false);
-          fetchItems();
+        const sc = data.statusCode ?? data.StatusCode;
+        const msg = data.message ?? data.Message ?? "";
+        if (sc === 200) {
+          toast.success(msg);
+          const result = data.result ?? data.Result;
+          const newId = result?.id ?? result?.Id;
+          handleClose();
+          fetchItems?.(newId);
         } else {
-          toast.error(data.message);
+          toast.error(msg);
         }
       })
       .catch((error) => {
@@ -70,9 +97,11 @@ export default function AddUOM({ fetchItems }) {
 
   return (
     <>
-      <Button variant="outlined" onClick={handleOpen}>
-        + add new
-      </Button>
+      {!hideButton && (
+        <Button variant="outlined" onClick={handleOpen}>
+          + add new
+        </Button>
+      )}
       <Modal
         open={open}
         onClose={handleClose}
@@ -81,6 +110,7 @@ export default function AddUOM({ fetchItems }) {
       >
         <Box sx={style} className="bg-black">
           <Formik
+            key={String(open)}
             initialValues={{
               Description: "",
               Name: "",
@@ -121,6 +151,7 @@ export default function AddUOM({ fetchItems }) {
                         fullWidth
                         name="Name"
                         size="small"
+                        inputRef={inputRef}
                         error={touched.Name && Boolean(errors.Name)}
                         helperText={touched.Name && errors.Name}
                       />
@@ -156,13 +187,32 @@ export default function AddUOM({ fetchItems }) {
                       >
                         Value
                       </Typography>
-                      <Field
-                        as={TextField}
-                        fullWidth
-                        type="number"
-                        name="Value"
-                        size="small"
-                      />
+                      <Field name="Value">
+                        {({ field, meta, form }) => (
+                          <TextField
+                            fullWidth
+                            type="number"
+                            name={field.name}
+                            value={field.value === "" || field.value === undefined ? "" : field.value}
+                            onBlur={field.onBlur}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === "") {
+                                form.setFieldValue("Value", "");
+                                return;
+                              }
+                              const n = Number(raw);
+                              if (!Number.isNaN(n)) {
+                                form.setFieldValue("Value", Math.max(0, n));
+                              }
+                            }}
+                            size="small"
+                            inputProps={{ min: 0, step: "any" }}
+                            error={meta.touched && Boolean(meta.error)}
+                            helperText={meta.touched && meta.error}
+                          />
+                        )}
+                      </Field>
                     </Grid>
                     <Grid item xs={12} mt={1}>
                       <FormControlLabel
@@ -183,6 +233,7 @@ export default function AddUOM({ fetchItems }) {
                 </Box>
                 <Box display="flex" mt={2} justifyContent="space-between">
                   <Button
+                    type="button"
                     variant="contained"
                     color="error"
                     onClick={handleClose}

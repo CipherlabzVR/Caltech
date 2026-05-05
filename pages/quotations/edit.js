@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -38,6 +38,7 @@ export default function EditQuotation() {
   const [inquiry, setInquiry] = useState(null);
   const [isSavedFromChild, setIsSavedFromChild] = React.useState(false);
   const [formData, setFormData] = useState(null);
+  const tableDataRef = useRef(null);
 
 
   const fetchInquiryById = async () => {
@@ -82,37 +83,40 @@ export default function EditQuotation() {
   const handleClose = () => setOpen(false);
 
 
-  const handleSaveApprovedValues = () => {
-    if (!isSavedFromChild) {
-      toast.warning("Please Update Changes");
+  const handleSaveApprovedValues = async () => {
+    try {
+      if (tableDataRef.current?.saveLineItems) {
+        await tableDataRef.current.saveLineItems();
+      }
+    } catch (err) {
+      toast.error(err?.message || "Failed to save line items");
       return;
     }
     const token = localStorage.getItem("token");
-
+    const fd = formData || {};
     const bodyData = {
       InquiryID: inquiry.inquiryId,
       InqCode: inquiry.inquiryCode,
       WindowType: inquiry.windowType,
       OptionId: inquiry.optionId,
       InqOptionName: inquiry.optionName,
-      TotalUnits: inquiry.totalUnits,
-      UnitCost: inquiry.unitCost,
-      TotalCost: inquiry.totalCost,
-      ProfitPercentage: inquiry.profitPercentage,
-      UnitProfit: inquiry.unitProfit,
-      TotalProfit: inquiry.totalProfit,
-      SellingPrice: inquiry.sellingPrice,
-      Revanue: inquiry.revenue,
+      TotalUnits: inquiry.totalUnits ?? fd.totalUnits,
+      UnitCost: inquiry.unitCost ?? fd.unitCost,
+      TotalCost: inquiry.totalCost ?? fd.totalCost,
+      ProfitPercentage: inquiry.profitPercentage ?? fd.profitPercentage,
+      UnitProfit: inquiry.unitProfit ?? fd.profit,
+      TotalProfit: inquiry.totalProfit ?? fd.totalProfit,
+      SellingPrice: inquiry.sellingPrice ?? fd.sellingPrice,
+      Revanue: inquiry.revenue ?? fd.revenue,
       ApprovedStatus: 1,
-      ApprvedUnitCost: parseFloat(formData.unitCost) || 0,
-      ApprvedTotalCost: parseFloat(formData.totalCost) || 0,
-      ApprvedProfitPercentage:
-        parseFloat(formData.profitPercentage) || 0,
-      ApprvedUnitProfit: parseFloat(formData.profit) || 0,
-      ApprvedTotalProfit: parseFloat(formData.totalProfit) || 0,
-      ApprvedSellingPrice: parseFloat(formData.sellingPrice) || 0,
-      ApprvedRevanue: parseFloat(formData.revenue) || 0,
-      ApprvedTotalUnits: parseFloat(formData.totalUnits) || 0,
+      ApprvedUnitCost: parseFloat(fd.unitCost) || parseFloat(inquiry?.unitCost) || 0,
+      ApprvedTotalCost: parseFloat(fd.totalCost) || parseFloat(inquiry?.totalCost) || 0,
+      ApprvedProfitPercentage: parseFloat(fd.profitPercentage) || parseFloat(inquiry?.profitPercentage) || 0,
+      ApprvedUnitProfit: parseFloat(fd.profit) || parseFloat(inquiry?.unitProfit) || 0,
+      ApprvedTotalProfit: parseFloat(fd.totalProfit) || parseFloat(inquiry?.totalProfit) || 0,
+      ApprvedSellingPrice: parseFloat(fd.sellingPrice) || parseFloat(inquiry?.sellingPrice) || 0,
+      ApprvedRevanue: parseFloat(fd.revenue) || parseFloat(inquiry?.revenue) || 0,
+      ApprvedTotalUnits: parseFloat(fd.totalUnits) || parseFloat(inquiry?.totalUnits) || 0,
     };
 
     fetch(`${BASE_URL}/Inquiry/CreateOrUpdateInquirySummeryHeader`, {
@@ -127,13 +131,24 @@ export default function EditQuotation() {
       .then((data) => {
         if (data.statusCode == 200) {
           toast.success(data.message);
+          // Get pageSize and keyword from query parameters and pass them back
+          const queryParams = {};
+          if (router.query.pageSize) {
+            queryParams.pageSize = router.query.pageSize;
+          }
+          if (router.query.keyword) {
+            queryParams.keyword = router.query.keyword;
+          }
+          
           if (status == "1") {
             router.push({
               pathname: "/quotations/approved-quotation",
+              query: queryParams,
             });
           } else {
             router.push({
               pathname: "/quotations/pending-quotation",
+              query: queryParams,
             });
           }
         } else {
@@ -147,13 +162,24 @@ export default function EditQuotation() {
   };
 
   const navigateToBack = () => {
+    // Get pageSize and keyword from query parameters and pass them back
+    const queryParams = {};
+    if (router.query.pageSize) {
+      queryParams.pageSize = router.query.pageSize;
+    }
+    if (router.query.keyword) {
+      queryParams.keyword = router.query.keyword;
+    }
+    
     if (status == "1") {
       router.push({
         pathname: "/quotations/approved-quotation",
+        query: queryParams,
       });
     } else {
       router.push({
         pathname: "/quotations/pending-quotation",
+        query: queryParams,
       });
     }
   };
@@ -220,7 +246,7 @@ export default function EditQuotation() {
         <Grid item xs={12}>
           <Grid container>
             <Grid item xs={12} p={1} lg={5}>
-              <TableData onIsSavedChange={handleIsSavedChange} inquiry={inquiry} onSummaryChange={handleSetData} />
+              <TableData ref={tableDataRef} onIsSavedChange={handleIsSavedChange} inquiry={inquiry} onSummaryChange={handleSetData} />
               {inquiry && inquiry.windowType === 1 ? <SummarySleeve /> : ""}
             </Grid>
             <Grid item xs={12} p={1} lg={7}>

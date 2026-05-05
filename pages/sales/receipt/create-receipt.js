@@ -608,6 +608,18 @@ const ReceiptCreate = () => {
 
 
             <Grid item xs={12} my={2}>
+              <Box display="flex" alignItems="center" gap={1} mb={1}>
+                <Box
+                  sx={{
+                    width: 14,
+                    height: 14,
+                    backgroundColor: "#fff8e1",
+                    border: "1px solid #d6c897",
+                    borderRadius: "2px",
+                  }}
+                />
+                <Typography variant="body2">Sales Order</Typography>
+              </Box>
               <TableContainer component={Paper}>
                 <Table
                   size="small"
@@ -622,6 +634,7 @@ const ReceiptCreate = () => {
                         align="center"
                       ></TableCell>
                       <TableCell sx={{ color: "#fff" }}>Invoice No.</TableCell>
+                      <TableCell sx={{ color: "#fff" }}>Order No.</TableCell>
                       {/* <TableCell sx={{ color: "#fff" }}>Reference No.</TableCell> */}
                       <TableCell sx={{ color: "#fff" }}>Total Amount</TableCell>
                       <TableCell sx={{ color: "#fff" }}>
@@ -645,7 +658,10 @@ const ReceiptCreate = () => {
                           : "N/A"; // You can replace 'N/A' with another default value if necessary
 
                       return (
-                        <TableRow key={index}>
+                        <TableRow
+                          key={index}
+                          sx={invoice.isSalesOrder ? { backgroundColor: "#fff8e1" } : undefined}
+                        >
                           <TableCell>{index + 1}</TableCell>
                           <TableCell align="center">
                             <Checkbox
@@ -659,7 +675,8 @@ const ReceiptCreate = () => {
                               }
                             />
                           </TableCell>
-                          <TableCell>{invoice.invoiceNumber}</TableCell>
+                          <TableCell>{invoice.isSalesOrder ? "-" : invoice.invoiceNumber}</TableCell>
+                          <TableCell>{invoice.isSalesOrder ? invoice.invoiceNumber : "-"}</TableCell>
                           <TableCell>{invoice.totalInvoiceAmount}</TableCell>
                           <TableCell>
                             {invoice.totalInvoiceAmount -

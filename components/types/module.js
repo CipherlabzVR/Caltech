@@ -48,6 +48,10 @@ export const getModule = (type) => {
       return "Versions";
     case 24:
       return "Work Track";
+    case 25:
+      return "Matrimonial";
+    case 26:
+      return "Assets";
     default:
       return "N/A";
   }

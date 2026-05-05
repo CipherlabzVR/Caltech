@@ -9,6 +9,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
+import Box from "@mui/material/Box";
 import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Button } from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import BASE_URL from "Base/api";
@@ -31,9 +32,24 @@ export default function PendingQuotation() {
   const router = useRouter();
 
   const navigateToEdit = (quotation) => {
+    // Pass pageSize and keyword as query parameters
+    const queryParams = {
+      id: quotation ? quotation.inquiryID : "",
+      status: 0,
+      option: quotation ? quotation.optionId : ""
+    };
+    
+    // Add pageSize and keyword if they exist
+    if (pageSize && pageSize !== 10) {
+      queryParams.pageSize = pageSize;
+    }
+    if (searchTerm && searchTerm.trim()) {
+      queryParams.keyword = searchTerm.trim();
+    }
+    
     router.push({
       pathname: "/quotations/edit",
-      query: { id: quotation ? quotation.inquiryID : "", status: 0 ,option : quotation ? quotation.optionId : ""},
+      query: queryParams,
     });
   };
 
@@ -42,6 +58,15 @@ export default function PendingQuotation() {
     setSearchTerm(value);
     setPage(1);
     fetchQuotationList(1, value, pageSize);
+    
+    // Update URL with keyword parameter
+    const query = { ...router.query };
+    if (value && value.trim()) {
+      query.keyword = value.trim();
+    } else {
+      delete query.keyword;
+    }
+    router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
   };
 
   const handlePageChange = (event, value) => {
@@ -54,13 +79,24 @@ export default function PendingQuotation() {
     setPageSize(newSize);
     setPage(1);
     fetchQuotationList(1, searchTerm, newSize);
+    
+    // Update URL with pageSize parameter
+    const query = { ...router.query };
+    if (newSize && newSize !== 10) {
+      query.pageSize = newSize;
+    } else {
+      delete query.pageSize;
+    }
+    router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
   };
 
   const fetchQuotationList = async (page = 1, search = "", size = pageSize) => {
     try {
       const token = localStorage.getItem("token");
       const skip = (page - 1) * size;
-      const query = `${BASE_URL}/Inquiry/GetAllInquirySummeryHeaders?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}&approvedstatus=0`;
+      // API expects "null" as string when no search, or the actual search term
+      const searchParam = search && search.trim() ? encodeURIComponent(search.trim()) : "null";
+      const query = `${BASE_URL}/Inquiry/GetAllInquirySummeryHeaders?SkipCount=${skip}&MaxResultCount=${size}&Search=${searchParam}&approvedstatus=0`;
 
       const response = await fetch(query, {
         method: "GET",
@@ -81,8 +117,17 @@ export default function PendingQuotation() {
   };
 
   useEffect(() => {
-    fetchQuotationList();
-  }, []);
+    // Read pageSize and keyword from URL query parameters
+    if (router.isReady) {
+      const urlPageSize = router.query.pageSize ? parseInt(router.query.pageSize) : 10;
+      const urlKeyword = router.query.keyword || "";
+      
+      // Update state and fetch data
+      setPageSize(urlPageSize);
+      setSearchTerm(urlKeyword);
+      fetchQuotationList(1, urlKeyword, urlPageSize);
+    }
+  }, [router.isReady, router.query.pageSize, router.query.keyword]);
 
   if (!navigate) {
     return <AccessDenied />;
@@ -148,8 +193,20 @@ export default function PendingQuotation() {
                       <TableCell>{getWindowType(quotation.windowType)}</TableCell>
                       <TableCell>{formatDate(quotation.createdOn)}</TableCell>
                       <TableCell align="right">
-                        {update ? <Button onClick={() => navigateToEdit(quotation)} variant="outlined">Edit</Button> : ""}
-                        {remove ? <DeleteConfirmation fetchItems={fetchQuotationList} quotation={quotation} /> : ""}
+                        <Box display="flex" sx={{ gap: "10px", justifyContent: "flex-end" }}>
+                          {update ? <Button onClick={() => navigateToEdit(quotation)} variant="outlined" size="small">Edit</Button> : ""}
+                          {/* <Button
+                            onClick={() => router.push({
+                              pathname: "/quotations/comparison",
+                              query: { id: quotation ? quotation.inquiryID : "", option: quotation ? quotation.optionId : "", from: "pending-quotation" },
+                            })}
+                            variant="outlined"
+                            size="small"
+                          >
+                            Comparison
+                          </Button> */}
+                          {remove ? <DeleteConfirmation fetchItems={fetchQuotationList} quotation={quotation} /> : ""}
+                        </Box>
                       </TableCell>
                     </TableRow>
                   ))

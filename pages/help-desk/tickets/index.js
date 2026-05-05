@@ -121,6 +121,7 @@ export default function Tickets() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
   const [menuTicket, setMenuTicket] = useState(null);
+  const [ticketToDelete, setTicketToDelete] = useState(null);
   const [draggedTicket, setDraggedTicket] = useState(null);
   const [dragOverColumn, setDragOverColumn] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -236,6 +237,12 @@ export default function Tickets() {
     statusConfig.forEach((status) => {
       grouped[status.value] = [];
     });
+    
+    // Calculate date 2 months ago for closed tickets filter
+    const twoMonthsAgo = new Date();
+    twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+    twoMonthsAgo.setHours(0, 0, 0, 0);
+    
     // Use mergedTicketList instead of ticketList for optimistic updates
     const listToUse = mergedTicketList || ticketList;
     // Ensure listToUse is an array
@@ -270,9 +277,28 @@ export default function Tickets() {
           // Fallback to Open column to ensure ticket remains visible
           statusValue = 1;
         }
-        grouped[statusValue].push(ticket);
+        
+        // Filter closed tickets to show only last 2 months
+        if (statusValue === 4) { // 4 = Closed status
+          const closedDate = ticket.closedOn ? new Date(ticket.closedOn) : null;
+          const updatedDate = ticket.updatedOn ? new Date(ticket.updatedOn) : null;
+          const createdDate = ticket.createdOn ? new Date(ticket.createdOn) : null;
+          
+          // Use closedOn if available, otherwise fall back to updatedOn or createdOn
+          const ticketDate = closedDate || updatedDate || createdDate;
+          
+          // Only include closed tickets from the last 2 months
+          if (ticketDate && ticketDate >= twoMonthsAgo) {
+            grouped[statusValue].push(ticket);
+          }
+          // Skip closed tickets older than 2 months
+        } else {
+          // Add all non-closed tickets normally
+          grouped[statusValue].push(ticket);
+        }
       });
       console.log("Grouped tickets:", Object.keys(grouped).map(k => ({ status: k, count: grouped[k].length })));
+      console.log(`Closed tickets (last 2 months): ${grouped[4]?.length || 0}`);
     } else {
       console.warn("ticketList is not an array:", typeof listToUse, listToUse);
     }
@@ -680,9 +706,9 @@ export default function Tickets() {
   return (
     <>
       <ToastContainer />
-      <Box sx={{ p: { xs: 2, sm: 3 }, bgcolor: "#F5F7FA", minHeight: "100vh" }}>
+      <Box sx={{ p: { xs: 2, sm: 3 }, bgcolor: "#F5F7FA", height: "100vh", overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {/* Header */}
-        <Box sx={{ mb: 3 }}>
+        <Box sx={{ mb: 3, flexShrink: 0 }}>
           <Box
             sx={{
               display: "flex",
@@ -788,6 +814,8 @@ export default function Tickets() {
             gap: { xs: 1.25, sm: 1.5, md: 2 },
             overflowX: "auto",
             overflowY: "hidden",
+            flex: 1,
+            minHeight: 0,
             pb: { xs: 1.5, sm: 2 },
             px: { xs: 0.5, sm: 0 },
             mx: { xs: -0.5, sm: 0 },
@@ -805,7 +833,6 @@ export default function Tickets() {
                 bgcolor: "#A0AEC0",
               },
             },
-            // Smooth scrolling on mobile
             WebkitOverflowScrolling: "touch",
             scrollBehavior: "smooth",
           }}
@@ -827,6 +854,8 @@ export default function Tickets() {
                   width: { xs: "260px", sm: "280px", md: "300px", lg: "320px" },
                   maxWidth: { xs: "calc(100vw - 32px)", sm: "none" },
                   flexShrink: 0,
+                  display: "flex",
+                  flexDirection: "column",
                   bgcolor: status.columnBg,
                   borderRadius: { xs: 1.5, sm: 2 },
                   p: { xs: 1, sm: 1.25, md: 1.5 },
@@ -899,8 +928,8 @@ export default function Tickets() {
                     display: "flex",
                     flexDirection: "column",
                     gap: { xs: 0.75, sm: 1 },
-                    minHeight: { xs: "150px", sm: "180px", md: "200px" },
-                    maxHeight: { xs: "calc(100vh - 240px)", sm: "calc(100vh - 260px)", md: "calc(100vh - 280px)" },
+                    flex: 1,
+                    minHeight: 0,
                     overflowY: "auto",
                     overflowX: "hidden",
                     p: isDragOver ? { xs: 0.25, sm: 0.5 } : 0,
@@ -1417,17 +1446,29 @@ export default function Tickets() {
         {remove && menuTicket && (
           <>
             <Divider />
-            <MenuItem onClick={handleMenuClose}>
+            <MenuItem
+              onClick={() => {
+                setTicketToDelete(menuTicket);
+                handleMenuClose();
+              }}
+            >
               <DeleteIcon sx={{ mr: 1, fontSize: "1.2rem", color: "error.main" }} />
-              <DeleteConfirmationById
-                id={menuTicket.id}
-                controller="HelpDesk/DeleteTicket"
-                fetchItems={fetchTicketList}
-              />
+              Delete
             </MenuItem>
           </>
         )}
       </Menu>
+
+      {/* Delete confirmation (opened from context menu) */}
+      {ticketToDelete && (
+        <DeleteConfirmationById
+          id={ticketToDelete.id}
+          controller="HelpDesk/DeleteTicket"
+          fetchItems={fetchTicketList}
+          open={true}
+          onClose={() => setTicketToDelete(null)}
+        />
+      )}
 
       {/* View Modal */}
       {selectedTicket && (

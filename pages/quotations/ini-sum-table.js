@@ -14,6 +14,8 @@ import { formatCurrency } from "@/components/utils/formatHelper";
 export default function InitialSummaryTable({ inquiry }) {
   const [items, setItems] = useState([]);
   const [patternItem, setPatternItem] = useState({});
+  const [commissionItem, setCommissionItem] = useState({});
+  const [headerData, setHeaderData] = useState(null);
 
   const fetchItems = async (inquiryId, optionId, windowType) => {
     try {
@@ -33,7 +35,17 @@ export default function InitialSummaryTable({ inquiry }) {
       }
 
       const data = await response.json();
-      setItems(data.result);
+      const allItems = data.result || [];
+      
+      // Separate Commission from regular items
+      const commission = allItems.find((item) => item.itemName === "Commission");
+      if (commission) {
+        setCommissionItem(commission);
+      }
+      
+      // Filter out Commission from items list
+      const regularItems = allItems.filter((item) => item.itemName !== "Commission");
+      setItems(regularItems);
     } catch (error) {
       console.error("Error fetching Size List:", error);
     }
@@ -61,47 +73,49 @@ export default function InitialSummaryTable({ inquiry }) {
     }
   };
 
+  const fetchHeaderData = async (inquiryId, optionId, windowType) => {
+    try {
+      const response = await fetch(
+        `${BASE_URL}/Inquiry/GetInquirySummeryHeaderBYOptionID?InquiryID=${inquiryId}&OptionId=${optionId}&WindowType=${windowType}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      if (!response.ok) {
+        throw new Error("Failed to fetch Header Data");
+      }
+      const data = await response.json();
+      setHeaderData(data.result);
+    } catch (error) {
+      console.error("Error fetching Header Data:", error);
+    }
+  };
+
   useEffect(() => {
     if (inquiry) {
       fetchItems(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
       fetchPattern(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
+      fetchHeaderData(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
     }
   }, [inquiry]);
 
-  // Calculate totals
+  // Helper to safely convert values to numbers
   const toNumber = (val) => {
     const num = Number(val);
     return isNaN(num) ? 0 : num;
   };
 
-  const lines = [
-    ...items,
-    ...(patternItem && patternItem.itemName ? [patternItem] : []),
-  ];
-  const initialCost = lines.reduce((sum, line) => {
-    const qty = toNumber(line.quantity);
-    const unit = toNumber(line.unitCost);
-    return sum + unit * qty;
-  }, 0);
-  const approvedCost = lines.reduce((sum, line) => {
-    const qty = toNumber(line.approvedQuantity ?? line.quantity);
-    const unit = toNumber(line.approvedUnitCost ?? line.unitCost);
-    return sum + unit * qty;
-  }, 0);
-  const initialUnits = lines.reduce(
-    (sum, line) => sum + toNumber(line.quantity),
-    0
-  );
-  const approvedUnits = lines.reduce(
-    (sum, line) => sum + toNumber(line.approvedQuantity ?? line.quantity),
-    0
-  );
-  // User expects "Unit Cost" summary to be SUM of all unit costs (not average)
-  const initialUnitCost = lines.reduce((sum, line) => sum + toNumber(line.unitCost), 0);
-  const approvedUnitCost = lines.reduce(
-    (sum, line) => sum + toNumber(line.approvedUnitCost ?? line.unitCost),
-    0
-  );
+  // Get values directly from database (headerData)
+  const initialCost = toNumber(headerData?.totalCost);
+  const approvedCost = toNumber(headerData?.apprvedTotalCost);
+  const initialUnits = toNumber(headerData?.totalUnits);
+  const approvedUnits = toNumber(headerData?.apprvedTotalUnits);
+  const initialUnitCost = toNumber(headerData?.unitCost);
+  const approvedUnitCost = toNumber(headerData?.apprvedUnitCost);
 
   return (
     <>
@@ -167,6 +181,28 @@ export default function InitialSummaryTable({ inquiry }) {
                   : patternItem.approvedUnitCost}
               </TableCell>
             </TableRow>
+            {/* Commission Row - displayed separately */}
+            <TableRow
+              sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
+            >
+              <TableCell component="th" scope="row">
+                {commissionItem.itemName || "Commission"}
+              </TableCell>
+              <TableCell>1</TableCell>
+              <TableCell align="right">
+                {commissionItem.totalCost === null ? 0 : commissionItem.totalCost}
+              </TableCell>
+              <TableCell sx={{
+                background: "#a0b8f6",
+                fontWeight: 'bold',
+                color:
+                  commissionItem.approvedTotalCost !== commissionItem.totalCost ? "blue" : "#fff",
+              }}>
+                {commissionItem.approvedTotalCost === null
+                  ? 0
+                  : commissionItem.approvedTotalCost}
+              </TableCell>
+            </TableRow>
           </TableBody>
         </Table>
       </TableContainer>
@@ -225,66 +261,66 @@ export default function InitialSummaryTable({ inquiry }) {
             <TableRow>
               <TableCell sx={{ color: "#90a4ae" }}>Profit</TableCell>
               <TableCell align="right" sx={{ color: "#90a4ae" }}>
-                {formatCurrency(inquiry ? inquiry.unitProfit : 0)}
+                {formatCurrency(headerData ? headerData.unitProfit : 0)}
               </TableCell>
               <TableCell sx={{
                 background: "#a0b8f6", fontWeight: 'bold',
                 color:
-                  inquiry && (inquiry.approvedUnitProfit !== inquiry.unitProfit) ? "blue" : "#fff"
+                  headerData && (headerData.apprvedUnitProfit !== headerData.unitProfit) ? "blue" : "#fff"
               }}>
-                {formatCurrency(inquiry ? inquiry.approvedUnitProfit : 0)}
+                {formatCurrency(headerData ? headerData.apprvedUnitProfit : 0)}
               </TableCell>
             </TableRow>
             <TableRow>
               <TableCell sx={{ color: "#90a4ae" }}>Unit Price</TableCell>
               <TableCell align="right" sx={{ color: "#90a4ae" }}>
-                {formatCurrency(inquiry ? inquiry.sellingPrice : 0)}
+                {formatCurrency(headerData ? headerData.sellingPrice : 0)}
               </TableCell>
               <TableCell sx={{
                 background: "#a0b8f6", fontWeight: 'bold',
                 color:
-                  inquiry && (inquiry.approvedSellingPrice !== inquiry.sellingPrice) ? "blue" : "#fff"
+                  headerData && (headerData.apprvedSellingPrice !== headerData.sellingPrice) ? "blue" : "#fff"
               }}>
-                {formatCurrency(inquiry ? inquiry.approvedSellingPrice : 0)}
+                {formatCurrency(headerData ? headerData.apprvedSellingPrice : 0)}
               </TableCell>
             </TableRow>
             <TableRow>
               <TableCell sx={{ color: "#90a4ae" }}>Profit Percentage</TableCell>
               <TableCell align="right" sx={{ color: "#90a4ae" }}>
-                {formatCurrency(inquiry ? inquiry.profitPercentage : 0)}
+                {toNumber(headerData?.profitPercentage).toFixed(2)}
               </TableCell>
               <TableCell sx={{
                 background: "#a0b8f6", fontWeight: 'bold',
                 color:
-                  inquiry && (inquiry.approvedProfitPercentage !== inquiry.profitPercentage) ? "blue" : "#fff"
+                  headerData && (headerData.apprvedProfitPercentage !== headerData.profitPercentage) ? "blue" : "#fff"
               }}>
-                {formatCurrency(inquiry ? inquiry.approvedProfitPercentage : 0)}
+                {toNumber(headerData?.apprvedProfitPercentage).toFixed(2)}
               </TableCell>
             </TableRow>
             <TableRow>
               <TableCell sx={{ color: "#90a4ae" }}>Total Profit</TableCell>
               <TableCell align="right" sx={{ color: "#90a4ae" }}>
-                {formatCurrency(inquiry ? inquiry.totalProfit : 0)}
+                {formatCurrency(headerData ? headerData.totalProfit : 0)}
               </TableCell>
               <TableCell sx={{
                 background: "#a0b8f6", fontWeight: 'bold',
                 color:
-                  inquiry && (inquiry.approvedTotalProfit !== inquiry.totalProfit) ? "blue" : "#fff"
+                  headerData && (headerData.apprvedTotalProfit !== headerData.totalProfit) ? "blue" : "#fff"
               }}>
-                {formatCurrency(inquiry ? inquiry.approvedTotalProfit : 0)}
+                {formatCurrency(headerData ? headerData.apprvedTotalProfit : 0)}
               </TableCell>
             </TableRow>
             <TableRow>
               <TableCell sx={{ color: "#90a4ae" }}>Revenue</TableCell>
               <TableCell align="right" sx={{ color: "#90a4ae" }}>
-                {formatCurrency(inquiry ? inquiry.revenue : 0)}
+                {formatCurrency(headerData ? headerData.revanue : 0)}
               </TableCell>
               <TableCell sx={{
                 background: "#a0b8f6", fontWeight: 'bold',
                 color:
-                  inquiry && (inquiry.approvedRevenue !== inquiry.revenue)? "blue" : "#fff"
+                  headerData && (headerData.apprvedRevanue !== headerData.revanue) ? "blue" : "#fff"
               }}>
-                {formatCurrency(inquiry ? inquiry.approvedRevenue : 0)}
+                {formatCurrency(headerData ? headerData.apprvedRevanue : 0)}
               </TableCell>
             </TableRow>
           </TableBody>
