@@ -12,10 +12,10 @@ const LoadingButton = ({ loading, handleSubmit,disabled }) => {
       variant="contained"
       type="submit"
       onClick={handleClick}
-      disabled={disabled}
+      disabled={disabled || loading}
       startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
     >
-      {loading ? "Submitting..." : "Submit"}
+      {loading ? "Saving..." : "Save"}
     </Button>
   );
 };

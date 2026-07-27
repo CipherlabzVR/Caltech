@@ -7,10 +7,11 @@ import Typography from "@mui/material/Typography";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import PrintIcon from "@mui/icons-material/Print";
 import BASE_URL from "Base/api";
-import { ProjectNo } from "Base/catelogue";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import useLoggedUserCompanyLetterhead from "@/hooks/useLoggedUserCompanyLetterhead";
+import PrintCompanyLogo from "@/components/UIElements/Print/PrintCompanyLogo";
+import PrintPoweredByFooter from "@/components/UIElements/Print/PrintPoweredByFooter";
 
 const formatDisplayDate = (value) => {
   if (!value) return "-";
@@ -134,8 +135,6 @@ export default function StockCycleCountPrintPage() {
   const lineItems = data?.stockCycleCountLineDetails ?? data?.StockCycleCountLineDetails ?? [];
   const getReportByProductId = (productId) =>
     stockTransactionReport.filter((p) => p.productId === productId);
-
-  const companyLogoSrc = sidebarLogo || (ProjectNo === 1 ? "/images/cbass.png" : "/images/db-logo.png");
 
   const handleDownloadPDF = async () => {
     if (!contentRef.current) return;
@@ -278,9 +277,7 @@ export default function StockCycleCountPrintPage() {
               }}
             >
               <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
-                <Box sx={{ width: "135px" }}>
-                  <img src={companyLogoSrc} alt="Logo" style={{ width: "100%", height: "auto", objectFit: "contain" }} />
-                </Box>
+                <PrintCompanyLogo src={sidebarLogo} width="135px" />
                 <Box sx={{ textAlign: "right" }}>
                   <Typography sx={{ fontWeight: 700, fontSize: "1.25rem" }}>{companyData?.name || "Company"}</Typography>
                 </Box>
@@ -415,9 +412,7 @@ export default function StockCycleCountPrintPage() {
                 </>
               )}
 
-              <Typography sx={{ mt: 2, pt: 1, borderTop: "1px solid #d9d9d9", textAlign: "center", fontSize: "0.8rem", fontWeight: 600 }}>
-                Powered By : CBASS-AI
-              </Typography>
+              <PrintPoweredByFooter />
             </Box>
           ) : (
             <Box sx={{ minHeight: 200, display: "flex", justifyContent: "center", alignItems: "center" }}>

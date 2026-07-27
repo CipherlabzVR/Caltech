@@ -297,6 +297,10 @@ const ShipmentCreate = () => {
     setSelectedRows(updatedRows);
   };
 
+  const canContinueFromModal =
+    Array.isArray(selectedPOProducts) &&
+    selectedPOProducts.some((p) => p.isChecked === true);
+
   return (
     <>
       <ToastContainer />
@@ -653,7 +657,11 @@ const ShipmentCreate = () => {
             <Button variant="contained" color="error" onClick={handleClose}>
               CLOSE
             </Button>
-            <Button variant="contained" onClick={handleContinue}>
+            <Button
+              variant="contained"
+              onClick={handleContinue}
+              disabled={!canContinueFromModal}
+            >
               CONTINUE
             </Button>
           </Grid>

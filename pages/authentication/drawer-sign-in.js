@@ -66,6 +66,7 @@ const DrawerSignIn = () => {
         },
         body: JSON.stringify({
           ...formData,
+          Email: String(formData.Email ?? "").trim(),
           DeviceName: getDeviceName(),
         }),
       });

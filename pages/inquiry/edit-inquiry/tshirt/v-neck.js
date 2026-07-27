@@ -10,11 +10,14 @@ import {
   FormControlLabel,
   Checkbox,
   ButtonGroup,
+  Alert,
 } from "@mui/material";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import { useRouter } from "next/router";
 import BASE_URL from "Base/api";
 import { DashboardHeader } from "@/components/shared/dashboard-header";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function VNeck() {
   const router = useRouter();
@@ -30,6 +33,7 @@ export default function VNeck() {
   const [vNId, setVNId] = useState();
   const [cVNId, setCVNId] = useState();
   const [fCVNId, setFCVNId] = useState();
+  const [validationError, setValidationError] = useState("");
 
   const fetchInquiryById = async () => {
     try {
@@ -55,12 +59,36 @@ export default function VNeck() {
   };
 
   useEffect(() => {
-    if (inqId,optId) {
+    if (inqId && optId) {
       fetchInquiryById();
     }
-  }, []);
+  }, [inqId, optId]);
+
+  const getVNeckValidationMessage = () => {
+    if (!isVNChecked && !isCVNChecked && !isFCVNChecked) {
+      return "Please select a V Neck option before proceeding.";
+    }
+    if (isVNChecked && ![5, 6].includes(Number(selectedButtonVN))) {
+      return "Please select RIB or Fabric for V Neck.";
+    }
+    if (isCVNChecked && ![3, 4].includes(Number(selectedButtonCVN))) {
+      return "Please select Normal or 1/8 Line for Chinese V Neck.";
+    }
+    if (isFCVNChecked && ![3, 4].includes(Number(selectedButtonFCVN))) {
+      return "Please select Normal or 1/8 Line for Full Collar V Neck.";
+    }
+    return "";
+  };
 
   const handleSubmit = async () => {
+    const message = getVNeckValidationMessage();
+    if (message) {
+      setValidationError(message);
+      toast.error(message);
+      return;
+    }
+
+    setValidationError("");
     const firstRow = isVNChecked
       ? 7
       : isCVNChecked
@@ -114,6 +142,7 @@ export default function VNeck() {
 
   const handleVNChange = async (event, value) => {
     setIsVNChecked(event.target.checked);
+    setValidationError("");
     if (
       (isFCVNChecked == true || isCVNChecked == true) &&
       isVNChecked == false
@@ -124,6 +153,7 @@ export default function VNeck() {
   };
   const handleCVNChange = async (event, value) => {
     setIsCVNChecked(event.target.checked);
+    setValidationError("");
     if (
       (isFCVNChecked == true || isVNChecked == true) &&
       isCVNChecked == false
@@ -134,7 +164,7 @@ export default function VNeck() {
   };
   const handleFCVNChange = async (event, value) => {
     setIsFCVNChecked(event.target.checked);
-
+    setValidationError("");
     if (
       (isCVNChecked == true || isVNChecked == true) &&
       isFCVNChecked == false
@@ -145,12 +175,15 @@ export default function VNeck() {
   };
   const handleVNButtonClick = async (index) => {
     setSelectedButtonVN(index);
+    setValidationError("");
   };
   const handleCVNButtonClick = async (index) => {
     setSelectedButtonCVN(index);
+    setValidationError("");
   };
   const handleFCVNButtonClick = async (index) => {
     setSelectedButtonFCVN(index);
+    setValidationError("");
   };
   const fetchNeckTypes = async (inquiryId, optionId, windowType) => {
     try {
@@ -205,6 +238,7 @@ export default function VNeck() {
 
   return (
     <>
+      <ToastContainer />
       <DashboardHeader
         customerName={inquiry ? inquiry.customerName : ""}
         optionName={inquiry ? inquiry.optionName : ""}
@@ -239,6 +273,11 @@ export default function VNeck() {
         </Grid>
         <Grid item xs={12}>
           <Grid container>
+            {validationError && (
+              <Grid item xs={12} p={1}>
+                <Alert severity="error">{validationError}</Alert>
+              </Grid>
+            )}
             <Grid item p={1} xs={12} lg={3} md={6}>
               <Card
                 sx={{

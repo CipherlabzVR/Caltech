@@ -47,6 +47,33 @@ const timePeriods = [
   { value: 9, label: "Weekly" },
 ];
 
+/** HTML date inputs use YYYY-MM-DD; parsing with new Date(str) is UTC and can shift the local calendar day. */
+function parseDashboardDateInput(value) {
+  if (value == null || value === "") return null;
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    if (m) {
+      const y = Number(m[1]);
+      const mo = Number(m[2]) - 1;
+      const d = Number(m[3]);
+      const local = new Date(y, mo, d);
+      if (
+        local.getFullYear() !== y ||
+        local.getMonth() !== mo ||
+        local.getDate() !== d
+      ) {
+        return null;
+      }
+      return local;
+    }
+  }
+  const fallback = new Date(value);
+  return isNaN(fallback.getTime()) ? null : fallback;
+}
+
 export default function CRMDashboard() {
   const userEmail = localStorage.getItem("user");
   const userType = parseInt(localStorage.getItem("type")) || null;
@@ -238,60 +265,82 @@ export default function CRMDashboard() {
     }
   }, []);
 
-  const fetchDashboardDataBySalesPerson = useCallback(async (fromDate, toDate) => {
-    if (!selectedSalesPersonId || selectedSalesPersonId === "All") return;
+  const fetchDashboardDataBySalesPerson = useCallback(
+    async (fromDate, toDate, salesPersonIdOverride = null) => {
+      const spId =
+        salesPersonIdOverride != null
+          ? String(salesPersonIdOverride)
+          : selectedSalesPersonId;
+      if (!spId || spId === "All") return;
 
-    setLoading(true);
-    try {
-      const formatDate = (date) => {
-        if (typeof date === 'string') {
-          return date;
-        }
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      };
+      setLoading(true);
+      try {
+        const formatDate = (date) => {
+          if (typeof date === "string") {
+            return date;
+          }
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, "0");
+          const day = String(date.getDate()).padStart(2, "0");
+          return `${year}-${month}-${day}`;
+        };
 
-      let fromDateStr, toDateStr;
-      
-      if (fromDate && toDate) {
-        fromDateStr = formatDate(fromDate);
-        toDateStr = formatDate(toDate);
-      } else {
-        const today = new Date();
-        fromDateStr = formatDate(today);
-        toDateStr = formatDate(today);
-      }
+        let fromDateStr, toDateStr;
 
-      const response = await fetch(
-        `${BASE_URL}/CRMDashboard/GetDashboardDetailsBySalesPersonId?salesPersonId=${selectedSalesPersonId}&fromDate=${fromDateStr}&toDate=${toDateStr}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch dashboard data");
-      }
-
-      const data = await response.json();
-      if (data.statusCode === 200 && data.result) {
-        setDashboardData(data.result);
-        setIsAllSelected(false);
         if (fromDate && toDate) {
-          setDateRange({ from: fromDateStr, to: toDateStr });
+          fromDateStr = formatDate(fromDate);
+          toDateStr = formatDate(toDate);
+        } else {
+          const today = new Date();
+          fromDateStr = formatDate(today);
+          toDateStr = formatDate(today);
         }
+
+        const response = await fetch(
+          `${BASE_URL}/CRMDashboard/GetDashboardDetailsBySalesPersonId?salesPersonId=${encodeURIComponent(
+            spId
+          )}&fromDate=${fromDateStr}&toDate=${toDateStr}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch dashboard data");
+        }
+
+        const data = await response.json();
+        if (data.statusCode === 200 && data.result) {
+          const result = data.result;
+          const personMeta = salesPersons.find(
+            (p) => String(p.id) === String(spId)
+          );
+          setDashboardData((prev) => ({
+            ...result,
+            selectedSalesPersonId: String(spId),
+            isFilteredView: true,
+            salesPersonName: personMeta?.name || prev?.salesPersonName || "",
+            allData: prev?.allData,
+          }));
+          setIsAllSelected(false);
+          if (fromDate && toDate) {
+            setDateRange({ from: fromDateStr, to: toDateStr });
+          }
+        } else {
+          toast.error(data.message || "Failed to load sales person dashboard");
+        }
+      } catch (error) {
+        toast.error("Failed to load sales person dashboard");
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedSalesPersonId]);
+    },
+    [selectedSalesPersonId, salesPersons]
+  );
 
   const fetchAllSalesPersonsDashboard = useCallback(async (fromDate, toDate) => {
     setLoading(true);
@@ -310,14 +359,21 @@ export default function CRMDashboard() {
       let defaultFromDate, defaultToDate;
       
       if (fromDate) {
-        defaultFromDate = typeof fromDate === 'string' ? new Date(fromDate) : fromDate;
+        defaultFromDate = parseDashboardDateInput(fromDate);
       } else {
         defaultFromDate = new Date(today.getFullYear(), today.getMonth(), 1);
       }
       
       if (toDate) {
-        defaultToDate = typeof toDate === 'string' ? new Date(toDate) : toDate;
+        defaultToDate = parseDashboardDateInput(toDate);
       } else {
+        defaultToDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      }
+
+      if (!defaultFromDate) {
+        defaultFromDate = new Date(today.getFullYear(), today.getMonth(), 1);
+      }
+      if (!defaultToDate) {
         defaultToDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
       }
       
@@ -342,23 +398,35 @@ export default function CRMDashboard() {
       const data = await response.json();
       if (data.statusCode === 200 && data.result) {
         const allData = data.result;
-        const totalTarget = allData.salesPersons?.reduce((sum, person) => sum + (person.salesTarget || 0), 0) || 0;
-        const totalAchieved = allData.totalSales || 0;
-        
+        const salesPersonsList =
+          allData.salesPersons ?? allData.SalesPersons ?? [];
+        const totalTarget =
+          salesPersonsList.reduce(
+            (sum, person) =>
+              sum + (person.salesTarget ?? person.SalesTarget ?? 0),
+            0
+          ) || 0;
+        const totalAchieved = allData.totalSales ?? allData.TotalSales ?? 0;
+
         setDashboardData({
           salesTarget: totalTarget,
           achievedTarget: totalAchieved,
           range: null,
-          totalLeadsCount: (allData.totalWonLeads || 0) + (allData.totalLostLeads || 0),
-          wonLeadsCount: allData.totalWonLeads || 0,
-          lostLeadsCount: allData.totalLostLeads || 0,
-          newLeadsCount: 0,
-          contactedLeadsCount: 0,
-          qualifiedLeadsCount: 0,
-          proposalLeadsCount: 0,
-          negotiationLeadsCount: 0,
+          totalLeadsCount:
+            allData.totalLeadsCount ?? allData.TotalLeadsCount ?? 0,
+          wonLeadsCount: allData.totalWonLeads ?? allData.TotalWonLeads ?? 0,
+          lostLeadsCount: allData.totalLostLeads ?? allData.TotalLostLeads ?? 0,
+          newLeadsCount: allData.newLeadsCount ?? allData.NewLeadsCount ?? 0,
+          contactedLeadsCount:
+            allData.contactedLeadsCount ?? allData.ContactedLeadsCount ?? 0,
+          qualifiedLeadsCount:
+            allData.qualifiedLeadsCount ?? allData.QualifiedLeadsCount ?? 0,
+          proposalLeadsCount:
+            allData.proposalLeadsCount ?? allData.ProposalLeadsCount ?? 0,
+          negotiationLeadsCount:
+            allData.negotiationLeadsCount ?? allData.NegotiationLeadsCount ?? 0,
           isAllData: true,
-          allData: allData,
+          allData: { ...allData, salesPersons: salesPersonsList },
         });
         setIsAllSelected(true);
       }
@@ -367,6 +435,112 @@ export default function CRMDashboard() {
       setLoading(false);
     }
   }, []);
+
+  const formatLocalYmd = useCallback((date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }, []);
+
+  const handleSalesPersonSelect = useCallback(
+    (event) => {
+      const raw = event.target.value;
+      const value = raw === "All" ? "All" : String(raw);
+
+      setSelectedSalesPersonId(value);
+
+      if (value === "All") {
+        const from = parseDashboardDateInput(dateRange.from);
+        const to = parseDashboardDateInput(dateRange.to);
+        if (from && to) {
+          setLastFetchedDates({ from: dateRange.from, to: dateRange.to });
+          fetchAllSalesPersonsDashboard(from, to);
+        } else {
+          const today = new Date();
+          const fd = new Date(today.getFullYear(), today.getMonth(), 1);
+          const tdm = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+          const fs = formatLocalYmd(fd);
+          const ts = formatLocalYmd(tdm);
+          setDateRange({ from: fs, to: ts });
+          setLastFetchedDates({ from: fs, to: ts });
+          fetchAllSalesPersonsDashboard(fd, tdm);
+        }
+        return;
+      }
+
+      const person = salesPersons.find((p) => String(p.id) === value);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      let fromDate;
+      let toDate;
+
+      if (person?.range === 9) {
+        const dayOfWeek = today.getDay();
+        const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        fromDate = new Date(
+          today.getFullYear(),
+          today.getMonth(),
+          today.getDate() + mondayOffset
+        );
+        fromDate.setHours(0, 0, 0, 0);
+        toDate = new Date(
+          fromDate.getFullYear(),
+          fromDate.getMonth(),
+          fromDate.getDate() + 6
+        );
+        toDate.setHours(0, 0, 0, 0);
+      } else if (person?.range === 7) {
+        fromDate = new Date(today.getFullYear(), today.getMonth(), 1);
+        toDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        fromDate.setHours(0, 0, 0, 0);
+        toDate.setHours(0, 0, 0, 0);
+      } else if (person?.range === 8) {
+        fromDate = new Date(today.getFullYear(), 0, 1);
+        toDate = new Date(today.getFullYear(), 11, 31);
+        fromDate.setHours(0, 0, 0, 0);
+        toDate.setHours(0, 0, 0, 0);
+      } else {
+        fromDate = new Date(today);
+        toDate = new Date(today);
+      }
+
+      const fromStr = formatLocalYmd(fromDate);
+      const toStr = formatLocalYmd(toDate);
+      setDateRange({ from: fromStr, to: toStr });
+      setLastFetchedDates({ from: fromStr, to: toStr });
+
+      const cachedPerson = dashboardData?.allData?.salesPersons?.find(
+        (p) => String(p.salesPersonId) === value
+      );
+      if (cachedPerson) {
+        setDashboardData((prev) => ({
+          ...(prev || {}),
+          salesTarget: cachedPerson.salesTarget,
+          achievedTarget: cachedPerson.achievedAmount,
+          range: cachedPerson.range,
+          isAllData: false,
+          isFilteredView: true,
+          selectedSalesPersonId: value,
+          salesPersonName: cachedPerson.name,
+          allData: prev?.allData,
+        }));
+        setIsAllSelected(false);
+      }
+
+      fetchDashboardDataBySalesPerson(fromDate, toDate, value);
+    },
+    [
+      dateRange.from,
+      dateRange.to,
+      salesPersons,
+      dashboardData,
+      fetchAllSalesPersonsDashboard,
+      fetchDashboardDataBySalesPerson,
+      formatLocalYmd,
+    ]
+  );
 
   useEffect(() => {
     if (!isSalesPerson) {
@@ -543,8 +717,7 @@ export default function CRMDashboard() {
         setDatesInitialized(true);
         fetchDashboardData();
       }
-    } else if (!isSalesPerson) {
-      if (selectedSalesPersonId === "All") {
+    } else if (!isSalesPerson && selectedSalesPersonId === "All" && isInitialLoad) {
         const today = new Date();
         const fromDate = new Date(today.getFullYear(), today.getMonth(), 1);
         const toDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
@@ -560,118 +733,150 @@ export default function CRMDashboard() {
         setLastFetchedDates({ from: fromDateStr, to: toDateStr });
         fetchAllSalesPersonsDashboard(fromDate, toDate);
         setIsInitialLoad(false);
-      } else if (selectedSalesPersonId && selectedSalesPersonId !== "All") {
-        const selectedPerson = salesPersons.find(p => p.id === parseInt(selectedSalesPersonId));
-        if (selectedPerson && selectedPerson.range === 9) {
-          const today = new Date();
-          const dayOfWeek = today.getDay();
-          let mondayOffset;
-          if (dayOfWeek === 0) {
-            mondayOffset = -6;
-          } else {
-            mondayOffset = 1 - dayOfWeek;
-          }
-          const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + mondayOffset);
-          monday.setHours(0, 0, 0, 0);
-          const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
-          sunday.setHours(0, 0, 0, 0);
-          const formatDate = (date) => {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
-          };
-          const fromDateStr = formatDate(monday);
-          const toDateStr = formatDate(sunday);
-          setDateRange({ from: fromDateStr, to: toDateStr });
-          setLastFetchedDates({ from: fromDateStr, to: toDateStr });
-          fetchDashboardDataBySalesPerson(monday, sunday);
-        } else {
-          const today = new Date();
-          const formatDate = (date) => {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
-          };
-          let fromDate, toDate, fromDateStr, toDateStr;
-          if (selectedPerson && selectedPerson.range === 6) {
-            fromDate = today;
-            toDate = today;
-            fromDateStr = formatDate(today);
-            toDateStr = formatDate(today);
-          } else if (selectedPerson && selectedPerson.range === 7) {
-            fromDate = new Date(today.getFullYear(), today.getMonth(), 1);
-            toDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-            fromDateStr = formatDate(fromDate);
-            toDateStr = formatDate(toDate);
-          } else if (selectedPerson && selectedPerson.range === 8) {
-            fromDate = new Date(today.getFullYear(), 0, 1);
-            toDate = new Date(today.getFullYear(), 11, 31);
-            fromDateStr = formatDate(fromDate);
-            toDateStr = formatDate(toDate);
-          } else {
-            fromDate = today;
-            toDate = today;
-            fromDateStr = formatDate(today);
-            toDateStr = formatDate(today);
-          }
-          setDateRange({ from: fromDateStr, to: toDateStr });
-          setLastFetchedDates({ from: fromDateStr, to: toDateStr });
-          fetchDashboardDataBySalesPerson(fromDate, toDate);
-        }
-        setIsInitialLoad(false);
-      } else {
-        setDashboardData(null);
-      }
     }
-  }, [userId, isSalesPerson, selectedSalesPersonId, salesPersons, userData, userLoading, datesInitialized, isInitialLoad, currentTimePeriod, lastTimePeriod, dateRange.from, dateRange.to, fetchDashboardData, fetchDashboardDataBySalesPerson, fetchAllSalesPersonsDashboard]);
+  }, [userId, isSalesPerson, userData, userLoading, datesInitialized, isInitialLoad, currentTimePeriod, lastTimePeriod, dateRange.from, dateRange.to, fetchDashboardData, fetchAllSalesPersonsDashboard, selectedSalesPersonId]);
 
   useEffect(() => {
-    if (selectedSalesPersonId === "All" && dateRange.from && dateRange.to && !loading && !isInitialLoad) {
-      const datesChanged = dateRange.from !== lastFetchedDates.from || dateRange.to !== lastFetchedDates.to;
+    if (
+      selectedSalesPersonId === "All" &&
+      dateRange.from &&
+      dateRange.to &&
+      !isInitialLoad
+    ) {
+      const datesChanged =
+        dateRange.from !== lastFetchedDates.from ||
+        dateRange.to !== lastFetchedDates.to;
       if (datesChanged) {
-        const fromDate = new Date(dateRange.from);
-        const toDate = new Date(dateRange.to);
-        if (!isNaN(fromDate.getTime()) && !isNaN(toDate.getTime()) && fromDate <= toDate) {
+        const fromDate = parseDashboardDateInput(dateRange.from);
+        const toDate = parseDashboardDateInput(dateRange.to);
+        if (fromDate && toDate && fromDate <= toDate) {
           setLastFetchedDates({ from: dateRange.from, to: dateRange.to });
           fetchAllSalesPersonsDashboard(fromDate, toDate);
         }
       }
     }
-  }, [dateRange.from, dateRange.to]);
+  }, [
+    dateRange.from,
+    dateRange.to,
+    selectedSalesPersonId,
+    isInitialLoad,
+    lastFetchedDates.from,
+    lastFetchedDates.to,
+    fetchAllSalesPersonsDashboard,
+  ]);
 
   useEffect(() => {
-    if (isSalesPerson && userId && dateRange.from && dateRange.to && !loading && !isInitialLoad) {
+    if (isSalesPerson && userId && dateRange.from && dateRange.to && !isInitialLoad) {
       const datesChanged = dateRange.from !== lastFetchedDates.from || dateRange.to !== lastFetchedDates.to;
       if (datesChanged) {
-        const fromDate = new Date(dateRange.from);
-        const toDate = new Date(dateRange.to);
-        if (!isNaN(fromDate.getTime()) && !isNaN(toDate.getTime()) && fromDate <= toDate) {
+        const fromDate = parseDashboardDateInput(dateRange.from);
+        const toDate = parseDashboardDateInput(dateRange.to);
+        if (fromDate && toDate && fromDate <= toDate) {
           setLastFetchedDates({ from: dateRange.from, to: dateRange.to });
           fetchDashboardData(fromDate, toDate);
         }
       }
     }
-  }, [dateRange.from, dateRange.to, isSalesPerson, userId, loading, isInitialLoad, fetchDashboardData]);
+  }, [
+    dateRange.from,
+    dateRange.to,
+    isSalesPerson,
+    userId,
+    isInitialLoad,
+    lastFetchedDates.from,
+    lastFetchedDates.to,
+    fetchDashboardData,
+  ]);
 
   useEffect(() => {
-    if (selectedSalesPersonId && selectedSalesPersonId !== "All" && dateRange.from && dateRange.to && !loading && !isInitialLoad && dashboardData && !dashboardData.isAllData) {
-      const datesChanged = dateRange.from !== lastFetchedDates.from || dateRange.to !== lastFetchedDates.to;
+    if (
+      selectedSalesPersonId &&
+      selectedSalesPersonId !== "All" &&
+      dateRange.from &&
+      dateRange.to &&
+      !isInitialLoad
+    ) {
+      const datesChanged =
+        dateRange.from !== lastFetchedDates.from ||
+        dateRange.to !== lastFetchedDates.to;
       if (datesChanged) {
-        const fromDate = new Date(dateRange.from);
-        const toDate = new Date(dateRange.to);
-        if (!isNaN(fromDate.getTime()) && !isNaN(toDate.getTime()) && fromDate <= toDate) {
+        const fromDate = parseDashboardDateInput(dateRange.from);
+        const toDate = parseDashboardDateInput(dateRange.to);
+        if (fromDate && toDate && fromDate <= toDate) {
           setLastFetchedDates({ from: dateRange.from, to: dateRange.to });
-          fetchDashboardDataBySalesPerson(fromDate, toDate);
+          fetchDashboardDataBySalesPerson(
+            fromDate,
+            toDate,
+            selectedSalesPersonId
+          );
         }
       }
     }
-  }, [dateRange.from, dateRange.to]);
+  }, [
+    dateRange.from,
+    dateRange.to,
+    selectedSalesPersonId,
+    isInitialLoad,
+    lastFetchedDates.from,
+    lastFetchedDates.to,
+    fetchDashboardDataBySalesPerson,
+  ]);
 
   const calculatePercentage = (achieved, target) => {
     if (!target || target === 0) return 0;
     return Math.round((achieved / target) * 100);
+  };
+
+  const getSalesPersonPerformanceRows = () => {
+    if (isSalesPerson) {
+      return [];
+    }
+
+    if (selectedSalesPersonId === "All") {
+      return dashboardData?.allData?.salesPersons || [];
+    }
+
+    if (dashboardData?.allData?.salesPersons?.length) {
+      const fromAll = dashboardData.allData.salesPersons.filter(
+        (p) => String(p.salesPersonId) === String(selectedSalesPersonId)
+      );
+      if (fromAll.length > 0) {
+        return fromAll;
+      }
+    }
+
+    if (!dashboardData || selectedSalesPersonId === "All") {
+      return [];
+    }
+
+    const personMeta = salesPersons.find(
+      (p) => String(p.id) === String(selectedSalesPersonId)
+    );
+    const target = Number(dashboardData.salesTarget) || 0;
+    const achieved = Number(dashboardData.achievedTarget) || 0;
+    const remaining = Math.max(0, target - achieved);
+    let performancePercentage = 0;
+    if (target > 0) {
+      performancePercentage = (achieved / target) * 100;
+      if (performancePercentage > 100) {
+        performancePercentage = 100;
+      }
+    }
+
+    return [
+      {
+        salesPersonId: Number(selectedSalesPersonId),
+        name:
+          dashboardData.salesPersonName ||
+          personMeta?.name ||
+          "—",
+        salesTarget: target,
+        achievedAmount: achieved,
+        remainingAmount: remaining,
+        performancePercentage: Math.round(performancePercentage * 10) / 10,
+        range: dashboardData.range,
+      },
+    ];
   };
 
   const getProgressColor = (percentage) => {
@@ -704,12 +909,12 @@ export default function CRMDashboard() {
                 id="sales-person-select"
                 value={selectedSalesPersonId}
                 label="Select Sales Person"
-                onChange={(e) => setSelectedSalesPersonId(e.target.value)}
+                onChange={handleSalesPersonSelect}
                 size="small"
               >
                 <MenuItem value="All">All</MenuItem>
                 {salesPersons.map((person) => (
-                  <MenuItem key={person.id} value={person.id}>
+                  <MenuItem key={person.id} value={String(person.id)}>
                     {person.name} ({person.code})
                   </MenuItem>
                 ))}
@@ -737,6 +942,20 @@ export default function CRMDashboard() {
     dashboardData.achievedTarget || 0,
     dashboardData.salesTarget || 0
   );
+
+  const salesPersonPerformanceRows = getSalesPersonPerformanceRows();
+  const isAllSalesPersonsView = selectedSalesPersonId === "All";
+
+  const leadsOverviewStatusSum =
+    (Number(dashboardData.wonLeadsCount) || 0) +
+    (Number(dashboardData.lostLeadsCount) || 0) +
+    (Number(dashboardData.newLeadsCount) || 0) +
+    (Number(dashboardData.contactedLeadsCount) || 0) +
+    (Number(dashboardData.qualifiedLeadsCount) || 0) +
+    (Number(dashboardData.proposalLeadsCount) || 0) +
+    (Number(dashboardData.negotiationLeadsCount) || 0);
+  const leadsOverviewHasChartData =
+    (Number(dashboardData.totalLeadsCount) || 0) > 0 || leadsOverviewStatusSum > 0;
 
   return (
     <>
@@ -767,12 +986,12 @@ export default function CRMDashboard() {
                       id="sales-person-select"
                       value={selectedSalesPersonId}
                       label="Select Sales Person"
-                      onChange={(e) => setSelectedSalesPersonId(e.target.value)}
+                      onChange={handleSalesPersonSelect}
                       size="small"
                     >
                       <MenuItem value="All">All</MenuItem>
                       {salesPersons.map((person) => (
-                        <MenuItem key={person.id} value={person.id}>
+                        <MenuItem key={person.id} value={String(person.id)}>
                           {person.name} ({person.code})
                         </MenuItem>
                       ))}
@@ -780,7 +999,7 @@ export default function CRMDashboard() {
                   </FormControl>
                   {selectedSalesPersonId && selectedSalesPersonId !== "All" && (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                      {salesPersons.find(p => p.id === parseInt(selectedSalesPersonId))?.name || ""}
+                      {salesPersons.find(p => String(p.id) === String(selectedSalesPersonId))?.name || ""}
                     </Typography>
                   )}
                   {selectedSalesPersonId && selectedSalesPersonId !== "All" && dashboardData?.range && (
@@ -808,7 +1027,6 @@ export default function CRMDashboard() {
                         type="date"
                         value={dateRange.from}
                         onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value }))}
-                        disabled
                         InputLabelProps={{
                           shrink: true,
                         }}
@@ -822,7 +1040,6 @@ export default function CRMDashboard() {
                         type="date"
                         value={dateRange.to}
                         onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value }))}
-                        disabled
                         InputLabelProps={{
                           shrink: true,
                         }}
@@ -875,8 +1092,8 @@ export default function CRMDashboard() {
                               setDateRange({ from: formatDate(selectedDate), to: formatDate(sunday) });
                             } else {
                               toast.error("Please select a Monday");
-                              const currentMonday = new Date(dateRange.from);
-                              if (!isNaN(currentMonday.getTime())) {
+                              const currentMonday = parseDashboardDateInput(dateRange.from);
+                              if (currentMonday && !isNaN(currentMonday.getTime())) {
                                 const currentSunday = new Date(currentMonday);
                                 currentSunday.setDate(currentMonday.getDate() + 6);
                                 const formatDate = (date) => {
@@ -1020,8 +1237,8 @@ export default function CRMDashboard() {
                               setDateRange({ from: formatDate(selectedDate), to: formatDate(sunday) });
                             } else {
                               toast.error("Please select a Monday");
-                              const currentMonday = new Date(dateRange.from);
-                              if (!isNaN(currentMonday.getTime())) {
+                              const currentMonday = parseDashboardDateInput(dateRange.from);
+                              if (currentMonday && !isNaN(currentMonday.getTime())) {
                                 const currentSunday = new Date(currentMonday);
                                 currentSunday.setDate(currentMonday.getDate() + 6);
                                 const formatDate = (date) => {
@@ -1127,7 +1344,9 @@ export default function CRMDashboard() {
                 {formatCurrency(dashboardData.salesTarget || 0)}
               </Typography>
               <Typography variant="body2" sx={{ color: "rgba(255, 255, 255, 0.8)", fontSize: "0.9rem" }}>
-                {dashboardData.isAllData ? "Total Target" : (timePeriods.find(p => p.value === dashboardData.range)?.label || "N/A") + " Target"}
+                {isAllSalesPersonsView
+                  ? "Total Target"
+                  : `${timePeriods.find((p) => p.value === dashboardData.range)?.label || "N/A"} Target`}
               </Typography>
             </CardContent>
           </Card>
@@ -1236,10 +1455,13 @@ export default function CRMDashboard() {
               <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
                 Leads Overview
               </Typography>
-              {dashboardData && (dashboardData.totalLeadsCount === 0 || !dashboardData.totalLeadsCount) ? (
-                <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 350 }}>
-                  <Typography variant="body1" color="text.secondary">
-                    No leads available
+              {dashboardData && !leadsOverviewHasChartData ? (
+                <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 350, px: 2 }}>
+                  <Typography variant="body1" color="text.secondary" align="center">
+                    No leads in the selected date range
+                    {isAllSalesPersonsView
+                      ? " (active CRM leads created between From and To dates)."
+                      : "."}
                   </Typography>
                 </Box>
               ) : (
@@ -1441,7 +1663,7 @@ export default function CRMDashboard() {
           </Card>
         </Grid>
 
-        {dashboardData?.isAllData && dashboardData?.allData?.salesPersons && dashboardData.allData.salesPersons.length > 0 && (
+        {!isSalesPerson && salesPersonPerformanceRows.length > 0 && (
           <Grid item xs={12}>
             <Card
               sx={{
@@ -1455,7 +1677,11 @@ export default function CRMDashboard() {
                     Sales Persons Performance
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                    Overview of all sales persons performance metrics
+                    {isAllSalesPersonsView
+                      ? "Overview of all sales persons performance metrics"
+                      : `Performance metrics for ${
+                          salesPersonPerformanceRows[0]?.name || "selected sales person"
+                        }`}
                   </Typography>
                 </Box>
                 <TableContainer
@@ -1490,7 +1716,7 @@ export default function CRMDashboard() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {dashboardData.allData.salesPersons.map((person, index) => {
+                      {salesPersonPerformanceRows.map((person) => {
                         const performance = person.performancePercentage || 0;
                         const isComplete = performance >= 100;
                         const isOnTrack = performance >= 50;

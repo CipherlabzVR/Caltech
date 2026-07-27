@@ -30,6 +30,10 @@ import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import { formatDate } from "@/components/utils/formatHelper";
 import DeleteConfirmationWithReasonById from "@/components/UIElements/Modal/DeleteConfirmationWithReasonById";
 import EditNote from "@/components/UIElements/Modal/EditNote";
+import CustomerCredentialsPopup from "@/components/UIElements/Modal/CustomerCredentialsPopup";
+import { Button, Tooltip, CircularProgress } from "@mui/material";
+import PersonAddAlt1Icon from "@mui/icons-material/PersonAddAlt1";
+import { toast } from "react-toastify";
 import { getBridal, getEventType, getLocation, getPreferedTime } from "@/components/types/types";
 
 export default function PencilNotes() {
@@ -42,6 +46,37 @@ export default function PencilNotes() {
     const [pageSize, setPageSize] = useState(10);
     const [totalCount, setTotalCount] = useState(0);
     const [tabIndex, setTabIndex] = useState(0);
+    const [credsOpen, setCredsOpen] = useState(false);
+    const [credentials, setCredentials] = useState(null);
+    const [generatingId, setGeneratingId] = useState(null);
+
+    // Generates (or fetches existing) portal login for a pencil-note customer.
+    // (Also available right after advance payment is added on Payment Approval.)
+    const handleGenerateLogin = async (item) => {
+        try {
+            setGeneratingId(item.id);
+            const token = localStorage.getItem("token");
+            const res = await fetch(`${BASE_URL}/ReservedCustomer/GenerateLogin`, {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    reservationId: item.id,
+                    mobileNo: item.mobileNo,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.message || "Failed to generate login");
+            setCredentials(data?.result || null);
+            setCredsOpen(true);
+        } catch (e) {
+            toast.error(e.message || "Failed to generate login");
+        } finally {
+            setGeneratingId(null);
+        }
+    };
 
     const handleTabChange = (event, newValue) => {
         setTabIndex(newValue);
@@ -167,6 +202,22 @@ export default function PencilNotes() {
                                             {tabIndex === 0 ? <TableCell align="right">
                                                 <Box display="flex" justifyContent="end" gap={1}>
                                                     {update ? <EditNote note={item} fetchItems={fetchResList} /> : ""}
+                                                    <Tooltip title="Generate / open customer portal login">
+                                                        <span>
+                                                            <Button
+                                                                size="small"
+                                                                variant="outlined"
+                                                                onClick={() => handleGenerateLogin(item)}
+                                                                disabled={generatingId === item.id}
+                                                                startIcon={generatingId === item.id
+                                                                    ? <CircularProgress size={14} />
+                                                                    : <PersonAddAlt1Icon fontSize="small" />}
+                                                                sx={{ textTransform: "none" }}
+                                                            >
+                                                                Login
+                                                            </Button>
+                                                        </span>
+                                                    </Tooltip>
                                                     {remove ? <DeleteConfirmationWithReasonById id={item.id} controller={controller} fetchItems={fetchResList} /> : ""}
                                                 </Box>
                                             </TableCell> : ""}
@@ -199,6 +250,12 @@ export default function PencilNotes() {
                     </TableContainer>
                 </Grid>
             </Grid>
+            <CustomerCredentialsPopup
+                open={credsOpen}
+                onClose={() => setCredsOpen(false)}
+                credentials={credentials}
+                variant="fresh"
+            />
         </>
     );
 }

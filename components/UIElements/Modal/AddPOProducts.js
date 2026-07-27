@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   IconButton,
   Modal,
@@ -21,6 +21,7 @@ import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import BASE_URL from "Base/api";
 import { formatCurrency } from "@/components/utils/formatHelper";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 
 const style = {
   position: "absolute",
@@ -36,13 +37,18 @@ const style = {
 };
 
 export default function AddPOProducts({ item, fetchPO, fetchPOTally }) {
+  const { data: isSupplierInvolvedToShipment } = IsAppSettingEnabled(
+    "IsSupplierInvolvedToShipment"
+  );
+  const showSupplierFields = isSupplierInvolvedToShipment === true;
+
   const [open, setOpen] = React.useState(false);
   const [submittingStatus, setSubmittingStatus] = useState({});
   const [totalUnitPrice, setTotalUnitPrice] = useState(null);
   const [totalAdditionalCost, setTotalAdditionalCost] = useState(null);
   const [totalFreightDutyCost, setTotalFreightDutyCost] = useState(null);
+  const [totalLocalTransportCost, setTotalLocalTransportCost] = useState(null);
   const [averageUnitPrice, setAverageUnitPrice] = useState(null);
-  const [averageFreightDutyCost, setAverageFreightDutyCost] = useState(null);
   const [shipments, setShipments] = useState([]);
   const qty = item.poQty - item.orderedQty;
   const [remaining] = useState(qty);
@@ -100,14 +106,17 @@ export default function AddPOProducts({ item, fetchPO, fetchPOTally }) {
         (sum, shipment) => sum + (shipment.shipmentFreightDutyCost || 0),
         0
       );
+      const localTransportCost = data.result.reduce(
+        (sum, shipment) => sum + (shipment.shipmentLocalTransportCost || 0),
+        0
+      );
 
       const avgUnitPrice = unitPrice / count;
-      const avgFDCost = (additionaCost + freightDutyCost);
       setTotalUnitPrice(unitPrice);
       setTotalAdditionalCost(additionaCost);
       setTotalFreightDutyCost(freightDutyCost);
+      setTotalLocalTransportCost(localTransportCost);
       setAverageUnitPrice(avgUnitPrice);
-      setAverageFreightDutyCost(avgFDCost);
     } catch (error) {
       console.error("Error fetching GSM List:", error);
     }
@@ -116,6 +125,21 @@ export default function AddPOProducts({ item, fetchPO, fetchPOTally }) {
   useEffect(() => {
     fetchShipments();
   }, []);
+
+  const averageFreightDutyCost = useMemo(() => {
+    const additional = totalAdditionalCost || 0;
+    const freightDuty = totalFreightDutyCost || 0;
+    const localTransport = totalLocalTransportCost || 0;
+    return showSupplierFields
+      ? additional + freightDuty + localTransport
+      : additional + freightDuty;
+  }, [
+    totalAdditionalCost,
+    totalFreightDutyCost,
+    totalLocalTransportCost,
+    showSupplierFields,
+  ]);
+
   const handleClose = () => {
     setOpen(false);
     fetchPO();
@@ -198,8 +222,13 @@ export default function AddPOProducts({ item, fetchPO, fetchPOTally }) {
                         <TableCell>Shipment Received Qty</TableCell>
                         <TableCell>PO Received Qty</TableCell>
                         <TableCell align="right">Unit Price</TableCell>
-                        <TableCell align="right">Additional Cost</TableCell>
+                        <TableCell align="right">
+                          {showSupplierFields ? "Overseas Cost" : "Additional Cost"}
+                        </TableCell>
                         <TableCell align="right">Freight Duty Cost</TableCell>
+                        {showSupplierFields ? (
+                          <TableCell align="right">Local Transport Cost</TableCell>
+                        ) : null}
                         <TableCell align="right">Action</TableCell>
                       </TableRow>
                     </TableHead>
@@ -271,6 +300,15 @@ export default function AddPOProducts({ item, fetchPO, fetchPOTally }) {
                                 )}
                               </Typography>
                             </TableCell>
+                            {showSupplierFields ? (
+                              <TableCell align="right">
+                                <Typography>
+                                  {formatCurrency(
+                                    shipment.shipmentLocalTransportCost
+                                  )}
+                                </Typography>
+                              </TableCell>
+                            ) : null}
                             <TableCell align="right">
                               <Button
                                 size="small"
@@ -304,6 +342,13 @@ export default function AddPOProducts({ item, fetchPO, fetchPOTally }) {
                             {formatCurrency(totalFreightDutyCost || 0)}
                           </Typography>
                         </TableCell>
+                        {showSupplierFields ? (
+                          <TableCell>
+                            <Typography align="right" variant="h6">
+                              {formatCurrency(totalLocalTransportCost || 0)}
+                            </Typography>
+                          </TableCell>
+                        ) : null}
                       </TableRow>
                     </TableBody>
                   </Table>

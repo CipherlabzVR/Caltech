@@ -9,7 +9,8 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
-import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select } from "@mui/material";
+import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Tooltip, IconButton, Box } from "@mui/material";
+import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import { ToastContainer } from "react-toastify";
 import BASE_URL from "Base/api";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
@@ -80,6 +81,19 @@ export default function DayEnd() {
   useEffect(() => {
     fetchDayEndList();
   }, []);
+
+  const openDayEndPrintPopup = (item) => {
+    const query = new URLSearchParams({
+      id: String(item.id ?? ""),
+      documentNumber: item.documentNo ?? "",
+    });
+
+    window.open(
+      `/sales/day-end/print?${query.toString()}`,
+      `day-end-print-${item.id}`,
+      "popup=yes,width=1200,height=900,scrollbars=yes,resizable=yes"
+    );
+  };
 
   if (!navigate) {
     return <AccessDenied />;
@@ -161,14 +175,29 @@ export default function DayEnd() {
                       <TableCell>{item.userName}</TableCell>
                       <TableCell>{item.remark}</TableCell>
                       <TableCell align="right">
-                        {remove ? (
-                          <DeleteDayEndConfirmation
-                            id={item.id}
-                            fetchItems={fetchDayEndList}
-                          />
-                        ) : (
-                          ""
-                        )}
+                        <Box display="flex" justifyContent="end" gap={1}>
+                          {print ? (
+                            <Tooltip title="Print (Default)" placement="top">
+                              <IconButton
+                                aria-label="print default"
+                                size="small"
+                                onClick={() => openDayEndPrintPopup(item)}
+                              >
+                                <LocalPrintshopIcon color="action" fontSize="medium" />
+                              </IconButton>
+                            </Tooltip>
+                          ) : (
+                            ""
+                          )}
+                          {remove ? (
+                            <DeleteDayEndConfirmation
+                              id={item.id}
+                              fetchItems={fetchDayEndList}
+                            />
+                          ) : (
+                            ""
+                          )}
+                        </Box>
                       </TableCell>
                     </TableRow>
                   ))

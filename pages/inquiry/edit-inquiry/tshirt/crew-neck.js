@@ -10,11 +10,14 @@ import {
   FormControlLabel,
   Checkbox,
   ButtonGroup,
+  Alert,
 } from "@mui/material";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import { useRouter } from "next/router";
 import BASE_URL from "Base/api";
 import { DashboardHeader } from "@/components/shared/dashboard-header";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function CrewNeck() {
   const router = useRouter();
@@ -27,6 +30,7 @@ export default function CrewNeck() {
   const [cNId, setCNId] = useState();
   const [selectedButtonCN, setSelectedButtonCN] = useState(0);
   const [isCNChecked, setIsCNChecked] = useState(false);
+  const [validationError, setValidationError] = useState("");
 
   const fetchInquiryById = async () => {
     try {
@@ -52,64 +56,110 @@ export default function CrewNeck() {
   };
 
   useEffect(() => {
-    if (inqId,optId) {
+    if (inqId && optId) {
       fetchInquiryById();
     }
-  }, []);
+  }, [inqId, optId]);
+
+  const deleteNeckTypeById = async (id) => {
+    if (!id) return;
+    const response = await fetch(
+      `${BASE_URL}/InquiryNeck/DeleteNeckTypes?id=${id}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    if (!response.ok) {
+      throw new Error("Failed to delete neck type");
+    }
+  };
+
+  const deselectCrewNeckOption = async (option) => {
+    if (option === "cccn" && isCCCNChecked && cCCNId) {
+      await deleteNeckTypeById(cCCNId);
+      setIsCCCNChecked(false);
+      setCCCNId(undefined);
+      setSelectedButtonCCCN(0);
+    }
+    if (option === "cn" && isCNChecked && cNId) {
+      await deleteNeckTypeById(cNId);
+      setIsCNChecked(false);
+      setCNId(undefined);
+      setSelectedButtonCN(0);
+    }
+  };
+
+  const getCrewNeckValidationMessage = () => {
+    if (!isCCCNChecked && !isCNChecked) {
+      return "Please select a Crew Neck option before proceeding.";
+    }
+    if (isCCCNChecked && ![3, 4].includes(Number(selectedButtonCCCN))) {
+      return "Please select Normal or 1/8 Line for Chinese Collar Crew Neck.";
+    }
+    if (isCNChecked && ![5, 6].includes(Number(selectedButtonCN))) {
+      return "Please select RIB or Fabric for Crew Neck.";
+    }
+    return "";
+  };
 
   const handleCCCNChange = async (event, value) => {
-    setIsCCCNChecked(event.target.checked);
     const isChecked = event.target.checked;
+    setIsCCCNChecked(isChecked);
+    setValidationError("");
+
     if (isChecked) {
-      const response = await fetch(
-        `${BASE_URL}/InquiryNeck/AddOrUpdateNeckType`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            InquiryID: inquiry.inquiryId,
-            InqCode: inquiry.inquiryCode,
-            OptionId: inquiry.optionId,
-            InqOptionName: inquiry.optionName,
-            WindowType: inquiry.windowType,
-            NecKTypes: 2,
-            NeckFirstRows: 5,
-            Neck2ndRowS: 9,
-            Neck3rdRowS: 6,
-            POLOlength: String(0),
-            POLOWidth: String(0),
-            POLOButton: String(0),
-          }),
-        }
-      );
+      try {
+        await deselectCrewNeckOption("cn");
+        const response = await fetch(
+          `${BASE_URL}/InquiryNeck/AddOrUpdateNeckType`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              InquiryID: inquiry.inquiryId,
+              InqCode: inquiry.inquiryCode,
+              OptionId: inquiry.optionId,
+              InqOptionName: inquiry.optionName,
+              WindowType: inquiry.windowType,
+              NecKTypes: 2,
+              NeckFirstRows: 5,
+              Neck2ndRowS: 9,
+              Neck3rdRowS: 6,
+              POLOlength: String(0),
+              POLOWidth: String(0),
+              POLOButton: String(0),
+            }),
+          }
+        );
 
-      if (!response.ok) {
-        throw new Error("Failed to delete fabric");
+        if (!response.ok) {
+          throw new Error("Failed to save neck type");
+        }
+        fetchNeckTypes(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
+      } catch (error) {
+        console.error(error);
+        setIsCCCNChecked(false);
       }
-      fetchNeckTypes(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
     } else {
-      const response = await fetch(
-        `${BASE_URL}/InquiryNeck/DeleteNeckTypes?id=${value}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to delete fabric");
+      try {
+        await deleteNeckTypeById(value);
+        fetchNeckTypes(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
+      } catch (error) {
+        console.error(error);
+        setIsCCCNChecked(true);
       }
-      fetchNeckTypes(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
     }
   };
 
   const handleCCCNButtonClick = async (index) => {
+    setValidationError("");
     setSelectedButtonCCCN(index === selectedButtonCCCN ? null : index);
     if (selectedButtonCCCN === index) {
       setSelectedButtonCCCN(null);
@@ -167,55 +217,58 @@ export default function CrewNeck() {
   };
 
   const handleCNChange = async (event, value) => {
-    setIsCNChecked(event.target.checked);
     const isChecked = event.target.checked;
-    if (isChecked) {
-      const response = await fetch(
-        `${BASE_URL}/InquiryNeck/AddOrUpdateNeckType`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            InquiryID: inquiry.inquiryId,
-            InqCode: inquiry.inquiryCode,
-            OptionId: inquiry.optionId,
-            InqOptionName: inquiry.optionName,
-            WindowType: inquiry.windowType,
-            NecKTypes: 2,
-            NeckFirstRows: 6,
-            Neck2ndRowS: 9,
-            Neck3rdRowS: 6,
-            POLOlength: String(0),
-            POLOWidth: String(0),
-            POLOButton: String(0),
-          }),
-        }
-      );
+    setIsCNChecked(isChecked);
+    setValidationError("");
 
-      if (!response.ok) {
-        throw new Error("Failed to delete fabric");
+    if (isChecked) {
+      try {
+        await deselectCrewNeckOption("cccn");
+        const response = await fetch(
+          `${BASE_URL}/InquiryNeck/AddOrUpdateNeckType`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              InquiryID: inquiry.inquiryId,
+              InqCode: inquiry.inquiryCode,
+              OptionId: inquiry.optionId,
+              InqOptionName: inquiry.optionName,
+              WindowType: inquiry.windowType,
+              NecKTypes: 2,
+              NeckFirstRows: 6,
+              Neck2ndRowS: 9,
+              Neck3rdRowS: 6,
+              POLOlength: String(0),
+              POLOWidth: String(0),
+              POLOButton: String(0),
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to save neck type");
+        }
+        fetchNeckTypes(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
+      } catch (error) {
+        console.error(error);
+        setIsCNChecked(false);
       }
     } else {
-      const response = await fetch(
-        `${BASE_URL}/InquiryNeck/DeleteNeckTypes?id=${value}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to delete fabric");
+      try {
+        await deleteNeckTypeById(value);
+        fetchNeckTypes(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
+      } catch (error) {
+        console.error(error);
+        setIsCNChecked(true);
       }
     }
   };
   const handleCNButtonClick = async (index) => {
+    setValidationError("");
     setSelectedButtonCN(index === selectedButtonCN ? null : index);
     if (selectedButtonCN === index) {
       setSelectedButtonCN(null);
@@ -299,6 +352,37 @@ export default function CrewNeck() {
         (item) => item.neckFirstRows === 6
       );
 
+      setIsCCCNChecked(false);
+      setIsCNChecked(false);
+      setCCCNId(undefined);
+      setCNId(undefined);
+      setSelectedButtonCCCN(0);
+      setSelectedButtonCN(0);
+
+      if (resultWithNeckFirstRows5 && resultWithNeckFirstRows6) {
+        const keep =
+          resultWithNeckFirstRows5.id >= resultWithNeckFirstRows6.id
+            ? resultWithNeckFirstRows5
+            : resultWithNeckFirstRows6;
+        const remove =
+          keep.id === resultWithNeckFirstRows5.id
+            ? resultWithNeckFirstRows6
+            : resultWithNeckFirstRows5;
+
+        await deleteNeckTypeById(remove.id);
+
+        if (keep.neckFirstRows === 5) {
+          setCCCNId(keep.id);
+          setIsCCCNChecked(true);
+          setSelectedButtonCCCN(keep.neck2ndRowS);
+        } else {
+          setCNId(keep.id);
+          setIsCNChecked(true);
+          setSelectedButtonCN(keep.neck2ndRowS);
+        }
+        return;
+      }
+
       if (resultWithNeckFirstRows5) {
         setCCCNId(resultWithNeckFirstRows5.id);
         setIsCCCNChecked(true);
@@ -315,11 +399,20 @@ export default function CrewNeck() {
   };
 
   const handleSubmit = async () => {
+    const message = getCrewNeckValidationMessage();
+    if (message) {
+      setValidationError(message);
+      toast.error(message);
+      return;
+    }
+
+    setValidationError("");
     router.push(`/inquiry/edit-inquiry/tshirt/sleeve/?id=${inquiry ? inquiry.inquiryId : ""}&neck=2&option=${inquiry ? inquiry.optionId: ""}`);
   };
 
   return (
     <>
+      <ToastContainer />
       <DashboardHeader
         customerName={inquiry ? inquiry.customerName : ""}
         optionName={inquiry ? inquiry.optionName : ""}
@@ -352,6 +445,11 @@ export default function CrewNeck() {
             </Button>
           </Box>
         </Grid>
+        {validationError && (
+          <Grid item xs={12} p={1}>
+            <Alert severity="error">{validationError}</Alert>
+          </Grid>
+        )}
         <Grid item xs={12}>
           <Grid container>
             <Grid item p={1} xs={12} lg={3} md={6}>

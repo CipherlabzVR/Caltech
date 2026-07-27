@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
-import { ProjectNo } from "Base/catelogue";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
@@ -18,6 +17,7 @@ import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
 import useLoggedUserCompanyLetterhead from "@/hooks/useLoggedUserCompanyLetterhead";
+import PrintPoweredByFooter from "@/components/UIElements/Print/PrintPoweredByFooter";
 
 export default function CustomerQuote() {
   const router = useRouter();
@@ -312,7 +312,7 @@ export default function CustomerQuote() {
         <Box
           sx={{
             display: "flex",
-            justifyContent: "space-between",
+            justifyContent: "flex-end",
             alignItems: "center",
             width: "100%",
             marginBottom: 1,
@@ -320,13 +320,6 @@ export default function CustomerQuote() {
             borderBottom: "2px solid #e0e0e0",
           }}
         >
-          <Box>
-            <img
-              src={ProjectNo === 1 ? "/images/cbass-2.png" : "/images/DBlogo.png"}
-              alt="Logo"
-              style={{ maxWidth: "180px", height: "auto" }}
-            />
-          </Box>
           <Box
             sx={{
               display: "flex",
@@ -379,13 +372,15 @@ export default function CustomerQuote() {
             marginBottom: 4,
             position: "relative",
             backgroundColor: "white",
-            backgroundImage: letterheadImage 
+            backgroundImage: letterheadImage
               ? { xs: "none", sm: `url('${letterheadImage}')` }
-              : { xs: "none", sm: "url('/images/quotation/cbassletter.jpg')" },
-            backgroundSize: "cover",
+              : "none",
+            backgroundSize: letterheadImage ? "cover" : undefined,
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
-            paddingTop: { xs: "10mm", sm: "60mm", md: "70mm" },
+            paddingTop: letterheadImage
+              ? { xs: "10mm", sm: "60mm", md: "70mm" }
+              : { xs: "10mm", sm: "15mm", md: "20mm" },
             paddingX: { xs: "5mm", sm: "5mm", md: "30mm" },
             paddingBottom: { xs: "10mm", sm: "25mm", md: "30mm" },
             boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
@@ -642,6 +637,7 @@ export default function CustomerQuote() {
                   </Typography>
                 </Box>
               </Box>
+              <PrintPoweredByFooter />
             </Box>
           ) : (
             <Box

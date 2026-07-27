@@ -30,6 +30,7 @@ import GetAllSalesPersons from "@/components/utils/GetAllSalesPerson";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
+import DescriptionIcon from "@mui/icons-material/Description";
 import ShareReports from "@/components/UIElements/Modal/Reports/ShareReports";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
@@ -40,12 +41,11 @@ import { Report } from "Base/report";
 
 const GRN = () => {
   const cId = sessionStorage.getItem("category")
-  const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+  const { navigate, create, update, remove, print, customPrint, whatsAppShare } = IsPermissionEnabled(cId);
   const name = localStorage.getItem("name");
   const { data: IsSupplierSalesRef } = IsAppSettingEnabled(
     "IsSupplierSalesRef"
   );
-  const { data: isCustomReportsEnabled } = IsAppSettingEnabled("IsCustomReportsEnabled");
   const { data: ReportName } = GetReportSettingValueByName("GoodReceivedNote");
   const router = useRouter();
   const { data: salesPersonList } = GetAllSalesPersons();
@@ -140,7 +140,7 @@ const GRN = () => {
         <Grid item xs={12} lg={4} order={{ xs: 2, lg: 1 }}>
           <Search className="search-form">
             <StyledInputBase
-              placeholder="Search here.."
+              placeholder="Search by GRN No or Supplier.."
               inputProps={{ "aria-label": "search" }}
               value={search}
               onChange={handleSearchChange}
@@ -212,26 +212,29 @@ const GRN = () => {
                         <TableCell>{item.remark}</TableCell>
                         <TableCell align="right">
                           <Box display="flex" justifyContent="end" gap={1}>
-                            <ShareReports url={whatsapp} mobile={item.supplierMobileNo} />
-                            {isCustomReportsEnabled ? (
-                              print ? <Tooltip title="Print" placement="top">
+                            {whatsAppShare ? (
+                              <ShareReports url={whatsapp} mobile={item.supplierMobileNo} />
+                            ) : ""}
+                            {customPrint ? (
+                              <Tooltip title="Print (Custom)" placement="top">
                                 <a href={`${Report}${reportLink}`} target="_blank" rel="noopener noreferrer">
-                                  <IconButton aria-label="print" size="small">
-                                    <LocalPrintshopIcon color="primary" fontSize="medium" />
+                                  <IconButton aria-label="print custom" size="small">
+                                    <DescriptionIcon color="action" fontSize="medium" />
                                   </IconButton>
                                 </a>
-                              </Tooltip> : ""
-                            ) : (
-                              print ? <Tooltip title="Print" placement="top">
+                              </Tooltip>
+                            ) : ""}
+                            {print ? (
+                              <Tooltip title="Print (Default)" placement="top">
                                 <IconButton
-                                  aria-label="print"
+                                  aria-label="print default"
                                   size="small"
                                   onClick={() => openGRNPrintPopup(item)}
                                 >
                                   <LocalPrintshopIcon color="primary" fontSize="medium" />
                                 </IconButton>
-                              </Tooltip> : ""
-                            )}
+                              </Tooltip>
+                            ) : ""}
                           </Box>
                         </TableCell>
                       </TableRow>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
+  Alert,
   Box,
   Button,
   Paper,
@@ -10,8 +11,17 @@ import {
   TableHead,
   TableRow,
 } from "@mui/material";
+import { toast } from "react-toastify";
 import BASE_URL from "Base/api";
 import { formatCurrency } from "@/components/utils/formatHelper";
+import {
+  isValidDecimalInput,
+  isValidSignedDecimalInput,
+  NEGATIVE_PROFIT_ERROR,
+  parseDecimalInput,
+  toDecimalInputValue,
+  validateProfitValue,
+} from "@/components/utils/summaryInquiryHelpers";
 
 const ITEM_ORDER = ["collercuff", "trims", "embroider", "screenprint", "sublimation", "dtf", "sewing", "other", "cutting"];
 
@@ -47,6 +57,9 @@ export default function SumTable({ onIsSavedChange, inquiry, onSummaryChange }) 
   const [summaryData, setSummaryData] = useState(null);
   const [commissionItem, setCommissionItem] = useState(null);
   const [commissionTotalCost, setCommissionTotalCost] = useState(0);
+  const [commissionInput, setCommissionInput] = useState("0");
+  const [patternInput, setPatternInput] = useState("0");
+  const [profitError, setProfitError] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -74,7 +87,7 @@ export default function SumTable({ onIsSavedChange, inquiry, onSummaryChange }) 
       ];
       computeTotalCost(allItems);
     }
-  }, [items, patternTotalCost, commissionTotalCost]);
+  }, [items, patternTotalCost, commissionTotalCost, profit]);
 
   const fetchLastApprovedLineItems = async (inquiryId, optionId) => {
     try {
@@ -116,9 +129,11 @@ export default function SumTable({ onIsSavedChange, inquiry, onSummaryChange }) 
               const updated = prevItems.map(item => {
                 const approvedItem = approvedLineItems.find(ai => ai.itemName === item.itemName && ai.itemName !== "Commission" && ai.itemName !== "Pattern");
                 if (approvedItem) {
+                  const unitCost = approvedItem.approvedUnitCost ?? approvedItem.unitCost ?? item.unitCost;
                   return {
                     ...item,
-                    unitCost: approvedItem.approvedUnitCost ?? approvedItem.unitCost ?? item.unitCost,
+                    unitCost,
+                    unitCostInput: toDecimalInputValue(unitCost),
                     totalCost: approvedItem.approvedTotalCost ?? approvedItem.totalCost ?? item.totalCost,
                     quantity: approvedItem.approvedQuantity ?? approvedItem.quantity ?? item.quantity,
                     approvedUnitCost: approvedItem.approvedUnitCost ?? approvedItem.unitCost,
@@ -134,15 +149,19 @@ export default function SumTable({ onIsSavedChange, inquiry, onSummaryChange }) 
             // Update pattern item
             const approvedPattern = approvedLineItems.find(ai => ai.itemName === "Pattern");
             if (approvedPattern) {
+              const patternCost = approvedPattern.approvedTotalCost ?? approvedPattern.totalCost ?? 0;
               setPatternUCost(approvedPattern.approvedUnitCost ?? approvedPattern.unitCost ?? 0);
-              setPatternTotalCost(approvedPattern.approvedTotalCost ?? approvedPattern.totalCost ?? 0);
+              setPatternTotalCost(patternCost);
+              setPatternInput(toDecimalInputValue(patternCost));
               setPatternQuantity(approvedPattern.approvedQuantity ?? approvedPattern.quantity ?? 0);
             }
 
             // Update commission item
             const approvedCommission = approvedLineItems.find(ai => ai.itemName === "Commission");
             if (approvedCommission) {
-              setCommissionTotalCost(approvedCommission.approvedTotalCost ?? approvedCommission.totalCost ?? 0);
+              const commissionCost = approvedCommission.approvedTotalCost ?? approvedCommission.totalCost ?? 0;
+              setCommissionTotalCost(commissionCost);
+              setCommissionInput(toDecimalInputValue(commissionCost));
             }
           }
         }
@@ -196,7 +215,9 @@ export default function SumTable({ onIsSavedChange, inquiry, onSummaryChange }) 
       if (data.result) {
         if (useApprovedValues && approvedData) {
           // Use last approved values
-          setProfit(approvedData.apprvedUnitProfit || 0);
+          const loadedProfit = approvedData.apprvedUnitProfit || 0;
+          setProfit(toDecimalInputValue(loadedProfit));
+          setProfitError(loadedProfit < 0 ? NEGATIVE_PROFIT_ERROR : "");
           setSellingPrice(approvedData.apprvedSellingPrice || 0);
           setRevenue(approvedData.apprvedRevanue || 0);
           setTotalCost(approvedData.apprvedTotalCost || 0);
@@ -206,7 +227,9 @@ export default function SumTable({ onIsSavedChange, inquiry, onSummaryChange }) 
           setNoOfUnits(approvedData.apprvedTotalUnits || 0);
         } else {
           // Use current values (fallback)
-          setProfit(data.result.unitProfit || 0);
+          const loadedProfit = data.result.unitProfit || 0;
+          setProfit(toDecimalInputValue(loadedProfit));
+          setProfitError(loadedProfit < 0 ? NEGATIVE_PROFIT_ERROR : "");
           setSellingPrice(data.result.sellingPrice || 0);
           setRevenue(data.result.revanue || 0);
           setTotalCost(data.result.totalCost || 0);
@@ -242,9 +265,15 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
     if (commission) {
       setCommissionItem(commission);
       setCommissionTotalCost(commission.totalCost || 0);
+      setCommissionInput(toDecimalInputValue(commission.totalCost || 0));
     }
 
-    const regularItems = allItems.filter(item => item.itemName !== "Commission");
+    const regularItems = allItems
+      .filter(item => item.itemName !== "Commission")
+      .map(item => ({
+        ...item,
+        unitCostInput: toDecimalInputValue(item.unitCost ?? 0),
+      }));
     setItems(sortItemsByDisplayOrder(regularItems));
 
     if (regularItems.length > 0) {
@@ -275,6 +304,7 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
       if (data.result && data.result.length > 0) {
         setPatternQuantity(item.quantity || 0);
         setPatternTotalCost(item.totalCost || 0);
+        setPatternInput(toDecimalInputValue(item.totalCost || 0));
         setPatternUCost(item.unitCost || 0);
         await setPatternItem(item);
       }
@@ -291,6 +321,13 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
 
   // ✅ **Updated function to correctly save ApprovedTotalCost**
   const handleUpdateSummaryLine = async () => {
+    const profitValidation = validateProfitValue(profit);
+    if (!profitValidation.valid) {
+      setProfitError(profitValidation.message);
+      toast.error(profitValidation.message);
+      return;
+    }
+
     const patternRow = patternItem ? {
       ...patternItem,
       UnitCost: patternUCost,
@@ -350,20 +387,27 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
   };
 
   const handleUnitCostChange = (index, value) => {
+    if (!isValidDecimalInput(value)) return;
+
     updateIsSaved(false);
+    const parsed = parseDecimalInput(value);
     const newItems = [...items];
-    newItems[index].unitCost = parseFloat(value) || 0;
+    newItems[index].unitCostInput = value;
+    newItems[index].unitCost = parsed.value;
     newItems[index].totalCost =
-      (newItems[index].unitCost || 0) * (newItems[index].quantity || 0);
+      (parsed.value || 0) * (newItems[index].quantity || 0);
     setItems(newItems);
   };
 
   const handlePatternTotalCostChange = (value) => {
+    if (!isValidDecimalInput(value)) return;
+
     updateIsSaved(false);
-    const totalCost = parseFloat(value) || 0;
-    setPatternTotalCost(totalCost);
+    const parsed = parseDecimalInput(value);
+    setPatternInput(value);
+    setPatternTotalCost(parsed.value);
     if (patternQuantity > 0) {
-      const v = parseFloat(totalCost) / parseInt(patternQuantity);
+      const v = parsed.value / parseInt(patternQuantity, 10);
       setPatternUCost(v.toFixed(2));
     } else {
       setPatternUCost(0);
@@ -371,13 +415,21 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
   };
 
   const handleCommissionTotalCostChange = (value) => {
+    if (!isValidDecimalInput(value)) return;
+
     updateIsSaved(false);
-    setCommissionTotalCost(parseFloat(value) || 0);
+    const parsed = parseDecimalInput(value);
+    setCommissionInput(value);
+    setCommissionTotalCost(parsed.value);
   };
 
   const handleProfitChange = (value) => {
+    if (!isValidSignedDecimalInput(value)) return;
+
     updateIsSaved(false);
     setProfit(value);
+    const profitValidation = validateProfitValue(value);
+    setProfitError(profitValidation.valid ? "" : profitValidation.message);
   };
 
   const handleSetData = (
@@ -387,6 +439,7 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
     dataTotalProfit,
     dataRevenue
   ) => {
+    const parsedProfit = parseDecimalInput(dataProfit).value;
     const data = {
       revenue: dataRevenue,
       totalProfit: dataTotalProfit,
@@ -395,7 +448,8 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
       unitCost: unitCost,
       totalCost: totalCost,
       totalUnits: noOfUnits,
-      profit: dataProfit,
+      profit: parsedProfit,
+      profitValid: parsedProfit >= 0,
     };
     setSummaryData(data);
     if (onSummaryChange) {
@@ -409,8 +463,9 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
       0
     );
     const itemUnitCost = noOfUnits > 0 ? itemsTotalCost / noOfUnits : 0;
-    const totalProfit = parseFloat(profit || 0) * noOfUnits;
-    const sellPrice = parseFloat(profit || 0) + parseFloat(itemUnitCost || 0);
+    const profitValue = parseDecimalInput(profit).value;
+    const totalProfit = profitValue * noOfUnits;
+    const sellPrice = profitValue + parseFloat(itemUnitCost || 0);
     const revenue = parseFloat(itemsTotalCost) + parseFloat(totalProfit);
     const profitPercentage =
       itemUnitCost > 0
@@ -424,11 +479,16 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
     setRevenue(revenue);
     setSellingPrice(sellPrice);
     setProfitPercentage(profitPercentage);
-    handleSetData(profit, profitPercentage, sellPrice, totalProfit, revenue);
+    handleSetData(profitValue, profitPercentage, sellPrice, totalProfit, revenue);
   };
 
   return (
     <>
+      {profitError ? (
+        <Alert severity="error" sx={{ mb: 1 }}>
+          {profitError}
+        </Alert>
+      ) : null}
       <TableContainer component={Paper}>
         <Table size="small" aria-label="simple table" className="dark-table">
           <TableHead>
@@ -450,7 +510,8 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
                 </TableCell>
                 <TableCell align="right">
                   <input
-                    value={item.unitCost ? item.unitCost : 0}
+                    value={item.unitCostInput ?? toDecimalInputValue(item.unitCost ?? 0)}
+                    inputMode="decimal"
                     style={{
                       width: "60px",
                       border: "1px solid #e5e5e5",
@@ -475,7 +536,8 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
               <TableCell align="right"></TableCell>
               <TableCell align="right">
                 <input
-                  value={commissionTotalCost}
+                  value={commissionInput}
+                  inputMode="decimal"
                   style={{
                     width: "60px",
                     border: "1px solid #e5e5e5",
@@ -495,7 +557,8 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
               <TableCell align="right">{patternQuantity}</TableCell>
               <TableCell align="right">
                 <input
-                  value={patternTotalCost}
+                  value={patternInput}
+                  inputMode="decimal"
                   style={{
                     width: "60px",
                     border: "1px solid #e5e5e5",
@@ -528,9 +591,10 @@ const fetchItems = async (inquiryId, optionId, windowType) => {
               <TableCell align="right">
                 <input
                   value={profit}
+                  inputMode="decimal"
                   style={{
                     width: "60px",
-                    border: "1px solid #e5e5e5",
+                    border: profitError ? "1px solid #d32f2f" : "1px solid #e5e5e5",
                     textAlign: "right",
                   }}
                   onChange={(e) => handleProfitChange(e.target.value)}

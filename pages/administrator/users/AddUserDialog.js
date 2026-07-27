@@ -13,6 +13,8 @@ import {
   Checkbox,
   FormControl,
   FormControlLabel,
+  IconButton,
+  InputAdornment,
   InputLabel,
   MenuItem,
   Radio,
@@ -21,6 +23,8 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import Visibility from "@mui/icons-material/Visibility";
+import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import BASE_URL from "Base/api";
 
 const validationSchema = Yup.object().shape({
@@ -65,6 +69,8 @@ export default function AddUserDialog({ fetchItems, warehouses, roles }) {
   const [userTypes, setUserTypes] = useState([]);
   const [salesPersons, setSalesPersons] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleClickOpen = (scrollType) => () => {
     setOpen(true);
@@ -344,9 +350,22 @@ export default function AddUserDialog({ fetchItems, warehouses, roles }) {
                       as={TextField}
                       fullWidth
                       name="Password"
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       error={touched.Password && Boolean(errors.Password)}
                       helperText={touched.Password && errors.Password}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              aria-label="toggle password visibility"
+                              onClick={() => setShowPassword((show) => !show)}
+                              edge="end"
+                            >
+                              {showPassword ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      }}
                     />
                   </Grid>
                   <Grid item xs={12}>
@@ -365,7 +384,7 @@ export default function AddUserDialog({ fetchItems, warehouses, roles }) {
                       as={TextField}
                       fullWidth
                       name="ConfirmPassword"
-                      type="password"
+                      type={showConfirmPassword ? "text" : "password"}
                       error={
                         touched.ConfirmPassword &&
                         Boolean(errors.ConfirmPassword)
@@ -373,6 +392,25 @@ export default function AddUserDialog({ fetchItems, warehouses, roles }) {
                       helperText={
                         touched.ConfirmPassword && errors.ConfirmPassword
                       }
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              aria-label="toggle confirm password visibility"
+                              onClick={() =>
+                                setShowConfirmPassword((show) => !show)
+                              }
+                              edge="end"
+                            >
+                              {showConfirmPassword ? (
+                                <VisibilityOff />
+                              ) : (
+                                <Visibility />
+                              )}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      }}
                     />
                   </Grid>
                   <Grid item xs={12} mt={1}>

@@ -176,10 +176,17 @@ export default function CreateMeetingModal({ open, onClose, onSuccess, initialDa
       const data = await response.json().catch(() => null);
 
       if (data?.statusCode === 200) {
-        toast.success(data?.message || "Meeting scheduled successfully.");
-        onSuccess();
+        const successMessage =
+          typeof data?.message === "string" && data.message.trim()
+            ? data.message
+            : "Meeting scheduled successfully.";
         resetForm();
         onClose();
+        if (typeof onSuccess === "function") {
+          onSuccess(successMessage);
+        } else {
+          window.setTimeout(() => toast.success(successMessage), 0);
+        }
       } else {
         toast.error(data?.message || "Failed to create meeting");
       }

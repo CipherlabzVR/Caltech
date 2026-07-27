@@ -23,6 +23,7 @@ export default function LocationAutocomplete({
   error = false,
   helperText = "",
   label = "Location",
+  activeOnly = false,
 }) {
   const valueNum =
     value === "" || value === null || value === undefined
@@ -54,8 +55,12 @@ export default function LocationAutocomplete({
       if (json.result?.items) items = json.result.items;
       else if (json.result?.result?.items) items = json.result.result.items;
 
+      const filteredItems = activeOnly
+        ? items.filter((x) => x.isActive !== false)
+        : items;
+
       setOptions(
-        items.map((x) => ({
+        filteredItems.map((x) => ({
           id: x.id,
           label: x.locationCode
             ? `${x.locationCode} — ${x.locationName || ""}`
@@ -67,7 +72,7 @@ export default function LocationAutocomplete({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeOnly]);
 
   const debouncedSearch = useMemo(
     () => debounce((term) => fetchLocations(term), 350),

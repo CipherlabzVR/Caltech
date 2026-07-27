@@ -1,17 +1,40 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { styled } from "@mui/material/styles";
 import styles from "@/components/_App/LeftSidebar/SubMenu.module.css";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import BASE_URL from "Base/api";
+import KeyboardArrowRight from "@mui/icons-material/KeyboardArrowRight";
+import KeyboardArrowDown from "@mui/icons-material/KeyboardArrowDown";
 
 const SidebarLabel = styled("span")(({ theme }) => ({
   position: "relative",
   top: "-3px",
 }));
 
+const normalizePath = (path) => path.replace(/\/+$/, "");
+
+/** First leaf in subNav whose path matches the current route (supports nested subNav). */
+function findMatchingLeafInSubNav(subNav, currentPath) {
+  for (const subItem of subNav || []) {
+    if (subItem.subNav?.length) {
+      const nested = findMatchingLeafInSubNav(subItem.subNav, currentPath);
+      if (nested) return nested;
+      continue;
+    }
+    const p = subItem.path;
+    if (!p || p === "#") continue;
+    const np = normalizePath(p);
+    if (np === currentPath || currentPath.startsWith(np)) {
+      return subItem;
+    }
+  }
+  return null;
+}
+
 const SubMenu = ({ item, allItems, onCheckPermission, hoverMode = false }) => {
-  const [subnav, setSubnav] = useState(false);  
+  const [subnav, setSubnav] = useState(false);
+  const [nestedOpen, setNestedOpen] = useState({});
   const [cat, setCat] = useState(null);
   const router = useRouter();
   const role = localStorage.getItem("role");
@@ -51,17 +74,12 @@ const SubMenu = ({ item, allItems, onCheckPermission, hoverMode = false }) => {
   };
 
   useEffect(() => {
-    const normalize = (path) => path.replace(/\/+$/, "");
-    const currentPath = normalize(router.asPath.split("?")[0].split("#")[0]);
+    const currentPath = normalizePath(router.asPath.split("?")[0].split("#")[0]);
 
-    allItems.forEach((item) => {
-      const matchedSub = item.subNav?.find(
-        (subItem) =>
-          normalize(subItem.path) === currentPath ||
-          currentPath.startsWith(normalize(subItem.path))
-      );
-      if (matchedSub) {        
-        sessionStorage.setItem("moduleid", item.ModuleId);
+    allItems.forEach((menuItem) => {
+      const matchedSub = findMatchingLeafInSubNav(menuItem.subNav, currentPath);
+      if (matchedSub) {
+        sessionStorage.setItem("moduleid", menuItem.ModuleId);
         sessionStorage.setItem("category", matchedSub.categoryId);
         setCat(matchedSub.categoryId);
       }
@@ -74,7 +92,33 @@ const SubMenu = ({ item, allItems, onCheckPermission, hoverMode = false }) => {
       }
     }, [cat]);
 
-  const availableSubNav = item.subNav?.filter((subItem) => subItem.isAvailable) || [];
+  const availableSubNav = useMemo(
+    () => item.subNav?.filter((subItem) => subItem.isAvailable) || [],
+    [item.subNav]
+  );
+
+  useEffect(() => {
+    const currentPath = normalizePath(router.asPath.split("?")[0].split("#")[0]);
+    setNestedOpen((prev) => {
+      const merged = { ...prev };
+      let changed = false;
+      availableSubNav.forEach((subItem, idx) => {
+        if (!subItem.subNav?.length) return;
+        const open = subItem.subNav.some((child) => {
+          if (!child.isAvailable) return false;
+          const p = child.path;
+          if (!p || p === "#") return false;
+          const np = normalizePath(p);
+          return np === currentPath || currentPath.startsWith(np);
+        });
+        if (open && !merged[idx]) {
+          merged[idx] = true;
+          changed = true;
+        }
+      });
+      return changed ? merged : prev;
+    });
+  }, [router.asPath, availableSubNav]);
 
   if ((item.title.toLowerCase() === "dashboard"||item.title.toLowerCase() === "contact" || item.title.toLowerCase() === "versions"|| item.title.toLowerCase() === "calendar") && availableSubNav.length === 1) {
     const onlySubItem = availableSubNav[0];
@@ -116,25 +160,77 @@ const SubMenu = ({ item, allItems, onCheckPermission, hoverMode = false }) => {
 
       {subnav && (
         <div style={{ position: "relative", width: "100%" }}>
-          {availableSubNav.map((subItem, index) => (
-            <div key={index} className={styles.subMenu}>
-              <Link
-                href={subItem.path}
-                className={styles.sidebarLink}
-                onClick={() => {
-                  sessionStorage.setItem("moduleid", item.ModuleId);
-                  sessionStorage.setItem("category", subItem.categoryId);
-                }}
-              >
-                <div>
-                  {subItem.icon}
-                  <SidebarLabel className="ml-1">
-                    {subItem.title} {subItem.categoryId === 60 ? "(POS)" : ""}
-                  </SidebarLabel>
+          {availableSubNav.map((subItem, index) => {
+            if (subItem.subNav?.length) {
+              const nestedOpenFor = nestedOpen[index];
+              const ArrowClosed = subItem.iconClosed || <KeyboardArrowRight />;
+              const ArrowOpened = subItem.iconOpened || <KeyboardArrowDown />;
+              const nestedLeaves = subItem.subNav.filter((c) => c.isAvailable);
+              return (
+                <div key={index} className={styles.subMenu}>
+                  <Link
+                    href="#"
+                    className={styles.sidebarLink}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setNestedOpen((prev) => ({
+                        ...prev,
+                        [index]: !prev[index],
+                      }));
+                    }}
+                  >
+                    <div>
+                      {subItem.icon}
+                      <SidebarLabel className="ml-1">{subItem.title}</SidebarLabel>
+                    </div>
+                    <div>{nestedOpenFor ? ArrowOpened : ArrowClosed}</div>
+                  </Link>
+                  {nestedOpenFor && (
+                    <div style={{ position: "relative", width: "100%" }}>
+                      {nestedLeaves.map((child, cidx) => (
+                        <div key={`${index}-${cidx}`} className={styles.subMenu}>
+                          <Link
+                            href={child.path}
+                            className={styles.sidebarLink}
+                            onClick={() => {
+                              sessionStorage.setItem("moduleid", item.ModuleId);
+                              sessionStorage.setItem("category", child.categoryId);
+                            }}
+                          >
+                            <div>
+                              {child.icon}
+                              <SidebarLabel className="ml-1">
+                                {child.title} {child.categoryId === 60 ? "(POS)" : ""}
+                              </SidebarLabel>
+                            </div>
+                          </Link>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </Link>
-            </div>
-          ))}
+              );
+            }
+            return (
+              <div key={index} className={styles.subMenu}>
+                <Link
+                  href={subItem.path}
+                  className={styles.sidebarLink}
+                  onClick={() => {
+                    sessionStorage.setItem("moduleid", item.ModuleId);
+                    sessionStorage.setItem("category", subItem.categoryId);
+                  }}
+                >
+                  <div>
+                    {subItem.icon}
+                    <SidebarLabel className="ml-1">
+                      {subItem.title} {subItem.categoryId === 60 ? "(POS)" : ""}
+                    </SidebarLabel>
+                  </div>
+                </Link>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

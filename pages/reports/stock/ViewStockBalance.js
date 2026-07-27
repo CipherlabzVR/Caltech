@@ -34,7 +34,7 @@ const style = {
     p: 3,
 };
 
-export default function ViewStockDetails({ warehouse, product, fetchStock, pageSize ,search }) {
+export default function ViewStockDetails({ warehouse, product, fetchStock, pageSize ,search, asOfDate }) {
     const [open, setOpen] = React.useState(false);
 
     const handleClose = () => {
@@ -55,8 +55,9 @@ export default function ViewStockDetails({ warehouse, product, fetchStock, pageS
     const fetchStockBalance = async () => {
         try {
             setLoading(true);
+            const dateQuery = asOfDate ? `&asOfDate=${asOfDate}` : "";
             const response = await fetch(
-                `${BASE_URL}/StockBalance/GetAllProductStockBalanceLine?warehouseId=${warehouse}&productId=${product.productId}`,
+                `${BASE_URL}/StockBalance/GetAllProductStockBalanceLine?warehouseId=${warehouse}&productId=${product.productId}${dateQuery}`,
                 {
                     method: "GET",
                     headers: {

@@ -284,6 +284,13 @@ export default function Orders() {
   const [cancelTargetOrder, setCancelTargetOrder] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancellingOrderId, setCancellingOrderId] = useState(null);
+  const [dispatchDialogOpen, setDispatchDialogOpen] = useState(false);
+  const [dispatchTargetOrderId, setDispatchTargetOrderId] = useState(null);
+  const [dispatchCourierInput, setDispatchCourierInput] = useState("");
+  const [verifyingPaymentOrderId, setVerifyingPaymentOrderId] = useState(null);
+  const [rejectPaymentDialogOpen, setRejectPaymentDialogOpen] = useState(false);
+  const [rejectPaymentReason, setRejectPaymentReason] = useState("");
+  const [rejectPaymentOrderId, setRejectPaymentOrderId] = useState(null);
 
   const STATUS_META = useMemo(
     () => ({
@@ -338,6 +345,18 @@ export default function Orders() {
         customerFeedback: order.customerFeedback ?? order.CustomerFeedback ?? "",
         customerFeedbackOn: order.customerFeedbackOn ?? order.CustomerFeedbackOn ?? null,
         cancellation: order.cancellation ?? order.Cancellation ?? null,
+        courierName: order.courierName ?? order.CourierName ?? "",
+        invoiceId: order.invoiceId ?? order.InvoiceId ?? null,
+        invoiceNo: order.invoiceNo ?? order.InvoiceNo ?? "",
+        paySlipUrl: order.paySlipUrl ?? order.PaySlipUrl ?? "",
+        bankTransferReference:
+          order.bankTransferReference ?? order.BankTransferReference ?? "",
+        paymentVerificationStatus: Number(
+          order.paymentVerificationStatus ?? order.PaymentVerificationStatus ?? 0
+        ),
+        paymentVerifiedOn: order.paymentVerifiedOn ?? order.PaymentVerifiedOn ?? null,
+        paymentVerifiedBy: order.paymentVerifiedBy ?? order.PaymentVerifiedBy ?? "",
+        paymentRejectReason: order.paymentRejectReason ?? order.PaymentRejectReason ?? "",
         paymentOption: paymentOpt,
       };
     });
@@ -418,21 +437,178 @@ export default function Orders() {
     };
   }, [selectedOrder?.orderId, selectedOrder?.OrderId, historyRefreshKey]);
 
-  const handleUpdateStatus = async (orderId) => {
+  const postAdvanceOrderStatus = async (orderId, courierName) => {
+    const q = new URLSearchParams({ orderId: String(orderId) });
+    if (courierName != null && String(courierName).trim() !== "") {
+      q.set("courierName", String(courierName).trim());
+    }
+    const response = await fetch(
+      `${BASE_URL}/ECommerce/UpdateOnlineOrderStatus?${q.toString()}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    await readOrderStatusApiResult(response);
+  };
+
+  const handleUpdateStatus = async (order) => {
+    const orderId = order?.orderId ?? order?.OrderId;
+    if (orderId == null) return;
+    const paymentOpt = parsePaymentOption(order?.paymentOption ?? order?.PaymentOption);
+    const verifyStatus = Number(
+      order?.paymentVerificationStatus ?? order?.PaymentVerificationStatus ?? 0
+    );
+    if (paymentOpt === 3 && verifyStatus === 1) {
+      toast.error("Accept the bank transfer payment slip before advancing this order.");
+      return;
+    }
+    const statusNum = parseOrderStatus(order?.orderStatus ?? order?.OrderStatus);
+    if (statusNum === 2) {
+      setDispatchTargetOrderId(orderId);
+      setDispatchCourierInput("");
+      setDispatchDialogOpen(true);
+      return;
+    }
     try {
       setUpdatingOrderId(orderId);
-      const response = await fetch(
-        `${BASE_URL}/ECommerce/UpdateOnlineOrderStatus?orderId=${orderId}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      await readOrderStatusApiResult(response);
+      await postAdvanceOrderStatus(orderId, null);
       toast.success("Order status advanced");
+      fetchOrders(page, search, pageSize, undefined, undefined, extraQueryForStatusTab(statusTab));
+    } catch (error) {
+      toast.error(error.message || "Unable to update status");
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  };
+
+  const handleCloseDispatchDialog = () => {
+    if (updatingOrderId != null) return;
+    setDispatchDialogOpen(false);
+    setDispatchTargetOrderId(null);
+    setDispatchCourierInput("");
+  };
+
+  const PAYMENT_VERIFY_META = {
+    0: { label: "—", color: "default" },
+    1: { label: "Payment pending", color: "warning" },
+    2: { label: "Payment accepted", color: "success" },
+    3: { label: "Payment rejected", color: "error" },
+  };
+
+  const handleApproveBankTransfer = async (order) => {
+    const orderId = order?.orderId ?? order?.OrderId;
+    if (orderId == null) return;
+    try {
+      setVerifyingPaymentOrderId(orderId);
+      const response = await fetch(`${BASE_URL}/ECommerce/ApproveOnlineOrderBankTransfer`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ orderId }),
+      });
+      // ApiResponse.SUCCESS is 200 (not 1) — use shared reader.
+      const data = await readOrderStatusApiResult(response);
+      const result = data.result ?? data.Result ?? {};
+      toast.success(data.message || data.Message || "Payment accepted. Customer notified.");
+      fetchOrders(page, search, pageSize, undefined, undefined, extraQueryForStatusTab(statusTab));
+      setSelectedOrder((prev) => {
+        if (!prev) return prev;
+        const pid = prev.orderId ?? prev.OrderId;
+        if (pid !== orderId) return prev;
+        return {
+          ...prev,
+          paymentVerificationStatus: 2,
+          PaymentVerificationStatus: 2,
+          paymentVerifiedOn: new Date().toISOString(),
+          invoiceNo:
+            result.invoiceNo ?? result.InvoiceNo ?? prev.invoiceNo,
+          InvoiceNo: result.invoiceNo ?? result.InvoiceNo ?? prev.invoiceNo,
+          invoiceId:
+            result.invoiceId ?? result.InvoiceId ?? prev.invoiceId,
+          InvoiceId: result.invoiceId ?? result.InvoiceId ?? prev.invoiceId,
+        };
+      });
+      setHistoryRefreshKey((k) => k + 1);
+    } catch (error) {
+      toast.error(error.message || "Unable to accept payment");
+    } finally {
+      setVerifyingPaymentOrderId(null);
+    }
+  };
+
+  const handleOpenRejectPayment = (order) => {
+    const orderId = order?.orderId ?? order?.OrderId;
+    if (orderId == null) return;
+    setRejectPaymentOrderId(orderId);
+    setRejectPaymentReason("");
+    setRejectPaymentDialogOpen(true);
+  };
+
+  const handleCloseRejectPayment = () => {
+    if (verifyingPaymentOrderId != null) return;
+    setRejectPaymentDialogOpen(false);
+    setRejectPaymentOrderId(null);
+    setRejectPaymentReason("");
+  };
+
+  const handleConfirmRejectPayment = async () => {
+    const orderId = rejectPaymentOrderId;
+    const reason = (rejectPaymentReason || "").trim();
+    if (orderId == null) return;
+    if (!reason) {
+      toast.error("Please enter a reason");
+      return;
+    }
+    try {
+      setVerifyingPaymentOrderId(orderId);
+      const response = await fetch(`${BASE_URL}/ECommerce/RejectOnlineOrderBankTransfer`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ orderId, reason }),
+      });
+      const data = await readOrderStatusApiResult(response);
+      toast.success(data.message || data.Message || "Payment rejected and order cancelled.");
+      setRejectPaymentDialogOpen(false);
+      setRejectPaymentOrderId(null);
+      setRejectPaymentReason("");
+      setSelectedOrder(null);
+      fetchOrders(page, search, pageSize, undefined, undefined, extraQueryForStatusTab(statusTab));
+    } catch (error) {
+      toast.error(error.message || "Unable to reject payment");
+    } finally {
+      setVerifyingPaymentOrderId(null);
+    }
+  };
+
+  const handleConfirmDispatch = async () => {
+    const orderId = dispatchTargetOrderId;
+    const name = dispatchCourierInput.trim();
+    if (orderId == null) return;
+    if (!name) {
+      toast.error("Please enter the courier or carrier name.");
+      return;
+    }
+    try {
+      setUpdatingOrderId(orderId);
+      await postAdvanceOrderStatus(orderId, name);
+      toast.success("Order marked dispatched — customer notified by email");
+      setDispatchDialogOpen(false);
+      setDispatchTargetOrderId(null);
+      setDispatchCourierInput("");
+      setSelectedOrder((prev) => {
+        if (!prev || (prev.orderId ?? prev.OrderId) !== orderId) return prev;
+        return { ...prev, courierName: name, orderStatus: 3, OrderStatus: 3 };
+      });
+      setHistoryRefreshKey((k) => k + 1);
       fetchOrders(page, search, pageSize, undefined, undefined, extraQueryForStatusTab(statusTab));
     } catch (error) {
       toast.error(error.message || "Unable to update status");
@@ -621,6 +797,7 @@ export default function Orders() {
               <TableHead>
                 <TableRow>
                   <TableCell>Order No</TableCell>
+                  <TableCell>Invoice</TableCell>
                   <TableCell>Sub Total</TableCell>
                   <TableCell>Delivery Charge</TableCell>
                   <TableCell>Net Total</TableCell>
@@ -635,7 +812,7 @@ export default function Orders() {
               <TableBody>
                 {orders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10}>
+                    <TableCell colSpan={11}>
                       <Typography color="error">No Orders Available</Typography>
                     </TableCell>
                   </TableRow>
@@ -643,6 +820,7 @@ export default function Orders() {
                   orders.map((item, index) => (
                     <TableRow key={index}>
                       <TableCell>{item.orderNo ?? "-"}</TableCell>
+                      <TableCell>{item.invoiceNo || "-"}</TableCell>
                       <TableCell>
                         {formatCurrency(item.subTotal)}
                       </TableCell>
@@ -758,7 +936,7 @@ export default function Orders() {
                                   <Button
                                     variant="contained"
                                     size="small"
-                                    onClick={() => handleUpdateStatus(item.orderId)}
+                                    onClick={() => handleUpdateStatus(item)}
                                     disabled={
                                       updatingOrderId === item.orderId ||
                                       revertingOrderId === item.orderId ||
@@ -905,25 +1083,44 @@ export default function Orders() {
                       );
                     }
                     return (
-                      <Box sx={{ overflowX: "auto", py: 1.5, mx: -0.5 }}>
-                        <Stepper
-                          activeStep={Math.min(
-                            4,
-                            Math.max(0, (Number.isFinite(sNum) ? sNum : 1) - 1)
+                      <>
+                        <Box sx={{ overflowX: "auto", py: 1.5, mx: -0.5 }}>
+                          <Stepper
+                            activeStep={Math.min(
+                              4,
+                              Math.max(0, (Number.isFinite(sNum) ? sNum : 1) - 1)
+                            )}
+                            alternativeLabel
+                            sx={{
+                              minWidth: { xs: 520, sm: "100%" },
+                              "& .MuiStepLabel-label": { fontSize: "0.7rem", fontWeight: 600 },
+                            }}
+                          >
+                            {ORDER_FLOW_STEPS.map((label) => (
+                              <Step key={label}>
+                                <StepLabel>{label}</StepLabel>
+                              </Step>
+                            ))}
+                          </Stepper>
+                        </Box>
+                        {sNum >= 3 &&
+                          String(
+                            selectedOrder.courierName ?? selectedOrder.CourierName ?? ""
+                          ).trim() !== "" && (
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                              <strong>Courier:</strong>{" "}
+                              {String(
+                                selectedOrder.courierName ?? selectedOrder.CourierName ?? ""
+                              ).trim()}
+                            </Typography>
                           )}
-                          alternativeLabel
-                          sx={{
-                            minWidth: { xs: 520, sm: "100%" },
-                            "& .MuiStepLabel-label": { fontSize: "0.7rem", fontWeight: 600 },
-                          }}
-                        >
-                          {ORDER_FLOW_STEPS.map((label) => (
-                            <Step key={label}>
-                              <StepLabel>{label}</StepLabel>
-                            </Step>
-                          ))}
-                        </Stepper>
-                      </Box>
+                        {(selectedOrder.invoiceNo || selectedOrder.InvoiceNo) && (
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                            <strong>Invoice:</strong>{" "}
+                            {selectedOrder.invoiceNo || selectedOrder.InvoiceNo}
+                          </Typography>
+                        )}
+                      </>
                     );
                   })()}
 
@@ -1137,6 +1334,184 @@ export default function Orders() {
                           : "—"}
                       </Typography>
                     </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                        Payment
+                      </Typography>
+                      <Typography variant="body2" fontWeight={600}>
+                        {selectedOrder.paymentLabel ||
+                          PAYMENT_MAPPER[
+                            parsePaymentOption(
+                              selectedOrder.paymentOption ?? selectedOrder.PaymentOption
+                            )
+                          ] ||
+                          "—"}
+                      </Typography>
+                    </Box>
+                    {parsePaymentOption(
+                      selectedOrder.paymentOption ?? selectedOrder.PaymentOption
+                    ) === 3 && (
+                      <Box
+                        sx={{
+                          mt: 0.5,
+                          p: 1.5,
+                          borderRadius: 1.5,
+                          border: "1px solid",
+                          borderColor: "divider",
+                          bgcolor: "background.paper",
+                        }}
+                      >
+                        <Stack
+                          direction="row"
+                          alignItems="center"
+                          justifyContent="space-between"
+                          spacing={1}
+                          sx={{ mb: 1 }}
+                        >
+                          <Typography variant="caption" fontWeight={700} color="primary">
+                            Bank transfer slip
+                          </Typography>
+                          <Chip
+                            size="small"
+                            label={
+                              PAYMENT_VERIFY_META[
+                                Number(
+                                  selectedOrder.paymentVerificationStatus ??
+                                    selectedOrder.PaymentVerificationStatus ??
+                                    0
+                                )
+                              ]?.label ?? "—"
+                            }
+                            color={
+                              PAYMENT_VERIFY_META[
+                                Number(
+                                  selectedOrder.paymentVerificationStatus ??
+                                    selectedOrder.PaymentVerificationStatus ??
+                                    0
+                                )
+                              ]?.color ?? "default"
+                            }
+                            variant="outlined"
+                          />
+                        </Stack>
+                        {(selectedOrder.bankTransferReference ||
+                          selectedOrder.BankTransferReference) && (
+                          <Typography variant="body2" sx={{ mb: 1 }}>
+                            <strong>Reference:</strong>{" "}
+                            {selectedOrder.bankTransferReference ||
+                              selectedOrder.BankTransferReference}
+                          </Typography>
+                        )}
+                        {(selectedOrder.paySlipUrl || selectedOrder.PaySlipUrl) ? (
+                          <Box sx={{ mb: 1.5 }}>
+                            <Box
+                              component="a"
+                              href={selectedOrder.paySlipUrl || selectedOrder.PaySlipUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              sx={{ display: "inline-block" }}
+                            >
+                              <Box
+                                component="img"
+                                src={selectedOrder.paySlipUrl || selectedOrder.PaySlipUrl}
+                                alt="Payment slip"
+                                sx={{
+                                  maxWidth: "100%",
+                                  maxHeight: 220,
+                                  borderRadius: 1,
+                                  border: "1px solid",
+                                  borderColor: "divider",
+                                  objectFit: "contain",
+                                  bgcolor: "grey.100",
+                                }}
+                                onError={(e) => {
+                                  e.currentTarget.style.display = "none";
+                                }}
+                              />
+                            </Box>
+                            <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
+                              <a
+                                href={selectedOrder.paySlipUrl || selectedOrder.PaySlipUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: "inherit" }}
+                              >
+                                Open slip in new tab
+                              </a>
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                            No slip uploaded.
+                          </Typography>
+                        )}
+                        {Number(
+                          selectedOrder.paymentVerificationStatus ??
+                            selectedOrder.PaymentVerificationStatus ??
+                            0
+                        ) === 1 && (
+                          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                            <Button
+                              variant="contained"
+                              color="success"
+                              size="small"
+                              disabled={
+                                verifyingPaymentOrderId ===
+                                (selectedOrder.orderId ?? selectedOrder.OrderId)
+                              }
+                              onClick={() => handleApproveBankTransfer(selectedOrder)}
+                              startIcon={
+                                verifyingPaymentOrderId ===
+                                (selectedOrder.orderId ?? selectedOrder.OrderId) ? (
+                                  <CircularProgress size={14} color="inherit" />
+                                ) : null
+                              }
+                            >
+                              Accept payment
+                            </Button>
+                            <Button
+                              variant="outlined"
+                              color="error"
+                              size="small"
+                              disabled={verifyingPaymentOrderId != null}
+                              onClick={() => handleOpenRejectPayment(selectedOrder)}
+                            >
+                              Reject
+                            </Button>
+                          </Stack>
+                        )}
+                        {Number(
+                          selectedOrder.paymentVerificationStatus ??
+                            selectedOrder.PaymentVerificationStatus ??
+                            0
+                        ) === 2 && (
+                          <Typography variant="caption" color="success.main">
+                            Accepted
+                            {(selectedOrder.paymentVerifiedBy ||
+                              selectedOrder.PaymentVerifiedBy) &&
+                              ` by ${
+                                selectedOrder.paymentVerifiedBy ||
+                                selectedOrder.PaymentVerifiedBy
+                              }`}
+                          </Typography>
+                        )}
+                        {Number(
+                          selectedOrder.paymentVerificationStatus ??
+                            selectedOrder.PaymentVerificationStatus ??
+                            0
+                        ) === 3 && (
+                          <Typography variant="caption" color="error.main">
+                            Rejected
+                            {(selectedOrder.paymentRejectReason ||
+                              selectedOrder.PaymentRejectReason) &&
+                              `: ${
+                                selectedOrder.paymentRejectReason ||
+                                selectedOrder.PaymentRejectReason
+                              }`}
+                          </Typography>
+                        )}
+                      </Box>
+                    )}
                   </Stack>
 
                   <Divider sx={{ my: 2 }} />
@@ -1711,6 +2086,43 @@ export default function Orders() {
       </Dialog>
 
       <Dialog
+        open={dispatchDialogOpen}
+        onClose={handleCloseDispatchDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>Mark order as dispatched</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Enter the courier or carrier name. The customer will receive an email that their order
+            was handed to this service, with a short order summary.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Courier / carrier name"
+            value={dispatchCourierInput}
+            onChange={(e) => setDispatchCourierInput(e.target.value)}
+            placeholder="e.g. Prompt / Domex / in-house driver"
+            disabled={updatingOrderId != null}
+            inputProps={{ maxLength: 200 }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseDispatchDialog} disabled={updatingOrderId != null}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleConfirmDispatch}
+            disabled={updatingOrderId != null}
+          >
+            {updatingOrderId != null ? "Updating…" : "Confirm & notify customer"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
         open={revertDialogOpen}
         onClose={handleCloseRevertDialog}
         maxWidth="sm"
@@ -1831,6 +2243,50 @@ export default function Orders() {
             disabled={cancellingOrderId != null || !cancelReason.trim()}
           >
             {cancellingOrderId != null ? "Cancelling…" : "Cancel order"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={rejectPaymentDialogOpen}
+        onClose={handleCloseRejectPayment}
+        maxWidth="sm"
+        fullWidth
+        disableEscapeKeyDown={verifyingPaymentOrderId != null}
+        PaperProps={{ sx: { borderRadius: 2 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, color: "error.dark" }}>
+          Reject bank transfer payment
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            The order will be cancelled and the customer will be emailed with your reason.
+          </Typography>
+          <TextField
+            autoFocus
+            required
+            fullWidth
+            multiline
+            minRows={3}
+            label="Reason for rejection"
+            placeholder="e.g. Amount mismatch, unclear slip, wrong account…"
+            value={rejectPaymentReason}
+            onChange={(e) => setRejectPaymentReason(e.target.value)}
+            inputProps={{ maxLength: 500 }}
+            helperText={`${rejectPaymentReason.length}/500 — required`}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseRejectPayment} disabled={verifyingPaymentOrderId != null}>
+            Keep pending
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleConfirmRejectPayment}
+            disabled={verifyingPaymentOrderId != null || !rejectPaymentReason.trim()}
+          >
+            {verifyingPaymentOrderId != null ? "Rejecting…" : "Reject payment"}
           </Button>
         </DialogActions>
       </Dialog>

@@ -6,7 +6,7 @@ import Typography from "@mui/material/Typography";
 import { formatCurrency } from "@/components/utils/formatHelper";
 
 
-const Features = ({features}) => {
+const Features = ({ features, periodLabel = "Payments this month" }) => {
 
   const FeaturesData = [
     {
@@ -17,7 +17,7 @@ const Features = ({features}) => {
       badgeProgress: "5.80%",
       badgeClass: "successBadge",
       badgeIcon: "ri-arrow-up-s-fill",
-      growthText: "Payments this month",
+      growthText: periodLabel,
     },
     {
       id: "2",
@@ -27,7 +27,7 @@ const Features = ({features}) => {
       badgeProgress: "1.04%",
       badgeClass: "dangerBadge",
       badgeIcon: "ri-arrow-down-s-fill",
-      growthText: "Payments this month",
+      growthText: periodLabel,
     },
     {
       id: "3",
@@ -37,7 +37,7 @@ const Features = ({features}) => {
       badgeProgress: "5.80%",
       badgeClass: "successBadge",
       badgeIcon: "ri-arrow-up-s-fill",
-      growthText: "Payments this month",
+      growthText: periodLabel,
     },
     {
       id: "4",
@@ -47,7 +47,7 @@ const Features = ({features}) => {
       badgeProgress: "7.80%",
       badgeClass: "successBadge",
       badgeIcon: "ri-arrow-up-s-fill",
-      growthText: "Payments this month",
+      growthText: periodLabel,
     },
   ];
   

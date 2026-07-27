@@ -24,6 +24,17 @@ import { DashboardHeader } from "@/components/shared/dashboard-header";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
+const BUTTON_TYPE = {
+  GLASS: 1,
+  CLIENTS: 2,
+  COLOUR: 3,
+};
+
+const normalizeButtonType = (value) => {
+  const parsed = Number(value) || 0;
+  return parsed === 0 ? BUTTON_TYPE.COLOUR : parsed;
+};
+
 export default function PoloNeck() {
   const router = useRouter();
   const inqId = router.query.id;
@@ -36,7 +47,7 @@ export default function PoloNeck() {
   const [message, setMessage] = useState("");
   const [selectedWidth, setSelectedWidth] = useState(1.25);
   const [selectedButtonValue, setSelectedButtonValue] = useState(2);
-  const [selectedButtonType, setSelectedButtonType] = useState(0);
+  const [selectedButtonType, setSelectedButtonType] = useState(BUTTON_TYPE.COLOUR);
   const [deleteId, setDeleteId] = useState();
   const [colorCodeList, setColorCodeList] = useState([]);
   const [innerPlacketColorCodeId, setInnerPlacketColorCodeId] = useState(0);
@@ -106,6 +117,10 @@ export default function PoloNeck() {
 
   const handlePlacketButtonClick = (index) => {
     setSelectedButtonPlacket(index === selectedButtonPlacket ? null : index);
+    if (index === 5) {
+      setSelectedButtonType(BUTTON_TYPE.COLOUR);
+      setSelectedButtonValue(0);
+    }
   };
 
   const handleCLRChange = (event) => {
@@ -133,16 +148,21 @@ export default function PoloNeck() {
 
       setSelectedCLR(data.result[0].neckFirstRows);
       setSelectedButton(data.result[0].neck2ndRowS);
-      setSelectedButtonPlacket(data.result[0].neck3rdRowS);
-      setSelectedButtonValue(data.result[0].poloButton);
+      const placketType = data.result[0].neck3rdRowS;
+      setSelectedButtonPlacket(placketType);
+      setSelectedButtonValue(
+        placketType === 5 ? 0 : data.result[0].poloButton
+      );
       setSelectedButtonType(
-        Number(
-          data.result[0].buttonType ??
-            data.result[0].buttonTypes ??
-            data.result[0].ButtonType ??
-            data.result[0].ButtonTypes ??
-            0
-        ) || 0
+        placketType === 5
+          ? BUTTON_TYPE.COLOUR
+          : normalizeButtonType(
+              data.result[0].buttonType ??
+                data.result[0].buttonTypes ??
+                data.result[0].ButtonType ??
+                data.result[0].ButtonTypes ??
+                BUTTON_TYPE.COLOUR
+            )
       );
       setSelectedLength(data.result[0].polOlength);
       setSelectedWidth(data.result[0].poloWidth);
@@ -244,8 +264,14 @@ export default function PoloNeck() {
             Neck3rdRowS: selectedButtonPlacket ? selectedButtonPlacket : 6,
             POLOlength: String(selectedLength),
             POLOWidth: String(selectedWidth),
-            POLOButton: String(selectedButtonValue),
-            ButtonType: Number(selectedButtonType) || null,
+            POLOButton:
+              selectedButtonPlacket === 5
+                ? null
+                : String(selectedButtonValue),
+            ButtonType:
+              selectedButtonPlacket === 5
+                ? null
+                : Number(selectedButtonType) || null,
             InnerPlacketColorCodeId: Number(innerPlacketColorCodeId) || 0,
             InnerPlacketColorCodeName: getColorCodeNameById(innerPlacketColorCodeId),
             OuterPlacketColorCodeId: Number(outerPlacketColorCodeId) || 0,
@@ -290,7 +316,7 @@ export default function PoloNeck() {
         },
       }
     );
-    setSelectedButtonType(0);
+    setSelectedButtonType(BUTTON_TYPE.COLOUR);
     setInnerPlacketColorCodeId(0);
     setOuterPlacketColorCodeId(0);
     setSideVent("2");
@@ -598,6 +624,7 @@ export default function PoloNeck() {
                     </Select>
                   </FormControl>
                 </Grid>
+                {selectedButtonPlacket !== 5 && (
                 <Grid item p={1} xs={12} lg={3} md={6}>
                   <Typography
                     as="h5"
@@ -620,6 +647,7 @@ export default function PoloNeck() {
                       value={selectedButtonValue}
                       onChange={handleButtonValueChange}
                     >
+                      <MenuItem value={0}>0</MenuItem>
                       <MenuItem value={1}>1</MenuItem>
                       <MenuItem value={2}>2</MenuItem>
                       <MenuItem value={3}>3</MenuItem>
@@ -627,6 +655,8 @@ export default function PoloNeck() {
                     </Select>
                   </FormControl>
                 </Grid>
+                )}
+                {selectedButtonPlacket !== 5 && (
                 <Grid item p={1} xs={12} lg={3} md={6}>
                   <Typography
                     as="h5"
@@ -647,12 +677,13 @@ export default function PoloNeck() {
                       value={selectedButtonType}
                       onChange={handleButtonTypeChange}
                     >
-                      <MenuItem value={0}>None</MenuItem>
-                      <MenuItem value={1}>Glass</MenuItem>
-                      <MenuItem value={2}>Client&apos;s</MenuItem>
+                      <MenuItem value={BUTTON_TYPE.COLOUR}>Colour</MenuItem>
+                      <MenuItem value={BUTTON_TYPE.GLASS}>Glass</MenuItem>
+                      <MenuItem value={BUTTON_TYPE.CLIENTS}>Client&apos;s</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
+                )}
               </Grid>
             </Grid>
             <Grid item xs={12}>

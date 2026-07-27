@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -9,7 +9,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
-import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Tooltip, IconButton, Box, Button } from "@mui/material";
+import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Tooltip, IconButton, Box, Button, TextField } from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import BASE_URL from "Base/api";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
@@ -27,37 +27,63 @@ export default function Outstanding() {
   const cId = sessionStorage.getItem("category");
   const warehouseId = localStorage.getItem("warehouse");
   const name = localStorage.getItem("name");
-  const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+  const { navigate, create, update, remove, print, whatsAppShare } = IsPermissionEnabled(cId);
   const { data: OutstandingReport } = GetReportSettingValueByName("OutstandingReport");
   const [outstandingList, setOutstandingList] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
+  const [asOfDate, setAsOfDate] = useState("");
+  const searchTimeoutRef = useRef(null);
+
+  const buildDateQuery = (date) => (date ? `&AsOfDate=${date}` : "");
+
   const handleSearchChange = (event) => {
     const value = event.target.value;
     setSearchTerm(value);
     setPage(1);
-    fetchOutstandingList(1, value, pageSize);
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      fetchOutstandingList(1, value, pageSize, asOfDate);
+    }, 300);
+  };
+
+  const handleAsOfDateChange = (event) => {
+    const value = event.target.value;
+    setAsOfDate(value);
+    setPage(1);
+    fetchOutstandingList(1, searchTerm, pageSize, value);
+  };
+
+  const handleClearDate = () => {
+    setAsOfDate("");
+    setPage(1);
+    fetchOutstandingList(1, searchTerm, pageSize, "");
   };
 
   const handlePageChange = (event, value) => {
     setPage(value);
-    fetchOutstandingList(value, searchTerm, pageSize);
+    fetchOutstandingList(value, searchTerm, pageSize, asOfDate);
   };
 
   const handlePageSizeChange = (event) => {
     const newSize = event.target.value;
     setPageSize(newSize);
     setPage(1);
-    fetchOutstandingList(1, searchTerm, newSize);
+    fetchOutstandingList(1, searchTerm, newSize, asOfDate);
   };
 
-  const fetchOutstandingList = async (page = 1, search = "", size = pageSize) => {
+  const fetchOutstandingList = async (page = 1, search = "", size = pageSize, date = asOfDate) => {
     try {
       const token = localStorage.getItem("token");
       const skip = (page - 1) * size;
-      const query = `${BASE_URL}/Outstanding/GetAllOutstandingGroupedByCustomer?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}`;
+      const searchParam = search?.trim() ? encodeURIComponent(search.trim()) : "null";
+      const query = `${BASE_URL}/Outstanding/GetAllOutstandingGroupedByCustomer?SkipCount=${skip}&MaxResultCount=${size}&Search=${searchParam}${buildDateQuery(date)}`;
 
       const response = await fetch(query, {
         method: "GET",
@@ -79,6 +105,12 @@ export default function Outstanding() {
 
   useEffect(() => {
     fetchOutstandingList();
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
   }, []);
   
   if (!navigate) {
@@ -107,6 +139,24 @@ export default function Outstanding() {
             />
           </Search>
         </Grid>
+        <Grid item xs={12} lg={8}>
+          <Box display="flex" gap={1} flexWrap="wrap" alignItems="center" justifyContent={{ xs: "flex-start", lg: "flex-end" }}>
+            <TextField
+              label="As of Date"
+              type="date"
+              size="small"
+              value={asOfDate}
+              onChange={handleAsOfDateChange}
+              InputLabelProps={{ shrink: true }}
+              sx={{ minWidth: 170 }}
+            />
+            {asOfDate && (
+              <Button variant="outlined" size="small" onClick={handleClearDate}>
+                Current Outstanding
+              </Button>
+            )}
+          </Box>
+        </Grid>
         <Grid item xs={12}>
           <TableContainer component={Paper}>
             <Table aria-label="simple table" className="dark-table">
@@ -133,8 +183,10 @@ export default function Outstanding() {
                         <TableCell>{formatCurrency(item.outstandingAmount)}</TableCell>
                         <TableCell align="right">
                           <Box display="flex" justifyContent="end" gap={1}>
-                            <ViewOutstanding item={item} />
-                            <ShareReports url={`/PrintDocumentsByCustomerIdUpload?InitialCatalog=${Catelogue}&reportName=${OutstandingReport}&customerId=${item.customerId}&warehouseId=${warehouseId}&currentUser=${name}`} mobile={item.customerContactNo} />
+                            <ViewOutstanding item={item} asOfDate={asOfDate} />
+                            {whatsAppShare ? (
+                              <ShareReports url={`/PrintDocumentsByCustomerIdUpload?InitialCatalog=${Catelogue}&reportName=${OutstandingReport}&customerId=${item.customerId}&warehouseId=${warehouseId}&currentUser=${name}`} mobile={item.customerContactNo} />
+                            ) : ""}
                             {print ? <Tooltip title="Print" placement="top">
                               <a href={`${Report}` + reportLink} target="_blank">
                                 <IconButton aria-label="print" size="small">

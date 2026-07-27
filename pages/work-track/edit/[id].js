@@ -63,9 +63,11 @@ import DescriptionIcon from "@mui/icons-material/Description";
 import TableChartIcon from "@mui/icons-material/TableChart";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import FormGroup from "@mui/material/FormGroup";
+import ShareIcon from "@mui/icons-material/Share";
 import BASE_URL from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
+import WorkTrackShareDialog from "@/components/work-track/WorkTrackShareDialog";
 
 export default function EditWorkTrack() {
   const router = useRouter();
@@ -101,6 +103,7 @@ export default function EditWorkTrack() {
   const [showErrorEntries, setShowErrorEntries] = useState(false);
   const [technicians, setTechnicians] = useState([]);
   const fileInputRef = useRef(null);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
 
   // Server-side paginated forms (Skip/Take)
   const [pagedForms, setPagedForms] = useState([]);
@@ -878,6 +881,14 @@ export default function EditWorkTrack() {
                 accept=".xlsx,.xls"
                 style={{ display: "none" }}
               />
+              <Button
+                variant="outlined"
+                startIcon={<ShareIcon />}
+                onClick={() => setShareDialogOpen(true)}
+                color="secondary"
+              >
+                Share
+              </Button>
               <Button
                 variant="outlined"
                 startIcon={<DownloadIcon />}
@@ -2070,6 +2081,14 @@ export default function EditWorkTrack() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <WorkTrackShareDialog
+        open={shareDialogOpen}
+        onClose={() => setShareDialogOpen(false)}
+        workTrackId={id}
+        customerName={workTrackData?.customerName}
+        projectName={workTrackData?.projectName}
+      />
     </>
   );
 }

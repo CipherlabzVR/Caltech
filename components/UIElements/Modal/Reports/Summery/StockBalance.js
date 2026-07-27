@@ -5,7 +5,6 @@ import {
   FormControlLabel,
   Grid,
   IconButton,
-  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -51,6 +50,20 @@ export default function StockBalance({ docName, reportName }) {
     setSupplierId(0);
   };
 
+  const buildReportUrl = () => {
+    const params = new URLSearchParams({
+      InitialCatalog: Catelogue,
+      reportName: StockBalanceReport || "",
+      supplierId: String(supplierId),
+      categoryId: String(categoryId),
+      subCategoryid: String(subCategoryId),
+      productId: String(itemId),
+      warehouseId: warehouseId || "",
+      currentUser: name || "",
+    });
+    return `${Report}/${docName}?${params.toString()}`;
+  };
+
   return (
     <>
       <Tooltip title="View" placement="top">
@@ -67,7 +80,7 @@ export default function StockBalance({ docName, reportName }) {
       >
         <Box sx={style} className="bg-black">
           <Box>
-            <Grid container spacing={1}>
+            <Grid container spacing={2.5}>
               <Grid item xs={12} my={2} display="flex" justifyContent="space-between">
                 <Typography variant="h5" fontWeight="bold">
                   Stock Balance Report
@@ -127,11 +140,11 @@ export default function StockBalance({ docName, reportName }) {
                   placeholder="Type to search..."
                 />
               </Grid>
-              <Grid item xs={12} display="flex" justifyContent="space-between" mt={2}>
+              <Grid item xs={12} display="flex" justifyContent="space-between" sx={{ mt: 2 }}>
                 <Button onClick={handleClose} variant="contained" color="error">
                   Close
                 </Button>
-                <a href={`${Report}/${docName}?InitialCatalog=${Catelogue}&reportName=${StockBalanceReport}&supplierId=${supplierId}&categoryId=${categoryId}&subCategoryid=${subCategoryId}&productId=${itemId}&warehouseId=${warehouseId}&currentUser=${name}`} target="_blank">
+                <a href={buildReportUrl()} target="_blank">
                   <Button variant="contained" aria-label="print" size="small">
                     Submit
                   </Button>

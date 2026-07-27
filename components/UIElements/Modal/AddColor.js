@@ -21,8 +21,16 @@ const style = {
   p: 4,
 };
 
+const COLOR_CODE_NAME_MAX_LENGTH = 100;
+
 const validationSchema = Yup.object().shape({
-  Name: Yup.string().required("Name is required"),
+  Name: Yup.string()
+    .trim()
+    .required("Name is required")
+    .max(
+      COLOR_CODE_NAME_MAX_LENGTH,
+      `Max ${COLOR_CODE_NAME_MAX_LENGTH} characters`
+    ),
 });
 
 
@@ -108,6 +116,7 @@ export default function AddColor({fetchItems}) {
                         fullWidth
                         inputRef={inputRef}
                         name="Name"
+                        inputProps={{ maxLength: COLOR_CODE_NAME_MAX_LENGTH }}
                         error={touched.Name && Boolean(errors.Name)}
                         helperText={touched.Name && errors.Name}
                       />

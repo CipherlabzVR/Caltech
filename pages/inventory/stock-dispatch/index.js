@@ -9,11 +9,11 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
-import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select } from "@mui/material";
+import { Button, Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Tooltip, IconButton } from "@mui/material";
+import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import { ToastContainer } from "react-toastify";
 import BASE_URL from "Base/api";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
-import GetStock from "./get-stock";
 import { formatDate } from "@/components/utils/formatHelper";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
@@ -74,6 +74,19 @@ export default function Dispatch() {
         fetchDispachList();
     }, []);
 
+    const openStockDispatchPrintPopup = (item) => {
+        const query = new URLSearchParams({
+            id: String(item.id ?? ""),
+            documentNumber: item.documentNo ?? "",
+        });
+
+        window.open(
+            `/inventory/stock-dispatch/print?${query.toString()}`,
+            `stock-dispatch-print-${item.id}`,
+            "popup=yes,width=1200,height=900,scrollbars=yes,resizable=yes"
+        );
+    };
+
     if (!navigate) {
         return <AccessDenied />;
     }
@@ -101,7 +114,15 @@ export default function Dispatch() {
                     </Search>
                 </Grid>
                 <Grid item xs={12} lg={8} mb={1} display="flex" justifyContent="end" order={{ xs: 1, lg: 2 }}>
-                    {create ? <GetStock fetchItems={fetchDispachList} /> :""}
+                    {create ? (
+                        <Button
+                            variant="outlined"
+                            component={Link}
+                            href="/inventory/stock-dispatch/create"
+                        >
+                            New Dispatch
+                        </Button>
+                    ) : ""}
                 </Grid>
                 <Grid item xs={12} order={{ xs: 3, lg: 3 }}>
                     <TableContainer component={Paper}>
@@ -117,12 +138,13 @@ export default function Dispatch() {
                                     <TableCell>Selling Price</TableCell>
                                     <TableCell>Dispatch Quantity</TableCell>
                                     <TableCell>Remark</TableCell>
+                                    {print ? <TableCell>Action</TableCell> : null}
                                 </TableRow>
                             </TableHead>
                             <TableBody>
                                 {dispatchList.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={9}>
+                                        <TableCell colSpan={print ? 10 : 9}>
                                             <Typography color="error">No Items Available</Typography>
                                         </TableCell>
                                     </TableRow>
@@ -138,6 +160,18 @@ export default function Dispatch() {
                                             <TableCell>{item.sellingPrice}</TableCell>
                                             <TableCell>{item.dispatchQuantity}</TableCell>
                                             <TableCell>{item.remark}</TableCell>
+                                            {print ? (
+                                                <TableCell>
+                                                    <Tooltip title="Print">
+                                                        <IconButton
+                                                            size="small"
+                                                            onClick={() => openStockDispatchPrintPopup(item)}
+                                                        >
+                                                            <LocalPrintshopIcon color="primary" fontSize="medium" />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                </TableCell>
+                                            ) : null}
                                         </TableRow>
                                     ))
                                 )}

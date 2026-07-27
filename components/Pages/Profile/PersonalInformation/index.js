@@ -44,6 +44,7 @@ import { getDeviceId, resolveDeviceDisplayId } from "@/components/utils/getDevic
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 
 const VALID_SECTIONS = ["personal", "devices", "settings", "login-activities", "two-factor"];
+const PROFILE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 
 const TWO_FACTOR_CHANNELS = {
   isTwoFactorEmailEnabled: {
@@ -102,6 +103,8 @@ const PersonalInformation = () => {
   const [user, setUser] = useState(null);
   const [devices, setDevices] = useState([]);
   const [activeSection, setActiveSection] = useState("personal");
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoAction, setPhotoAction] = useState(""); // "upload" | "remove"
 
   // Sync the active tab with the ?section= query param so deep links from
   // elsewhere in the app (e.g. the top navbar "Change Password" menu item)
@@ -689,29 +692,46 @@ const PersonalInformation = () => {
   const activeSectionDetails = sections.find((section) => section.value === activeSection) || sections[0];
 
   const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !user?.id) {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file || !user?.id || photoUploading) {
+      input.value = "";
+      return;
+    }
+
+    if (!file.type?.startsWith("image/")) {
+      toast.error("Please select a valid image file.");
+      input.value = "";
+      return;
+    }
+
+    if (file.size > PROFILE_PHOTO_MAX_BYTES) {
+      toast.error("Image must be 5 MB or smaller.");
+      input.value = "";
       return;
     }
 
     const formData = new FormData();
     formData.append("UserId", user.id);
     formData.append("ProfileImage", file);
-    await uploadFile(formData);
+    await uploadFile(formData, "upload");
+    input.value = "";
   };
 
   const handleImageRemove = async () => {
-    if (!user?.id) {
+    if (!user?.id || photoUploading) {
       return;
     }
 
     const formData = new FormData();
     formData.append("UserId", user.id);
     formData.append("ProfileImage", null);
-    await uploadFile(formData);
+    await uploadFile(formData, "remove");
   };
 
-  const uploadFile = async (formData) => {
+  const uploadFile = async (formData, action = "upload") => {
+    setPhotoAction(action);
+    setPhotoUploading(true);
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(`${BASE_URL}/User/UpdateUserProfileAsync`, {
@@ -722,12 +742,15 @@ const PersonalInformation = () => {
       const data = await response.json();
       if (data.statusCode === 200) {
         toast.success(data.message);
-        fetchUser();
+        await fetchUser();
       } else {
         toast.error(data.message);
       }
     } catch (error) {
-      toast.error(error.message || "");
+      toast.error(error.message || "Failed to update profile photo.");
+    } finally {
+      setPhotoUploading(false);
+      setPhotoAction("");
     }
   };
 
@@ -913,6 +936,7 @@ const PersonalInformation = () => {
           <Grid item xs={12} md={4}>
             <Box
               sx={{
+                position: "relative",
                 width: { xs: 120, md: 150 },
                 height: { xs: 120, md: 150 },
                 borderRadius: "24px",
@@ -927,6 +951,20 @@ const PersonalInformation = () => {
                 alt="Profile"
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
+              {photoUploading && (
+                <Box
+                  sx={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(15, 23, 42, 0.45)",
+                  }}
+                >
+                  <CircularProgress size={32} sx={{ color: "#fff" }} />
+                </Box>
+              )}
             </Box>
           </Grid>
 
@@ -945,34 +983,56 @@ const PersonalInformation = () => {
               <Button
                 component="label"
                 variant="contained"
-                startIcon={<PhotoCamera />}
-                disabled={!user?.id}
+                startIcon={
+                  photoUploading && photoAction === "upload" ? (
+                    <CircularProgress size={16} color="inherit" />
+                  ) : (
+                    <PhotoCamera />
+                  )
+                }
+                disabled={!user?.id || photoUploading}
                 sx={{
                   borderRadius: "10px",
                   textTransform: "capitalize",
                   color: "#fff !important",
                 }}
               >
-                {profileImg ? "Change Photo" : "Upload Photo"}
-                <input hidden accept="image/*" type="file" onChange={handleImageUpload} />
+                {photoUploading && photoAction === "upload"
+                  ? "Uploading…"
+                  : profileImg
+                    ? "Change Photo"
+                    : "Upload Photo"}
+                <input
+                  hidden
+                  accept="image/*"
+                  type="file"
+                  onChange={handleImageUpload}
+                  disabled={photoUploading}
+                />
               </Button>
 
               <Button
                 variant="outlined"
                 color="error"
-                startIcon={<DeleteIcon />}
+                startIcon={
+                  photoUploading && photoAction === "remove" ? (
+                    <CircularProgress size={16} color="inherit" />
+                  ) : (
+                    <DeleteIcon />
+                  )
+                }
                 onClick={handleImageRemove}
-                disabled={!profileImg || !user?.id}
+                disabled={!profileImg || !user?.id || photoUploading}
                 sx={{ borderRadius: "10px", textTransform: "capitalize" }}
               >
-                Remove Photo
+                {photoUploading && photoAction === "remove" ? "Removing…" : "Remove Photo"}
               </Button>
 
               <Button
                 variant="outlined"
                 startIcon={<EditOutlinedIcon />}
                 onClick={openEditProfileDialog}
-                disabled={!user?.id}
+                disabled={!user?.id || photoUploading}
                 sx={{ borderRadius: "10px", textTransform: "capitalize" }}
               >
                 Edit Profile

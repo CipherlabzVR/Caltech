@@ -22,6 +22,7 @@ export default function CurrencyAutocomplete({
   disabled = false,
   error = false,
   helperText = "",
+  activeOnly = false,
 }) {
   const [options, setOptions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -51,8 +52,12 @@ export default function CurrencyAutocomplete({
       // In case it's not paginated but just a list:
       else if (Array.isArray(json.result)) items = json.result;
 
+      const filteredItems = activeOnly
+        ? items.filter((x) => x.isActive !== false)
+        : items;
+
       setOptions(
-        items.map((x) => ({
+        filteredItems.map((x) => ({
           id: x.code,
           label: `${x.code} — ${x.currencyName || x.name || ""}`,
         }))
@@ -62,7 +67,7 @@ export default function CurrencyAutocomplete({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeOnly]);
 
   const debouncedSearch = useMemo(
     () => debounce((term) => fetchCurrencies(term), 350),

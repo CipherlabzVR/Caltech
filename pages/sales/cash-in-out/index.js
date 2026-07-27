@@ -9,14 +9,15 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
-import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack } from "@mui/material";
+import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack, Tooltip, IconButton, Box } from "@mui/material";
+import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import { ToastContainer } from "react-toastify";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import BASE_URL from "Base/api";
-import { formatCurrency } from "@/components/utils/formatHelper";
+import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
 
 export default function CashInOut() {
   const cId = sessionStorage.getItem("category")
@@ -62,6 +63,19 @@ export default function CashInOut() {
     setPageSize(size);
     setPage(1);
     fetchCashInOutList(1, search, size, undefined, filter);
+  };
+
+  const openCashInOutPrintPopup = (item) => {
+    const query = new URLSearchParams({
+      id: String(item.id ?? ""),
+      shiftCode: item.shiftCode ?? "",
+    });
+
+    window.open(
+      `/sales/cash-in-out/print?${query.toString()}`,
+      `cash-in-out-print-${item.id}`,
+      "popup=yes,width=1200,height=900,scrollbars=yes,resizable=yes"
+    );
   };
 
   const handleOpenApprove = (item) => {
@@ -211,6 +225,7 @@ export default function CashInOut() {
               <TableHead>
                 <TableRow>
                   <TableCell>Shift</TableCell>
+                  <TableCell>Date</TableCell>
                   <TableCell>Description</TableCell>
                   <TableCell>Warehouse</TableCell>
                   <TableCell>Created By</TableCell>
@@ -224,7 +239,7 @@ export default function CashInOut() {
               <TableBody>
                 {cashInOut.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9}>
+                    <TableCell colSpan={10}>
                       <Typography color="error">No Data Available</Typography>
                     </TableCell>
                   </TableRow>
@@ -232,6 +247,7 @@ export default function CashInOut() {
                   cashInOut.map((item, index) => (
                     <TableRow key={index}>
                       <TableCell>{item.shiftCode}</TableCell>
+                      <TableCell>{formatDate(item.createdOn)}</TableCell>
                       <TableCell>{item.description}</TableCell>
                       <TableCell>{item.warehouseName}</TableCell>
                       <TableCell>{item.createdUser}</TableCell>
@@ -252,18 +268,32 @@ export default function CashInOut() {
                       </TableCell>
                       <TableCell>{formatCurrency(item.amount)}</TableCell>
                       <TableCell align="right">
-                        {item.status === 3 ? item.rejectedReason : ""}
-                        {update && item.status !== 2 && item.status !== 3 && (
-                          <Stack direction="row" spacing={1} justifyContent="flex-end">
-                            <Button variant="contained" color="success" size="small" onClick={() => handleOpenApprove(item)}>
-                              Approve
-                            </Button>
-                            <Button variant="outlined" color="error" size="small" onClick={() => handleOpenReject(item)}>
-                              Reject
-                            </Button>
-                          </Stack>
-                        )}
-                        
+                        <Box display="flex" justifyContent="flex-end" alignItems="center" gap={1}>
+                          {item.status === 3 ? item.rejectedReason : ""}
+                          {print ? (
+                            <Tooltip title="Print (Default)" placement="top">
+                              <IconButton
+                                aria-label="print default"
+                                size="small"
+                                onClick={() => openCashInOutPrintPopup(item)}
+                              >
+                                <LocalPrintshopIcon color="action" fontSize="medium" />
+                              </IconButton>
+                            </Tooltip>
+                          ) : (
+                            ""
+                          )}
+                          {update && item.status !== 2 && item.status !== 3 && (
+                            <Stack direction="row" spacing={1} justifyContent="flex-end">
+                              <Button variant="contained" color="success" size="small" onClick={() => handleOpenApprove(item)}>
+                                Approve
+                              </Button>
+                              <Button variant="outlined" color="error" size="small" onClick={() => handleOpenReject(item)}>
+                                Reject
+                              </Button>
+                            </Stack>
+                          )}
+                        </Box>
                       </TableCell>
                     </TableRow>
                   ))

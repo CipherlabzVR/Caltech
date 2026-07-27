@@ -110,8 +110,23 @@ const POCreate = () => {
     }
   };
 
+  const isExpirationDateInPast = (dateStr) => {
+    if (!dateStr) return false;
+    const min = formatDate(new Date());
+    return dateStr < min;
+  };
+
   const handleSubmit = async () => {
     if (!isSubmitted) {
+      for (const row of selectedRows) {
+        if (isExpirationDateInPast(row.expDate)) {
+          toast.error(
+            "Expiry date cannot be in the past. Please check line items."
+          );
+          return;
+        }
+      }
+
       const data = {
         SupplierId: supplier ? supplier.id : "",
         SupplierCode: "2",
@@ -631,9 +646,17 @@ const POCreate = () => {
                             fullWidth
                             name=""
                             value={row.expDate || ""}
+                            inputProps={{
+                              min: formatDate(new Date()),
+                            }}
                             onChange={(e) => {
+                              const next = e.target.value;
+                              if (isExpirationDateInPast(next)) {
+                                toast.error("Expiry date cannot be in the past");
+                                return;
+                              }
                               const updatedRows = [...selectedRows];
-                              updatedRows[index].expDate = e.target.value;
+                              updatedRows[index].expDate = next;
                               setSelectedRows(updatedRows);
                             }}
                           />

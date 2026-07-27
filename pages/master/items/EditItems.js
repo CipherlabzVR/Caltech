@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   Checkbox,
   FormControlLabel,
@@ -28,13 +28,28 @@ import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DownloadIcon from "@mui/icons-material/Download";
 import AddIcon from "@mui/icons-material/Add";
+import { isItemCodeAvailable } from "@/components/utils/validateItemCode";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
+import {
+  parseItemWebDetailDescription,
+  mergeItemWebDetailDescription,
+} from "@/components/utils/itemWebDetailDescription";
+import ItemTypeSelector, { mapItemToSelectorValues } from "@/components/Items/ItemTypeSelector";
+import StockCountScheduleFields, {
+  STOCK_COUNT_FREQUENCY,
+  getDefaultStockCountSchedule,
+  validateStockCountSchedule,
+} from "@/components/UIElements/StockCountScheduleFields";
 
-/** Optional leading + then digits only (e.g. +94771234567). */
+/** Digits with optional international + (E.164). + may be leading or after separators, e.g. (+94) 771. */
 function sanitizeSupplierMobileInput(raw) {
-  const s = String(raw ?? "");
+  const s = String(raw ?? "").trim();
+  const hasPlus = /[+\uFF0B]/.test(s);
   const digits = s.replace(/\D/g, "");
-  return s.trim().startsWith("+") ? `+${digits}` : digits;
+  if (!digits) {
+    return hasPlus ? "+" : "";
+  }
+  return hasPlus ? `+${digits}` : digits;
 }
 
 // Controlled Category Modal Component
@@ -398,6 +413,8 @@ const CreateSupplierModal = ({ open, onClose, fetchItems, isPOSSystem, banks, is
     }
     const payload = {
       ...values,
+      FirstName: String(values.FirstName ?? "").trim(),
+      LastName: String(values.LastName ?? "").trim(),
       MobileNo: sanitizeSupplierMobileInput(values.MobileNo),
       BankId: selectedBank?.id || null,
       BankName: selectedBank?.name || "",
@@ -434,14 +451,22 @@ const CreateSupplierModal = ({ open, onClose, fetchItems, isPOSSystem, banks, is
     <Modal open={open} onClose={onClose}>
       <Box sx={style} className="bg-black">
         <Formik
+          key={String(open)}
           initialValues={{
+            FirstName: "",
+            LastName: "",
             Name: "",
             MobileNo: "",
             PayableAccount: null,
             IsActive: true,
           }}
           validationSchema={Yup.object().shape({
-            Name: Yup.string().required("Name is required"),
+            FirstName: Yup.string()
+              .trim()
+              .required("First name is required")
+              .max(150, "Max 150 characters"),
+            LastName: Yup.string().max(150, "Max 150 characters"),
+            Name: Yup.string().required("Display name is required"),
             MobileNo: Yup.string()
               .required("Mobile No is required")
               .matches(
@@ -462,12 +487,38 @@ const CreateSupplierModal = ({ open, onClose, fetchItems, isPOSSystem, banks, is
                   </Grid>
                   <Grid item xs={12} mt={1}>
                     <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>
-                      Supplier Name
+                      First name
                     </Typography>
                     <Field
                       as={TextField}
                       fullWidth
                       inputRef={inputRef}
+                      name="FirstName"
+                      size="small"
+                      error={touched.FirstName && Boolean(errors.FirstName)}
+                      helperText={touched.FirstName && errors.FirstName}
+                    />
+                  </Grid>
+                  <Grid item xs={12} mt={1}>
+                    <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>
+                      Last name
+                    </Typography>
+                    <Field
+                      as={TextField}
+                      fullWidth
+                      name="LastName"
+                      size="small"
+                      error={touched.LastName && Boolean(errors.LastName)}
+                      helperText={touched.LastName && errors.LastName}
+                    />
+                  </Grid>
+                  <Grid item xs={12} mt={1}>
+                    <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>
+                      Display name
+                    </Typography>
+                    <Field
+                      as={TextField}
+                      fullWidth
                       name="Name"
                       size="small"
                       error={touched.Name && Boolean(errors.Name)}
@@ -740,26 +791,133 @@ const style = {
   p: 2,
 };
 
-const validationSchema = Yup.object().shape({
-  Name: Yup.string().required("Item Name is required"),
-  Code: Yup.string().required("Item Code is required"),
-  CategoryId: Yup.number().required("Category is required"),
-  SubCategoryId: Yup.number().required("Sub Category is required"),
-  Supplier: Yup.number().required("Supplier is required"),
-  UOM: Yup.number().required("Unit of Measure is required"),
-  ReorderLevel: Yup.mixed()
-    .nullable()
-    .test(
-      "reorder-non-negative",
-      "Reorder Level cannot be negative",
-      (val) => {
-        if (val === null || val === undefined || val === "") return true;
-        const n = Number(val);
-        if (Number.isNaN(n)) return false;
-        return n >= 0;
-      }
-    ),
-});
+function transformEmptyToUndefinedNumber(orig) {
+  if (orig === "" || orig === null || orig === undefined) return undefined;
+  const n = Number(orig);
+  return Number.isNaN(n) ? orig : n;
+}
+
+/** Coerce API ids to numbers for MUI Select MenuItem matching. */
+function toSelectValue(v) {
+  if (v == null || v === "") return "";
+  const n = Number(v);
+  return Number.isFinite(n) ? n : "";
+}
+
+/** Maps list row / GetItemById payload onto Edit Item Formik shape. */
+function mapApiItemToEditFormValues(src) {
+  if (!src) return null;
+  const pick = (camel, pascal) => src[camel] ?? src[pascal];
+  const rawDesc = pick("description", "Description") || "";
+  const parsed = parseItemWebDetailDescription(rawDesc);
+  const typeSlice = mapItemToSelectorValues(src);
+  const reorderRaw = pick("reorderLevel", "ReorderLevel");
+  let reorderLevel = null;
+  if (reorderRaw != null && reorderRaw !== "") {
+    const n = Number(reorderRaw);
+    reorderLevel = Number.isNaN(n) ? null : Math.max(0, n);
+  }
+  return {
+    Id: toSelectValue(pick("id", "Id")),
+    Name: pick("name", "Name") || "",
+    Code: pick("code", "Code") || "",
+    AveragePrice: pick("averagePrice", "AveragePrice") || null,
+    WholesalePrice: pick("wholesalePrice", "WholesalePrice") ?? null,
+    WholesaleMinimumQuantity:
+      pick("wholesaleMinimumQuantity", "WholesaleMinimumQuantity") ?? null,
+    CategoryId: toSelectValue(pick("categoryId", "CategoryId")),
+    SubCategoryId: toSelectValue(pick("subCategoryId", "SubCategoryId")),
+    ShipmentTarget: pick("shipmentTarget", "ShipmentTarget") || null,
+    ReorderLevel: reorderLevel,
+    Supplier: toSelectValue(pick("supplier", "Supplier")),
+    UOM: toSelectValue(pick("uom", "UOM")),
+    Barcode: pick("barcode", "Barcode") || null,
+    CurrencyId: toSelectValue(pick("currencyId", "CurrencyId")) || null,
+    CostAccount: toSelectValue(pick("costAccount", "CostAccount")) || null,
+    AssetsAccount: toSelectValue(pick("assetsAccount", "AssetsAccount")) || null,
+    IncomeAccount: toSelectValue(pick("incomeAccount", "IncomeAccount")) || null,
+    IsActive: pick("isActive", "IsActive") ?? true,
+    IsNonInventoryItem: pick("isNonInventoryItem", "IsNonInventoryItem") ?? false,
+    HasSerialNumbers: pick("hasSerialNumbers", "HasSerialNumbers") ?? false,
+    IsWebView: pick("isWebView", "IsWebView") ?? false,
+    IsUpcoming: pick("isUpcoming", "IsUpcoming") || false,
+    IsOutOfStock: pick("isOutOfStock", "IsOutOfStock") || false,
+    IsItemEndInvolve: pick("isItemEndInvolve", "IsItemEndInvolve") || false,
+    StockMethod: toSelectValue(pick("stockMethod", "StockMethod")) || 1,
+    Description: parsed.plain,
+    ItemWebFeatures: parsed.features,
+    ItemWebSpecifications: parsed.specifications,
+    ItemWebWarranty: parsed.warranty,
+    ItemTypeId: typeSlice.ItemTypeId,
+    IsAllVariantsSamePrice: typeSlice.IsAllVariantsSamePrice,
+    FeatureSelections: typeSlice.FeatureSelections,
+  };
+}
+
+function getItemsApiErrorMessage(response, data) {
+  if (data?.errors) {
+    return Object.entries(data.errors)
+      .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(", ") : msgs}`)
+      .join("; ");
+  }
+  return (
+    data?.message ??
+    data?.Message ??
+    data?.title ??
+    `Server error (${response?.status ?? "unknown"})`
+  );
+}
+
+function buildItemsValidationSchema(isSubCategoryNotRequired, isUOMNotRequired, excludeItemId) {
+  const subCatField = isSubCategoryNotRequired
+    ? Yup.mixed().nullable().transform((_, orig) =>
+        orig === "" || orig === null || orig === undefined ? null : Number(orig))
+    : Yup.number()
+        .transform((_, orig) => transformEmptyToUndefinedNumber(orig))
+        .required("Sub Category is required");
+  const uomField = isUOMNotRequired
+    ? Yup.mixed().nullable().transform((_, orig) =>
+        orig === "" || orig === null || orig === undefined ? null : Number(orig))
+    : Yup.number()
+        .transform((_, orig) => transformEmptyToUndefinedNumber(orig))
+        .required("Unit of Measure is required");
+
+  return Yup.object().shape({
+    Name: Yup.string().required("Item Name is required"),
+    Code: Yup.string()
+      .required("Item Code is required")
+      .test(
+        "unique-item-code",
+        "This item code is already assigned to another item",
+        async function (value) {
+          if (!value || !String(value).trim()) {
+            return true;
+          }
+          const result = await isItemCodeAvailable(value, excludeItemId);
+          return result.available;
+        }
+      ),
+    CategoryId: Yup.number().required("Category is required"),
+    SubCategoryId: subCatField,
+    Supplier: Yup.number()
+      .transform((_, orig) => transformEmptyToUndefinedNumber(orig))
+      .required("Supplier is required"),
+    UOM: uomField,
+    Description: Yup.string().nullable(),
+    ReorderLevel: Yup.mixed()
+      .nullable()
+      .test(
+        "reorder-non-negative",
+        "Reorder Level cannot be negative",
+        (val) => {
+          if (val === null || val === undefined || val === "") return true;
+          const n = Number(val);
+          if (Number.isNaN(n)) return false;
+          return n >= 0;
+        }
+      ),
+  });
+}
 
 export default function EditItems({
   fetchItems,
@@ -771,22 +929,93 @@ export default function EditItems({
   barcodeEnabled,
   IsEcommerceWebSiteAvailable,
   onDuplicateRequest,
+  canDuplicate = false,
   approve1 = false,
+  isSubCategoryNotRequired = false,
+  isUOMNotRequired = false,
+  showItemWebDetailFields = false,
+  upcomingMode = false,
 }) {
+  const validationSchema = useMemo(
+    () => buildItemsValidationSchema(!!isSubCategoryNotRequired, !!isUOMNotRequired, item.id),
+    [isSubCategoryNotRequired, isUOMNotRequired, item.id]
+  );
   const router = useRouter();
   const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
+  const { data: enableItemTypeFilter } = IsAppSettingEnabled("EnableItemTypeFilter");
   const [open, setOpen] = React.useState(false);
+  const [formInitialValues, setFormInitialValues] = useState(() =>
+    mapApiItemToEditFormValues(item)
+  );
   const [subImages, setSubImages] = useState([]); // { id, preview|imgUrl, file?, price, description, isExisting }
   const [subImageIdsToRemove, setSubImageIdsToRemove] = useState([]);
   const subImageInputRef = useRef(null);
+  const [stockCountSchedule, setStockCountSchedule] = useState(
+    getDefaultStockCountSchedule()
+  );
+
+  const fetchStockCountSchedule = async () => {
+    try {
+      const res = await fetch(
+        `${BASE_URL}/Items/GetStockCountScheduleByItemId?itemId=${item.id}`,
+        {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        }
+      );
+      if (!res.ok) throw new Error("Failed to fetch schedule");
+      const data = await res.json();
+      const s = data.result;
+      setStockCountSchedule({
+        frequency: s?.frequency ?? STOCK_COUNT_FREQUENCY.DAILY,
+        dayOfMonth: s?.dayOfMonth ?? "",
+        month: s?.scheduleMonth ?? "",
+        day: s?.scheduleDay ?? "",
+      });
+    } catch {
+      setStockCountSchedule(getDefaultStockCountSchedule());
+    }
+  };
+
+  const applyItemToForm = (row) => {
+    // Prefer list-row supplier/uom/id when detail payload omits them.
+    const merged = {
+      ...item,
+      ...row,
+      id: row?.id ?? row?.Id ?? item.id,
+      Id: row?.id ?? row?.Id ?? item.id,
+      supplier: row?.supplier ?? row?.Supplier ?? item.supplier,
+      Supplier: row?.supplier ?? row?.Supplier ?? item.supplier,
+      uom: row?.uom ?? row?.UOM ?? item.uom,
+      UOM: row?.uom ?? row?.UOM ?? item.uom,
+      stockMethod: row?.stockMethod ?? row?.StockMethod ?? item.stockMethod,
+      categoryId: row?.categoryId ?? row?.CategoryId ?? item.categoryId,
+      subCategoryId: row?.subCategoryId ?? row?.SubCategoryId ?? item.subCategoryId,
+    };
+    setFormInitialValues(mapApiItemToEditFormValues(merged));
+  };
+
   const handleOpen = async () => {
+    // Seed from list row first so Supplier/UOM show immediately.
+    applyItemToForm(item);
+    setSubImages([]);
+    setSubImageIdsToRemove([]);
+    setSelectedImage(item.productImage != "" ? item.productImage : null);
+    setSelectedFile(null);
+    setTabValue(0);
     setOpen(true);
+    fetchStockCountSchedule();
     try {
       const res = await fetch(`${BASE_URL}/Items/GetItemById?id=${item.id}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
       const data = await res.json();
-      const subImgs = data.result?.itemSubImages ?? data.result?.ItemSubImages ?? [];
+      const full = data.result ?? data.Result ?? null;
+      const row =
+        full && typeof full === "object" && (full.id != null || full.Id != null)
+          ? full
+          : item;
+      applyItemToForm(row);
+      const subImgs = row?.itemSubImages ?? row?.ItemSubImages ?? [];
       if (subImgs?.length) {
         const existing = subImgs.map((s) => ({
           id: s.id ?? s.Id,
@@ -801,7 +1030,10 @@ export default function EditItems({
         setSubImages([]);
       }
       setSubImageIdsToRemove([]);
+      const img = row?.productImage ?? row?.ProductImage ?? item.productImage;
+      setSelectedImage(img != "" && img != null ? img : null);
     } catch {
+      applyItemToForm(item);
       setSubImages([]);
       setSubImageIdsToRemove([]);
     }
@@ -812,9 +1044,14 @@ export default function EditItems({
       return [];
     });
     setSubImageIdsToRemove([]);
+    setFormInitialValues(mapApiItemToEditFormValues(item));
     setOpen(false);
   };
   const handleDuplicateItem = () => {
+    if (!canDuplicate) {
+      toast.error("You do not have permission to create items.");
+      return;
+    }
     localStorage.setItem("duplicateItemId", String(item.id));
     handleClose();
     if (onDuplicateRequest) {
@@ -825,6 +1062,7 @@ export default function EditItems({
         query: { duplicate: "1", t: String(Date.now()) },
       });
     }
+    toast.info("Review the duplicate item and click Save to create a new item.");
   };
   const [selectedCat, setSelectedCat] = useState();
   const [categoryList, setCategoryList] = useState([]);
@@ -946,9 +1184,11 @@ export default function EditItems({
   };
 
   useEffect(() => {
+    setCatId(item.categoryId);
+    setSelectedCat(item.categoryId);
     fetchCategoryList();
     fetchSupplierList();
-    fetchSubCategoryList();
+    fetchSubCategoryList(item.categoryId);
     fetchCurrencyList();
     fetchUOMList();
     setSelectedImage(item.productImage != "" ? item.productImage : null);
@@ -1110,9 +1350,24 @@ export default function EditItems({
     }
   };
 
-  const handleSubmit = (values) => {
+  const handleSubmit = async (values) => {
     if (values.IsWebView && values.AveragePrice === null) {
       toast.warning("Please enter the average price for web view.");
+      return;
+    }
+
+    if (values.IsItemEndInvolve) {
+      const scheduleError = validateStockCountSchedule(stockCountSchedule);
+      if (scheduleError) {
+        toast.warning(scheduleError);
+        return;
+      }
+    }
+
+    const editItemId = values.Id || item.id;
+    const codeCheck = await isItemCodeAvailable(values.Code, editItemId);
+    if (!codeCheck.available) {
+      toast.error("This item code is already assigned to another item.");
       return;
     }
 
@@ -1139,49 +1394,78 @@ export default function EditItems({
 
     const formData = new FormData();
 
-    formData.append("Id", values.Id);
+    formData.append("Id", editItemId);
     formData.append("Name", values.Name);
     formData.append("Code", values.Code);
     formData.append("AveragePrice", values.AveragePrice);
-    formData.append(
-      "WholesalePrice",
-      values.WholesalePrice !== null && values.WholesalePrice !== "" ? values.WholesalePrice : "",
-    );
-    formData.append(
-      "WholesaleMinimumQuantity",
-      values.WholesaleMinimumQuantity !== null && values.WholesaleMinimumQuantity !== ""
-        ? values.WholesaleMinimumQuantity
-        : "",
-    );
-    formData.append("ShipmentTarget", values.ShipmentTarget ? values.ShipmentTarget : "");
+    if (values.WholesalePrice !== null && values.WholesalePrice !== "") {
+      formData.append("WholesalePrice", values.WholesalePrice);
+    }
+    if (
+      values.WholesaleMinimumQuantity !== null &&
+      values.WholesaleMinimumQuantity !== ""
+    ) {
+      formData.append("WholesaleMinimumQuantity", values.WholesaleMinimumQuantity);
+    }
+    if (values.ShipmentTarget !== null && values.ShipmentTarget !== "") {
+      formData.append("ShipmentTarget", values.ShipmentTarget);
+    }
     {
       const rl = values.ReorderLevel;
       const rlNum =
         rl != null && rl !== "" ? Math.max(0, Number(rl)) : null;
-      formData.append(
-        "ReorderLevel",
-        rlNum != null && !Number.isNaN(rlNum) ? String(rlNum) : ""
-      );
+      if (rlNum != null && !Number.isNaN(rlNum)) {
+        formData.append("ReorderLevel", String(rlNum));
+      }
     }
     formData.append("CategoryId", values.CategoryId);
-    formData.append("SubCategoryId", values.SubCategoryId);
+    if (values.SubCategoryId !== "" && values.SubCategoryId != null) {
+      formData.append("SubCategoryId", values.SubCategoryId);
+    }
     formData.append("Supplier", values.Supplier);
-    formData.append("UOM", values.UOM);
+    if (values.UOM !== "" && values.UOM != null) {
+      formData.append("UOM", values.UOM);
+    }
     if (values.CurrencyId) {
       formData.append("CurrencyId", values.CurrencyId);
     }
     if (values.Barcode !== undefined && values.Barcode !== null && values.Barcode !== "") {
       formData.append("Barcode", values.Barcode);
     }
-    formData.append("CostAccount", values.CostAccount ? values.CostAccount : "");
-    formData.append("AssetsAccount", values.AssetsAccount ? values.AssetsAccount : "");
-    formData.append("IncomeAccount", values.IncomeAccount ? values.IncomeAccount : "");
+    if (values.CostAccount) {
+      formData.append("CostAccount", values.CostAccount);
+    }
+    if (values.AssetsAccount) {
+      formData.append("AssetsAccount", values.AssetsAccount);
+    }
+    if (values.IncomeAccount) {
+      formData.append("IncomeAccount", values.IncomeAccount);
+    }
     formData.append("IsActive", values.IsActive);
     formData.append("IsNonInventoryItem", values.IsNonInventoryItem);
     formData.append("HasSerialNumbers", values.HasSerialNumbers);
-    formData.append("IsWebView", values.IsWebView);
+    formData.append("IsWebView", values.IsWebView || values.IsUpcoming);
+    formData.append("IsUpcoming", values.IsUpcoming);
     formData.append("IsOutOfStock", values.IsOutOfStock);
     formData.append("IsItemEndInvolve", values.IsItemEndInvolve);
+    formData.append("StockMethod", values.StockMethod ?? 1);
+    if (values.IsItemEndInvolve && stockCountSchedule.frequency) {
+      formData.append("StockCountFrequency", stockCountSchedule.frequency);
+      if (
+        stockCountSchedule.frequency === STOCK_COUNT_FREQUENCY.MONTHLY &&
+        stockCountSchedule.dayOfMonth
+      ) {
+        formData.append("StockCountDayOfMonth", stockCountSchedule.dayOfMonth);
+      }
+      if (stockCountSchedule.frequency === STOCK_COUNT_FREQUENCY.YEARLY) {
+        if (stockCountSchedule.month) {
+          formData.append("StockCountMonth", stockCountSchedule.month);
+        }
+        if (stockCountSchedule.day) {
+          formData.append("StockCountDay", stockCountSchedule.day);
+        }
+      }
+    }
     formData.append("ProductImage", selectedFile ? selectedFile : null);
     (subImages || []).forEach((s) => {
       if (s.file) formData.append("SubImages", s.file);
@@ -1212,35 +1496,46 @@ export default function EditItems({
     if (subImageIdsToRemove.length > 0) {
       formData.append("SubImageIdsToRemove", subImageIdsToRemove.join(","));
     }
-    if (values.Description && values.Description.trim() !== "") {
-      formData.append("Description", values.Description);
+    const mergedDescription = mergeItemWebDetailDescription(values.Description || "", {
+      features: values.ItemWebFeatures,
+      specifications: values.ItemWebSpecifications,
+      warranty: values.ItemWebWarranty,
+    });
+    formData.append("Description", mergedDescription);
+    if (values.ItemTypeId !== "" && values.ItemTypeId != null) {
+      formData.append("ItemTypeId", values.ItemTypeId);
     }
+    formData.append("IsAllVariantsSamePrice", !!values.IsAllVariantsSamePrice);
+    formData.append(
+      "FeatureSelections",
+      JSON.stringify(values.FeatureSelections || [])
+    );
 
-    fetch(`${BASE_URL}/Items/UpdateItems`, {
-      method: "POST",
-      body: formData,
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-    })
-      .then((response) => response.json())
-      .then((data) => {
-        if (data?.statusCode == 200) {
-          toast.success(data.message);
-          setSubImages((prev) => {
-            prev.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
-            return [];
-          });
-          setSubImageIdsToRemove([]);
-          setOpen(false);
-          fetchItems();
-        } else {
-          toast.error(data.message);
-        }
-      })
-      .catch((error) => {
-        toast.error(error.message || "");
+    try {
+      const response = await fetch(`${BASE_URL}/Items/UpdateItems`, {
+        method: "POST",
+        body: formData,
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
       });
+      const data = await response.json().catch(() => null);
+
+      if (response.ok && data?.statusCode == 200) {
+        toast.success(data.message);
+        setSubImages((prev) => {
+          prev.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
+          return [];
+        });
+        setSubImageIdsToRemove([]);
+        setOpen(false);
+        fetchItems();
+      } else {
+        toast.error(getItemsApiErrorMessage(response, data));
+      }
+    } catch (error) {
+      toast.error(error.message || "");
+    }
   };
   return (
     <>
@@ -1257,41 +1552,12 @@ export default function EditItems({
       >
         <Box sx={style} className="bg-black">
           <Formik
-            initialValues={{
-              Id: item.id,
-              Name: item.name || "",
-              Code: item.code || "",
-              AveragePrice: item.averagePrice || null,
-              WholesalePrice: item.wholesalePrice ?? null,
-              WholesaleMinimumQuantity: item.wholesaleMinimumQuantity ?? null,
-              CategoryId: item.categoryId || "",
-              SubCategoryId: item.subCategoryId || "",
-              ShipmentTarget: item.shipmentTarget || null,
-              ReorderLevel: (() => {
-                const raw = item.reorderLevel;
-                if (raw == null || raw === "") return null;
-                const n = Number(raw);
-                return Number.isNaN(n) ? null : Math.max(0, n);
-              })(),
-              Supplier: item.supplier || "",
-              UOM: item.uom || "",
-              Barcode: item.barcode || null,
-              CurrencyId: item.currencyId || null,
-              CostAccount: item.costAccount || null,
-              AssetsAccount: item.assetsAccount || null,
-              IncomeAccount: item.incomeAccount || null,
-              IsActive: item.isActive,
-              IsNonInventoryItem: item.isNonInventoryItem,
-              HasSerialNumbers: item.hasSerialNumbers,
-              IsWebView: item.isWebView,
-              IsOutOfStock: item.isOutOfStock || false,
-              IsItemEndInvolve: item.isItemEndInvolve || false,
-              Description: item.description
-            }}
+            enableReinitialize
+            initialValues={formInitialValues}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
-            {({ errors, touched, values, setFieldValue }) => {
+            {({ errors, touched, submitCount, values, setFieldValue }) => {
               // Store setFieldValue in component scope for modal handlers
               window.currentSetFieldValue = setFieldValue;
               return (
@@ -1314,7 +1580,7 @@ export default function EditItems({
                       >
                         Edit Item
                       </Typography>
-                      {approve1 ? (
+                      {canDuplicate ? (
                         <Button
                           type="button"
                           variant="contained"
@@ -1393,7 +1659,7 @@ export default function EditItems({
                               name="CategoryId"
                               size="small"
                               onChange={(e) => {
-                                setFieldValue("CategoryId", e.target.value);
+                                setFieldValue("CategoryId", toSelectValue(e.target.value));
                                 handleCategorySelect(e);
                               }}
                             >
@@ -1402,8 +1668,8 @@ export default function EditItems({
                                 No Categories Available
                               </MenuItem>
                             ) : (
-                              categoryList.map((category, index) => (
-                                <MenuItem key={index} value={category.id}>
+                              categoryList.map((category) => (
+                                <MenuItem key={category.id} value={Number(category.id)}>
                                   {category.name}
                                 </MenuItem>
                               ))
@@ -1444,20 +1710,24 @@ export default function EditItems({
                               name="SubCategoryId"
                               size="small"
                               onChange={(e) => {
-                                setFieldValue("SubCategoryId", e.target.value);
+                                setFieldValue("SubCategoryId", toSelectValue(e.target.value));
                               }}
                             >
-                            {subCategoryList.length === 0 ? (
-                              <MenuItem disabled>
-                                No Sub Categories Available
-                              </MenuItem>
-                            ) : (
-                              subCategoryList.map((subcategory, index) => (
-                                <MenuItem key={index} value={subcategory.id}>
+                            {isSubCategoryNotRequired && (
+                              <MenuItem key="__none" value="">None</MenuItem>
+                            )}
+                            {subCategoryList.length === 0 &&
+                              !isSubCategoryNotRequired && (
+                                <MenuItem key="__empty" disabled>
+                                  No Sub Categories Available
+                                </MenuItem>
+                              )}
+                            {subCategoryList.length > 0 &&
+                              subCategoryList.map((subcategory) => (
+                                <MenuItem key={subcategory.id} value={Number(subcategory.id)}>
                                   {subcategory.name}
                                 </MenuItem>
-                              ))
-                            )}
+                              ))}
                             </Field>
                             {touched.SubCategoryId &&
                               Boolean(errors.SubCategoryId) && (
@@ -1497,20 +1767,39 @@ export default function EditItems({
                               name="Supplier"
                               size="small"
                               onChange={(e) => {
-                                setFieldValue("Supplier", e.target.value);
+                                setFieldValue("Supplier", toSelectValue(e.target.value));
                               }}
                             >
-                            {supplierList.length === 0 ? (
-                              <MenuItem disabled>
-                                No Suppliers Available
-                              </MenuItem>
-                            ) : (
-                              supplierList.map((supplier, index) => (
-                                <MenuItem key={index} value={supplier.id}>
+                            {(() => {
+                              const selectedSupplierId = toSelectValue(values.Supplier);
+                              const options = [...supplierList];
+                              if (
+                                selectedSupplierId !== "" &&
+                                !options.some(
+                                  (s) => Number(s.id) === Number(selectedSupplierId)
+                                )
+                              ) {
+                                options.unshift({
+                                  id: selectedSupplierId,
+                                  name: `Supplier #${selectedSupplierId}`,
+                                });
+                              }
+                              if (options.length === 0) {
+                                return (
+                                  <MenuItem disabled>
+                                    No Suppliers Available
+                                  </MenuItem>
+                                );
+                              }
+                              return options.map((supplier) => (
+                                <MenuItem
+                                  key={supplier.id}
+                                  value={Number(supplier.id)}
+                                >
                                   {supplier.name}
                                 </MenuItem>
-                              ))
-                            )}
+                              ));
+                            })()}
                             </Field>
                             {touched.Supplier && Boolean(errors.Supplier) && (
                               <Typography variant="caption" color="error">
@@ -1672,18 +1961,34 @@ export default function EditItems({
                               fullWidth
                               name="UOM"
                               size="small"
+                              onChange={(e) => {
+                                setFieldValue("UOM", toSelectValue(e.target.value));
+                              }}
                             >
-                            {uomList.filter(uom => uom.isActive).length === 0 ? (
-                              <MenuItem disabled>No Active UOM Available</MenuItem>
-                            ) : (
-                              uomList
-                                .filter(uom => uom.isActive)
-                                .map((uom, index) => (
-                                  <MenuItem key={index} value={uom.id}>
-                                    {uom.name}
-                                  </MenuItem>
-                                ))
+                            {isUOMNotRequired && (
+                              <MenuItem value="">None</MenuItem>
                             )}
+                            {(() => {
+                              const selectedUomId = toSelectValue(values.UOM);
+                              const options = uomList.filter(
+                                (uom) =>
+                                  uom.isActive ||
+                                  Number(uom.id) === Number(selectedUomId)
+                              );
+                              if (options.length === 0 && !isUOMNotRequired) {
+                                return (
+                                  <MenuItem disabled>
+                                    No Active UOM Available
+                                  </MenuItem>
+                                );
+                              }
+                              return options.map((uom) => (
+                                <MenuItem key={uom.id} value={Number(uom.id)}>
+                                  {uom.name}
+                                  {!uom.isActive ? " (Inactive)" : ""}
+                                </MenuItem>
+                              ));
+                            })()}
                             </Field>
                           </FormControl>
                           <IconButton
@@ -1704,6 +2009,36 @@ export default function EditItems({
                             mb: "5px",
                           }}
                         >
+                          Outbound Method
+                        </Typography>
+                        <FormControl fullWidth>
+                          <Field
+                            as={TextField}
+                            select
+                            fullWidth
+                            name="StockMethod"
+                            size="small"
+                            onChange={(e) => {
+                              setFieldValue("StockMethod", toSelectValue(e.target.value) || 1);
+                            }}
+                          >
+                            <MenuItem value={1}>FIFO (First In First Out)</MenuItem>
+                            <MenuItem value={2}>LIFO (Last In First Out)</MenuItem>
+                            <MenuItem value={3}>FEFO (First Expired First Out)</MenuItem>
+                            <MenuItem value={4}>LEFO (Last Expired First Out)</MenuItem>
+                            <MenuItem value={5}>BIFO (Batch In First Out)</MenuItem>
+                            <MenuItem value={6}>BILO (Batch In Last Out)</MenuItem>
+                          </Field>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} lg={6} mt={1} p={1}>
+                        <Typography
+                          sx={{
+                            fontWeight: "500",
+                            fontSize: "14px",
+                            mb: "5px",
+                          }}
+                        >
                           Select Currency
                         </Typography>
                         <FormControl fullWidth>
@@ -1714,7 +2049,7 @@ export default function EditItems({
                             name="CurrencyId"
                             size="small"
                             onChange={(e) => {
-                              setFieldValue("CurrencyId", e.target.value);
+                              setFieldValue("CurrencyId", toSelectValue(e.target.value) || null);
                             }}
                           >
                             {currencyList.length === 0 ? (
@@ -1722,8 +2057,8 @@ export default function EditItems({
                                 No Currencies Available
                               </MenuItem>
                             ) : (
-                              currencyList.map((currency, index) => (
-                                <MenuItem key={index} value={currency.id}>
+                              currencyList.map((currency) => (
+                                <MenuItem key={currency.id} value={Number(currency.id)}>
                                   {currency.code} - {currency.name}
                                 </MenuItem>
                               ))
@@ -1749,7 +2084,7 @@ export default function EditItems({
                             name="CostAccount"
                             size="small"
                             onChange={(e) => {
-                              setFieldValue("CostAccount", e.target.value);
+                              setFieldValue("CostAccount", toSelectValue(e.target.value) || null);
                             }}
                           >
                             {chartOfAccounts.length === 0 ? (
@@ -1757,8 +2092,8 @@ export default function EditItems({
                                 No Accounts Available
                               </MenuItem>
                             ) : (
-                              chartOfAccounts.map((acc, index) => (
-                                <MenuItem key={index} value={acc.id}>
+                              chartOfAccounts.map((acc) => (
+                                <MenuItem key={acc.id} value={Number(acc.id)}>
                                   {acc.code} - {acc.description}
                                 </MenuItem>
                               ))
@@ -1784,7 +2119,7 @@ export default function EditItems({
                             name="IncomeAccount"
                             size="small"
                             onChange={(e) => {
-                              setFieldValue("IncomeAccount", e.target.value);
+                              setFieldValue("IncomeAccount", toSelectValue(e.target.value) || null);
                             }}
                           >
                             {chartOfAccounts.length === 0 ? (
@@ -1792,8 +2127,8 @@ export default function EditItems({
                                 No Accounts Available
                               </MenuItem>
                             ) : (
-                              chartOfAccounts.map((acc, index) => (
-                                <MenuItem key={index} value={acc.id}>
+                              chartOfAccounts.map((acc) => (
+                                <MenuItem key={acc.id} value={Number(acc.id)}>
                                   {acc.code} - {acc.description}
                                 </MenuItem>
                               ))
@@ -1819,7 +2154,7 @@ export default function EditItems({
                             name="AssetsAccount"
                             size="small"
                             onChange={(e) => {
-                              setFieldValue("AssetsAccount", e.target.value);
+                              setFieldValue("AssetsAccount", toSelectValue(e.target.value) || null);
                             }}
                           >
                             {chartOfAccounts.length === 0 ? (
@@ -1827,8 +2162,8 @@ export default function EditItems({
                                 No Accounts Available
                               </MenuItem>
                             ) : (
-                              chartOfAccounts.map((acc, index) => (
-                                <MenuItem key={index} value={acc.id}>
+                              chartOfAccounts.map((acc) => (
+                                <MenuItem key={acc.id} value={Number(acc.id)}>
                                   {acc.code} - {acc.description}
                                 </MenuItem>
                               ))
@@ -1871,8 +2206,83 @@ export default function EditItems({
                           size="small"
                           multiline
                           rows={4}
+                          error={(touched.Description || submitCount > 0) && Boolean(errors.Description)}
+                          helperText={(touched.Description || submitCount > 0) && errors.Description}
                         />
                       </Grid>
+                      {enableItemTypeFilter && (
+                        <Grid item xs={12} mt={1} p={1}>
+                          <ItemTypeSelector
+                            values={values}
+                            setFieldValue={setFieldValue}
+                            averagePrice={values.AveragePrice}
+                          />
+                        </Grid>
+                      )}
+                      {showItemWebDetailFields && (
+                        <Grid item xs={12} mt={1} p={1}>
+                          <Typography
+                            sx={{
+                              fontWeight: "500",
+                              fontSize: "14px",
+                              mb: "5px",
+                            }}
+                          >
+                            Features
+                          </Typography>
+                          <Field
+                            as={TextField}
+                            fullWidth
+                            name="ItemWebFeatures"
+                            size="small"
+                            multiline
+                            rows={3}
+                            placeholder="Bullet-style or short text for web product page"
+                          />
+                        </Grid>
+                      )}
+                      {showItemWebDetailFields && (
+                        <Grid item xs={12} mt={1} p={1}>
+                          <Typography
+                            sx={{
+                              fontWeight: "500",
+                              fontSize: "14px",
+                              mb: "5px",
+                            }}
+                          >
+                            Specifications
+                          </Typography>
+                          <Field
+                            as={TextField}
+                            fullWidth
+                            name="ItemWebSpecifications"
+                            size="small"
+                            multiline
+                            rows={3}
+                          />
+                        </Grid>
+                      )}
+                      {showItemWebDetailFields && (
+                        <Grid item xs={12} mt={1} p={1}>
+                          <Typography
+                            sx={{
+                              fontWeight: "500",
+                              fontSize: "14px",
+                              mb: "5px",
+                            }}
+                          >
+                            Warranty
+                          </Typography>
+                          <Field
+                            as={TextField}
+                            fullWidth
+                            name="ItemWebWarranty"
+                            size="small"
+                            multiline
+                            rows={3}
+                          />
+                        </Grid>
+                      )}
                       <Grid item xs={12} mt={1} p={1}>
                         <Grid container spacing={1}>
                           <Grid item xs={12} lg={6}>
@@ -1937,6 +2347,28 @@ export default function EditItems({
                             </Grid>
                           )}
 
+                          {IsEcommerceWebSiteAvailable && showItemWebDetailFields && (
+                            <Grid item xs={12} lg={6} mt={1}>
+                              <FormControlLabel
+                                control={
+                                  <Field
+                                    as={Checkbox}
+                                    name="IsUpcoming"
+                                    checked={values.IsUpcoming}
+                                    onChange={() => {
+                                      const next = !values.IsUpcoming;
+                                      setFieldValue("IsUpcoming", next);
+                                      if (next) {
+                                        setFieldValue("IsWebView", true);
+                                      }
+                                    }}
+                                  />
+                                }
+                                label="Upcoming (Coming Soon on website)"
+                              />
+                            </Grid>
+                          )}
+
                           {isItemEndInvolveEnable && (
                             <Grid item xs={12} lg={6} mt={1}>
                               <FormControlLabel
@@ -1949,6 +2381,14 @@ export default function EditItems({
                                   />
                                 }
                                 label="Is Item End Involve"
+                              />
+                            </Grid>
+                          )}
+                          {isItemEndInvolveEnable && values.IsItemEndInvolve && (
+                            <Grid item xs={12} mt={1}>
+                              <StockCountScheduleFields
+                                schedule={stockCountSchedule}
+                                onChange={setStockCountSchedule}
                               />
                             </Grid>
                           )}

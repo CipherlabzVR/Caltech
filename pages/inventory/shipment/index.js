@@ -10,11 +10,13 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
+import DescriptionIcon from "@mui/icons-material/Description";
 import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Button, IconButton, Tooltip } from "@mui/material";
-import { ToastContainer } from "react-toastify";
+import { ToastContainer, toast } from "react-toastify";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import StatusType from "pages/production/ongoing/Types/StatusType";
 import { useRouter } from "next/router";
@@ -22,15 +24,16 @@ import { formatDate } from "@/components/utils/formatHelper";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
 import { Catelogue } from "Base/catelogue";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
-import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import { Report } from "Base/report";
 
 export default function ShipmentNote() {
   const cId = sessionStorage.getItem("category")
-  const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+  const { navigate, create, update, remove, print, customPrint } = IsPermissionEnabled(cId);
+  const { data: isSupplierInvolvedToShipment } = IsAppSettingEnabled(
+    "IsSupplierInvolvedToShipment"
+  );
   const name = localStorage.getItem("name");
   const { data: ReportName } = GetReportSettingValueByName("ShipmentNote");
-  const { data: isCustomReportsEnabled } = IsAppSettingEnabled("IsCustomReportsEnabled");
 
   const {
     data: shipmentList,
@@ -91,6 +94,29 @@ export default function ShipmentNote() {
     );
   };
 
+  const getSupplierViewLink = (shipmentId) => {
+    if (typeof window === "undefined") return "";
+    return `${window.location.origin}/inventory/shipment/view?id=${shipmentId}`;
+  };
+
+  const handleCopySupplierLink = async (shipmentId) => {
+    const link = getSupplierViewLink(shipmentId);
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Supplier link copied to clipboard");
+    } catch {
+      const textArea = document.createElement("textarea");
+      textArea.value = link;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      toast.success("Supplier link copied to clipboard");
+    }
+  };
+
+  const showSupplierLink = isSupplierInvolvedToShipment === true;
+  const tableColSpan = showSupplierLink ? 9 : 8;
 
   if (!navigate) {
     return <AccessDenied />;
@@ -135,13 +161,14 @@ export default function ShipmentNote() {
                   <TableCell>Reference No</TableCell>
                   <TableCell>Remark</TableCell>
                   <TableCell>Status</TableCell>
+                  {showSupplierLink ? <TableCell>Supplier Link</TableCell> : null}
                   <TableCell align="right">Action</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {shipmentList.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} align="center">
+                    <TableCell colSpan={tableColSpan} align="center">
                       <Typography color="error">
                         No Shipment Notes Available
                       </Typography>
@@ -166,6 +193,22 @@ export default function ShipmentNote() {
                         <TableCell>
                           <StatusType type={item.status} />
                         </TableCell>
+                        {showSupplierLink ? (
+                          <TableCell>
+                            <Typography
+                              component="span"
+                              sx={{
+                                color: "primary.main",
+                                cursor: "pointer",
+                                textDecoration: "underline",
+                                fontSize: "14px",
+                              }}
+                              onClick={() => handleCopySupplierLink(item.id)}
+                            >
+                              copy link
+                            </Typography>
+                          </TableCell>
+                        ) : null}
                         <TableCell align="right">
                           {item.status != 7 ? (
                             update ? (
@@ -180,29 +223,30 @@ export default function ShipmentNote() {
                               </Tooltip>
                             ) : null
                           ) : (
-                            print ?
+                            (print || customPrint) ? (
                               <>
-                                {isCustomReportsEnabled ? (
-                                  <Tooltip title="Print" placement="top">
+                                {customPrint ? (
+                                  <Tooltip title="Print (Custom)" placement="top">
                                     <a href={`${Report}${reportLink}`} target="_blank" rel="noopener noreferrer">
-                                      <IconButton aria-label="print" size="small">
-                                        <LocalPrintshopIcon color="primary" fontSize="medium" />
+                                      <IconButton aria-label="print custom" size="small">
+                                        <DescriptionIcon color="action" fontSize="medium" />
                                       </IconButton>
                                     </a>
                                   </Tooltip>
-                                ) : (
-                                  <Tooltip title="Print" placement="top">
+                                ) : null}
+                                {print ? (
+                                  <Tooltip title="Print (Default)" placement="top">
                                     <IconButton
-                                      aria-label="print"
+                                      aria-label="print default"
                                       size="small"
                                       onClick={() => openShipmentPrintPopup(item)}
                                     >
                                       <LocalPrintshopIcon color="primary" fontSize="medium" />
                                     </IconButton>
                                   </Tooltip>
-                                )}
+                                ) : null}
                               </>
-                              : null
+                            ) : null
                           )}
                         </TableCell>
                       </TableRow>

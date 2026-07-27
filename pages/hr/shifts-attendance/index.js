@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import {
@@ -80,6 +80,10 @@ const ShiftAttendance = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [employees, setEmployees] = useState([]);
+  const employeesRef = useRef([]);
+  useEffect(() => {
+    employeesRef.current = employees;
+  }, [employees]);
   const [clockIns, setClockIns] = useState([]);
   const [clockOuts, setClockOuts] = useState([]);
   const [dailyWorkHours, setDailyWorkHours] = useState([]);
@@ -181,6 +185,7 @@ const ShiftAttendance = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [deleteItemType, setDeleteItemType] = useState(""); // "attendance", "shift", "request"
+  const [manualAdjustmentData, setManualAdjustmentData] = useState([]);
 
   // Load employees from employee lifecycle
   const loadEmployees = useCallback(async () => {
@@ -432,13 +437,14 @@ const ShiftAttendance = () => {
     } finally {
       setAttendanceGridLoading(false);
     }
-  }, [attendanceGridDateRange]);
+  }, [attendanceGridDateRange.from, attendanceGridDateRange.to]);
 
   // Load manual adjustments
   const loadManualAdjustments = useCallback(async () => {
     try {
       const orgId = getOrgId();
       const headers = createAuthHeaders();
+      const emps = employeesRef.current;
       
       // Fetch manual attendance adjustments (source = "Manual")
       const response = await fetch(
@@ -450,7 +456,7 @@ const ShiftAttendance = () => {
         const data = parsePagedResponse(await response.json());
         const adjustments = (data.items || []).map(item => {
           const empId = item.employeeProfileId || item.EmployeeProfileId;
-          const emp = employees.find(e => (e.id || e.Id || e.internalId || e.InternalId) == empId);
+          const emp = emps.find(e => (e.id || e.Id || e.internalId || e.InternalId) == empId);
           const firstName = emp?.firstName || emp?.FirstName || "";
           const lastName = emp?.lastName || emp?.LastName || "";
           const employeeName = `${firstName} ${lastName}`.trim() || `Employee ${empId}`;
@@ -473,7 +479,7 @@ const ShiftAttendance = () => {
     } catch (error) {
       console.error("Error loading manual adjustments:", error);
     }
-  }, [employees]);
+  }, []);
 
   // Load daily work hours
   const loadDailyWorkHours = useCallback(async () => {
@@ -650,8 +656,6 @@ const ShiftAttendance = () => {
       await loadClockIns();
       await loadClockOuts();
       await loadDailyWorkHours();
-      await loadDailyAttendanceGrid();
-      await loadManualAdjustments();
       
       // Check for open clock-ins on page load
       await checkOpenClockIn(employeeFilter ? parseInt(employeeFilter) : null);
@@ -660,14 +664,19 @@ const ShiftAttendance = () => {
     };
     
     initialize();
-  }, [navigate, loadEmployees, loadClockIns, loadClockOuts, loadDailyWorkHours, loadDailyAttendanceGrid, loadManualAdjustments, checkOpenClockIn, employeeFilter]);
+  }, [navigate, loadEmployees, loadClockIns, loadClockOuts, loadDailyWorkHours, checkOpenClockIn, employeeFilter]);
 
-  // Reload attendance grid when date range changes
+  // Reload manual adjustments when employee list arrives (names for lookup) — stable callback; avoids re-running full init
   useEffect(() => {
-    if (activeTab === 1) {
-      loadDailyAttendanceGrid();
-    }
-  }, [attendanceGridDateRange, activeTab, loadDailyAttendanceGrid]);
+    if (!navigate || employees.length === 0) return;
+    loadManualAdjustments();
+  }, [navigate, employees.length, loadManualAdjustments]);
+
+  // Reload attendance grid when date range or tab changes (do not load from main init — prevents infinite loading / duplicate requests)
+  useEffect(() => {
+    if (!navigate || activeTab !== 1) return;
+    loadDailyAttendanceGrid();
+  }, [navigate, attendanceGridDateRange.from, attendanceGridDateRange.to, activeTab, loadDailyAttendanceGrid]);
 
   // Check for open clock-ins when employee filter changes
   useEffect(() => {

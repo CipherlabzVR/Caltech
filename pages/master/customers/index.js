@@ -18,12 +18,15 @@ import EditCustomerDialog from "./edit";
 import AddCustomerDialog from "../customers/create";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import useApi from "@/components/utils/useApi";
 
 export default function Customers() {
   const cId = sessionStorage.getItem("category")
   const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+  const { data: isSimpleCustomerForm } = IsAppSettingEnabled("IsSimpleCustomerFormEnable");
+  const tableColumnCount = isSimpleCustomerForm ? 7 : 12;
   const [chartOfAccounts, setChartOfAccounts] = useState([]);
   const [chartOfAccInfo, setChartOfAccInfo] = useState({});
   const { data: accountList } = useApi("/ChartOfAccount/GetAll");
@@ -107,13 +110,19 @@ export default function Customers() {
                   <TableCell>Name</TableCell>
                   <TableCell>Display Name</TableCell>
                   <TableCell>Email</TableCell>
-                  <TableCell>NIC</TableCell>
+                  {!isSimpleCustomerForm && <TableCell>NIC</TableCell>}
                   <TableCell>Address</TableCell>
-                  <TableCell>Organization</TableCell>
+                  {!isSimpleCustomerForm && <TableCell>Organization</TableCell>}
                   <TableCell>Contact No</TableCell>
-                  <TableCell>Receivable Acc</TableCell>
-                  <TableCell align="right">Credit Limit</TableCell>
-                  <TableCell align="right" sx={{ color: "success.main", fontWeight: 600 }}>Available Balance</TableCell>
+                  {!isSimpleCustomerForm && <TableCell>Receivable Acc</TableCell>}
+                  {!isSimpleCustomerForm && (
+                    <TableCell align="right">Credit Limit</TableCell>
+                  )}
+                  {!isSimpleCustomerForm && (
+                    <TableCell align="right" sx={{ color: "success.main", fontWeight: 600 }}>
+                      Available Balance
+                    </TableCell>
+                  )}
                   <TableCell>Details</TableCell>
                   <TableCell align="right">Action</TableCell>
                 </TableRow>
@@ -121,7 +130,7 @@ export default function Customers() {
               <TableBody>
                 {customerList.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12}>
+                    <TableCell colSpan={tableColumnCount}>
                       <Typography color="error">No Customers Available</Typography>
                     </TableCell>
                   </TableRow>
@@ -133,15 +142,26 @@ export default function Customers() {
                       </TableCell>
                       <TableCell>{item.displayName}</TableCell>
                       <TableCell>{item.customerContactDetails?.[0]?.emailAddress || ""}</TableCell>
-                      <TableCell>{item.nic || ""}</TableCell>
+                      {!isSimpleCustomerForm && <TableCell>{item.nic || ""}</TableCell>}
                       <TableCell>
                         {[item?.addressLine1, item?.addressLine2, item?.addressLine3].filter(Boolean).join(", ")}
                       </TableCell>
-                      <TableCell>{item.company || ""}</TableCell>
+                      {!isSimpleCustomerForm && <TableCell>{item.company || ""}</TableCell>}
                       <TableCell>{item.customerContactDetails?.[0]?.contactNo || ""}</TableCell>
-                      <TableCell>{chartOfAccInfo[item.receivableAccount]?.code || "-"} - {chartOfAccInfo[item.receivableAccount]?.description || "-"}</TableCell>
-                      <TableCell align="right">{item.creditLimit?.toLocaleString() || "0"}</TableCell>
-                      <TableCell align="right" sx={{ color: "success.main", fontWeight: 600 }}>{((item.creditLimit || 0) - (item.outstandingAmount || 0)).toLocaleString()}</TableCell>
+                      {!isSimpleCustomerForm && (
+                        <TableCell>
+                          {chartOfAccInfo[item.receivableAccount]?.code || "-"} -{" "}
+                          {chartOfAccInfo[item.receivableAccount]?.description || "-"}
+                        </TableCell>
+                      )}
+                      {!isSimpleCustomerForm && (
+                        <TableCell align="right">{item.creditLimit?.toLocaleString() || "0"}</TableCell>
+                      )}
+                      {!isSimpleCustomerForm && (
+                        <TableCell align="right" sx={{ color: "success.main", fontWeight: 600 }}>
+                          {((item.creditLimit || 0) - (item.outstandingAmount || 0)).toLocaleString()}
+                        </TableCell>
+                      )}
                       <TableCell>
                         <ViewCustomerDialog customerId={item.id} />
                       </TableCell>

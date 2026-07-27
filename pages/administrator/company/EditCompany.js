@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Grid,
   IconButton,
@@ -18,9 +18,12 @@ import * as Yup from "yup";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import BASE_URL from "Base/api";
+import { createAuthHeadersFormData } from "@/components/utils/apiHelpers";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
 import DeleteIcon from "@mui/icons-material/Delete";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import getNext from "@/components/utils/getNext";
+import { encryptLink } from "@/components/utils/linkCrypto";
 import Modules from "./modules";
 import { styled } from "@mui/material/styles";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
@@ -83,6 +86,47 @@ const validationSchema = Yup.object().shape({
     }),
 });
 
+const BASIC_TAB_FIELDS = ["ContactPerson", "ContactNumber"];
+const HOSTING_TAB_FIELDS = ["RenewalDate", "RenewalMonth"];
+
+const getTabIndexForValidationErrors = (validationErrors) => {
+  const errorFields = Object.keys(validationErrors);
+  if (errorFields.some((field) => BASIC_TAB_FIELDS.includes(field))) {
+    return 0;
+  }
+  if (errorFields.some((field) => HOSTING_TAB_FIELDS.includes(field))) {
+    return 3;
+  }
+  return 0;
+};
+
+const tabHasValidationErrors = (tabIndex, errors, showHints) => {
+  if (!showHints) return false;
+  const fieldsByTab = {
+    0: BASIC_TAB_FIELDS,
+    3: HOSTING_TAB_FIELDS,
+  };
+  return (fieldsByTab[tabIndex] || []).some((field) => errors[field]);
+};
+
+const TabLabel = ({ label, hasError }) => (
+  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+    <span>{label}</span>
+    {hasError && (
+      <Box
+        component="span"
+        sx={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          bgcolor: "error.main",
+          flexShrink: 0,
+        }}
+      />
+    )}
+  </Box>
+);
+
 export default function EditCompany({ item, fetchItems }) {
   const { data: code } = getNext(`12`);
   const [image, setImage] = useState("");
@@ -90,19 +134,60 @@ export default function EditCompany({ item, fetchItems }) {
   const [warehouseCode, setWarehouseCode] = useState(null);
   const [tabIndex, setTabIndex] = useState(0);
   const [logo, setLogo] = useState(null);
+  const [deleteLogo, setDeleteLogo] = useState(false);
   const [letterheadImage, setLetterheadImage] = useState("");
   const [letterheadFile, setLetterheadFile] = useState(null);
   const [deleteLetterhead, setDeleteLetterhead] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showValidationHints, setShowValidationHints] = useState(false);
+  const [currencies, setCurrencies] = useState([]);
   const inputRef = useRef(null);
+
+  const fetchCurrencies = async () => {
+    try {
+      const response = await fetch(
+        `${BASE_URL}/Currency/GetAllCurrency?SkipCount=0&MaxResultCount=1000&Search=null`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch currencies");
+      }
+
+      const data = await response.json();
+      let list = [];
+      if (data.result?.items) {
+        list = data.result.items;
+      } else if (Array.isArray(data.result)) {
+        list = data.result;
+      }
+      setCurrencies(list.filter((currency) => currency.isActive !== false));
+    } catch (error) {
+      console.error("Error fetching currencies:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchCurrencies();
+  }, []);
 
   const handleOpen = () => setOpen(true);
   const handleClose = () => {
     setOpen(false);
     setTabIndex(0);
+    setShowValidationHints(false);
     setDeleteLetterhead(false);
-    // Reset letterhead state when closing if not saved
+    setDeleteLogo(false);
+    // Reset logo & letterhead state when closing if not saved
     if (item) {
+      setImage(item.companyLogo || "");
+      setLogo(null);
       setLetterheadImage(item.letterHeadImage || "");
       setLetterheadFile(null);
     }
@@ -123,33 +208,50 @@ export default function EditCompany({ item, fetchItems }) {
     if (code) setWarehouseCode(code);
 
     if (item) {
-      setImage(item.companyLogo);
+      setImage(item.companyLogo || "");
+      setLogo(null);
+      setDeleteLogo(false);
       setLetterheadImage(item.letterHeadImage || "");
       setDeleteLetterhead(false);
       setLetterheadFile(null);
     }
   }, [code, item]);
 
-  const validateA4Size = (file) => {
+  const handleCopyApiKey = async (value) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("API Key copied to clipboard");
+    } catch {
+      toast.error("Unable to copy API Key");
+    }
+  };
+
+  const validateLetterheadDimensions = (file) => {
+    const minWidthPrint = 2480;
+    const minWidthRelaxed = 690;
     return new Promise((resolve, reject) => {
       const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
       img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
         const width = img.width;
         const height = img.height;
-        // A4 aspect ratio: 210mm x 297mm = 0.707 (width/height)
-        // Allow ±5% tolerance
-        const aspectRatio = width / height;
-        const a4Ratio = 210 / 297; // 0.707
-        const tolerance = 0.05;
-
-        if (Math.abs(aspectRatio - a4Ratio) <= tolerance) {
+        if (width >= minWidthPrint || width >= minWidthRelaxed) {
           resolve(true);
         } else {
-          reject(new Error(`Image must be A4 size (210mm x 297mm / 2480 x 3508 px at 300 DPI). Current dimensions: ${width} x ${height}px`));
+          reject(
+            new Error(
+              `Letterhead width must be at least ${minWidthRelaxed}px (or ${minWidthPrint}px+ for print). Any height is allowed. Current: ${width} × ${height}px`
+            )
+          );
         }
       };
-      img.onerror = () => reject(new Error("Invalid image file"));
-      img.src = URL.createObjectURL(file);
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("Invalid image file"));
+      };
+      img.src = objectUrl;
     });
   };
 
@@ -164,13 +266,19 @@ export default function EditCompany({ item, fetchItems }) {
     }
 
     try {
-      await validateA4Size(file);
+      await validateLetterheadDimensions(file);
       setLetterheadFile(file);
       setLetterheadImage(URL.createObjectURL(file));
       setDeleteLetterhead(false);
     } catch (error) {
       toast.error(error.message);
     }
+  };
+
+  const handleDeleteLogo = () => {
+    setImage("");
+    setLogo(null);
+    setDeleteLogo(true);
   };
 
   const handleDeleteLetterhead = () => {
@@ -183,37 +291,66 @@ export default function EditCompany({ item, fetchItems }) {
   const handleSubmit = async (values) => {
     const formData = new FormData();
 
-    formData.append("Id", values.Id);
-    formData.append("Code", values.Code);
-    formData.append("Name", values.Name);
-    formData.append("Description", values.Description);
+    formData.append("Id", String(values.Id));
+    formData.append("Code", values.Code ?? "");
+    formData.append("Name", values.Name ?? "");
+    formData.append("Description", values.Description ?? "");
     formData.append("ContactPerson", values.ContactPerson);
     formData.append("ContactNumber", values.ContactNumber);
-    formData.append("CompanyLogo", logo ? logo : null);
-    if (deleteLetterhead) {
-      formData.append("LetterHeadImage", null);
-    } else {
-      formData.append("LetterHeadImage", letterheadFile ? letterheadFile : null);
+    formData.append("ClearCompanyLogo", deleteLogo ? "true" : "false");
+    if (!deleteLogo && logo) {
+      formData.append("CompanyLogo", logo);
     }
-    formData.append("LandingPage", values.LandingPage);
-    formData.append("RenewalDate", values.RenewalDate ? Number(values.RenewalDate) : "");
-    formData.append("RenewalMonth", values.BillingType === "2" && values.RenewalMonth ? Number(values.RenewalMonth) : "");
-    formData.append("HostingFee", values.HostingFee || null);
-    formData.append("BillingType", values.BillingType || 1);
-    // append fields
+    formData.append("ClearLetterHead", deleteLetterhead ? "true" : "false");
+    if (!deleteLetterhead && letterheadFile) {
+      formData.append("LetterHeadImage", letterheadFile);
+    }
+    formData.append("UsersUrl", values.UsersUrl ?? "");
+    formData.append("LandingPage", String(values.LandingPage ?? ""));
+    formData.append(
+      "RenewalDate",
+      values.RenewalDate ? String(Number(values.RenewalDate)) : ""
+    );
+    formData.append(
+      "RenewalMonth",
+      values.BillingType === "2" && values.RenewalMonth
+        ? String(Number(values.RenewalMonth))
+        : ""
+    );
+    formData.append(
+      "HostingFee",
+      values.HostingFee !== undefined && values.HostingFee !== null && values.HostingFee !== ""
+        ? String(values.HostingFee)
+        : ""
+    );
+    formData.append("BillingType", String(values.BillingType || 1));
+    formData.append("CurrencyId", values.currencyId || "");
+
+    if (process.env.NODE_ENV === "development") {
+      for (const [key, val] of formData.entries()) {
+        console.log(
+          "[UpdateCompany FormData]",
+          key,
+          val instanceof File ? `${val.name} (${val.size}b)` : val
+        );
+      }
+    }
+
     try {
       setLoading(true);
-      const token = localStorage.getItem("token");
       const response = await fetch(`${BASE_URL}/Company/UpdateCompany`, {
         method: "POST",
         body: formData,
-        headers: { Authorization: `Bearer ${token}` },
+        headers: createAuthHeadersFormData(),
       });
       const data = await response.json();
       if (data.statusCode === 200) {
         toast.success(data.message);
+        setShowValidationHints(false);
         setOpen(false);
         setDeleteLetterhead(false);
+        setDeleteLogo(false);
+        setLogo(null);
         setLetterheadFile(null);
         fetchItems();
       } else {
@@ -248,13 +385,6 @@ export default function EditCompany({ item, fetchItems }) {
               Edit Company
             </Typography>
           </Box>
-          <Tabs value={tabIndex} onChange={handleTabChange}>
-            <Tab label="Basic" />
-            <Tab label="Modules" />
-            <Tab label="Logo & Letterhead" />
-            <Tab label="Hosting" />
-          </Tabs>
-
           <Formik
             initialValues={{
               Id: item.id,
@@ -263,6 +393,9 @@ export default function EditCompany({ item, fetchItems }) {
               ContactPerson: item.contactPerson || "",
               ContactNumber: item.contactNumber || "",
               Description: item.description || "",
+              UsersUrl:
+                item.usersUrl ||
+                (typeof window !== "undefined" ? window.location.origin : ""),
               LandingPage:
                 item.landingPage === null || item.landingPage === undefined
                   ? "1"
@@ -271,19 +404,81 @@ export default function EditCompany({ item, fetchItems }) {
               RenewalMonth: item.renewalMonth || "",
               HostingFee: item.hostingFee || "",
               BillingType: item.billingType !== null && item.billingType !== undefined ? String(item.billingType) : "",
+              currencyId:
+                item.currencyId != null && item.currencyId !== ""
+                  ? String(item.currencyId)
+                  : "",
             }}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
-            {({ errors, touched, values, setFieldValue }) => {
+            {({ errors, touched, values, setFieldValue, validateForm, setTouched, submitForm }) => {
               // Reset RenewalMonth when BillingType changes to Monthly
               useEffect(() => {
                 if (values.BillingType === "1" && values.RenewalMonth) {
                   setFieldValue("RenewalMonth", "");
                 }
               }, [values.BillingType, values.RenewalMonth, setFieldValue]);
-              
+
+              // Auto-fill Users URL with the current site origin when empty
+              // (e.g. http://localhost:3000 locally, or the hosted URL in production)
+              useEffect(() => {
+                if (open && !values.UsersUrl && typeof window !== "undefined") {
+                  setFieldValue("UsersUrl", window.location.origin);
+                }
+              }, [open, values.UsersUrl, setFieldValue]);
+
+              // API key is the encrypted Users URL. Mobile decrypts it back to the URL.
+              const encryptedApiKey = useMemo(
+                () => encryptLink(values.UsersUrl),
+                [values.UsersUrl]
+              );
+
+              const handleSave = async () => {
+                const validationErrors = await validateForm();
+                const errorFields = Object.keys(validationErrors);
+
+                if (errorFields.length > 0) {
+                  setShowValidationHints(true);
+                  setTabIndex(getTabIndexForValidationErrors(validationErrors));
+                  setTouched(
+                    errorFields.reduce(
+                      (acc, field) => ({ ...acc, [field]: true }),
+                      {}
+                    ),
+                    true
+                  );
+                  toast.error(
+                    "Please fix the highlighted fields before saving."
+                  );
+                  return;
+                }
+
+                await submitForm();
+              };
+
               return (
+              <>
+              <Tabs value={tabIndex} onChange={handleTabChange}>
+                <Tab
+                  label={
+                    <TabLabel
+                      label="Basic"
+                      hasError={tabHasValidationErrors(0, errors, showValidationHints)}
+                    />
+                  }
+                />
+                <Tab label="Modules" />
+                <Tab label="Logo & Letterhead" />
+                <Tab
+                  label={
+                    <TabLabel
+                      label="Hosting"
+                      hasError={tabHasValidationErrors(3, errors, showValidationHints)}
+                    />
+                  }
+                />
+              </Tabs>
               <Form>
                 {tabIndex === 0 && (
                   <Box sx={{ maxHeight: "55vh", overflowY: "auto", my: 2 }}>
@@ -349,6 +544,35 @@ export default function EditCompany({ item, fetchItems }) {
                         />
                       </Grid>
                       <Grid item xs={12}>
+                        <Typography>API Key</Typography>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          value={encryptedApiKey || ""}
+                          helperText="Generated from the current site URL for the mobile app."
+                          InputProps={{
+                            readOnly: true,
+                            endAdornment: (
+                              <Box display="flex">
+                                <Tooltip title="Copy API Key">
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      onClick={() =>
+                                        handleCopyApiKey(encryptedApiKey)
+                                      }
+                                      disabled={!encryptedApiKey}
+                                    >
+                                      <ContentCopyIcon fontSize="inherit" />
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              </Box>
+                            ),
+                          }}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
                         <Typography>Landing Page</Typography>
                         <Field
                           as={TextField}
@@ -359,6 +583,25 @@ export default function EditCompany({ item, fetchItems }) {
                         >
                           <MenuItem value="1">Default</MenuItem>
                           <MenuItem value="2">Quick Access</MenuItem>
+                        </Field>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Typography>Currency</Typography>
+                        <Field
+                          as={TextField}
+                          select
+                          fullWidth
+                          name="currencyId"
+                          size="small"
+                        >
+                          <MenuItem value="">
+                            <em>Select Currency</em>
+                          </MenuItem>
+                          {currencies.map((currency) => (
+                            <MenuItem key={currency.id} value={String(currency.id)}>
+                              {currency.currencyName || currency.name} ({currency.code})
+                            </MenuItem>
+                          ))}
                         </Field>
                       </Grid>
                     </Grid>
@@ -386,23 +629,55 @@ export default function EditCompany({ item, fetchItems }) {
                           Upload Logo
                           <VisuallyHiddenInput
                             type="file"
+                            accept="image/*"
                             onChange={(event) => {
-                              var file = event.target.files[0]
+                              const file = event.target.files[0];
+                              if (!file) return;
                               setLogo(file);
                               setImage(URL.createObjectURL(file));
+                              setDeleteLogo(false);
                             }}
-                            multiple
                           />
                         </Button>
                       </Grid>
                       <Grid item xs={12}>
-                        {image != "" ?
-                          <Box sx={{ width: "100%", height: 200, backgroundSize: 'cover', backgroundImage: `url(${image})` }}></Box>
-                          : ""}
+                        {image && (
+                          <Box sx={{ position: "relative" }}>
+                            <Box
+                              sx={{
+                                width: "100%",
+                                height: 200,
+                                backgroundSize: "contain",
+                                backgroundRepeat: "no-repeat",
+                                backgroundPosition: "center",
+                                backgroundImage: `url(${image})`,
+                                border: "1px solid #ddd",
+                                borderRadius: 1,
+                              }}
+                            />
+                            <IconButton
+                              onClick={handleDeleteLogo}
+                              sx={{
+                                position: "absolute",
+                                top: 8,
+                                right: 8,
+                                bgcolor: "error.main",
+                                color: "white",
+                                "&:hover": {
+                                  bgcolor: "error.dark",
+                                },
+                              }}
+                              size="small"
+                              aria-label="Remove logo"
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
+                        )}
                       </Grid>
                       <Grid item xs={12}>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                          Upload Letterhead Image (A4 size: 210mm x 297mm / 2480 x 3508 px at 300 DPI)
+                          Upload Letterhead Image (min width 690px, or 2480px+ for print quality; any height)
                         </Typography>
                         <Button
                           component="label"
@@ -448,6 +723,7 @@ export default function EditCompany({ item, fetchItems }) {
                                 },
                               }}
                               size="small"
+                              aria-label="Remove letterhead"
                             >
                               <DeleteIcon fontSize="small" />
                             </IconButton>
@@ -542,10 +818,11 @@ export default function EditCompany({ item, fetchItems }) {
                       Cancel
                     </Button>
                     <Button
-                      type="submit"
+                      type="button"
                       variant="contained"
                       size="small"
                       disabled={loading}
+                      onClick={handleSave}
                       startIcon={loading ? <CircularProgress size={16} /> : null}
                     >
                       {loading ? "Saving..." : "Save"}
@@ -553,6 +830,7 @@ export default function EditCompany({ item, fetchItems }) {
                   </Box>
                 )}
               </Form>
+              </>
             );
             }}
           </Formik>

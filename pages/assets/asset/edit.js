@@ -35,6 +35,8 @@ const style = {
 
 export default function EditAsset({ item, fetchItems }) {
   const [open, setOpen] = useState(false);
+  const [attachments, setAttachments] = useState([]);
+  const [existingAttachments, setExistingAttachments] = useState(item.attachments || []);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -45,8 +47,75 @@ export default function EditAsset({ item, fetchItems }) {
     }
   }, [open]);
 
-  const handleOpen = () => setOpen(true);
-  const handleClose = () => setOpen(false);
+  const fetchAttachments = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/assets/${item.id}/attachments`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+      const data = await response.json();
+      if (response.ok && (data.statusCode === 200 || data.isSuccess || data.status === "SUCCESS")) {
+        setExistingAttachments(data.result || []);
+      }
+    } catch (error) {
+      console.error("Error loading asset attachments:", error);
+    }
+  };
+
+  const handleOpen = () => {
+    setOpen(true);
+    fetchAttachments();
+  };
+
+  const handleClose = () => {
+    setAttachments([]);
+    setOpen(false);
+  };
+
+  const uploadAttachments = async () => {
+    if (!item.id || attachments.length === 0) return;
+
+    const formData = new FormData();
+    attachments.forEach((file) => formData.append("Files", file));
+
+    const response = await fetch(`${BASE_URL}/assets/${item.id}/attachments`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("token")}`,
+      },
+      body: formData,
+    });
+
+    const data = await response.json();
+    if (!response.ok || !(data.statusCode === 200 || data.isSuccess || data.status === "SUCCESS")) {
+      throw new Error(data.message || "Attachment upload failed");
+    }
+  };
+
+  const deleteAttachment = async (attachmentId) => {
+    if (!window.confirm("Delete this attachment?")) return;
+
+    try {
+      const response = await fetch(`${BASE_URL}/assets/${item.id}/attachments/${attachmentId}/delete`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+      const data = await response.json();
+      if (response.ok && (data.statusCode === 200 || data.isSuccess || data.status === "SUCCESS")) {
+        toast.success(data.message || "Attachment deleted");
+        fetchAttachments();
+        fetchItems();
+      } else {
+        toast.error(data.message || "Failed to delete attachment");
+      }
+    } catch (error) {
+      console.error("Error deleting asset attachment:", error);
+      toast.error(error.message || "An error occurred while deleting the attachment");
+    }
+  };
 
   const handleSubmit = async (values, { setSubmitting }) => {
     const payload = {
@@ -98,7 +167,9 @@ export default function EditAsset({ item, fetchItems }) {
         response.ok &&
         (data.statusCode === 200 || data.isSuccess || data.status === "SUCCESS" || (!data.statusCode && !data.isSuccess && !data.status))
       ) {
+        await uploadAttachments();
         toast.success(data.message || "Asset updated successfully");
+        setAttachments([]);
         setOpen(false);
         fetchItems();
       } else {
@@ -400,6 +471,53 @@ export default function EditAsset({ item, fetchItems }) {
                       error={touched.Notes && Boolean(errors.Notes)}
                       helperText={touched.Notes && errors.Notes}
                     />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" color="primary" sx={{ mt: 1 }}>Attachments</Typography>
+                    {existingAttachments.length > 0 ? (
+                      <Box sx={{ mt: 1, display: "flex", flexDirection: "column", gap: 1 }}>
+                        {existingAttachments.map((attachment) => (
+                          <Box
+                            key={attachment.id}
+                            sx={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              border: "1px solid #e0e0e0",
+                              borderRadius: 1,
+                              px: 1.5,
+                              py: 1,
+                            }}
+                          >
+                            <a href={attachment.storageUrl} target="_blank" rel="noreferrer">
+                              {attachment.fileName}
+                            </a>
+                            <Button color="error" size="small" onClick={() => deleteAttachment(attachment.id)}>
+                              Delete
+                            </Button>
+                          </Box>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                        No attachments uploaded.
+                      </Typography>
+                    )}
+                    <Button variant="outlined" component="label" sx={{ mt: 2 }}>
+                      Add Files
+                      <input
+                        hidden
+                        multiple
+                        type="file"
+                        onChange={(event) => setAttachments(Array.from(event.target.files || []))}
+                      />
+                    </Button>
+                    {attachments.length > 0 && (
+                      <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                        New files: {attachments.map((file) => file.name).join(", ")}
+                      </Typography>
+                    )}
                   </Grid>
 
                   {/* Buttons */}

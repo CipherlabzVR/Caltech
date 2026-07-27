@@ -7,13 +7,11 @@ import Typography from "@mui/material/Typography";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import PrintIcon from "@mui/icons-material/Print";
 import BASE_URL from "Base/api";
-import { ProjectNo } from "Base/catelogue";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import useLoggedUserCompanyLetterhead from "@/hooks/useLoggedUserCompanyLetterhead";
 
-const FIRST_PAGE_ROW_LIMIT = 4;
-const NEXT_PAGE_ROW_LIMIT = 8;
+const REPORT_KEY = "GRN";
 
 const formatDisplayDate = (value) => {
   if (!value) {
@@ -68,9 +66,79 @@ const getUserLabel = (user) =>
   user?.email ||
   (user?.id != null ? `User #${user.id}` : "-");
 
+const escapeHtml = (value) => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+};
+
+// Builds one <tr> per GRN line, matching the template table columns:
+// Item | Batch | Exp. Date | Qty | Free | Unit Price | Dis% | Selling | Line Total
+const buildLineItemsRows = (items) => {
+  if (!items || items.length === 0) {
+    return `<tr><td colspan="9" style="text-align:center;padding:16px;">No items available</td></tr>`;
+  }
+
+  return items
+    .map((item) => {
+      const productName = escapeHtml(item.productName || "-");
+      const productCode = item.productCode
+        ? `<br/><span style="color:#666;">${escapeHtml(item.productCode)}</span>`
+        : "";
+      return `<tr>
+        <td>${productName}${productCode}</td>
+        <td>${escapeHtml(item.batch || "-")}</td>
+        <td>${escapeHtml(formatDisplayDate(item.expDate))}</td>
+        <td class="num">${escapeHtml(formatQty(item.qty))}</td>
+        <td class="num">${escapeHtml(formatQty(item.free))}</td>
+        <td class="num">${escapeHtml(formatAmount(item.unitPrice))}</td>
+        <td class="num">${escapeHtml(formatAmount(item.discountRate))}</td>
+        <td class="num">${escapeHtml(formatAmount(item.sellingPrice))}</td>
+        <td class="num">${escapeHtml(formatAmount(item.lineTotal))}</td>
+      </tr>`;
+    })
+    .join("\n");
+};
+
+// Replaces {{tokens}} in the template HTML with live document data.
+// `lineItemsRows` and `companyLogo` are injected as raw HTML; everything else is escaped.
+const applyTemplate = (templateHtml, tokenMap, rowsHtml) => {
+  if (!templateHtml) {
+    return "";
+  }
+
+  let output = templateHtml.replace(/\{\{\s*lineItemsRows\s*\}\}/gi, rowsHtml);
+  output = output.replace(/\{\{\s*companyLogo\s*\}\}/gi, tokenMap.companyLogo || "");
+
+  Object.entries(tokenMap).forEach(([key, value]) => {
+    if (key === "companyLogo") {
+      return;
+    }
+    const pattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "gi");
+    output = output.replace(pattern, escapeHtml(value));
+  });
+
+  // Ensure clean A4 output regardless of the (user-editable) template styles.
+  const printStyle =
+    '<style>@page{size:A4;margin:0;}@media print{html,body{margin:0!important;}}</style>';
+  if (/<\/head>/i.test(output)) {
+    output = output.replace(/<\/head>/i, `${printStyle}</head>`);
+  } else {
+    output = `${printStyle}${output}`;
+  }
+
+  return output;
+};
+
 export default function GRNPrintPage() {
   const router = useRouter();
-  const contentRef = useRef(null);
+  const iframeRef = useRef(null);
   const grnId = router.query.id;
   const documentNumber = router.query.documentNumber;
 
@@ -80,6 +148,9 @@ export default function GRNPrintPage() {
   const [sidebarLogo, setSidebarLogo] = useState("");
   const [salesPersonMap, setSalesPersonMap] = useState({});
   const [userMap, setUserMap] = useState({});
+  const [templateHtml, setTemplateHtml] = useState("");
+  const [loadingTemplate, setLoadingTemplate] = useState(true);
+  const [iframeHeight, setIframeHeight] = useState(1123);
 
   const { companyData } = useLoggedUserCompanyLetterhead();
 
@@ -131,6 +202,41 @@ export default function GRNPrintPage() {
 
     fetchGRN();
   }, [grnId, router.isReady]);
+
+  useEffect(() => {
+    const fetchTemplate = async () => {
+      try {
+        setLoadingTemplate(true);
+        const token =
+          typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+        const response = await fetch(
+          `${BASE_URL}/ReportTemplate/GetReportTemplateByKey?reportKey=${REPORT_KEY}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          }
+        );
+
+        const data = await response.json().catch(() => null);
+        if (response.ok && data) {
+          setTemplateHtml(data.htmlContent || "");
+        } else {
+          toast.error(data?.message || "Failed to load the print template.");
+        }
+      } catch (error) {
+        console.error("Error fetching report template:", error);
+        toast.error("Failed to load the print template.");
+      } finally {
+        setLoadingTemplate(false);
+      }
+    };
+
+    fetchTemplate();
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -293,11 +399,7 @@ export default function GRNPrintPage() {
       ),
     [lineItems]
   );
-  /**
-   * Document-level (manual) order discount.
-   * Prefer the stored header value; if it's missing or zero, derive it from
-   * (sum of line totals - saved totalAmount) so older records still reconcile.
-   */
+
   const headerDiscountPercent = Number(grnData?.discount ?? 0);
   const savedTotalAmount = Number(grnData?.totalAmount ?? NaN);
   const derivedDiscountAmount = useMemo(() => {
@@ -358,49 +460,102 @@ export default function GRNPrintPage() {
     return lines;
   }, [companyData?.contactNumber, warehouseData]);
 
-  const companyLogoSrc =
-    sidebarLogo || (ProjectNo === 1 ? "/images/cbass.png" : "/images/db-logo.png");
+  const tokenMap = useMemo(
+    () => ({
+      companyLogo: sidebarLogo
+        ? `<img src="${escapeHtml(sidebarLogo)}" alt="Company Logo" />`
+        : "",
+      companyName: companyData?.name || warehouseData?.name || "Company",
+      companyAddress: companyAddressLines.join(", "),
+      companyContact: companyContactLines.join("  |  "),
+      documentNo: grnData?.documentNo || documentNumber || "-",
+      supplierName: grnData?.supplierName || "-",
+      grnDate: formatDisplayDate(grnData?.grnDate || grnData?.createdOn),
+      remark: grnData?.remark || "-",
+      totalQty: formatQty(totalQty),
+      warehouseName: grnData?.warehouseName || warehouseData?.name || "-",
+      createdBy: getUserLabel(userMap[grnData?.createdBy]),
+      createdDate: formatDisplayDateTime(grnData?.createdOn),
+      referenceNo: grnData?.referanceNo || "-",
+      salesPerson: salesPersonMap[grnData?.salesPerson]?.name || "-",
+      subtotal: formatAmount(subtotal),
+      orderDiscountPercent: formatAmount(orderDiscountPercent),
+      totalDiscount: formatAmount(orderDiscountAmount),
+      grossTotal: formatAmount(grossTotal),
+    }),
+    [
+      sidebarLogo,
+      companyData?.name,
+      warehouseData?.name,
+      companyAddressLines,
+      companyContactLines,
+      grnData,
+      documentNumber,
+      totalQty,
+      userMap,
+      salesPersonMap,
+      subtotal,
+      orderDiscountPercent,
+      orderDiscountAmount,
+      grossTotal,
+    ]
+  );
 
-  const paginatedLineItems = useMemo(() => {
-    if (lineItems.length === 0) {
-      return [[]];
+  const finalHtml = useMemo(() => {
+    if (!templateHtml || !grnData) {
+      return "";
     }
+    return applyTemplate(templateHtml, tokenMap, buildLineItemsRows(lineItems));
+  }, [templateHtml, grnData, tokenMap, lineItems]);
 
-    const pages = [];
-    let startIndex = 0;
-    pages.push(lineItems.slice(startIndex, startIndex + FIRST_PAGE_ROW_LIMIT));
-    startIndex += FIRST_PAGE_ROW_LIMIT;
-
-    while (startIndex < lineItems.length) {
-      pages.push(lineItems.slice(startIndex, startIndex + NEXT_PAGE_ROW_LIMIT));
-      startIndex += NEXT_PAGE_ROW_LIMIT;
+  const resizeIframe = () => {
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    if (!doc || !doc.documentElement) {
+      return;
     }
+    const height = Math.max(
+      doc.documentElement.scrollHeight,
+      doc.body ? doc.body.scrollHeight : 0
+    );
+    if (height > 0) {
+      setIframeHeight(height);
+    }
+  };
 
-    return pages;
-  }, [lineItems]);
+  const handleIframeLoad = () => {
+    resizeIframe();
+    // Re-measure once webfonts/logo image settle.
+    setTimeout(resizeIframe, 300);
+  };
+
+  const handlePrint = () => {
+    const iframe = iframeRef.current;
+    if (iframe?.contentWindow) {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } else if (typeof window !== "undefined") {
+      window.print();
+    }
+  };
 
   const handleDownloadPDF = async () => {
-    if (!contentRef.current) {
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    if (!doc) {
+      toast.error("Nothing to export yet.");
       return;
     }
 
     try {
-      const pageElements = contentRef.current.querySelectorAll(
-        '[data-grn-pdf-page="true"]'
-      );
+      const target = doc.querySelector(".page") || doc.body;
 
-      if (pageElements.length === 0) {
-        toast.error("No printable pages found.");
-        return;
-      }
-
-      const images = contentRef.current.querySelectorAll("img");
+      const images = target.querySelectorAll("img");
       await Promise.all(
         Array.from(images).map((img) => {
           if (img.complete) {
             return Promise.resolve();
           }
-
           return new Promise((resolve) => {
             img.onload = resolve;
             img.onerror = resolve;
@@ -412,224 +567,65 @@ export default function GRNPrintPage() {
       const html2canvas = (await import("html2canvas")).default;
       const { jsPDF } = await import("jspdf");
 
-      const pdf = new jsPDF({
-        unit: "mm",
-        format: "a4",
-        orientation: "portrait",
+      const canvas = await html2canvas(target, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: "#ffffff",
       });
 
-      for (let index = 0; index < pageElements.length; index += 1) {
-        const canvas = await html2canvas(pageElements[index], {
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          allowTaint: true,
-          backgroundColor: "#ffffff",
-        });
+      const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+      const pageWidthMm = 210;
+      const pageHeightMm = 297;
+      const pxPerMm = canvas.width / pageWidthMm;
+      const pageHeightPx = Math.floor(pageHeightMm * pxPerMm);
 
-        const imgData = canvas.toDataURL("image/jpeg", 0.98);
-        if (index > 0) {
+      let renderedHeight = 0;
+      let pageIndex = 0;
+
+      while (renderedHeight < canvas.height) {
+        const sliceHeight = Math.min(pageHeightPx, canvas.height - renderedHeight);
+
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceHeight;
+
+        const ctx = pageCanvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        ctx.drawImage(
+          canvas,
+          0,
+          renderedHeight,
+          canvas.width,
+          sliceHeight,
+          0,
+          0,
+          canvas.width,
+          sliceHeight
+        );
+
+        const imgData = pageCanvas.toDataURL("image/jpeg", 0.98);
+        const sliceHeightMm = sliceHeight / pxPerMm;
+
+        if (pageIndex > 0) {
           pdf.addPage();
         }
-        pdf.addImage(imgData, "JPEG", 0, 0, 210, 297);
+        pdf.addImage(imgData, "JPEG", 0, 0, pageWidthMm, sliceHeightMm);
+
+        renderedHeight += sliceHeight;
+        pageIndex += 1;
       }
 
-      pdf.save(
-        `GRN_${grnData?.documentNo || documentNumber || "document"}.pdf`
-      );
+      pdf.save(`GRN_${grnData?.documentNo || documentNumber || "document"}.pdf`);
     } catch (error) {
       console.error("Error generating PDF:", error);
       toast.error("Failed to download PDF. Please try again.");
     }
   };
 
-  const handlePrint = () => {
-    if (typeof window !== "undefined") {
-      window.print();
-    }
-  };
-
-  const currentDate = format(new Date(), "dd-MMM-yyyy");
-
-  const renderTable = (items, isLastPage) => (
-    <Box sx={{ mb: { xs: 2, sm: 3 }, borderTop: "2px solid #333", borderBottom: "2px solid #333" }}>
-      <Box
-        sx={{
-          display: "flex",
-          padding: { xs: "6px 4px", sm: "10px 6px" },
-          fontWeight: 600,
-          borderBottom: "1px solid #333",
-          color: "black",
-        }}
-      >
-        <Box sx={{ flex: 1.8, fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Item</Box>
-        <Box sx={{ flex: 1, fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Batch</Box>
-        <Box sx={{ flex: 1, fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Exp. Date</Box>
-        <Box sx={{ flex: 0.7, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Qty</Box>
-        <Box sx={{ flex: 0.7, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Free</Box>
-        <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Unit Price</Box>
-        <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Total</Box>
-        <Box sx={{ flex: 0.8, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Dis%</Box>
-        <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Dis Amt</Box>
-        <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Selling</Box>
-        <Box sx={{ flex: 1.2, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Line Total</Box>
-      </Box>
-
-      {items.length === 0 ? (
-        <Box sx={{ padding: "16px" }}>
-          <Typography sx={{ textAlign: "center", fontSize: { xs: "0.58rem", sm: "0.82rem" } }}>
-            No items available
-          </Typography>
-        </Box>
-      ) : (
-        items.map((item, index) => {
-          const rowTotal = Number(item.qty ?? 0) * Number(item.unitPrice ?? 0);
-          const rowDiscountAmount = Number(item.discountAmount ?? 0);
-          return (
-            <Box
-              key={item.id || `${item.productCode}-${index}`}
-              sx={{
-                display: "flex",
-                padding: { xs: "5px 4px", sm: "8px 6px" },
-                borderBottom: index === items.length - 1 ? "none" : "1px solid #cfcfcf",
-              }}
-            >
-              <Box sx={{ flex: 1.8, fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>
-                <Box>{item.productName || "-"}</Box>
-                <Box>{item.productCode || ""}</Box>
-              </Box>
-              <Box sx={{ flex: 1, fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>{item.batch || "-"}</Box>
-              <Box sx={{ flex: 1, fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>{formatDisplayDate(item.expDate)}</Box>
-              <Box sx={{ flex: 0.7, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>{formatQty(item.qty)}</Box>
-              <Box sx={{ flex: 0.7, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>{formatQty(item.free)}</Box>
-              <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>{formatAmount(item.unitPrice)}</Box>
-              <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>{formatAmount(rowTotal)}</Box>
-              <Box sx={{ flex: 0.8, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>{formatAmount(item.discountRate)}</Box>
-              <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>{formatAmount(rowDiscountAmount)}</Box>
-              <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>{formatAmount(item.sellingPrice)}</Box>
-              <Box sx={{ flex: 1.2, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.72rem" }, fontWeight: 600 }}>
-                {formatAmount(item.lineTotal)}
-              </Box>
-            </Box>
-          );
-        })
-      )}
-
-      {isLastPage && (
-        <Box sx={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid #333", p: { xs: "8px 4px", sm: "10px 6px" } }}>
-          <Box sx={{ width: { xs: "65%", sm: "40%" } }}>
-            <Box display="flex" justifyContent="space-between" mb={0.5}>
-              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 700 }}>Total</Typography>
-              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 700 }}>{formatAmount(subtotal)}</Typography>
-            </Box>
-            <Box display="flex" justifyContent="space-between" mb={0.5}>
-              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 700 }}>Order Discount (%)</Typography>
-              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 700 }}>{formatAmount(orderDiscountPercent)}</Typography>
-            </Box>
-            <Box display="flex" justifyContent="space-between" mb={0.5}>
-              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 700 }}>Total Discount</Typography>
-              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 700 }}>{formatAmount(orderDiscountAmount)}</Typography>
-            </Box>
-            <Box display="flex" justifyContent="space-between" pt={0.5} borderTop="2px solid #333">
-              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.84rem" }, fontWeight: 700 }}>Gross Total</Typography>
-              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.84rem" }, fontWeight: 700 }}>{formatAmount(grossTotal)}</Typography>
-            </Box>
-          </Box>
-        </Box>
-      )}
-    </Box>
-  );
-
-  const renderPageContent = (items, pageIndex, isLastPage) => (
-    <Box>
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexDirection: "row",
-          gap: { xs: 1.5, sm: 3 },
-          mb: { xs: 2, sm: 3 },
-          pb: 2,
-        }}
-      >
-        <Box sx={{ width: { xs: "135px", sm: "220px" }, flexShrink: 0 }}>
-          <img
-            src={companyLogoSrc}
-            alt="Company logo"
-            style={{ width: "100%", height: "auto", objectFit: "contain" }}
-          />
-        </Box>
-        <Box sx={{ flex: 1, textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-          <Typography sx={{ fontWeight: 700, fontSize: { xs: "1rem", sm: "1.25rem" }, lineHeight: 1.2 }}>
-            {companyData?.name || warehouseData?.name || "Company"}
-          </Typography>
-          {companyAddressLines.map((line) => (
-            <Typography key={line} sx={{ fontSize: { xs: "0.62rem", sm: "0.82rem" }, lineHeight: 1.3 }}>
-              {line}
-            </Typography>
-          ))}
-          {companyContactLines.map((line) => (
-            <Typography key={line} sx={{ fontSize: { xs: "0.62rem", sm: "0.82rem" }, lineHeight: 1.3, fontWeight: 600 }}>
-              {line}
-            </Typography>
-          ))}
-        </Box>
-      </Box>
-
-      <Box sx={{ borderTop: "2px solid #333", borderBottom: "2px solid #333", py: 1, mb: 2 }}>
-        <Typography sx={{ fontWeight: "bold", textAlign: "center", fontSize: { xs: "1rem", sm: "1.5rem" }, lineHeight: 1.2 }}>
-          {pageIndex === 0 ? "GOODS RECEIVED NOTE" : "GOODS RECEIVED NOTE (CONT.)"}
-        </Typography>
-      </Box>
-
-      {pageIndex === 0 && (
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            mb: { xs: 2, sm: 2.5 },
-            flexDirection: { xs: "column", sm: "row" },
-            gap: 4,
-          }}
-        >
-          <Box sx={{ flex: 1 }}>
-            {[
-              ["Supplier", grnData?.supplierName || "-"],
-              ["Document No", grnData?.documentNo || documentNumber || "-"],
-              ["GRN Date", formatDisplayDate(grnData?.grnDate || grnData?.createdOn)],
-              ["Remark", grnData?.remark || "-"],
-              ["Qty", formatQty(totalQty)],
-            ].map(([label, value]) => (
-              <Box key={label} sx={{ display: "grid", gridTemplateColumns: { xs: "120px 12px 1fr", sm: "140px 16px 1fr" }, alignItems: "start", mb: 1, columnGap: 1 }}>
-                <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.62rem", sm: "0.86rem" } }}>{label}</Typography>
-                <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.62rem", sm: "0.86rem" } }}>:</Typography>
-                <Typography sx={{ fontSize: { xs: "0.62rem", sm: "0.86rem" } }}>{value}</Typography>
-              </Box>
-            ))}
-          </Box>
-
-          <Box sx={{ flex: 1 }}>
-            {[
-              ["Warehouse", grnData?.warehouseName || warehouseData?.name || "-"],
-              ["Created By", getUserLabel(userMap[grnData?.createdBy])],
-              ["Created Date", formatDisplayDateTime(grnData?.createdOn)],
-              ["Reference No", grnData?.referanceNo || "-"],
-              ["Sales Person", salesPersonMap[grnData?.salesPerson]?.name || "-"],
-            ].map(([label, value]) => (
-              <Box key={label} sx={{ display: "grid", gridTemplateColumns: { xs: "120px 12px 1fr", sm: "130px 16px 1fr" }, alignItems: "start", mb: 1, columnGap: 1 }}>
-                <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.62rem", sm: "0.86rem" } }}>{label}</Typography>
-                <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.62rem", sm: "0.86rem" } }}>:</Typography>
-                <Typography sx={{ fontSize: { xs: "0.62rem", sm: "0.86rem" } }}>{value}</Typography>
-              </Box>
-            ))}
-          </Box>
-        </Box>
-      )}
-
-      {renderTable(items, isLastPage)}
-    </Box>
-  );
+  const isLoading = loadingGRN || loadingTemplate;
 
   return (
     <Box
@@ -650,152 +646,111 @@ export default function GRNPrintPage() {
         sx={{
           width: "100%",
           maxWidth: "900px",
-          backgroundColor: "white",
-          borderRadius: 2,
-          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-          paddingX: 2,
           display: "flex",
           flexDirection: "column",
-          "@media print": {
-            maxWidth: "100%",
-            borderRadius: 0,
-            boxShadow: "none",
-            paddingX: 0,
-          },
+          alignItems: "center",
         }}
       >
         <Box
           sx={{
             display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
+            justifyContent: "flex-end",
             width: "100%",
-            marginBottom: 1,
-            paddingBottom: 1,
-            borderBottom: "2px solid #e0e0e0",
-            flexDirection: { xs: "column", sm: "row" },
-            gap: { xs: 2, sm: 0 },
+            mt: 4,
+            mb: 2,
+            gap: 1,
+            flexWrap: "wrap",
             "@media print": {
               display: "none",
             },
           }}
-          mt={5}
         >
-          
-          <Box sx={{ display: "flex", flexDirection: "column", alignItems: { xs: "stretch", sm: "flex-end" }, gap: 1 }}>
-            <Box display="flex" gap={1} flexWrap="wrap" justifyContent="flex-end">
-              <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint} sx={{ textTransform: "none" }}>
-                Print
-              </Button>
-              <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleDownloadPDF} sx={{ textTransform: "none" }}>
-                Download PDF
-              </Button>
-            </Box>
+          <Button
+            variant="outlined"
+            startIcon={<PrintIcon />}
+            onClick={handlePrint}
+            disabled={isLoading || !finalHtml}
+            sx={{ textTransform: "none" }}
+          >
+            Print
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<PictureAsPdfIcon />}
+            onClick={handleDownloadPDF}
+            disabled={isLoading || !finalHtml}
+            sx={{ textTransform: "none" }}
+          >
+            Download PDF
+          </Button>
+        </Box>
+
+        {isLoading ? (
+          <Box
+            sx={{
+              width: { xs: "100%", sm: "210mm" },
+              minHeight: "297mm",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              backgroundColor: "#fff",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+            }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              Loading GRN...
+            </Typography>
           </Box>
-        </Box>
-
-        <Box mb={5} ref={contentRef}>
-          {loadingGRN ? (
-            <Box
-              sx={{
-                width: { xs: "100%", sm: "210mm" },
-                minHeight: { xs: "auto", sm: "297mm" },
-                margin: "0 auto",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                backgroundColor: "#fff",
-              }}
-            >
-              <Typography variant="body2" color="text.secondary">
-                Loading GRN...
-              </Typography>
-            </Box>
-          ) : grnData ? (
-            paginatedLineItems.map((items, pageIndex) => {
-              const isLastPage = pageIndex === paginatedLineItems.length - 1;
-
-              return (
-                <Box
-                  key={`grn-page-${pageIndex}`}
-                  data-grn-pdf-page="true"
-                  sx={{
-                    width: { xs: "100%", sm: "210mm" },
-                    minHeight: { xs: "auto", sm: "297mm" },
-                    maxWidth: "100%",
-                    margin: "0 auto",
-                    marginBottom: { xs: 2, sm: isLastPage ? 0 : 4 },
-                    position: "relative",
-                    backgroundColor: "white",
-                    padding: "0.5in",
-                    boxSizing: "border-box",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                    display: "flex",
-                    flexDirection: "column",
-                    pageBreakAfter: isLastPage ? "auto" : "always",
-                    breakAfter: isLastPage ? "auto" : "page",
-                    "@media print": {
-                      margin: 0,
-                      marginBottom: 0,
-                      boxShadow: "none",
-                      padding: "0.5in",
-                      boxSizing: "border-box",
-                      pageBreakAfter: isLastPage ? "auto" : "always",
-                      breakAfter: isLastPage ? "auto" : "page",
-                    },
-                  }}
-                >
-                  <Box sx={{ position: "relative", width: "100%", mx: "auto", boxSizing: "border-box", backgroundColor: "transparent", flex: 1 }}>
-                    {renderPageContent(items, pageIndex, isLastPage)}
-                  </Box>
-                  <Typography
-                    sx={{
-                      mt: 2,
-                      pt: 1,
-                      borderTop: "1px solid #d9d9d9",
-                      textAlign: "center",
-                      fontSize: { xs: "0.62rem", sm: "0.8rem" },
-                      fontWeight: 600,
-                    }}
-                  >
-                    Powered By : CBASS-AI
-                  </Typography>
-                </Box>
-              );
-            })
-          ) : (
-            <Box
-              sx={{
-                width: { xs: "100%", sm: "210mm" },
-                minHeight: { xs: "auto", sm: "297mm" },
-                margin: "0 auto",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                backgroundColor: "#fff",
-              }}
-            >
-              <Typography variant="body2" color="error">
-                Failed to load GRN
-              </Typography>
-            </Box>
-          )}
-        </Box>
-
-        <ToastContainer
-          position="top-right"
-          autoClose={3000}
-          hideProgressBar={false}
-          newestOnTop={false}
-          closeOnClick
-          rtl={false}
-          pauseOnFocusLoss
-          draggable
-          pauseOnHover
-        />
+        ) : finalHtml ? (
+          <Box
+            component="iframe"
+            ref={iframeRef}
+            title="GRN Print Preview"
+            srcDoc={finalHtml}
+            onLoad={handleIframeLoad}
+            sx={{
+              width: { xs: "100%", sm: "210mm" },
+              maxWidth: "100%",
+              height: `${iframeHeight}px`,
+              border: "none",
+              backgroundColor: "#fff",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+              "@media print": {
+                boxShadow: "none",
+                width: "100%",
+              },
+            }}
+          />
+        ) : (
+          <Box
+            sx={{
+              width: { xs: "100%", sm: "210mm" },
+              minHeight: "297mm",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              backgroundColor: "#fff",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+            }}
+          >
+            <Typography variant="body2" color="error">
+              Failed to load GRN
+            </Typography>
+          </Box>
+        )}
       </Box>
+
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+      />
     </Box>
   );
 }

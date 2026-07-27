@@ -10,6 +10,94 @@ import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import BASE_URL from "Base/api";
 import { ProjectNo } from "Base/catelogue";
 
+/** Apply role permissions to sidebar subNav; supports one level of nested subNav (e.g. Master Data → HR). */
+function applyPermissionsToSubNav(subNav, moduleId, transformed, isHelpDeskSupport) {
+  if (!subNav?.length) return subNav;
+  return subNav.map((sub) => {
+    if (sub.subNav?.length) {
+      const nested = applyPermissionsToSubNav(sub.subNav, moduleId, transformed, isHelpDeskSupport);
+      return {
+        ...sub,
+        subNav: nested,
+        isAvailable: nested.some((n) => n.isAvailable),
+      };
+    }
+    if (sub.userTypeRestriction) {
+      if (!isHelpDeskSupport) {
+        return { ...sub, isAvailable: false };
+      }
+      const matched = transformed.find(
+        (t) => t.ModuleId === moduleId && t.CategoryId === sub.categoryId
+      );
+      return {
+        ...sub,
+        isAvailable: matched ? matched.IsAvailable : false,
+      };
+    }
+    const matched = transformed.find(
+      (t) => t.ModuleId === moduleId && t.CategoryId === sub.categoryId
+    );
+    return {
+      ...sub,
+      isAvailable: matched ? matched.IsAvailable : false,
+    };
+  });
+}
+
+/** Keep only items the user may see; nested parents remain if any child is visible. */
+function filterAvailableSubNav(subNav) {
+  if (!subNav?.length) return [];
+  return subNav
+    .map((sub) => {
+      if (sub.subNav?.length) {
+        return { ...sub, subNav: filterAvailableSubNav(sub.subNav) };
+      }
+      return sub;
+    })
+    .filter((sub) => {
+      if (sub.subNav?.length) {
+        return sub.subNav.length > 0;
+      }
+      return sub.isAvailable;
+    });
+}
+
+const SERVICE_MODULE_ID = 28;
+const SERVICE_MODULE_CATEGORY_IDS = [196, 197, 198, 200, 201];
+
+function resolveSubNavAvailability(sub, menuModuleId, transformed) {
+  if (sub.userTypeRestriction) {
+    const userType = localStorage.getItem("type");
+    const isHelpDeskSupport = userType === "14" || userType === 14;
+
+    if (!isHelpDeskSupport) {
+      return { ...sub, isAvailable: false };
+    }
+  }
+
+  if (sub.serviceModuleAccess) {
+    const matched = transformed.find(
+      (t) =>
+        t.ModuleId === SERVICE_MODULE_ID &&
+        SERVICE_MODULE_CATEGORY_IDS.includes(t.CategoryId) &&
+        t.IsAvailable
+    );
+    return {
+      ...sub,
+      isAvailable: !!matched,
+      categoryId: matched?.CategoryId ?? sub.categoryId,
+    };
+  }
+
+  const matched = transformed.find(
+    (t) => t.ModuleId === menuModuleId && t.CategoryId === sub.categoryId
+  );
+  return {
+    ...sub,
+    isAvailable: matched ? matched.IsAvailable : false,
+  };
+}
+
 const SidebarNav = styled("nav")(({ theme }) => ({
   background: "#fff",
   boxShadow: "0px 4px 20px rgba(47, 143, 232, 0.07)",
@@ -104,39 +192,24 @@ const Sidebar = ({ toogleActive, onGrantedCheck, hoverMode = false }) => {
           IsAvailable: navPermission ? navPermission.isActive : false,
         };
       });
-      const rawItems = getSidebarData(IsGarmentSystem);
       const userType = localStorage.getItem("type");
       const isHelpDeskSupport = userType === "14" || userType === 14;
 
+      const rawItems = getSidebarData(IsGarmentSystem);
+
       const updatedItems = rawItems.map((menu) => {
-        let updatedMenu = { ...menu };
+        const updatedMenu = { ...menu };
 
         if (updatedMenu.subNav) {
-          updatedMenu.subNav = updatedMenu.subNav.map((sub) => {
-            if (sub.userTypeRestriction) {
-              if (!isHelpDeskSupport) {
-                return {
-                  ...sub,
-                  isAvailable: false,
-                };
-              }
-              const matched = transformed.find(
-                (t) => t.ModuleId === updatedMenu.ModuleId && t.CategoryId === sub.categoryId
-              );
-              return {
-                ...sub,
-                isAvailable: matched ? matched.IsAvailable : false,
-              };
-            }
-
-            const matched = transformed.find(
-              (t) => t.ModuleId === updatedMenu.ModuleId && t.CategoryId === sub.categoryId
-            );
-            return {
-              ...sub,
-              isAvailable: matched ? matched.IsAvailable : false,
-            };
-          });
+          updatedMenu.subNav = applyPermissionsToSubNav(
+            updatedMenu.subNav,
+            updatedMenu.ModuleId,
+            transformed,
+            isHelpDeskSupport
+          );
+          updatedMenu.subNav = updatedMenu.subNav.map((sub) =>
+            resolveSubNavAvailability(sub, updatedMenu.ModuleId, transformed)
+          );
         }
 
         return updatedMenu;
@@ -147,7 +220,7 @@ const Sidebar = ({ toogleActive, onGrantedCheck, hoverMode = false }) => {
       const filteredMenus = updatedItems
         .map((menu) => {
           if (menu.subNav) {
-            const filteredSubNav = menu.subNav.filter((sub) => sub.isAvailable);
+            const filteredSubNav = filterAvailableSubNav(menu.subNav);
             return {
               ...menu,
               subNav: filteredSubNav,
@@ -207,7 +280,7 @@ const Sidebar = ({ toogleActive, onGrantedCheck, hoverMode = false }) => {
 
   return (
     <>
-      <div 
+      <div
         className="leftSidebarDark"
         onMouseLeave={handleMouseLeave}
         onMouseEnter={handleMouseEnter}

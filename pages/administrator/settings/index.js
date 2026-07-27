@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import Grid from "@mui/material/Grid";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
@@ -27,9 +27,23 @@ import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import BASE_URL from "Base/api";
 
+/** Builds query-string params for AppSetting/GetAllAppSettingsPage filters. */
+function appSettingFiltersToQuery(enableSelection) {
+  const q = {};
+  if (enableSelection === "enabled") {
+    q.AppSettingIsEnabled = "true";
+  }
+  if (enableSelection === "disabled") {
+    q.AppSettingIsEnabled = "false";
+  }
+  return q;
+}
+
 export default function Settings() {
   const cId = sessionStorage.getItem("category")
     const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+  const [enableFilter, setEnableFilter] = useState("all");
+
   const {
     data: settings,
     totalCount,
@@ -39,25 +53,53 @@ export default function Settings() {
     setPage,
     setPageSize,
     setSearch,
+    setExtraQuery,
     fetchData: fetchSettings,
   } = usePaginatedFetch("AppSetting/GetAllAppSettingsPage", "", 10, false, false);
 
+  const buildAppSettingExtraQuery = useCallback(
+    () => appSettingFiltersToQuery(enableFilter),
+    [enableFilter]
+  );
+
+  const refreshSettingsList = useCallback(() => {
+    const extra = buildAppSettingExtraQuery();
+    setExtraQuery(extra);
+    fetchSettings(page, search, pageSize, false, undefined, extra);
+  }, [buildAppSettingExtraQuery, fetchSettings, page, search, pageSize, setExtraQuery]);
+
   const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchSettings(1, event.target.value, pageSize);
+    const term = event.target.value;
+    const extra = buildAppSettingExtraQuery();
+    setExtraQuery(extra);
+    setSearch(term);
     setPage(1);
+    fetchSettings(1, term, pageSize, false, undefined, extra);
   };
 
   const handleChangePage = (event, value) => {
+    const extra = buildAppSettingExtraQuery();
+    setExtraQuery(extra);
     setPage(value);
-    fetchSettings(value, search, pageSize);
+    fetchSettings(value, search, pageSize, false, undefined, extra);
   };
 
   const handleChangeRowsPerPage = (event) => {
     const size = event.target.value;
+    const extra = buildAppSettingExtraQuery();
+    setExtraQuery(extra);
     setPageSize(size);
     setPage(1);
-    fetchSettings(1, search, size);
+    fetchSettings(1, search, size, false, undefined, extra);
+  };
+
+  const handleEnableFilterChange = (event) => {
+    const next = event.target.value;
+    setEnableFilter(next);
+    const extra = appSettingFiltersToQuery(next);
+    setExtraQuery(extra);
+    setPage(1);
+    fetchSettings(1, search, pageSize, false, undefined, extra);
   };
 
   const handleChangeSwitch = (value, item) => {
@@ -79,7 +121,7 @@ export default function Settings() {
       .then((data) => {
         if (data.statusCode == 200) {
           toast.success(data.message);
-          fetchSettings();
+          refreshSettingsList();
           // setTimeout(() => {
           //   window.location.reload();
           // }, 2000);
@@ -112,7 +154,7 @@ export default function Settings() {
         rowSpacing={1}
         columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}
       >
-        <Grid item xs={12} lg={4}>
+        <Grid item xs={12} md={6} lg={4}>
           <ToastContainer />
           <Search className="search-form">
             <StyledInputBase
@@ -122,6 +164,22 @@ export default function Settings() {
               onChange={handleSearchChange}
             />
           </Search>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3} lg={2}>
+          <FormControl fullWidth size="small">
+            <InputLabel id="settings-enable-filter-label">Enable</InputLabel>
+            <Select
+              labelId="settings-enable-filter-label"
+              id="settings-enable-filter"
+              value={enableFilter}
+              label="Enable"
+              onChange={handleEnableFilterChange}
+            >
+              <MenuItem value="all">All</MenuItem>
+              <MenuItem value="enabled">Enabled only</MenuItem>
+              <MenuItem value="disabled">Disabled only</MenuItem>
+            </Select>
+          </FormControl>
         </Grid>
 
         <Grid item xs={12}>
@@ -176,7 +234,7 @@ export default function Settings() {
                       <TableCell align="right">
                         {update ? <EditSetting
                           item={setting}
-                          fetchItems={fetchSettings}
+                          fetchItems={refreshSettingsList}
                         /> : ""}
                       </TableCell>
                     </TableRow>

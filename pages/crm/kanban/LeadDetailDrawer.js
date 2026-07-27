@@ -115,6 +115,7 @@ export default function LeadDetailDrawer({ open, onClose, lead, onLeadUpdated })
     endDate: "",
     description: "",
     status: 0,
+    assignedTo: "",
   });
   const [meetingForm, setMeetingForm] = React.useState({
     subject: "",
@@ -229,9 +230,9 @@ export default function LeadDetailDrawer({ open, onClose, lead, onLeadUpdated })
           Object.entries(actStatusesData.result).map(([value, label]) => ({ value, label }))
         );
       }
-      if (usersData?.result) {
-        setUsers(usersData.result);
-      }
+      // GetAllUser returns a plain array; some endpoints wrap in { result: [...] }
+      const userList = Array.isArray(usersData) ? usersData : usersData?.result;
+      setUsers(Array.isArray(userList) ? userList : []);
     } catch (error) {
       console.error("Error fetching enums:", error);
     }
@@ -1168,11 +1169,23 @@ export default function LeadDetailDrawer({ open, onClose, lead, onLeadUpdated })
                     setActivityForm((prev) => ({ ...prev, assignedTo: e.target.value }))
                   }
                 >
-                  {users.map((user) => (
-                    <MenuItem key={user.id} value={user.id}>
-                      {user.fullName || user.userName}
-                    </MenuItem>
-                  ))}
+                  {users.map((user) => {
+                    const uid = user.id ?? user.Id;
+                    const name =
+                      [user.firstName ?? user.FirstName, user.lastName ?? user.LastName]
+                        .filter(Boolean)
+                        .join(" ")
+                        .trim() ||
+                      user.fullName ||
+                      user.userName ||
+                      user.UserName ||
+                      (uid != null ? `User #${uid}` : "");
+                    return (
+                      <MenuItem key={uid} value={String(uid)}>
+                        {name}
+                      </MenuItem>
+                    );
+                  })}
                 </Select>
               </FormControl>
             </Grid>

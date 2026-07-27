@@ -16,6 +16,8 @@ import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import { useRouter } from "next/router";
 import BASE_URL from "Base/api";
 import { DashboardHeader } from "@/components/shared/dashboard-header";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function SelectFabric() {
   const router = useRouter();
@@ -24,7 +26,6 @@ export default function SelectFabric() {
   const [inquiry, setInquiry] = useState(null);
   const [selectedNeck, setSelectedNeck] = useState("");
   const [errorAlert, setErrorAlert] = useState(false);
-  const [neckSelected, setNeckSelected] = useState("");
   const [isChecked, setIsChecked] = useState({
     1: false,
     2: false,
@@ -40,6 +41,7 @@ export default function SelectFabric() {
 
   const handleNeckChange = (event) => {
     setSelectedNeck(event.target.value);
+    setErrorAlert(false);
   };
 
   const fetchInquiryById = async () => {
@@ -67,10 +69,10 @@ export default function SelectFabric() {
   };
 
   useEffect(() => {
-    if (inqId,optId) {
+    if (inqId && optId) {
       fetchInquiryById();
     }
-  }, []);
+  }, [inqId, optId]);
 
   const fetchNeckBodyList = async (inquiryId, optionId, windowType) => {
     try {
@@ -186,9 +188,8 @@ export default function SelectFabric() {
         setSelectedNeck(
           type === 1 ? "POLO" : type === 2 ? "Crew Neck" : "V Neck"
         );
-        setNeckSelected(
-          type === 1 ? "POLO" : type === 2 ? "Crew Neck" : "V Neck"
-        );
+      } else {
+        setSelectedNeck("");
       }
     } catch (error) {
       console.error("Error fetching Neck types:", error);
@@ -262,9 +263,6 @@ export default function SelectFabric() {
                     label={
                       <Typography style={{ fontSize: "25px" }}>POLO</Typography>
                     }
-                    disabled={
-                      neckSelected === "Crew Neck" || neckSelected === "V Neck"
-                    }
                   />
                 </RadioGroup>
               </Card>
@@ -295,9 +293,6 @@ export default function SelectFabric() {
                         Crew Neck
                       </Typography>
                     }
-                    disabled={
-                      neckSelected === "POLO" || neckSelected === "V Neck"
-                    }
                   />
                 </RadioGroup>
               </Card>
@@ -327,9 +322,6 @@ export default function SelectFabric() {
                       <Typography style={{ fontSize: "25px" }}>
                         V Neck
                       </Typography>
-                    }
-                    disabled={
-                      neckSelected === "Crew Neck" || neckSelected === "POLO"
                     }
                   />
                 </RadioGroup>

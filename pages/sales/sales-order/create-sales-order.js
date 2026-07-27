@@ -6,6 +6,7 @@ import {
   Box,
   Button,
   IconButton,
+  Modal,
   Paper,
   Table,
   TableBody,
@@ -27,7 +28,7 @@ import { useRouter } from "next/router";
 import useApi from "@/components/utils/useApi";
 import LoadingButton from "@/components/UIElements/Buttons/LoadingButton";
 import SearchItemByName from "@/components/utils/SearchItemByName";
-import { formatDate } from "@/components/utils/formatHelper";
+import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
 import AddCustomerDialog from "@/components/UIElements/Modal/AddCustomerDialog";
 import GetAllSalesPersons from "@/components/utils/GetAllSalesPerson";
 import useShiftCheck from "@/components/utils/useShiftCheck";
@@ -47,6 +48,12 @@ const SalesOrderCreate = () => {
   const [salesPerson, setSalesPerson] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [grossTotal, setGrossTotal] = useState(0);
+  const [quotationModalOpen, setQuotationModalOpen] = useState(false);
+  const [quotationSearch, setQuotationSearch] = useState("");
+  const [quotationList, setQuotationList] = useState([]);
+  const [loadingQuotations, setLoadingQuotations] = useState(false);
+  const [selectedQuotationHeaderId, setSelectedQuotationHeaderId] = useState(null);
+  const [selectedQuotationDocumentNo, setSelectedQuotationDocumentNo] = useState("");
   const guidRef = useRef(uuidv4());
   const searchRef = useRef(null);
   const qtyRefs = useRef([]);
@@ -87,6 +94,145 @@ const SalesOrderCreate = () => {
     router.push({
       pathname: "/sales/sales-order",
     });
+  };
+
+  const loadQuotationList = async (keyword = "") => {
+    try {
+      setLoadingQuotations(true);
+      const response = await fetch(
+        `${BASE_URL}/SalesQuotation/SearchSalesQuotationsForSalesOrder?keyword=${encodeURIComponent(keyword)}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to load sales quotations");
+      }
+
+      const data = await response.json();
+      setQuotationList(data?.result || []);
+    } catch (error) {
+      toast.error(error.message || "Failed to load sales quotations");
+      setQuotationList([]);
+    } finally {
+      setLoadingQuotations(false);
+    }
+  };
+
+  const handleOpenQuotationModal = () => {
+    setQuotationSearch("");
+    setQuotationModalOpen(true);
+    loadQuotationList("");
+  };
+
+  const handleClearQuotationSelection = () => {
+    setSelectedQuotationHeaderId(null);
+    setSelectedQuotationDocumentNo("");
+    setCustomer(null);
+    setOrderDate(formatDate(new Date()));
+    setRemark("");
+    setAddress1("");
+    setAddress2("");
+    setAddress3("");
+    setAddress4("");
+    setSalesPerson(null);
+    setSelectedRows([]);
+    guidRef.current = uuidv4();
+    qtyRefs.current = [];
+    searchRef.current?.clear?.();
+  };
+
+  const handleSelectQuotation = async (quotationId) => {
+    const hasData = selectedRows.length > 0 || customer;
+    if (hasData) {
+      const ok = typeof window !== "undefined" && window.confirm("Replace the current order with this quotation?");
+      if (!ok) return;
+    }
+
+    try {
+      const response = await fetch(`${BASE_URL}/SalesQuotation/GetSalesQuotationById?id=${quotationId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      const data = await response.json();
+      const q = data?.result;
+      if (!response.ok || !q) {
+        throw new Error(data?.message || "Sales quotation not found");
+      }
+
+      if (q.isCanceled === true || q.IsCanceled === true) {
+        toast.error("This quotation is cancelled.");
+        return;
+      }
+
+      const cid = q.customerID ?? q.customerId ?? q.CustomerID;
+      const matchedCustomer = (customers || []).find((c) => c.id === cid || c.Id === cid);
+      setCustomer(
+        matchedCustomer || {
+          id: cid,
+          firstName: q.customerName || q.CustomerName || "",
+          code: q.customerCode || q.CustomerCode || "",
+          addressLine1: q.billToline1 || "",
+          addressLine2: q.billToline2 || "",
+          addressLine3: q.billToline3 || "",
+        }
+      );
+
+      setOrderDate(formatDate(q.documentDate || new Date()));
+      setRemark(q.remark || "");
+      setAddress1(q.billToline1 || "");
+      setAddress2(q.billToline2 || "");
+      setAddress3(q.billToline3 || "");
+      setAddress4(q.billToline4 || "");
+
+      const matchedSalesPerson = (salesPersonList || []).find(
+        (s) => s.id === (q.salesPersonId ?? q.SalesPersonId)
+      );
+      setSalesPerson(matchedSalesPerson || null);
+
+      const rawLines = q.salesQuotationLines || q.SalesQuotationLines || [];
+      const lineRows = rawLines
+        .filter((l) => !l.isDeleted && !l.IsDeleted)
+        .map((l, index) => {
+          const productId = l.productId ?? l.ProductId;
+          const qty = Number(l.qty ?? l.Qty) || 0;
+          const listPrice = Number(l.sellingPrice ?? l.SellingPrice ?? 0);
+          let lineTotalResolved = Number(l.lineTotal ?? l.LineTotal);
+          if (!Number.isFinite(lineTotalResolved)) {
+            lineTotalResolved = qty * listPrice;
+          }
+          const unitPrice = qty > 0 ? lineTotalResolved / qty : listPrice;
+
+          return {
+            lineKey: `from-quotation-${productId}-${index}-${Date.now()}`,
+            productId,
+            productName: l.productName || l.ProductName || "",
+            productCode: l.productCode || l.ProductCode || "",
+            quantity: qty,
+            sellingPrice: unitPrice,
+            totalPrice: lineTotalResolved,
+            sequanceNo: l.sequanceNo ?? l.SequanceNo ?? index + 1,
+          };
+        })
+        .sort((a, b) => (a.sequanceNo || 0) - (b.sequanceNo || 0));
+
+      setSelectedRows(lineRows);
+      setSelectedQuotationHeaderId(q.id ?? q.Id ?? quotationId);
+      setSelectedQuotationDocumentNo(q.documentNo || q.DocumentNo || "");
+      setQuotationModalOpen(false);
+      toast.success("Quotation applied to order.");
+    } catch (error) {
+      toast.error(error.message || "Failed to load quotation");
+    }
   };
 
   const handleSearchItemSelect = (item) => {
@@ -227,6 +373,7 @@ const SalesOrderCreate = () => {
       SalesPersonCode: salesPerson?.code || "",
       SalesPersonName: salesPerson?.name || "",
       FormSubmitId: guidRef.current,
+      SalesQuotationHeaderId: selectedQuotationHeaderId,
       SalesOrderLineDetails: salesOrderLines,
     };
 
@@ -244,16 +391,11 @@ const SalesOrderCreate = () => {
       const json = await res.json();
 
       if (res.ok && json.result.result !== "") {
-        toast.success(json.result.message);
-        updateOrderNo();
-        setSelectedRows([]);
-        setCustomer(null);
-        setAddress1("");
-        setAddress2("");
-        setAddress3("");
-        setAddress4("");
-        setRemark("");
-        setSalesPerson(null);
+        toast.success(json.result.message, {
+          onClose: () => {
+            router.push({ pathname: "/sales/sales-order" });
+          },
+        });
       } else {
         toast.error(json.result.message || "Please fill all required fields");
       }
@@ -263,8 +405,10 @@ const SalesOrderCreate = () => {
   };
 
   useEffect(() => {
-    if (customerList) {
-      setCustomers(customerList);
+    if (!customerList) return;
+    const list = Array.isArray(customerList) ? customerList : customerList?.result;
+    if (Array.isArray(list)) {
+      setCustomers(list);
     }
     updateOrderNo();
   }, [customerList]);
@@ -290,13 +434,43 @@ const SalesOrderCreate = () => {
       <Grid container rowSpacing={1} columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}>
         <Grid item xs={12} sx={{ background: "#fff" }}>
           <Grid container p={1}>
-            <Grid item xs={12} gap={2} display="flex" justifyContent="end">
-              <Button variant="outlined" disabled>
-                <Typography sx={{ fontWeight: "bold" }}>Order No: {orderNo}</Typography>
-              </Button>
-              <Button variant="outlined" onClick={() => navigateToBack()}>
-                <Typography sx={{ fontWeight: "bold" }}>Go Back</Typography>
-              </Button>
+            <Grid item xs={12}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: 2,
+                  width: "100%",
+                }}
+              >
+                <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 2 }}>
+                  <Button variant="outlined" disabled>
+                    <Typography sx={{ fontWeight: "bold" }}>Order No: {orderNo}</Typography>
+                  </Button>
+                  <Button variant="outlined" onClick={handleOpenQuotationModal}>
+                    <Typography sx={{ fontWeight: "bold" }}>Sales quotation</Typography>
+                  </Button>
+                </Box>
+                <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 2 }}>
+                  {selectedQuotationHeaderId ? (
+                    <>
+                      <Typography variant="body2" sx={{ mr: 1 }}>
+                        Quotation: {selectedQuotationDocumentNo || `#${selectedQuotationHeaderId}`}
+                      </Typography>
+                      <Button variant="outlined" color="error" onClick={handleClearQuotationSelection}>
+                        <Typography sx={{ fontWeight: "bold", textTransform: "uppercase" }}>
+                          Clear Form
+                        </Typography>
+                      </Button>
+                    </>
+                  ) : null}
+                  <Button variant="outlined" onClick={() => navigateToBack()}>
+                    <Typography sx={{ fontWeight: "bold" }}>Go Back</Typography>
+                  </Button>
+                </Box>
+              </Box>
             </Grid>
 
             <Grid item xs={12} lg={6} display="flex" flexDirection="column">
@@ -460,8 +634,88 @@ const SalesOrderCreate = () => {
           </Grid>
         </Grid>
       </Grid>
+
+      <Modal
+        open={quotationModalOpen}
+        onClose={() => setQuotationModalOpen(false)}
+        aria-labelledby="sales-quotation-picker-title"
+      >
+        <Box sx={quotationModalStyle} className="bg-black">
+          <Typography id="sales-quotation-picker-title" sx={{ fontWeight: "bold", my: 1, fontSize: "1.1rem" }}>
+            Select sales quotation
+          </Typography>
+          <TextField
+            size="small"
+            fullWidth
+            placeholder="Search by quotation no. or customer"
+            value={quotationSearch}
+            onChange={(e) => {
+              const value = e.target.value;
+              setQuotationSearch(value);
+              loadQuotationList(value);
+            }}
+            sx={{ mb: 2 }}
+          />
+          <TableContainer component={Paper} sx={{ maxHeight: "50vh", overflowY: "auto" }}>
+            <Table size="small" className="dark-table">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Quotation No</TableCell>
+                  <TableCell>Date</TableCell>
+                  <TableCell>Customer</TableCell>
+                  <TableCell>Total</TableCell>
+                  <TableCell align="right">Action</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {loadingQuotations ? (
+                  <TableRow>
+                    <TableCell colSpan={5}>Loading...</TableCell>
+                  </TableRow>
+                ) : quotationList.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5}>
+                      <Typography color="error">No quotations found</Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  quotationList.map((quo) => (
+                    <TableRow key={quo.id}>
+                      <TableCell>{quo.documentNo}</TableCell>
+                      <TableCell>{formatDate(quo.documentDate)}</TableCell>
+                      <TableCell>{quo.customerName}</TableCell>
+                      <TableCell>{formatCurrency(quo.netTotal)}</TableCell>
+                      <TableCell align="right">
+                        <Button size="small" variant="contained" onClick={() => handleSelectQuotation(quo.id)}>
+                          Select
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <Box mt={2} display="flex" justifyContent="flex-end">
+            <Button variant="outlined" onClick={() => setQuotationModalOpen(false)}>
+              Close
+            </Button>
+          </Box>
+        </Box>
+      </Modal>
     </>
   );
+};
+
+const quotationModalStyle = {
+  position: "absolute",
+  top: "50%",
+  left: "50%",
+  transform: "translate(-50%, -50%)",
+  width: { lg: 620, xs: 330 },
+  bgcolor: "background.paper",
+  boxShadow: 24,
+  p: 2,
 };
 
 export default SalesOrderCreate;

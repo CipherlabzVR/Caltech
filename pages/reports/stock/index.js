@@ -14,6 +14,9 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  TextField,
+  Button,
+  Box,
 } from "@mui/material";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
@@ -33,32 +36,47 @@ const StockBalance = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
+  const [asOfDate, setAsOfDate] = useState("");
 
+  const buildDateQuery = (date) => (date ? `&AsOfDate=${date}` : "");
 
   const handleSearchChange = (event) => {
     const value = event.target.value;
     setSearchTerm(value);
     setPage(1);
-    fetchStockList(1, value, pageSize);
+    fetchStockList(1, value, pageSize, asOfDate);
+  };
+
+  const handleAsOfDateChange = (event) => {
+    const value = event.target.value;
+    setAsOfDate(value);
+    setPage(1);
+    fetchStockList(1, searchTerm, pageSize, value);
+  };
+
+  const handleClearDate = () => {
+    setAsOfDate("");
+    setPage(1);
+    fetchStockList(1, searchTerm, pageSize, "");
   };
 
   const handlePageChange = (event, value) => {
     setPage(value);
-    fetchStockList(value, searchTerm, pageSize);
+    fetchStockList(value, searchTerm, pageSize, asOfDate);
   };
 
   const handlePageSizeChange = (event) => {
     const newSize = event.target.value;
     setPageSize(newSize);
     setPage(1);
-    fetchStockList(1, searchTerm, newSize);
+    fetchStockList(1, searchTerm, newSize, asOfDate);
   };
 
-  const fetchStockList = async (page = 1, search = "", size = pageSize) => {
+  const fetchStockList = async (page = 1, search = "", size = pageSize, date = asOfDate) => {
     try {
       const token = localStorage.getItem("token");
       const skip = (page - 1) * size;
-      const query = `${BASE_URL}/StockBalance/GetAllStockBalance?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}`;
+      const query = `${BASE_URL}/StockBalance/GetAllStockBalance?SkipCount=${skip}&MaxResultCount=${size}&Search=${search || "null"}${buildDateQuery(date)}`;
 
       const response = await fetch(query, {
         method: "GET",
@@ -114,8 +132,24 @@ const StockBalance = () => {
             />
           </Search>
         </Grid>
-
-
+        <Grid item xs={12} lg={8} order={{ xs: 2, lg: 2 }}>
+          <Box display="flex" gap={1} flexWrap="wrap" alignItems="center" justifyContent={{ xs: "flex-start", lg: "flex-end" }}>
+            <TextField
+              label="As of Date"
+              type="date"
+              size="small"
+              value={asOfDate}
+              onChange={handleAsOfDateChange}
+              InputLabelProps={{ shrink: true }}
+              sx={{ minWidth: 170 }}
+            />
+            {asOfDate && (
+              <Button variant="outlined" size="small" onClick={handleClearDate}>
+                Current Stock
+              </Button>
+            )}
+          </Box>
+        </Grid>
         <Grid item xs={12} order={{ xs: 3, lg: 3 }}>
           <TableContainer component={Paper}>
             <Table aria-label="simple table" className="dark-table">
@@ -145,7 +179,14 @@ const StockBalance = () => {
                       <TableCell>{item.bookBalanceQuantity}</TableCell>
                       <TableCell>{item.remark}</TableCell>
                       <TableCell>
-                        <ViewStockDetails warehouse={1} product={item} fetchStock={fetchStockList} pageSize={pageSize} search={searchTerm}/>
+                        <ViewStockDetails
+                          warehouse={1}
+                          product={item}
+                          fetchStock={fetchStockList}
+                          pageSize={pageSize}
+                          search={searchTerm}
+                          asOfDate={asOfDate}
+                        />
                       </TableCell>
                     </TableRow>
                   ))

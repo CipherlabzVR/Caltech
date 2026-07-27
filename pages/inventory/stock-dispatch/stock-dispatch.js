@@ -38,8 +38,17 @@ export default function StockDispatch({ fetchItems, item, isExp, isBatch,resetSt
         setOpen(true);
     };
     const handleSubmit = async () => {
-        if (!dispatchQty) {
+        const qty = parseFloat(dispatchQty);
+        if (dispatchQty === "" || dispatchQty === null || !Number.isFinite(qty)) {
             toast.info("Please Enter Value");
+            return;
+        }
+        if (qty <= 0) {
+            toast.info("Dispatch quantity must be greater than 0");
+            return;
+        }
+        if (qty > item.bookBalanceQuantity) {
+            toast.info("Dispatch quantity cannot exceed available quantity");
             return;
         }
         const data = {
@@ -55,7 +64,7 @@ export default function StockDispatch({ fetchItems, item, isExp, isBatch,resetSt
             SellingPrice: item.sellingPrice,
             SupplierID: item.supplierID,
             SupplierName: item.supplierName,
-            DispatchQuantity: parseFloat(dispatchQty),
+            DispatchQuantity: qty,
             StockBalanceId: item.id,
             Remark: remark,
         }
@@ -145,17 +154,33 @@ export default function StockDispatch({ fetchItems, item, isExp, isBatch,resetSt
                                     size="small"
                                     value={dispatchQty}
                                     type="number"
-                                    inputProps={{ min: 1, max: item.bookBalanceQuantity }}
+                                    inputProps={{ min: 1, max: item.bookBalanceQuantity, step: "any" }}
                                     onChange={(e) => {
-                                        const value = Number(e.target.value);
-                                        if (value <= item.bookBalanceQuantity) {
-                                            setDispatchQty(e.target.value);
+                                        const raw = e.target.value;
+                                        if (raw === "") {
+                                            setDispatchQty("");
+                                            return;
+                                        }
+                                        const value = Number(raw);
+                                        if (Number.isNaN(value)) {
+                                            return;
+                                        }
+                                        if (value < 0) {
+                                            return;
+                                        }
+                                        if (value > item.bookBalanceQuantity) {
+                                            return;
+                                        }
+                                        setDispatchQty(raw);
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "-" || e.key === "e" || e.key === "E" || e.key === "+") {
+                                            e.preventDefault();
                                         }
                                     }}
                                     placeholder="Please Enter"
                                     fullWidth
-                                    helperText={`Enter a value less than or equal to available quantity`}
-
+                                    helperText="Enter a value greater than 0 and less than or equal to available quantity"
                                 />
                             </Grid>
                             <Grid item xs={12} mb={2}>

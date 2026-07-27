@@ -28,7 +28,7 @@ import { projectStatusType } from "@/components/types/types";
 export default function TechPackList() {
     const router = useRouter();
     const cId = sessionStorage.getItem("category")
-    const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+    const { navigate, create, update, remove, print, whatsAppShare } = IsPermissionEnabled(cId);
     const [quotationList, setQuotationList] = useState([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [page, setPage] = useState(1);
@@ -265,7 +265,9 @@ export default function TechPackList() {
                                                 {tabValue === 0 && (
                                                     <TableCell align="right">
                                                         <Box display="flex" gap={1}>
-                                                            <ShareReports url={whatsapp} mobile={item.sentWhatsappNumber} />
+                                                            {whatsAppShare ? (
+                                                              <ShareReports url={whatsapp} mobile={item.sentWhatsappNumber} />
+                                                            ) : ""}
                                                             {print ? <>
                                                                 <Tooltip title="Print" placement="top">
                                                                     <a href={`${Report}` + invoiceReportLink} target="_blank">

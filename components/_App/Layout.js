@@ -116,21 +116,17 @@ const LayoutContent = ({ children }) => {
 
         const data = await response.json();
         const landingPageValue = data?.result?.result?.landingPage ?? null;
+        const isMobileView =
+          typeof window !== "undefined" && window.innerWidth < 1200;
 
-        if (landingPageValue === 2) {
+        if (landingPageValue === 2 || isMobileView) {
           hideSidebar();
           setActiveTopbarButton("quick-access");
           if (router.pathname === "/" || router.pathname === "/quick-access") {
             router.replace("/quick-access");
           }
         } else {
-          // Only auto-show sidebar on desktop, not mobile
-          if (typeof window !== "undefined" && window.innerWidth >= 1200) {
-            showSidebar();
-          } else {
-            // In mobile, keep sidebar hidden initially
-            hideSidebar();
-          }
+          showSidebar();
           setActiveTopbarButton("menu");
           if (router.pathname === "/quick-access") {
             router.replace("/");

@@ -23,10 +23,12 @@ import {
     Modal,
     Pagination,
 } from "@mui/material";
+import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
+import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import BASE_URL from "Base/api";
 
@@ -48,6 +50,8 @@ const compareItemCodeSort = (a, b, direction) => {
 
 export default function StockDetails() {
     const { data: IsCostPriceVisible } = IsAppSettingEnabled("IsCostPriceVisible");
+    const { approve1: hasCostPricePermission, print } = IsPermissionEnabled(156);
+    const showCostPrice = IsCostPriceVisible && hasCostPricePermission;
     const { data: IsExpireDateAvailable } = IsAppSettingEnabled("IsExpireDateAvailable");
     const { data: IsBatchNumberAvailable } = IsAppSettingEnabled("IsBatchNumberAvailable");
 
@@ -207,7 +211,7 @@ export default function StockDetails() {
         1 + // category
         1 + // sub category
         1 + // UOM
-        (IsCostPriceVisible ? 1 : 0); // cost price (after requested order)
+        (showCostPrice ? 1 : 0); // cost price (after requested order)
 
     const lineBookQty = (line) => line.bookBalanceQuantity ?? line.BookBalanceQuantity;
     const lineCategory = (line) =>
@@ -215,6 +219,45 @@ export default function StockDetails() {
     const lineSubCategory = (line) =>
         line.subCategoryName ?? line.SubCategoryName ?? selectedProduct?.subCategoryName ?? "–";
     const lineUom = (line) => line.uom ?? line.UOM ?? selectedProduct?.uomName ?? "–";
+
+    const openStockDetailsPrintPopup = () => {
+        const query = new URLSearchParams({
+            search: search || "",
+            sortBy: sortBy || "code-asc",
+            includeDetails: "1",
+            showBatch: IsBatchNumberAvailable ? "1" : "0",
+            showExpiry: IsExpireDateAvailable ? "1" : "0",
+            showCostPrice: showCostPrice ? "1" : "0",
+        });
+
+        window.open(
+            `/inventory/stock-details/print?${query.toString()}`,
+            "stock-details-print",
+            "popup=yes,width=1200,height=900,scrollbars=yes,resizable=yes"
+        );
+    };
+
+    const openItemStockPrintPopup = (item) => {
+        const query = new URLSearchParams({
+            productId: String(item.id ?? ""),
+            itemCode: item.code ?? item.Code ?? "",
+            itemName: item.name ?? "",
+            categoryName: item.categoryName ?? "",
+            subCategoryName: item.subCategoryName ?? "",
+            supplierName: item.supplierName ?? "",
+            uomName: item.uomName ?? "",
+            stockLevel: String(item.qty ?? 0),
+            showBatch: IsBatchNumberAvailable ? "1" : "0",
+            showExpiry: IsExpireDateAvailable ? "1" : "0",
+            showCostPrice: showCostPrice ? "1" : "0",
+        });
+
+        window.open(
+            `/inventory/stock-details/print?${query.toString()}`,
+            `stock-details-item-print-${item.id}`,
+            "popup=yes,width=1200,height=900,scrollbars=yes,resizable=yes"
+        );
+    };
 
     return (
         <>
@@ -240,7 +283,16 @@ export default function StockDetails() {
                     </Search>
                 </Grid>
 
-                <Grid item xs={12} lg={8} mb={1} display="flex" justifyContent="end" order={{ xs: 1, lg: 2 }}>
+                <Grid item xs={12} lg={8} mb={1} display="flex" justifyContent="end" gap={1} order={{ xs: 1, lg: 2 }}>
+                    {print ? (
+                        <Button
+                            variant="outlined"
+                            startIcon={<LocalPrintshopIcon />}
+                            onClick={openStockDetailsPrintPopup}
+                        >
+                            Print
+                        </Button>
+                    ) : null}
                     <FormControl size="small" sx={{ minWidth: 180 }}>
                         <InputLabel>Sort By</InputLabel>
                         <Select
@@ -301,6 +353,16 @@ export default function StockDetails() {
                                             <TableCell>{item.uomName ?? "–"}</TableCell>
                                             <TableCell align="right">{item.qty ?? 0}</TableCell>
                                             <TableCell align="right">
+                                                {print ? (
+                                                    <Tooltip title="Print Item Stock">
+                                                        <IconButton
+                                                            onClick={() => openItemStockPrintPopup(item)}
+                                                            size="small"
+                                                        >
+                                                            <LocalPrintshopIcon color="primary" fontSize="small" />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                ) : null}
                                                 <Tooltip title="View Details">
                                                     <IconButton onClick={() => handleViewAction(item)} size="small">
                                                         <VisibilityIcon color="primary" fontSize="small" />
@@ -369,7 +431,7 @@ export default function StockDetails() {
                                                 <TableCell>Category</TableCell>
                                                 <TableCell>Sub Category</TableCell>
                                                 <TableCell>UOM</TableCell>
-                                                {IsCostPriceVisible && <TableCell align="right">Cost Price</TableCell>}
+                                                {showCostPrice && <TableCell align="right">Cost Price</TableCell>}
                                             </TableRow>
                                         </TableHead>
                                         <TableBody>
@@ -396,7 +458,7 @@ export default function StockDetails() {
                                                         <TableCell>{lineCategory(line)}</TableCell>
                                                         <TableCell>{lineSubCategory(line)}</TableCell>
                                                         <TableCell>{lineUom(line)}</TableCell>
-                                                        {IsCostPriceVisible && (
+                                                        {showCostPrice && (
                                                             <TableCell align="right">
                                                                 {line.costPrice != null ? formatCurrency(line.costPrice) : "–"}
                                                             </TableCell>
@@ -432,7 +494,16 @@ export default function StockDetails() {
                             </>
                         )}
                     </Box>
-                    <Box display="flex" mt={2} justifyContent="flex-end">
+                    <Box display="flex" mt={2} justifyContent="flex-end" gap={1}>
+                        {print && selectedProduct ? (
+                            <Button
+                                variant="contained"
+                                startIcon={<LocalPrintshopIcon />}
+                                onClick={() => openItemStockPrintPopup(selectedProduct)}
+                            >
+                                Print
+                            </Button>
+                        ) : null}
                         <Button onClick={handleClose} variant="outlined" color="primary">
                             Close
                         </Button>

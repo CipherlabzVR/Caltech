@@ -130,6 +130,11 @@ const SalesOrderEdit = () => {
       }
 
       const order = data.result;
+      if (order.invoiceId != null) {
+        toast.warning("This sales order cannot be edited because invoice is already generated.");
+        navigateToBack();
+        return;
+      }
       if (order.receiptId != null) {
         toast.warning("This sales order cannot be edited because receipt is already linked.");
         navigateToBack();

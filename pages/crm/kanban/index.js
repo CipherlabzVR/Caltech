@@ -18,8 +18,16 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
 import FilterAltOutlinedIcon from "@mui/icons-material/FilterAltOutlined";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
+import Switch from "@mui/material/Switch";
+import Alert from "@mui/material/Alert";
 import KanbanColumn from "./column";
 import LeadDetailDrawer from "./LeadDetailDrawer";
+import ManageColumnsDrawer from "./ManageColumnsDrawer";
+import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import BASE_URL from "Base/api";
 import AddLeadModal from "../leads/create";
@@ -27,7 +35,7 @@ import { toast, ToastContainer } from "react-toastify";
 
 const MODULE_ENDPOINTS = {
   Leads: {
-    stages: "/EnumLookup/LeadStatuses",
+    columns: "/CRMKanbanColumn/GetAll",
     data: "/Leads/GetCRMLeads",
   },
 };
@@ -41,6 +49,9 @@ export default function KanbanBoard() {
     statuses: [],
     startDate: "",
     endDate: "",
+    agePreset: "AllTime",
+    onlyPastLeads: false,
+    pastLeadDays: 60,
   });
   const [boardData, setBoardData] = React.useState([]);
   const [stageDefinitions, setStageDefinitions] = React.useState([]);
@@ -56,6 +67,7 @@ export default function KanbanBoard() {
   const [pendingMove, setPendingMove] = React.useState(null);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [selectedLead, setSelectedLead] = React.useState(null);
+  const [manageColumnsOpen, setManageColumnsOpen] = React.useState(false);
   const [filterOptions, setFilterOptions] = React.useState({
     stages: [],
     owners: [],
@@ -120,19 +132,11 @@ export default function KanbanBoard() {
 
   const fetchStages = React.useCallback(
     async () => {
-      const stageEndpoint = MODULE_ENDPOINTS.Leads?.stages;
-      if (!stageEndpoint) {
+      const columnsEndpoint = MODULE_ENDPOINTS.Leads?.columns;
+      if (!columnsEndpoint) {
         setBoardData([]);
-        setFilterOptions((prev) => ({
-          ...prev,
-          stages: [],
-          statuses: [],
-        }));
-        setSelectedFilters((prev) => ({
-          ...prev,
-          stages: [],
-          statuses: [],
-        }));
+        setFilterOptions((prev) => ({ ...prev, stages: [], statuses: [] }));
+        setSelectedFilters((prev) => ({ ...prev, stages: [], statuses: [] }));
         return;
       }
 
@@ -141,7 +145,7 @@ export default function KanbanBoard() {
         setStageError(null);
 
         const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-        const response = await fetch(`${BASE_URL}${stageEndpoint}`, {
+        const response = await fetch(`${BASE_URL}${columnsEndpoint}`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -151,16 +155,24 @@ export default function KanbanBoard() {
 
         if (!response.ok) {
           const text = await response.text();
-          throw new Error(text || "Failed to load stages");
+          throw new Error(text || "Failed to load columns");
         }
 
         const data = await response.json();
-        const entries = Object.entries(data?.result || {});
+        const columns = Array.isArray(data?.result) ? data.result : [];
 
-        const stageDefs = entries.map(([value, label]) => ({
-          id: `stage-${value}`,
-          title: label,
-        }));
+        const stageDefs = columns
+          .slice()
+          .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0))
+          .map((col) => ({
+            id: `column-${col.id}`,
+            columnId: col.id,
+            title: col.title,
+            color: col.color || null,
+            legacyStatus: col.legacyStatus ?? null,
+            isWonColumn: !!col.isWonColumn,
+            leadCount: col.leadCount ?? 0,
+          }));
 
         setStageDefinitions(stageDefs);
         setBoardData(stageDefs.map((stage) => ({ ...stage, items: [] })));
@@ -178,20 +190,12 @@ export default function KanbanBoard() {
           statuses: prev.statuses.filter((value) => stageTitles.includes(value)),
         }));
       } catch (error) {
-        console.error("Error loading stages:", error);
-        setStageError(error.message || "Failed to load stages");
+        console.error("Error loading columns:", error);
+        setStageError(error.message || "Failed to load columns");
         setStageDefinitions([]);
         setBoardData([]);
-        setFilterOptions((prev) => ({
-          ...prev,
-          stages: [],
-          statuses: [],
-        }));
-        setSelectedFilters((prev) => ({
-          ...prev,
-          stages: [],
-          statuses: [],
-        }));
+        setFilterOptions((prev) => ({ ...prev, stages: [], statuses: [] }));
+        setSelectedFilters((prev) => ({ ...prev, stages: [], statuses: [] }));
       } finally {
         setLoadingStages(false);
       }
@@ -203,8 +207,13 @@ export default function KanbanBoard() {
     fetchOwners();
   }, [fetchOwners]);
 
+  const filtersRef = React.useRef(selectedFilters);
+  React.useEffect(() => {
+    filtersRef.current = selectedFilters;
+  }, [selectedFilters]);
+
   const fetchRecords = React.useCallback(
-    async () => {
+    async (overrideFilters) => {
       const dataEndpoint = MODULE_ENDPOINTS.Leads?.data;
       if (!dataEndpoint) {
         setBoardData([]);
@@ -215,8 +224,32 @@ export default function KanbanBoard() {
         setLoadingRecords(true);
         setRecordsError(null);
 
+        const f = overrideFilters || filtersRef.current;
+        const params = new URLSearchParams();
+        const presetMap = {
+          AllTime: 0,
+          Last7Days: 1,
+          Last30Days: 2,
+          Last90Days: 3,
+          OlderThan90Days: 4,
+          Custom: 5,
+        };
+        let presetToSend = f.agePreset;
+        if (presetToSend === "AllTime" && (f.startDate || f.endDate)) {
+          presetToSend = "Custom";
+        }
+        params.set("AgePreset", String(presetMap[presetToSend] ?? 0));
+        if (presetToSend === "Custom") {
+          if (f.startDate) params.set("FromDate", f.startDate);
+          if (f.endDate) params.set("ToDate", f.endDate);
+        }
+        if (f.onlyPastLeads) {
+          params.set("OnlyPastLeads", "true");
+          params.set("PastLeadDays", String(f.pastLeadDays || 60));
+        }
+
         const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-        const response = await fetch(`${BASE_URL}${dataEndpoint}`, {
+        const response = await fetch(`${BASE_URL}${dataEndpoint}?${params.toString()}`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -252,16 +285,36 @@ export default function KanbanBoard() {
     []
   );
 
+  // Initial board load runs exactly once. Subsequent refetches happen via the
+  // server-side filter effect below.
   React.useEffect(() => {
     const loadBoard = async () => {
       await fetchStages();
       await fetchRecords();
     };
-
     loadBoard();
-  }, [fetchStages, fetchRecords]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const updateLeadStatus = React.useCallback(async (card, statusValue, statusLabel) => {
+  // Re-fetch records when date / age filters change. We skip the very first
+  // run because the initial load above already fetched with default filters.
+  const isFirstFilterRun = React.useRef(true);
+  React.useEffect(() => {
+    if (isFirstFilterRun.current) {
+      isFirstFilterRun.current = false;
+      return;
+    }
+    fetchRecords();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    selectedFilters.agePreset,
+    selectedFilters.startDate,
+    selectedFilters.endDate,
+    selectedFilters.onlyPastLeads,
+    selectedFilters.pastLeadDays,
+  ]);
+
+  const updateLeadStatus = React.useCallback(async (card, targetStage) => {
     if (!card?.raw) {
       return { success: false, error: "Card data is missing" };
     }
@@ -273,6 +326,13 @@ export default function KanbanBoard() {
       return { success: false, error: "Status cannot be updated when create project" };
     }
 
+    // For user-defined columns there is no enum to update, so we keep the
+    // previous LeadStatus. For columns mapped to a legacy status (the
+    // seeded defaults), we keep the enum in sync too.
+    const nextLeadStatus = targetStage?.legacyStatus
+      ? Number(targetStage.legacyStatus)
+      : Number(lead.leadStatus ?? 0);
+
     const payload = {
       Id: lead.id,
       LeadName: lead.leadName || lead.name || "Unnamed Lead",
@@ -280,11 +340,12 @@ export default function KanbanBoard() {
       Email: lead.email || "",
       MobileNo: lead.mobileNo || "",
       LeadSource: Number(lead.leadSource ?? 0),
-      LeadStatus: Number(statusValue),
+      LeadStatus: nextLeadStatus,
       LeadScore: Number(lead.leadScore ?? 0),
       Description: lead.description || "",
       ContactId: lead.contactId || null,
-      AccountId: lead.accountId || null
+      AccountId: lead.accountId || null,
+      KanbanColumnId: targetStage?.columnId ?? null,
     };
 
     try {
@@ -310,8 +371,9 @@ export default function KanbanBoard() {
           record.id === lead.id
             ? {
               ...record,
-              leadStatus: Number(statusValue),
-              leadStatusName: statusLabel,
+              leadStatus: nextLeadStatus,
+              leadStatusName: targetStage?.title ?? record.leadStatusName,
+              kanbanColumnId: targetStage?.columnId ?? null,
             }
             : record
         )
@@ -331,13 +393,22 @@ export default function KanbanBoard() {
       }
 
       let filteredRecords = Array.isArray(records) ? [...records] : [];
-      const stageKey = "leadStatus";
       const stageNameKey = "leadStatusName";
-      const stageValueToLabel = {};
-
+      const legacyStatusToColumnId = {};
       stages.forEach((stage) => {
-        stageValueToLabel[stage.id.replace("stage-", "")] = stage.title;
+        if (stage.legacyStatus != null) {
+          legacyStatusToColumnId[String(stage.legacyStatus)] = stage.columnId;
+        }
       });
+
+      const resolveColumnId = (record) => {
+        if (record.kanbanColumnId != null) return record.kanbanColumnId;
+        const legacy = record.leadStatus;
+        if (legacy != null && legacyStatusToColumnId[String(legacy)] != null) {
+          return legacyStatusToColumnId[String(legacy)];
+        }
+        return null;
+      };
 
       if (filters.owners.length > 0) {
         filteredRecords = filteredRecords.filter((record) =>
@@ -346,39 +417,19 @@ export default function KanbanBoard() {
       }
 
       if (filters.statuses.length > 0) {
+        const stageById = {};
+        stages.forEach((s) => {
+          stageById[s.columnId] = s.title;
+        });
         filteredRecords = filteredRecords.filter((record) => {
-          const stageValue = record[stageKey];
-          const stageLabel =
-            record[stageNameKey] ||
-            stageValueToLabel[String(stageValue)] ||
-            String(stageValue ?? "");
+          const colId = resolveColumnId(record);
+          const stageLabel = stageById[colId] || record[stageNameKey] || "";
           return filters.statuses.includes(stageLabel);
         });
       }
 
-      if (filters.startDate) {
-        const startDate = new Date(filters.startDate);
-        startDate.setHours(0, 0, 0, 0);
-        filteredRecords = filteredRecords.filter((record) => {
-          if (!record.createdOn) {
-            return false;
-          }
-          const created = new Date(record.createdOn);
-          return !Number.isNaN(created.getTime()) && created >= startDate;
-        });
-      }
-
-      if (filters.endDate) {
-        const endDate = new Date(filters.endDate);
-        endDate.setHours(23, 59, 59, 999);
-        filteredRecords = filteredRecords.filter((record) => {
-          if (!record.createdOn) {
-            return false;
-          }
-          const created = new Date(record.createdOn);
-          return !Number.isNaN(created.getTime()) && created <= endDate;
-        });
-      }
+      // Date / age filtering is done server-side via GetCRMLeads query params,
+      // so we no longer re-filter on the client to avoid double-filtering.
 
       const trimmedSearch = searchTerm.trim().toLowerCase();
       if (trimmedSearch) {
@@ -399,14 +450,23 @@ export default function KanbanBoard() {
         status: stageTitle,
         createdDate: record.createdOn ? new Date(record.createdOn).toLocaleDateString() : "-",
         dueDate: "-",
+        campaign: record.campaignId
+          ? {
+              id: record.campaignId,
+              name: record.campaignName || "Campaign",
+              type: record.campaignTypeName || null,
+              startDate: record.campaignStartDate || null,
+              endDate: record.campaignEndDate || null,
+              owner: record.campaignOwnerName || null,
+            }
+          : null,
         raw: record,
       });
 
       return stages.map((stage) => {
-        const stageValue = stage.id.replace("stage-", "");
         const stageTitle = stage.title;
         const stageRecords = filteredRecords.filter(
-          (record) => String(record[stageKey]) === stageValue
+          (record) => resolveColumnId(record) === stage.columnId
         );
 
         return {
@@ -430,10 +490,19 @@ export default function KanbanBoard() {
     searchValue,
   ]);
 
-  const handleRefreshAfterCreate = React.useCallback(() => {
+  const handleBoardRefresh = React.useCallback(() => {
     fetchStages();
     fetchRecords();
   }, [fetchStages, fetchRecords]);
+
+  const handleRefreshAfterCreate = React.useCallback((message) => {
+    handleBoardRefresh();
+    const successMessage =
+      typeof message === "string" && message.trim()
+        ? message
+        : "Lead created successfully.";
+    window.setTimeout(() => toast.success(successMessage), 0);
+  }, [handleBoardRefresh]);
 
   const handleFilterToggle = (group, value) => {
     setSelectedFilters((prev) => {
@@ -511,6 +580,8 @@ export default function KanbanBoard() {
       return;
     }
 
+    const targetStage = originalBoardData.find((stage) => stage.id === targetStageId);
+
     // Update board visually
     setBoardData((prevStages) => {
       const stagesWithoutCard = prevStages.map((stage) => {
@@ -523,7 +594,6 @@ export default function KanbanBoard() {
 
       const updatedStages = stagesWithoutCard.map((stage) => {
         if (stage.id === targetStageId) {
-          const stageValue = targetStageId.replace("stage-", "");
           const stageTitle = stage.title;
           const updatedCard = {
             ...movedCard,
@@ -531,19 +601,14 @@ export default function KanbanBoard() {
             raw: movedCard.raw
               ? {
                 ...movedCard.raw,
-                leadStatus: Number(stageValue),
+                kanbanColumnId: stage.columnId,
+                leadStatus: stage.legacyStatus ?? movedCard.raw.leadStatus,
                 leadStatusName: stageTitle,
               }
               : movedCard.raw,
           };
 
-          return {
-            ...stage,
-            items: [
-              ...stage.items,
-              updatedCard,
-            ],
-          };
+          return { ...stage, items: [...stage.items, updatedCard] };
         }
         return stage;
       });
@@ -551,14 +616,7 @@ export default function KanbanBoard() {
       return updatedStages;
     });
 
-    // Get target stage info
-    const targetStage = originalBoardData.find((stage) => stage.id === targetStageId);
-    const stageValue = targetStageId.replace("stage-", "");
-    const stageLabel = targetStage?.title || stageValue;
-    const targetStatusValue = Number(stageValue);
-
-    // Call updateLeadStatus API
-    const result = await updateLeadStatus(movedCard, targetStatusValue, stageLabel);
+    const result = await updateLeadStatus(movedCard, targetStage);
 
     if (!result || !result.success) {
       // Revert board on error
@@ -610,6 +668,73 @@ export default function KanbanBoard() {
     fetchRecords();
   }, [fetchRecords]);
 
+  const [archiveTarget, setArchiveTarget] = React.useState(null);
+  const [archiveWorking, setArchiveWorking] = React.useState(false);
+  const [deleteTarget, setDeleteTarget] = React.useState(null);
+  const [deleteWorking, setDeleteWorking] = React.useState(false);
+
+  const handleArchiveCard = React.useCallback((item) => {
+    if (!item?.raw?.id) return;
+    setArchiveTarget(item);
+  }, []);
+
+  const handleArchiveConfirm = React.useCallback(async () => {
+    const leadId = archiveTarget?.raw?.id;
+    if (!leadId) return;
+    try {
+      setArchiveWorking(true);
+      const response = await fetch(`${BASE_URL}/Leads/ArchiveLead?id=${leadId}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.statusCode !== 200) {
+        throw new Error(data?.message || "Failed to archive lead");
+      }
+      toast.success(data?.message || "Lead archived.");
+      setArchiveTarget(null);
+      fetchRecords();
+    } catch (err) {
+      toast.error(err.message || "Unable to archive lead");
+    } finally {
+      setArchiveWorking(false);
+    }
+  }, [archiveTarget, fetchRecords]);
+
+  const handleDeleteCard = React.useCallback((item) => {
+    if (!item?.raw?.id) return;
+    setDeleteTarget(item);
+  }, []);
+
+  const handleDeleteConfirm = React.useCallback(async () => {
+    const leadId = deleteTarget?.raw?.id;
+    if (!leadId) return;
+    try {
+      setDeleteWorking(true);
+      const response = await fetch(`${BASE_URL}/Leads/DeleteLead?id=${leadId}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.statusCode !== 200) {
+        throw new Error(data?.message || "Failed to delete lead");
+      }
+      toast.success(data?.message || "Lead deleted successfully.");
+      setDeleteTarget(null);
+      fetchRecords();
+    } catch (err) {
+      toast.error(err.message || "Unable to delete lead");
+    } finally {
+      setDeleteWorking(false);
+    }
+  }, [deleteTarget, fetchRecords]);
+
   return (
     <>
       <ToastContainer />
@@ -652,6 +777,13 @@ export default function KanbanBoard() {
           </Search>
         </Box>
         <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="flex-end">
+          <Button
+            variant="outlined"
+            startIcon={<ViewColumnIcon />}
+            onClick={() => setManageColumnsOpen(true)}
+          >
+            Manage Columns
+          </Button>
           <AddLeadModal onLeadCreated={handleRefreshAfterCreate} />
           <IconButton color="primary" onClick={() => setFilterDrawer(true)}>
             <FilterAltOutlinedIcon />
@@ -659,12 +791,64 @@ export default function KanbanBoard() {
         </Stack>
       </Stack>
 
+      {(() => {
+        const f = selectedFilters;
+        const presetLabels = {
+          Last7Days: "leads created in the last 7 days",
+          Last30Days: "leads created in the last 30 days",
+          Last90Days: "leads created in the last 90 days",
+          OlderThan90Days: "leads older than 90 days",
+        };
+        const parts = [];
+        if (presetLabels[f.agePreset]) parts.push(presetLabels[f.agePreset]);
+        if (f.agePreset === "Custom" && (f.startDate || f.endDate)) {
+          parts.push(
+            `leads created ${f.startDate ? `from ${f.startDate}` : ""}${
+              f.startDate && f.endDate ? " " : ""
+            }${f.endDate ? `to ${f.endDate}` : ""}`.trim()
+          );
+        }
+        if (f.onlyPastLeads) {
+          const today = new Date();
+          today.setDate(today.getDate() - (f.pastLeadDays || 60));
+          parts.push(`only past leads (created before ${today.toLocaleDateString()})`);
+        }
+        if (parts.length === 0) return null;
+        return (
+          <Alert
+            severity="info"
+            sx={{ mb: 2 }}
+            action={
+              <Button
+                size="small"
+                color="inherit"
+                onClick={() =>
+                  setSelectedFilters((prev) => ({
+                    ...prev,
+                    startDate: "",
+                    endDate: "",
+                    agePreset: "AllTime",
+                    onlyPastLeads: false,
+                    pastLeadDays: 60,
+                  }))
+                }
+              >
+                Clear filter
+              </Button>
+            }
+          >
+            Showing {parts.join(" and ")}.
+          </Alert>
+        );
+      })()}
+
       <Box
         sx={{
           display: "flex",
           flexDirection: "row",
-          alignItems: "flex-start",
+          alignItems: "stretch",
           overflowX: "auto",
+          overflowY: "hidden",
           pb: 3,
           pr: 1,
           scrollbarWidth: "thin",
@@ -731,11 +915,15 @@ export default function KanbanBoard() {
               key={stage.id}
               stageId={stage.id}
               stageTitle={stage.title}
+              stageColor={stage.color}
+              isWonColumn={stage.isWonColumn}
               items={stage.items}
               onDragStart={handleDragStart}
               onDropCard={handleDropCard}
               onDragEnd={handleDragEnd}
               onCardClick={handleCardClick}
+              onArchiveCard={handleArchiveCard}
+              onDeleteCard={handleDeleteCard}
             />
           ))
         )}
@@ -781,7 +969,73 @@ export default function KanbanBoard() {
           <Divider sx={{ my: 2 }} />
 
           <Typography variant="subtitle2" fontWeight={600} mb={1}>
-            Date Range
+            Lead Age
+          </Typography>
+          <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+            <InputLabel>Quick filter</InputLabel>
+            <Select
+              label="Quick filter"
+              value={selectedFilters.agePreset}
+              onChange={(event) =>
+                setSelectedFilters((prev) => ({
+                  ...prev,
+                  agePreset: event.target.value,
+                  startDate: event.target.value === "Custom" ? prev.startDate : "",
+                  endDate: event.target.value === "Custom" ? prev.endDate : "",
+                }))
+              }
+            >
+              <MenuItem value="AllTime">All time</MenuItem>
+              <MenuItem value="Last7Days">Last 7 days</MenuItem>
+              <MenuItem value="Last30Days">Last 30 days</MenuItem>
+              <MenuItem value="Last90Days">Last 90 days</MenuItem>
+              <MenuItem value="OlderThan90Days">Older than 90 days</MenuItem>
+              <MenuItem value="Custom">Custom range</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{ mb: 1 }}
+          >
+            <Typography variant="body2">
+              Show <strong>past leads</strong> only
+            </Typography>
+            <Switch
+              size="small"
+              checked={selectedFilters.onlyPastLeads}
+              onChange={(event) =>
+                setSelectedFilters((prev) => ({
+                  ...prev,
+                  onlyPastLeads: event.target.checked,
+                }))
+              }
+            />
+          </Stack>
+          {selectedFilters.onlyPastLeads && (
+            <TextField
+              size="small"
+              fullWidth
+              type="number"
+              label="Past lead threshold (days)"
+              value={selectedFilters.pastLeadDays}
+              onChange={(event) => {
+                const v = Number(event.target.value);
+                setSelectedFilters((prev) => ({
+                  ...prev,
+                  pastLeadDays: Number.isFinite(v) && v > 0 ? v : 60,
+                }));
+              }}
+              sx={{ mb: 2 }}
+            />
+          )}
+
+          <Divider sx={{ my: 2 }} />
+
+          <Typography variant="subtitle2" fontWeight={600} mb={1}>
+            Custom Date Range
           </Typography>
           <Stack spacing={1} direction="row">
             <TextField
@@ -789,7 +1043,13 @@ export default function KanbanBoard() {
               size="small"
               fullWidth
               value={selectedFilters.startDate}
-              onChange={handleDateChange("startDate")}
+              onChange={(event) =>
+                setSelectedFilters((prev) => ({
+                  ...prev,
+                  startDate: event.target.value,
+                  agePreset: event.target.value || prev.endDate ? "Custom" : prev.agePreset,
+                }))
+              }
               InputLabelProps={{ shrink: true }}
             />
             <TextField
@@ -797,7 +1057,13 @@ export default function KanbanBoard() {
               size="small"
               fullWidth
               value={selectedFilters.endDate}
-              onChange={handleDateChange("endDate")}
+              onChange={(event) =>
+                setSelectedFilters((prev) => ({
+                  ...prev,
+                  endDate: event.target.value,
+                  agePreset: event.target.value || prev.startDate ? "Custom" : prev.agePreset,
+                }))
+              }
               InputLabelProps={{ shrink: true }}
             />
           </Stack>
@@ -837,6 +1103,9 @@ export default function KanbanBoard() {
                   statuses: [],
                   startDate: "",
                   endDate: "",
+                  agePreset: "AllTime",
+                  onlyPastLeads: false,
+                  pastLeadDays: 60,
                 })
               }
             >
@@ -873,7 +1142,46 @@ export default function KanbanBoard() {
         onLeadUpdated={handleLeadUpdated}
       />
 
-      <ToastContainer />
+      <ManageColumnsDrawer
+        open={manageColumnsOpen}
+        onClose={() => setManageColumnsOpen(false)}
+        onChanged={handleBoardRefresh}
+      />
+
+      <Dialog open={!!archiveTarget} onClose={() => setArchiveTarget(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Archive Lead</DialogTitle>
+        <DialogContent dividers>
+          <DialogContentText>
+            Archive <strong>{archiveTarget?.name}</strong>? It will be moved out of the active board and accessible from
+            the Archived Leads page.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setArchiveTarget(null)} color="inherit" disabled={archiveWorking}>
+            Cancel
+          </Button>
+          <Button onClick={handleArchiveConfirm} color="warning" variant="contained" disabled={archiveWorking}>
+            {archiveWorking ? "Archiving..." : "Archive"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete Lead</DialogTitle>
+        <DialogContent dividers>
+          <DialogContentText>
+            Permanently delete <strong>{deleteTarget?.name}</strong>? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTarget(null)} color="inherit" disabled={deleteWorking}>
+            Cancel
+          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" disabled={deleteWorking}>
+            {deleteWorking ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

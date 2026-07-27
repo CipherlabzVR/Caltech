@@ -30,6 +30,9 @@ import DialogContentText from "@mui/material/DialogContentText";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import { formatDate } from "@/components/utils/formatHelper";
 
+const readMeetingField = (meeting, camelKey, pascalKey) =>
+  meeting?.[camelKey] ?? meeting?.[pascalKey];
+
 export default function EditMeetingModal({ open, onClose, onSuccess, onDelete, meeting }) {
   const { accounts, isLoading: accountsLoading, error: accountsError } = useCRMAccounts();
   const [submitting, setSubmitting] = useState(false);
@@ -61,34 +64,48 @@ export default function EditMeetingModal({ open, onClose, onSuccess, onDelete, m
       let startTime = dayjs().set("hour", 9).set("minute", 0);
       let endTime = dayjs().set("hour", 10).set("minute", 0);
       
-      if (meeting.meetingDate) {
-        // Extract date part (before 'T') and create dayjs object
-        const dateStr = meeting.meetingDate.split("T")[0];
+      const meetingDateValue = readMeetingField(meeting, "meetingDate", "MeetingDate");
+      const startTimeValue = readMeetingField(meeting, "startTime", "StartTime");
+      const endTimeValue = readMeetingField(meeting, "endTime", "EndTime");
+
+      if (meetingDateValue) {
+        const dateStr = String(meetingDateValue).split("T")[0];
         meetingDate = dayjs(dateStr);
       }
-      
-      if (meeting.startTime) {
-        const [hours, minutes] = meeting.startTime.split(":").map(Number);
+
+      if (startTimeValue) {
+        const [hours, minutes] = String(startTimeValue).split(":").map(Number);
         startTime = dayjs().set("hour", hours).set("minute", minutes || 0);
       }
-      
-      if (meeting.endTime) {
-        const [hours, minutes] = meeting.endTime.split(":").map(Number);
+
+      if (endTimeValue) {
+        const [hours, minutes] = String(endTimeValue).split(":").map(Number);
         endTime = dayjs().set("hour", hours).set("minute", minutes || 0);
       }
-      
+
       setFormValues({
-        subject: meeting.subject || meeting.title || "",
-        accountId: meeting.accountId ? String(meeting.accountId) : "",
+        subject:
+          readMeetingField(meeting, "subject", "Subject") ||
+          meeting.title ||
+          "",
+        accountId: readMeetingField(meeting, "accountId", "AccountId")
+          ? String(readMeetingField(meeting, "accountId", "AccountId"))
+          : "",
         meetingDate: meetingDate,
         startTime: startTime,
         endTime: endTime,
-        meetingType: meeting.meetingType || 1,
-        status: meeting.status !== undefined ? meeting.status : 0,
-        cancelReason: meeting.statusRemark || "",
-        location: meeting.location || "",
-        meetingLink: meeting.meetingLink || "",
-        description: meeting.description || meeting.notes || "",
+        meetingType: readMeetingField(meeting, "meetingType", "MeetingType") || 1,
+        status:
+          readMeetingField(meeting, "status", "Status") !== undefined
+            ? readMeetingField(meeting, "status", "Status")
+            : 0,
+        cancelReason: readMeetingField(meeting, "statusRemark", "StatusRemark") || "",
+        location: readMeetingField(meeting, "location", "Location") || "",
+        meetingLink: readMeetingField(meeting, "meetingLink", "MeetingLink") || "",
+        description:
+          readMeetingField(meeting, "description", "Description") ||
+          meeting.notes ||
+          "",
       });
     }
   }, [open, meeting]);
@@ -213,9 +230,16 @@ export default function EditMeetingModal({ open, onClose, onSuccess, onDelete, m
       const data = await response.json().catch(() => null);
 
       if (data?.statusCode === 200) {
-        toast.success(data?.message || "Meeting updated successfully.");
-        onSuccess();
+        const successMessage =
+          typeof data?.message === "string" && data.message.trim()
+            ? data.message
+            : "Meeting updated successfully.";
         onClose();
+        if (typeof onSuccess === "function") {
+          onSuccess(successMessage);
+        } else {
+          window.setTimeout(() => toast.success(successMessage), 0);
+        }
       } else {
         toast.error(data?.message || "Failed to update meeting");
       }
@@ -256,9 +280,16 @@ export default function EditMeetingModal({ open, onClose, onSuccess, onDelete, m
         throw new Error(data?.message || "Failed to delete meeting");
       }
 
-      toast.success(data?.message || "Meeting deleted successfully.");
+      const successMessage =
+        typeof data?.message === "string" && data.message.trim()
+          ? data.message
+          : "Meeting deleted successfully.";
       setDeleteConfirmOpen(false);
-      onDelete();
+      if (typeof onDelete === "function") {
+        onDelete(successMessage);
+      } else {
+        window.setTimeout(() => toast.success(successMessage), 0);
+      }
     } catch (error) {
       toast.error(error.message || "Unable to delete meeting");
     } finally {

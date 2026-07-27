@@ -19,6 +19,7 @@ import DialogActions from "@mui/material/DialogActions";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import ArchiveOutlinedIcon from "@mui/icons-material/ArchiveOutlined";
 import { Box, FormControl, InputLabel, MenuItem, Pagination, Select } from "@mui/material";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import AddLeadModal from "./create";
@@ -66,6 +67,36 @@ export default function LeadsList() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedLead, setSelectedLead] = React.useState(null);
   const [deleteLoading, setDeleteLoading] = React.useState(false);
+  const [archiveTarget, setArchiveTarget] = React.useState(null);
+  const [archiveLoading, setArchiveLoading] = React.useState(false);
+
+  const handleArchiveClick = (lead) => setArchiveTarget(lead);
+  const handleArchiveClose = () => setArchiveTarget(null);
+
+  const handleArchiveLead = async () => {
+    if (!archiveTarget?.id) return;
+    try {
+      setArchiveLoading(true);
+      const response = await fetch(`${BASE_URL}/Leads/ArchiveLead?id=${archiveTarget.id}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.statusCode !== 200) {
+        throw new Error(data?.message || "Failed to archive lead");
+      }
+      toast.success(data?.message || "Lead archived.");
+      setArchiveTarget(null);
+      fetchLeads(page, search, pageSize, false);
+    } catch (error) {
+      toast.error(error.message || "Unable to archive lead");
+    } finally {
+      setArchiveLoading(false);
+    }
+  };
 
   const handleDeleteClick = (lead) => {
     setSelectedLead(lead);
@@ -128,9 +159,14 @@ export default function LeadsList() {
     fetchLeads(1, search, size, false);
   };
 
-  const handleLeadCreated = () => {
+  const handleLeadCreated = (message) => {
     setPage(1);
     fetchLeads(1, search, pageSize, false);
+    const successMessage =
+      typeof message === "string" && message.trim()
+        ? message
+        : "Lead created successfully.";
+    window.setTimeout(() => toast.success(successMessage), 0);
   };
 
   const renderStatusChip = (status) => {
@@ -214,6 +250,16 @@ export default function LeadsList() {
                       </TableCell>
                       <TableCell align="right">
                         <EditLeadModal lead={lead} onLeadUpdated={handleLeadCreated} />
+                        <Tooltip title="Archive">
+                          <IconButton
+                            size="small"
+                            color="warning"
+                            aria-label="archive lead"
+                            onClick={() => handleArchiveClick(lead)}
+                          >
+                            <ArchiveOutlinedIcon fontSize="inherit" />
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title="Delete">
                           <IconButton
                             size="small"
@@ -266,6 +312,24 @@ export default function LeadsList() {
           </Button>
           <Button onClick={handleDeleteLead} color="error" variant="contained" disabled={deleteLoading}>
             {deleteLoading ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!archiveTarget} onClose={handleArchiveClose} maxWidth="xs" fullWidth>
+        <DialogTitle>Archive Lead</DialogTitle>
+        <DialogContent dividers>
+          <DialogContentText>
+            Archive <strong>{archiveTarget?.leadName}</strong>? It will be moved out of the active list and accessible
+            from the Archived Leads page.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleArchiveClose} color="inherit" disabled={archiveLoading}>
+            Cancel
+          </Button>
+          <Button onClick={handleArchiveLead} color="warning" variant="contained" disabled={archiveLoading}>
+            {archiveLoading ? "Archiving..." : "Archive"}
           </Button>
         </DialogActions>
       </Dialog>

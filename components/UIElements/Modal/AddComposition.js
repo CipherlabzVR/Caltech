@@ -25,8 +25,16 @@ const style = {
   p: 4,
 };
 
+const COMPOSITION_NAME_MAX_LENGTH = 100;
+
 const validationSchema = Yup.object().shape({
-  Name: Yup.string().required("Name is required"),
+  Name: Yup.string()
+    .trim()
+    .required("Name is required")
+    .max(
+      COMPOSITION_NAME_MAX_LENGTH,
+      `Max ${COMPOSITION_NAME_MAX_LENGTH} characters`
+    ),
 });
 
 export default function AddComposition({ fetchItems }) {
@@ -112,6 +120,7 @@ export default function AddComposition({ fetchItems }) {
                         fullWidth
                         inputRef={inputRef}
                         name="Name"
+                        inputProps={{ maxLength: COMPOSITION_NAME_MAX_LENGTH }}
                         error={touched.Name && Boolean(errors.Name)}
                         helperText={touched.Name && errors.Name}
                       />

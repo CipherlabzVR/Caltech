@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import SearchIcon from "@mui/icons-material/Search";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import {
   Box,
   CircularProgress,
+  Divider,
   Grid,
   Typography,
   Chip,
@@ -32,6 +33,7 @@ import {
   parsePagedResponse,
   formatDate,
 } from "@/components/utils/apiHelpers";
+import { formatFileSize } from "@/components/utils/formatHelper";
 import MetricCard from "@/components/HR/ModernCard";
 import ModernTable from "@/components/HR/ModernTable";
 import AddButton from "@/components/HR/AddButton";
@@ -57,7 +59,109 @@ import { useCurrency } from "@/components/HR/CurrencyContext";
 
 const HR_RECRUITMENT_DASHBOARD_VISIBLE_KEY = "hr-recruitment-dashboard-visible";
 
-const JOB_OPENING_STATUS_API = ["Draft", "Published", "Closed", "OnHold", "Filled"];
+/** Add Candidate CV — keep in sync with `<input accept>` and submit checks. */
+const CANDIDATE_CV_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+const CANDIDATE_CV_ACCEPT =
+  ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+function isAllowedCandidateCvFile(file) {
+  if (!file?.name) return false;
+  return /\.(pdf|docx?)$/i.test(file.name);
+}
+
+/** Latest non-cancelled interview slot (by scheduled start); used for interviewer notes. */
+function getPrimaryInterviewSlotForNotes(interviewSlots) {
+  if (!Array.isArray(interviewSlots) || interviewSlots.length === 0) return null;
+  const normalized = interviewSlots.map((slot) => ({
+    id: slot.id ?? slot.Id,
+    scheduledStartMs: new Date(slot.scheduledStart || slot.ScheduledStart || 0).getTime(),
+    status: String(slot.status || slot.Status || ""),
+    interviewerNotes: slot.interviewerNotes ?? slot.InterviewerNotes ?? "",
+  }));
+  const active = normalized.filter((s) => s.status.toLowerCase() !== "cancelled");
+  const list = (active.length > 0 ? active : normalized).sort(
+    (a, b) => b.scheduledStartMs - a.scheduledStartMs
+  );
+  const first = list[0];
+  return first && first.id != null ? first : null;
+}
+
+/** HrInterviewMode — matches ApexflowERP.Domain.Enums.HR.HrInterviewMode */
+const INTERVIEW_MODE_LABELS = {
+  0: "In Person",
+  1: "Virtual",
+  2: "Phone",
+  InPerson: "In Person",
+  Virtual: "Virtual",
+  Phone: "Phone",
+};
+
+function getInterviewModeLabel(mode) {
+  if (mode === undefined || mode === null || mode === "") return "-";
+  if (Object.prototype.hasOwnProperty.call(INTERVIEW_MODE_LABELS, mode)) {
+    return INTERVIEW_MODE_LABELS[mode];
+  }
+  const num = Number(mode);
+  if (!Number.isNaN(num) && Object.prototype.hasOwnProperty.call(INTERVIEW_MODE_LABELS, num)) {
+    return INTERVIEW_MODE_LABELS[num];
+  }
+  return String(mode);
+}
+
+/** Labels/colors for candidate list status chips (main + filtered dialogs). */
+function getCandidateListStatusChipProps(value, row) {
+  const statusRaw = row?.status !== undefined ? row.status : value;
+  const stageRaw =
+    row?.stage !== undefined ? row.stage : row?.Stage !== undefined ? row.Stage : undefined;
+  const statusNum = Number(statusRaw);
+  const statusStrNorm =
+    typeof statusRaw === "string"
+      ? String(statusRaw).toLowerCase().replace(/\s+/g, "")
+      : "";
+  const stageNum = Number(stageRaw);
+  const stageStr =
+    typeof stageRaw === "string" ? String(stageRaw).toLowerCase() : "";
+
+  const isInOnboarding =
+    (!Number.isNaN(statusNum) && statusNum === 7) ||
+    statusStrNorm === "inonboarding" ||
+    (!Number.isNaN(stageNum) && stageNum === 8) ||
+    stageStr === "onboarding";
+
+  const isInterviewedStage =
+    !isInOnboarding && !Number.isNaN(stageNum) && stageNum === 7;
+
+  const statusLabels = {
+    0: "Applied",
+    1: "Shortlisted",
+    2: "Interviewing",
+    3: "Offered",
+    4: "Hired",
+    5: "Rejected",
+    6: "Withdrawn",
+    7: "In Onboarding",
+  };
+
+  const label = isInOnboarding
+    ? "In Onboarding"
+    : isInterviewedStage
+      ? "Interviewed"
+      : statusLabels[!Number.isNaN(statusNum) ? statusNum : -1] || "Applied";
+
+  const color = isInOnboarding
+    ? "info"
+    : isInterviewedStage
+      ? "warning"
+      : !Number.isNaN(statusNum) && statusNum === 4
+        ? "success"
+        : !Number.isNaN(statusNum) && (statusNum === 5 || statusNum === 6)
+          ? "error"
+          : !Number.isNaN(statusNum) && statusNum === 2
+            ? "info"
+            : "default";
+
+  return { label, color };
+}
 
 const JOB_STATUS_LABELS = {
   0: "Draft",
@@ -195,6 +299,9 @@ const Recruitment = () => {
   const [dashboardCandidates, setDashboardCandidates] = useState([]);
   const [hiredCandidates, setHiredCandidates] = useState([]);
   const [loadingHiredCandidates, setLoadingHiredCandidates] = useState(false);
+  const [inOnboardingCandidates, setInOnboardingCandidates] = useState([]);
+  const [loadingInOnboarding, setLoadingInOnboarding] = useState(false);
+  const [inOnboardingTotalCount, setInOnboardingTotalCount] = useState(0);
   const [recruitmentCycleOptions, setRecruitmentCycleOptions] = useState([]);
   const [cyclesTotalCount, setCyclesTotalCount] = useState(0);
   const [cyclesPage, setCyclesPage] = useState(0);
@@ -264,6 +371,8 @@ const Recruitment = () => {
   const [selectedCandidateDetail, setSelectedCandidateDetail] = useState(null);
   const [loadingCandidateDetail, setLoadingCandidateDetail] = useState(false);
   const [markInterviewedLoading, setMarkInterviewedLoading] = useState(false);
+  const [interviewerNotesDraft, setInterviewerNotesDraft] = useState("");
+  const [interviewerNotesSaving, setInterviewerNotesSaving] = useState(false);
   
   // Offer action dialog
   const [offerActionDialogOpen, setOfferActionDialogOpen] = useState(false);
@@ -299,6 +408,91 @@ const Recruitment = () => {
   const [jobOpeningStatusFilter, setJobOpeningStatusFilter] = useState("all");
   /** Shared page size for recruitment list API calls (cycles, openings, candidates, hired). */
   const [recruitmentPageSize, setRecruitmentPageSize] = useState(10);
+
+  /** Kanban Applied→Interview: resolve/reject when Schedule Interview dialog completes or is dismissed. */
+  const kanbanScheduleInterviewPromiseRef = useRef(null);
+
+  /** Kanban Interviewed→Offer: resolve/reject when Create Job Offer dialog completes or is dismissed. */
+  const kanbanInterviewedToOfferPromiseRef = useRef(null);
+
+  const resolveKanbanScheduleInterviewFlow = useCallback(() => {
+    const pending = kanbanScheduleInterviewPromiseRef.current;
+    if (!pending) return;
+    kanbanScheduleInterviewPromiseRef.current = null;
+    pending.resolve();
+  }, []);
+
+  const rejectKanbanScheduleInterviewFlow = useCallback(() => {
+    const pending = kanbanScheduleInterviewPromiseRef.current;
+    if (!pending) return;
+    kanbanScheduleInterviewPromiseRef.current = null;
+    pending.reject(new Error("cancelled"));
+  }, []);
+
+  const handleKanbanAppliedToInterview = useCallback((ctx) => {
+    return new Promise((resolve, reject) => {
+      kanbanScheduleInterviewPromiseRef.current = { resolve, reject };
+      setInterviewFormData({
+        candidateId: String(ctx.candidateId ?? ""),
+        jobOpeningId:
+          ctx.jobOpeningId !== undefined && ctx.jobOpeningId !== null && ctx.jobOpeningId !== ""
+            ? String(ctx.jobOpeningId)
+            : "",
+        scheduledStart: "",
+        scheduledEnd: "",
+        mode: "Virtual",
+        location: "",
+        interviewerIds: "",
+      });
+      setInterviewFormErrors({});
+      setInterviewFormOpen(true);
+    });
+  }, []);
+
+  const resolveKanbanInterviewedToOfferFlow = useCallback(() => {
+    const pending = kanbanInterviewedToOfferPromiseRef.current;
+    if (!pending) return;
+    kanbanInterviewedToOfferPromiseRef.current = null;
+    pending.resolve();
+  }, []);
+
+  const rejectKanbanInterviewedToOfferFlow = useCallback(() => {
+    const pending = kanbanInterviewedToOfferPromiseRef.current;
+    if (!pending) return;
+    kanbanInterviewedToOfferPromiseRef.current = null;
+    pending.reject(new Error("cancelled"));
+  }, []);
+
+  const handleKanbanInterviewedToOffer = useCallback((ctx) => {
+    return new Promise((resolve, reject) => {
+      kanbanInterviewedToOfferPromiseRef.current = { resolve, reject };
+      const offerNumber = `OFF-${Date.now()}`;
+      setOfferFormData({
+        candidateId: String(ctx.candidateId ?? ""),
+        jobOpeningId:
+          ctx.jobOpeningId !== undefined && ctx.jobOpeningId !== null && ctx.jobOpeningId !== ""
+            ? String(ctx.jobOpeningId)
+            : "",
+        offerNumber,
+        salary: "",
+        currency: currency || "USD",
+        joinDate: "",
+        sendImmediately: true,
+      });
+      setOfferFormErrors({});
+      setOfferFormOpen(true);
+    });
+  }, [currency]);
+
+  const handleOfferFormDialogClose = useCallback(() => {
+    rejectKanbanInterviewedToOfferFlow();
+    setOfferFormOpen(false);
+  }, [rejectKanbanInterviewedToOfferFlow]);
+
+  const handleInterviewFormDialogClose = useCallback(() => {
+    rejectKanbanScheduleInterviewFlow();
+    setInterviewFormOpen(false);
+  }, [rejectKanbanScheduleInterviewFlow]);
 
   const loadRecruitmentCycles = useCallback(async () => {
     try {
@@ -494,9 +688,7 @@ const Recruitment = () => {
       params.set("MaxResultCount", String(recruitmentPageSize));
       params.set("IncludePublic", "true");
       if (jobOpeningStatusFilter !== "all") {
-        const idx = Number(jobOpeningStatusFilter);
-        const name = JOB_OPENING_STATUS_API[idx];
-        if (name) params.set("Status", name);
+        params.set("Status", jobOpeningStatusFilter);
       }
       const sq = jobOpeningSearchQuery.trim();
       if (sq) {
@@ -627,18 +819,16 @@ const Recruitment = () => {
         params.set("Status", "Interviewing");
         params.set("ExcludeInterviewedStage", "true");
       } else if (cf !== "all") {
-        const statusNames = [
-          "Applied",
-          "Shortlisted",
-          "Interviewing",
-          "Offered",
-          "Hired",
-          "Rejected",
-          "Withdrawn",
-        ];
-        const num = Number(cf);
-        if (!Number.isNaN(num) && statusNames[num]) {
-          params.set("Status", statusNames[num]);
+        const candidateStatusFilterToApi = {
+          "0": "Applied",
+          "3": "Offered",
+          "4": "Hired",
+          "5": "Rejected",
+          "7": "InOnboarding",
+        };
+        const apiStatus = candidateStatusFilterToApi[cf];
+        if (apiStatus) {
+          params.set("Status", apiStatus);
         }
       }
 
@@ -699,6 +889,31 @@ const Recruitment = () => {
     }
   }, [hiredCandidatesPage, recruitmentPageSize]);
 
+  const loadInOnboardingCandidatesPage = useCallback(async () => {
+    try {
+      setLoadingInOnboarding(true);
+      const orgId = getOrgId();
+      const headers = createAuthHeaders();
+      const params = new URLSearchParams();
+      params.set("OrgId", String(orgId || 0));
+      params.set("SkipCount", "0");
+      params.set("MaxResultCount", "200");
+      params.set("Status", "InOnboarding");
+      const response = await fetch(
+        `${BASE_URL}/hr/recruitment/candidates?${params.toString()}`,
+        { headers }
+      );
+      if (!response.ok) { setInOnboardingCandidates([]); setInOnboardingTotalCount(0); return; }
+      const parsed = parsePagedResponse(await response.json());
+      setInOnboardingTotalCount(parsed.totalCount ?? 0);
+      setInOnboardingCandidates(parsed.items || []);
+    } catch {
+      setInOnboardingCandidates([]); setInOnboardingTotalCount(0);
+    } finally {
+      setLoadingInOnboarding(false);
+    }
+  }, [recruitmentPageSize]);
+
   const refreshRecruitmentCandidateData = useCallback(async () => {
     await Promise.all([
       loadRecruitmentData(),
@@ -708,6 +923,7 @@ const Recruitment = () => {
       loadDashboardCandidates(),
       loadCandidatesPage(),
       loadHiredCandidatesPage(),
+      loadInOnboardingCandidatesPage(),
     ]);
   }, [
     loadRecruitmentData,
@@ -717,6 +933,7 @@ const Recruitment = () => {
     loadDashboardCandidates,
     loadCandidatesPage,
     loadHiredCandidatesPage,
+    loadInOnboardingCandidatesPage,
   ]);
 
   useEffect(() => {
@@ -762,7 +979,8 @@ const Recruitment = () => {
   useEffect(() => {
     if (!navigate) return;
     loadHiredCandidatesPage();
-  }, [navigate, loadHiredCandidatesPage]);
+    loadInOnboardingCandidatesPage();
+  }, [navigate, loadHiredCandidatesPage, loadInOnboardingCandidatesPage]);
 
   useEffect(() => {
     setCyclesPage(0);
@@ -785,8 +1003,18 @@ const Recruitment = () => {
 
   useEffect(() => {
     const eventName = "hr-recruitment-candidates-changed";
-    const onCandidatesChanged = () => {
-      refreshRecruitmentCandidateData();
+    const onCandidatesChanged = (event) => {
+      const detail = event?.detail || {};
+      if (detail.stageMove) {
+        void Promise.all([
+          loadDashboardCandidates(),
+          loadCandidatesPage(),
+          loadHiredCandidatesPage(),
+          loadInOnboardingCandidatesPage(),
+        ]);
+      } else {
+        void refreshRecruitmentCandidateData();
+      }
     };
     if (typeof window !== "undefined") {
       window.addEventListener(eventName, onCandidatesChanged);
@@ -796,7 +1024,26 @@ const Recruitment = () => {
         window.removeEventListener(eventName, onCandidatesChanged);
       }
     };
-  }, [refreshRecruitmentCandidateData]);
+  }, [
+    refreshRecruitmentCandidateData,
+    loadDashboardCandidates,
+    loadCandidatesPage,
+    loadHiredCandidatesPage,
+    loadInOnboardingCandidatesPage,
+  ]);
+
+  useEffect(() => {
+    if (!candidateDetailOpen || !selectedCandidateDetail) {
+      setInterviewerNotesDraft("");
+      return;
+    }
+    const slots =
+      selectedCandidateDetail.interviewSlots || selectedCandidateDetail.InterviewSlots || [];
+    const primary = getPrimaryInterviewSlotForNotes(slots);
+    setInterviewerNotesDraft(
+      primary ? String(primary.interviewerNotes ?? "") : ""
+    );
+  }, [candidateDetailOpen, selectedCandidateDetail]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1653,7 +1900,7 @@ const Recruitment = () => {
               <Tab label="Recruitment Cycles" />
               <Tab label="Job Openings" />
               <Tab label="Candidates" />
-              <Tab label="Hired Candidates" />
+              <Tab label="Onboarding & Hired" />
               <Tab label="Kanban Board" />
             </Tabs>
           </Box>
@@ -1738,14 +1985,28 @@ const Recruitment = () => {
                 {
                   id: "status",
                   label: "Status",
-                  render: (value) => (
+                  render: (value) => {
+                    const chipColor = value === "Active" ? "success" : "default";
+                    return (
                     <Chip
                       label={value || "Draft"}
                       size="small"
-                      color={value === "Active" ? "success" : "default"}
-                      sx={{ fontWeight: 600 }}
+                      color={chipColor}
+                      sx={(theme) => ({
+                        fontWeight: 600,
+                        ...(chipColor !== "default"
+                          ? {
+                              backgroundColor: `${theme.palette[chipColor].main}1F`,
+                              color: theme.palette[chipColor].dark,
+                            }
+                          : {
+                              backgroundColor: `${theme.palette.grey[500]}1A`,
+                              color: theme.palette.text.secondary,
+                            }),
+                      })}
                     />
-                  ),
+                    );
+                  },
                 },
                 {
                   id: "actions",
@@ -1817,7 +2078,7 @@ const Recruitment = () => {
             >
               <TextField
                 size="small"
-                placeholder="Search by title, department, or ID…"
+                placeholder="Search by title or department…"
                 value={jobOpeningSearchQuery}
                 onChange={(e) => setJobOpeningSearchQuery(e.target.value)}
                 sx={{ flexGrow: 1, minWidth: 220, maxWidth: { sm: 400 } }}
@@ -1834,15 +2095,15 @@ const Recruitment = () => {
                 size="small"
                 label="Status"
                 value={jobOpeningStatusFilter}
-                onChange={(e) => setJobOpeningStatusFilter(e.target.value)}
+                onChange={(e) => setJobOpeningStatusFilter(String(e.target.value))}
                 sx={{ minWidth: 180 }}
               >
                 <MenuItem value="all">All statuses</MenuItem>
-                <MenuItem value="0">Draft</MenuItem>
-                <MenuItem value="1">Published</MenuItem>
-                <MenuItem value="2">Closed</MenuItem>
-                <MenuItem value="3">On Hold</MenuItem>
-                <MenuItem value="4">Filled</MenuItem>
+                <MenuItem value="Draft">Draft</MenuItem>
+                <MenuItem value="Published">Published</MenuItem>
+                <MenuItem value="Closed">Closed</MenuItem>
+                <MenuItem value="OnHold">On Hold</MenuItem>
+                <MenuItem value="Filled">Filled</MenuItem>
               </TextField>
               {(jobOpeningSearchQuery.trim() !== "" || jobOpeningStatusFilter !== "all") && (
                 <Button
@@ -1868,20 +2129,29 @@ const Recruitment = () => {
                   render: (value) => {
                     const statusValue = getStatusValue(value);
                     const statusLabel = getStatusLabel(value);
+                    const chipColor =
+                      statusValue === 1
+                        ? "success"
+                        : statusValue === 3
+                          ? "warning"
+                          : "default";
                     return (
                     <Chip
                         label={statusLabel}
                       size="small"
-                      color={
-                          statusValue === 1
-                          ? "success"
-                            : statusValue === 2 || statusValue === 4
-                          ? "default"
-                            : statusValue === 3
-                          ? "warning"
-                          : "default"
-                      }
-                      sx={{ fontWeight: 600 }}
+                      color={chipColor}
+                      sx={(theme) => ({
+                        fontWeight: 600,
+                        ...(chipColor !== "default"
+                          ? {
+                              backgroundColor: `${theme.palette[chipColor].main}1F`,
+                              color: theme.palette[chipColor].dark,
+                            }
+                          : {
+                              backgroundColor: `${theme.palette.grey[500]}1A`,
+                              color: theme.palette.text.secondary,
+                            }),
+                      })}
                     />
                     );
                   },
@@ -2323,13 +2593,12 @@ const Recruitment = () => {
               >
                 <MenuItem value="all">All Statuses</MenuItem>
                 <MenuItem value="0">Applied</MenuItem>
-                <MenuItem value="1">Shortlisted</MenuItem>
                 <MenuItem value="2">Interviewing</MenuItem>
                 <MenuItem value="interviewed">Interviewed</MenuItem>
                 <MenuItem value="3">Offered</MenuItem>
                 <MenuItem value="4">Hired</MenuItem>
                 <MenuItem value="5">Rejected</MenuItem>
-                <MenuItem value="6">Withdrawn</MenuItem>
+                <MenuItem value="7">In Onboarding</MenuItem>
               </TextField>
 
               {(candidateCycleSearchQuery.trim() !== "" || candidateStatusFilter !== "all") && (
@@ -2355,34 +2624,31 @@ const Recruitment = () => {
                   id: "status",
                   label: "Status",
                   render: (value, row) => {
-                    const statusLabels = {
-                      0: "Applied",
-                      1: "Shortlisted",
-                      2: "Interviewing",
-                      3: "Offered",
-                      4: "Hired",
-                      5: "Rejected",
-                      6: "Withdrawn",
-                    };
-                    const isInterviewedStage = Number(row?.stage) === 7;
-                    const label = isInterviewedStage
-                      ? "Interviewed"
-                      : (statusLabels[value] || "Applied");
-                    const color = isInterviewedStage
-                      ? "secondary"
-                      : value === 4
-                        ? "success"
-                        : value === 5 || value === 6
-                          ? "error"
-                          : value === 2
-                            ? "info"
-                            : "default";
+                    const { label, color } = getCandidateListStatusChipProps(value, row);
                     return (
                       <Chip
                         label={label}
                         size="small"
                         color={color}
-                        sx={{ fontWeight: 600 }}
+                        sx={(theme) => ({
+                          fontWeight: 600,
+                          height: 24,
+                          fontSize: "0.75rem",
+                          ...(color !== "default"
+                            ? {
+                                backgroundColor: `${theme.palette[color].main}1F`,
+                                color: theme.palette[color].dark,
+                              }
+                            : {
+                                backgroundColor: `${theme.palette.grey[500]}1A`,
+                                color: theme.palette.text.secondary,
+                              }),
+                          "& .MuiChip-label": {
+                            px: 1.25,
+                            py: 0,
+                            lineHeight: "24px",
+                          },
+                        })}
                       />
                     );
                   },
@@ -2522,10 +2788,55 @@ const Recruitment = () => {
           </Box>
           )}
 
-          {/* Hired Candidates Section */}
+          {/* Onboarding & Hired Section */}
           {activeTab === 3 && (
           <Box sx={{ mt: 4 }}>
-            <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>
+
+            {/* ── In Onboarding ── */}
+            <Typography variant="h6" sx={{ mb: 1, fontWeight: 600, color: "info.main" }}>
+              In Onboarding
+              {inOnboardingTotalCount > 0 && (
+                <Chip label={inOnboardingTotalCount} size="small" color="info" sx={{ ml: 1 }} />
+              )}
+            </Typography>
+            {loadingInOnboarding ? (
+              <Box display="flex" justifyContent="center" py={3}><CircularProgress size={24} /></Box>
+            ) : inOnboardingCandidates.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3, fontStyle: "italic" }}>
+                No candidates currently in onboarding.
+              </Typography>
+            ) : (
+              <ModernTable
+                columns={[
+                  { id: "name", label: "Name", render: (_, row) => `${row.firstName || ""} ${row.lastName || ""}`.trim() || "-" },
+                  { id: "email", label: "Email" },
+                  { id: "phone", label: "Phone" },
+                  { id: "jobOpening", label: "Job Opening", render: (_, row) => row.jobOpeningTitle || "-" },
+                  { id: "movedOn", label: "Date Moved to Onboarding", render: (_, row) => row.movedOn ? formatDate(row.movedOn) : "-" },
+                  { id: "status", label: "Status", render: () => <Chip label="In Onboarding" color="info" size="small" /> },
+                ]}
+                rows={inOnboardingCandidates.map((c) => {
+                  const jobOpeningId = c.jobOpeningId ?? c.JobOpeningId;
+                  const jid = jobOpeningId != null ? String(jobOpeningId) : "";
+                  const jobOpeningTitle = (jid && jobOpeningTitles[jid]) || c.jobOpening?.title || c.JobOpening?.Title || "-";
+                  return {
+                    id: c.id ?? c.Id,
+                    firstName: c.firstName || c.FirstName || "",
+                    lastName: c.lastName || c.LastName || "",
+                    email: c.email || c.Email || "-",
+                    phone: c.phone || c.Phone || "-",
+                    jobOpeningTitle,
+                    movedOn: c.updatedOn || c.UpdatedOn || c.appliedOn || c.AppliedOn,
+                  };
+                })}
+                emptyMessage="No candidates in onboarding."
+              />
+            )}
+
+            <Divider sx={{ my: 3 }} />
+
+            {/* ── Hired ── */}
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
               Hired Candidates
             </Typography>
             <ModernTable
@@ -2644,7 +2955,33 @@ const Recruitment = () => {
           {/* Kanban Board Section */}
           {activeTab === 4 && (
             <Box sx={{ mt: 2 }}>
-              <RecruitmentKanbanBoard embedded />
+              <RecruitmentKanbanBoard
+                embedded
+                canCreate={create}
+                onKanbanAppliedToInterview={handleKanbanAppliedToInterview}
+                onKanbanInterviewedToOffer={handleKanbanInterviewedToOffer}
+                onAddCandidate={
+                  create
+                    ? () => {
+                        setActiveTab(2);
+                        setCandidateFormData({
+                          jobOpeningId: "",
+                          firstName: "",
+                          lastName: "",
+                          email: "",
+                          phone: "",
+                          experienceYears: "",
+                          currentCompany: "",
+                          source: "Direct",
+                          notes: "",
+                          cvFile: null,
+                        });
+                        setCandidateFormErrors({});
+                        setCandidateFormOpen(true);
+                      }
+                    : undefined
+                }
+              />
             </Box>
           )}
 
@@ -2664,7 +3001,22 @@ const Recruitment = () => {
               setCandidateFormErrors(errors);
               
               if (Object.keys(errors).length > 0) return;
-              
+
+              if (candidateFormData.cvFile) {
+                if (!isAllowedCandidateCvFile(candidateFormData.cvFile)) {
+                  toast.error("CV must be a PDF or Word file (.pdf, .doc, .docx).");
+                  return;
+                }
+                if (candidateFormData.cvFile.size > CANDIDATE_CV_MAX_BYTES) {
+                  toast.error(
+                    `CV must be ${formatFileSize(CANDIDATE_CV_MAX_BYTES)} or smaller (selected: ${formatFileSize(
+                      candidateFormData.cvFile.size
+                    )}).`
+                  );
+                  return;
+                }
+              }
+
               setCandidateFormLoading(true);
               try {
                 const orgId = getOrgId();
@@ -2851,30 +3203,67 @@ const Recruitment = () => {
                 xs={12}
               />
               <Grid item xs={12}>
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
                   <Typography variant="body2" sx={{ fontWeight: 500, color: "text.secondary" }}>
                     CV / Resume
                   </Typography>
-                  <Button
-                    variant="outlined"
-                    component="label"
-                    size="small"
-                    sx={{ alignSelf: "flex-start", textTransform: "none" }}
-                  >
-                    {candidateFormData.cvFile ? "Change File" : "Upload CV"}
-                    <input
-                      type="file"
-                      hidden
-                      accept=".pdf,.doc,.docx"
-                      onChange={(e) => {
-                        const file = e.target.files && e.target.files[0] ? e.target.files[0] : null;
-                        setCandidateFormData(prev => ({ ...prev, cvFile: file }));
-                      }}
-                    />
-                  </Button>
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, alignItems: "center" }}>
+                    <Button
+                      variant="outlined"
+                      component="label"
+                      size="small"
+                      sx={{ textTransform: "none" }}
+                    >
+                      {candidateFormData.cvFile ? "Change file" : "Upload CV"}
+                      <input
+                        type="file"
+                        hidden
+                        accept={CANDIDATE_CV_ACCEPT}
+                        onChange={(e) => {
+                          const input = e.target;
+                          const file = input.files?.[0] ?? null;
+                          if (!file) return;
+                          if (!isAllowedCandidateCvFile(file)) {
+                            input.value = "";
+                            toast.error("Please choose a PDF or Word file (.pdf, .doc, .docx).");
+                            return;
+                          }
+                          if (file.size > CANDIDATE_CV_MAX_BYTES) {
+                            input.value = "";
+                            toast.error(
+                              `File is too large. Maximum size is ${formatFileSize(CANDIDATE_CV_MAX_BYTES)} (selected: ${formatFileSize(file.size)}).`
+                            );
+                            return;
+                          }
+                          input.value = "";
+                          setCandidateFormData((prev) => ({ ...prev, cvFile: file }));
+                        }}
+                      />
+                    </Button>
+                    {candidateFormData.cvFile && (
+                      <Button
+                        type="button"
+                        variant="text"
+                        size="small"
+                        sx={{ textTransform: "none" }}
+                        onClick={() => {
+                          const f = candidateFormData.cvFile;
+                          if (!f) return;
+                          const url = URL.createObjectURL(f);
+                          window.open(url, "_blank", "noopener,noreferrer");
+                          window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+                        }}
+                      >
+                        View CV
+                      </Button>
+                    )}
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.5, maxWidth: 480 }}>
+                    Accepted types: PDF, Microsoft Word (.doc, .docx). Maximum size: {formatFileSize(CANDIDATE_CV_MAX_BYTES)}.
+                  </Typography>
                   {candidateFormData.cvFile && (
                     <Typography variant="caption" color="text.secondary">
-                      Selected: {candidateFormData.cvFile.name}
+                      Selected: {candidateFormData.cvFile.name} ({formatFileSize(candidateFormData.cvFile.size)})
                     </Typography>
                   )}
                 </Box>
@@ -2885,7 +3274,7 @@ const Recruitment = () => {
           {/* Schedule Interview Form Dialog */}
           <FormDialog
             open={interviewFormOpen}
-            onClose={() => setInterviewFormOpen(false)}
+            onClose={handleInterviewFormDialogClose}
             title="Schedule Interview"
             onSubmit={async (e) => {
               e.preventDefault();
@@ -2935,6 +3324,7 @@ const Recruitment = () => {
                   throw new Error(errorMessage);
                 }
                 
+                resolveKanbanScheduleInterviewFlow();
                 setInterviewFormOpen(false);
                 toast.success("Interview scheduled successfully!");
                 
@@ -2972,6 +3362,10 @@ const Recruitment = () => {
                   value: String(candidate.id || candidate.Id || candidate.internalId || candidate.InternalId || ""),
                   label: `${candidate.firstName || candidate.FirstName || ""} ${candidate.lastName || candidate.LastName || ""}`.trim() || `Candidate ${candidate.id || candidate.Id || ""}`
                 }))}
+                disabled={Boolean(interviewFormData.candidateId && interviewFormData.jobOpeningId)}
+                IconComponent={
+                  interviewFormData.candidateId && interviewFormData.jobOpeningId ? () => null : undefined
+                }
                 xs={12}
               />
               <FormField
@@ -2993,6 +3387,10 @@ const Recruitment = () => {
                 error={!!interviewFormErrors.jobOpeningId}
                 helperText={interviewFormErrors.jobOpeningId}
                 options={jobOpeningFormOptions}
+                disabled={Boolean(interviewFormData.candidateId && interviewFormData.jobOpeningId)}
+                IconComponent={
+                  interviewFormData.candidateId && interviewFormData.jobOpeningId ? () => null : undefined
+                }
                 xs={12}
               />
               <FormField
@@ -3069,7 +3467,7 @@ const Recruitment = () => {
           {/* Create Job Offer Form Dialog */}
           <FormDialog
             open={offerFormOpen}
-            onClose={() => setOfferFormOpen(false)}
+            onClose={handleOfferFormDialogClose}
             title="Create Job Offer"
             onSubmit={async (e) => {
               e.preventDefault();
@@ -3115,10 +3513,11 @@ const Recruitment = () => {
                   const errorMessage = responseData.message || responseData.Message || "Failed to create offer";
                   throw new Error(errorMessage);
                 }
-                
+
+                resolveKanbanInterviewedToOfferFlow();
                 setOfferFormOpen(false);
                 toast.success("Job offer created successfully!");
-                
+
                 await refreshRecruitmentCandidateData();
               } catch (error) {
                 toast.error(error.message || "Failed to create offer");
@@ -3153,6 +3552,10 @@ const Recruitment = () => {
                   value: String(candidate.id || candidate.Id || candidate.internalId || candidate.InternalId || ""),
                   label: `${candidate.firstName || candidate.FirstName || ""} ${candidate.lastName || candidate.LastName || ""}`.trim() || `Candidate ${candidate.id || candidate.Id || ""}`
                 }))}
+                disabled={Boolean(offerFormData.candidateId && offerFormData.jobOpeningId)}
+                IconComponent={
+                  offerFormData.candidateId && offerFormData.jobOpeningId ? () => null : undefined
+                }
                 xs={12}
               />
               <FormField
@@ -3174,6 +3577,10 @@ const Recruitment = () => {
                 error={!!offerFormErrors.jobOpeningId}
                 helperText={offerFormErrors.jobOpeningId}
                 options={jobOpeningFormOptions}
+                disabled={Boolean(offerFormData.candidateId && offerFormData.jobOpeningId)}
+                IconComponent={
+                  offerFormData.candidateId && offerFormData.jobOpeningId ? () => null : undefined
+                }
                 xs={12}
               />
               <FormField
@@ -3293,10 +3700,48 @@ const Recruitment = () => {
                   </Grid>
                   
                   <Grid item xs={12}>
-                    <Box sx={{ p: 2, border: "1px solid", borderColor: "divider", borderRadius: 1, mb: 2 }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-                        Basic Information
-                      </Typography>
+                    <Box
+                      component="details"
+                      sx={{
+                        border: "1px solid",
+                        borderColor: "divider",
+                        borderRadius: 1,
+                        mb: 2,
+                        overflow: "hidden",
+                        "& > summary": {
+                          listStyle: "none",
+                          cursor: "pointer",
+                          p: 2,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          userSelect: "none",
+                          "&::-webkit-details-marker": { display: "none" },
+                        },
+                        "&[open] > summary .basic-info-toggle-icon": {
+                          transform: "rotate(180deg)",
+                        },
+                      }}
+                    >
+                      <Box component="summary">
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                          Basic Information
+                        </Typography>
+                        <Box
+                          className="basic-info-toggle-icon"
+                          component="span"
+                          sx={{
+                            display: "inline-flex",
+                            transition: "transform 0.2s ease",
+                            fontSize: "0.875rem",
+                            lineHeight: 1,
+                            color: "text.secondary",
+                          }}
+                        >
+                          ▼
+                        </Box>
+                      </Box>
+                      <Box sx={{ px: 2, pb: 2 }}>
                       <Grid container spacing={2}>
                         <Grid item xs={6}>
                           <Typography variant="body2" color="text.secondary">Email</Typography>
@@ -3332,13 +3777,32 @@ const Recruitment = () => {
                               statusVal === 4 ? "Hired" :
                               statusVal === 5 ? "Rejected" :
                               statusVal === 6 ? "Withdrawn" :
+                              statusVal === 7 ? "In Onboarding" :
                               "Applied";
                             const chipColor = isInterviewed ? "warning" :
                               statusVal === 4 ? "success" :
+                              statusVal === 7 ? "info" :
                               statusVal === 5 || statusVal === 6 ? "error" :
                               statusVal === 2 ? "info" :
                               "default";
-                            return <Chip label={label} size="small" color={chipColor} />;
+                            return (
+                              <Chip
+                                label={label}
+                                size="small"
+                                color={chipColor}
+                                sx={(theme) => ({
+                                  ...(chipColor !== "default"
+                                    ? {
+                                        backgroundColor: `${theme.palette[chipColor].main}1F`,
+                                        color: theme.palette[chipColor].dark,
+                                      }
+                                    : {
+                                        backgroundColor: `${theme.palette.grey[500]}1A`,
+                                        color: theme.palette.text.secondary,
+                                      }),
+                                })}
+                              />
+                            );
                           })()}
                         </Grid>
                         <Grid item xs={6}>
@@ -3371,6 +3835,7 @@ const Recruitment = () => {
                           </Grid>
                         ) : null}
                       </Grid>
+                      </Box>
                     </Box>
                   </Grid>
 
@@ -3526,9 +3991,27 @@ const Recruitment = () => {
                       </Typography>
                       <ModernTable
                         columns={[
-                          { id: "scheduledStart", label: "Start Time", render: (value) => formatDate(value) },
-                          { id: "scheduledEnd", label: "End Time", render: (value) => formatDate(value) },
-                          { id: "mode", label: "Mode" },
+                          {
+                            id: "scheduledStart",
+                            label: "Start Time",
+                            render: (value) => {
+                              if (!value) return "";
+                              const d = new Date(value);
+                              if (isNaN(d.getTime())) return "";
+                              return `${formatDate(value)} ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`;
+                            },
+                          },
+                          {
+                            id: "scheduledEnd",
+                            label: "End Time",
+                            render: (value) => {
+                              if (!value) return "";
+                              const d = new Date(value);
+                              if (isNaN(d.getTime())) return "";
+                              return `${formatDate(value)} ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`;
+                            },
+                          },
+                          { id: "mode", label: "Mode", render: (value) => getInterviewModeLabel(value) },
                           { id: "location", label: "Location" },
                           { id: "status", label: "Status" },
                         ]}
@@ -3536,12 +4019,151 @@ const Recruitment = () => {
                           id: slot.id || slot.Id,
                           scheduledStart: slot.scheduledStart || slot.ScheduledStart,
                           scheduledEnd: slot.scheduledEnd || slot.ScheduledEnd,
-                          mode: slot.mode || slot.Mode || "Virtual",
+                          mode: slot.mode !== undefined ? slot.mode : slot.Mode,
                           location: slot.location || slot.Location || "-",
                           status: slot.status || slot.Status || "Scheduled",
                         }))}
                         emptyMessage="No interviews scheduled"
                       />
+                      {(() => {
+                        const stageVal = candidate.stage !== undefined ? candidate.stage : candidate.Stage;
+                        const statusVal = candidate.status !== undefined ? candidate.status : candidate.Status;
+                        const stageNum = Number(stageVal);
+                        const statusNum = Number(statusVal);
+                        const primary = getPrimaryInterviewSlotForNotes(interviewSlots);
+                        if (!primary?.id) return null;
+                        const savedNotes = String(primary.interviewerNotes ?? "").trim();
+
+                        const isInterviewingPipeline =
+                          statusNum === 2 && interviewSlots.length > 0 && stageNum === 3;
+
+                        if (isInterviewingPipeline) {
+                          const interviewId = primary.id;
+                          const candidateIdForReload =
+                            candidate.id || candidate.Id || candidate.candidateId || candidate.CandidateId;
+                          return (
+                            <Box sx={{ mt: 2 }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                                Interview Notes
+                              </Typography>
+                              <TextField
+                                fullWidth
+                                multiline
+                                minRows={4}
+                                placeholder="Add notes for the interviewer..."
+                                value={interviewerNotesDraft}
+                                onChange={(e) => setInterviewerNotesDraft(e.target.value)}
+                                disabled={interviewerNotesSaving}
+                                sx={{
+                                  "& .MuiOutlinedInput-root": {
+                                    bgcolor: "background.paper",
+                                    alignItems: "flex-start",
+                                  },
+                                }}
+                              />
+                              <Box sx={{ mt: 1, display: "flex", justifyContent: "flex-end" }}>
+                                <Button
+                                  variant="contained"
+                                  size="small"
+                                  disabled={interviewerNotesSaving}
+                                  onClick={async () => {
+                                    setInterviewerNotesSaving(true);
+                                    try {
+                                      const headers = createAuthHeaders();
+                                      const response = await fetch(
+                                        `${BASE_URL}/hr/recruitment/interviews/${interviewId}/notes`,
+                                        {
+                                          method: "PATCH",
+                                          headers: {
+                                            ...headers,
+                                            "Content-Type": "application/json",
+                                          },
+                                          body: JSON.stringify({ notes: interviewerNotesDraft }),
+                                        }
+                                      );
+                                      const responseData = await response.json().catch(() => ({}));
+                                      const statusCode = responseData?.statusCode ?? responseData?.StatusCode;
+                                      const ok =
+                                        response.ok &&
+                                        (statusCode === undefined || Number(statusCode) === 200);
+                                      if (!ok) {
+                                        throw new Error(
+                                          responseData?.message ||
+                                            responseData?.Message ||
+                                            "Failed to save interview notes."
+                                        );
+                                      }
+                                      toast.success("Interview notes saved.");
+                                      if (candidateIdForReload) {
+                                        const reload = await fetch(
+                                          `${BASE_URL}/hr/recruitment/candidates/${candidateIdForReload}`,
+                                          { headers }
+                                        );
+                                        if (reload.ok) {
+                                          const data = await reload.json();
+                                          const detailData = data.result || data.data || data;
+                                          setSelectedCandidateDetail(detailData);
+                                        }
+                                      }
+                                    } catch (err) {
+                                      toast.error(err.message || "Failed to save interview notes.");
+                                    } finally {
+                                      setInterviewerNotesSaving(false);
+                                    }
+                                  }}
+                                  sx={{ textTransform: "none", fontWeight: 600 }}
+                                >
+                                  SAVE NOTES
+                                </Button>
+                              </Box>
+                            </Box>
+                          );
+                        }
+
+                        if (stageNum === 7 && savedNotes) {
+                          return (
+                            <Box sx={{ mt: 2 }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+                                Interview Notes
+                              </Typography>
+                              <Box
+                                sx={{
+                                  pl: 2,
+                                  py: 1.5,
+                                  pr: 1.5,
+                                  borderLeft: "4px solid",
+                                  borderLeftColor: "primary.main",
+                                  bgcolor: "grey.50",
+                                  borderRadius: 1,
+                                  border: "1px solid",
+                                  borderColor: "divider",
+                                }}
+                              >
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ display: "block", mb: 0.75, fontWeight: 600 }}
+                                >
+                                  Notes for interviewer
+                                </Typography>
+                                <Typography
+                                  sx={{
+                                    whiteSpace: "pre-wrap",
+                                    wordBreak: "break-word",
+                                    color: "text.primary",
+                                    fontSize: "0.875rem",
+                                    lineHeight: 1.5,
+                                  }}
+                                >
+                                  {savedNotes}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          );
+                        }
+
+                        return null;
+                      })()}
                       {/* Mark as Interviewed — only shown while stage is Interview (3) */}
                       {(() => {
                         const stageVal = candidate.stage !== undefined ? candidate.stage : candidate.Stage;
@@ -3646,13 +4268,50 @@ const Recruitment = () => {
                         <Grid item xs={6}>
                           <Typography variant="body2" color="text.secondary">Status</Typography>
                           <Chip
-                            label={offer.status || offer.Status || "Draft"}
+                            label={(() => {
+                              const status = offer.status !== undefined ? offer.status : offer.Status;
+                              const offerStatusLabels = {
+                                0: "Draft",
+                                1: "Sent",
+                                2: "Accepted",
+                                3: "Declined",
+                                4: "Withdrawn",
+                                5: "Expired",
+                              };
+                              if (status === undefined || status === null || status === "") return "Draft";
+                              if (Object.prototype.hasOwnProperty.call(offerStatusLabels, status)) {
+                                return offerStatusLabels[status];
+                              }
+                              const num = Number(status);
+                              if (!Number.isNaN(num) && Object.prototype.hasOwnProperty.call(offerStatusLabels, num)) {
+                                return offerStatusLabels[num];
+                              }
+                              return String(status);
+                            })()}
                             size="small"
                             color={
                               (offer.status || offer.Status) === "Accepted" || (offer.status || offer.Status) === 2 ? "success" :
                               (offer.status || offer.Status) === "Declined" || (offer.status || offer.Status) === 3 ? "error" :
                               "default"
                             }
+                            sx={(theme) => {
+                              const offerStatus = offer.status !== undefined ? offer.status : offer.Status;
+                              const offerChipColor =
+                                offerStatus === "Accepted" || offerStatus === 2 ? "success" :
+                                offerStatus === "Declined" || offerStatus === 3 ? "error" :
+                                "default";
+                              return {
+                                ...(offerChipColor !== "default"
+                                  ? {
+                                      backgroundColor: `${theme.palette[offerChipColor].main}1F`,
+                                      color: theme.palette[offerChipColor].dark,
+                                    }
+                                  : {
+                                      backgroundColor: `${theme.palette.grey[500]}1A`,
+                                      color: theme.palette.text.secondary,
+                                    }),
+                              };
+                            }}
                           />
                         </Grid>
                         {approve1 && ((offer.status === "Sent" || offer.Status === "Sent" || offer.status === 1 || offer.Status === 1)) && (
@@ -3682,7 +4341,7 @@ const Recruitment = () => {
                                     );
                                     const responseData = await response.json();
                                     if (response.ok) {
-                                      toast.success("Offer accepted! Candidate will be hired.");
+                                      toast.success("Offer accepted! Candidate moved to onboarding queue. Assign an onboarding profile from HR → Onboarding → Assign.");
                                       setCandidateDetailOpen(false);
                                       setSelectedCandidateDetail(null);
                                       await refreshRecruitmentCandidateData();
@@ -3775,28 +4434,7 @@ const Recruitment = () => {
                   id: "status",
                   label: "Status",
                   render: (value, row) => {
-                    const statusLabels = {
-                      0: "Applied",
-                      1: "Shortlisted",
-                      2: "Interviewing",
-                      3: "Offered",
-                      4: "Hired",
-                      5: "Rejected",
-                      6: "Withdrawn",
-                    };
-                    const isInterviewedStage = Number(row?.stage) === 7;
-                    const label = isInterviewedStage
-                      ? "Interviewed"
-                      : (statusLabels[value] || "Applied");
-                    const color = isInterviewedStage
-                      ? "secondary"
-                      : value === 4
-                        ? "success"
-                        : value === 5 || value === 6
-                          ? "error"
-                          : value === 2
-                            ? "info"
-                            : "default";
+                    const { label, color } = getCandidateListStatusChipProps(value, row);
                     return (
                       <Chip
                         label={label}

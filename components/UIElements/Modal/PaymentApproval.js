@@ -10,21 +10,22 @@ const style = {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: {lg:450,xs:350},
+  width: { lg: 450, xs: 350 },
   bgcolor: "background.paper",
   boxShadow: 24,
-  maxHeight: '90vh',
-  overflowY: 'scroll',
+  maxHeight: "90vh",
+  overflowY: "scroll",
   p: 4,
   borderRadius: 2,
 };
 
-export default function PaymentApproval({ item,fetchItems }) {
+export default function PaymentApproval({ item, fetchItems }) {
   const [open, setOpen] = useState(false);
+
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
 
-  const handleSubmit = async (values) => {
+  const handleSubmit = async () => {
     try {
       const response = await fetch(
         `${BASE_URL}/ReservationApproval/UpdateApproval?id=${item.paymentApprovalId}`,
@@ -42,8 +43,8 @@ export default function PaymentApproval({ item,fetchItems }) {
         throw new Error("Failed to fetch");
       } else {
         toast.success(responseData.result.message);
-        setOpen(false);   
-        await fetchItems();  
+        setOpen(false);
+        await fetchItems();
       }
     } catch (error) {
       console.error("Error fetching customers:", error);
@@ -62,13 +63,8 @@ export default function PaymentApproval({ item,fetchItems }) {
         aria-describedby="modal-modal-description"
       >
         <Box sx={style}>
-          <Formik
-            initialValues={{
-              Id: item.id,
-            }}
-            onSubmit={handleSubmit}
-          >
-            {({ values }) => (
+          <Formik initialValues={{ Id: item.id }} onSubmit={handleSubmit}>
+            {() => (
               <Form>
                 <Box mt={2}>
                   <Grid container spacing={2}>
@@ -77,7 +73,8 @@ export default function PaymentApproval({ item,fetchItems }) {
                         Are you sure you want to approve this reservation?
                       </Typography>
                       <Typography color="secondary">
-                        This action cannot be undone
+                        This action cannot be undone. Portal login is shared
+                        when the advance payment is first added.
                       </Typography>
                     </Grid>
                   </Grid>
@@ -95,7 +92,7 @@ export default function PaymentApproval({ item,fetchItems }) {
                     Yes
                   </Button>
                 </Box>
-              </Form> 
+              </Form>
             )}
           </Formik>
         </Box>

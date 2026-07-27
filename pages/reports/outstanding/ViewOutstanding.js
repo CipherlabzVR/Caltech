@@ -37,7 +37,7 @@ const style = {
     p: 3,
 };
 
-export default function ViewOutstanding({ item }) {
+export default function ViewOutstanding({ item, asOfDate }) {
     const [open, setOpen] = React.useState(false);
     const [result, setResult] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -52,8 +52,9 @@ export default function ViewOutstanding({ item }) {
     const fetchOutstandingBalance = async () => {
         try {
             setLoading(true);
+            const dateQuery = asOfDate ? `&asOfDate=${asOfDate}` : "";
             const response = await fetch(
-                `${BASE_URL}/Outstanding/GetAllCustomerwiseOutstandings?customerId=${item.customerId}`,
+                `${BASE_URL}/Outstanding/GetAllCustomerwiseOutstandings?customerId=${item.customerId}${dateQuery}`,
                 {
                     method: "GET",
                     headers: {
@@ -80,6 +81,15 @@ export default function ViewOutstanding({ item }) {
         setOpen(true);
         fetchOutstandingBalance();
     };
+
+    const totalInvoiceAmount = result.reduce(
+        (sum, outstanding) => sum + Number(outstanding.totalInvoiceAmount || 0),
+        0
+    );
+    const totalOutstandingAmount = result.reduce(
+        (sum, outstanding) => sum + Number(outstanding.outstandingAmount || 0),
+        0
+    );
 
     return (
         <>
@@ -161,8 +171,8 @@ export default function ViewOutstanding({ item }) {
                                     <TableHead>
                                         <TableRow>
                                             <TableCell colSpan={3}>Total</TableCell>
-                                            <TableCell>{formatCurrency(item.totalInvoiceAmount)}</TableCell>
-                                            <TableCell>{formatCurrency(item.outstandingAmount)}</TableCell>
+                                            <TableCell>{formatCurrency(totalInvoiceAmount)}</TableCell>
+                                            <TableCell>{formatCurrency(totalOutstandingAmount)}</TableCell>
                                         </TableRow>
                                     </TableHead>
                                 </Table>

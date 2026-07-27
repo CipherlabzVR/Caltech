@@ -149,7 +149,7 @@ function MyApp({ Component, pageProps }) {
     !Number.isNaN(parsedAutoLogoutMinutes) && parsedAutoLogoutMinutes > 0
       ? parsedAutoLogoutMinutes * 60 * 1000
       : DEFAULT_INACTIVITY_TIMEOUT_MINUTES * 60 * 1000;
-  
+
 
   const markActivity = useCallback(() => {
     if (typeof window === "undefined") {
@@ -182,6 +182,39 @@ function MyApp({ Component, pageProps }) {
       const timeoutId = setTimeout(() => setHydrated(true), 100);
       return () => clearTimeout(timeoutId);
     }
+  }, []);
+
+  // Prevent mouse wheel from changing number input values on transaction screens.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleWheel = (event) => {
+      const active = document.activeElement;
+      if (active?.matches?.('input[type="number"]')) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("wheel", handleWheel, { passive: false });
+    return () => window.removeEventListener("wheel", handleWheel);
+  }, []);
+
+  // Self-register this site's origin with the ERP backend so CORS allows it.
+  // Fires once per browser session; failures are ignored (origin may already exist).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const origin = window.location.origin;
+      const flagKey = `corsRegistered:${origin}`;
+      if (sessionStorage.getItem(flagKey) === "true") return;
+      fetch(`${BASE_URL}/AppSetting/SaveCorsLink`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ webLink: origin, isActive: true }),
+      })
+        .then(() => sessionStorage.setItem(flagKey, "true"))
+        .catch(() => { });
+    } catch (_) { }
   }, []);
 
   useEffect(() => {
@@ -223,13 +256,20 @@ function MyApp({ Component, pageProps }) {
     }
   }, [token]);
 
+  // Register this host with the ERP API CORS allowlist (SaveCorsLink). Once per tab session;
+  // uses window.location.origin — works on landing, sign-in, and inside the app after login.
   useEffect(() => {
-    if (typeof window === "undefined" || token != null) {
+    if (typeof window === "undefined" || !hydrated) {
       return;
     }
 
     const appOrigin = window.location.origin;
     if (!appOrigin) {
+      return;
+    }
+
+    const sessionKey = "__apexflowSaveCorsOrigin";
+    if (sessionStorage.getItem(sessionKey) === appOrigin) {
       return;
     }
 
@@ -244,10 +284,13 @@ function MyApp({ Component, pageProps }) {
       }),
     })
       .then((response) => response.json())
+      .then(() => {
+        sessionStorage.setItem(sessionKey, appOrigin);
+      })
       .catch(() => {
-        // Non-blocking fire-and-forget for landing flow.
+        // Non-blocking fire-and-forget so startup is never blocked.
       });
-  }, [token]);
+  }, [hydrated]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -393,9 +436,77 @@ function MyApp({ Component, pageProps }) {
   }
 
   // Exclude standalone print/share pages from layout and token check
-    const noLayoutRoutes = ["/crm/customer/quote", "/crm/customer/invoice", "/inventory/purchase-order/print", "/inventory/grn/print", "/inventory/shipment/print", "/inventory/stock-cycle-count/print", "/sales/sales-quotation/print", "/quotations/tech-pack/sewing/packing-print", "/quotations/tech-pack/sewing/emb-sub-print", "/quotations/tech-pack/sewing/cutting-print", "/verified", "/userverified", "/authentication/forgot-password", "/sales/sales-order/print"];
-  const shouldUseLayout = !noLayoutRoutes.includes(router.pathname);
-  const shouldCheckToken = !noLayoutRoutes.includes(router.pathname);
+  const noLayoutRoutes = [
+    "/crm/customer/quote",
+    "/crm/customer/invoice",
+    "/inventory/purchase-order/print",
+    "/service/purchase-invoice/print",
+    "/inventory/grn/print",
+    "/inventory/grn-return/print",
+    "/service/service-invoice/print",
+    "/service/job-card/print",
+    "/service/job-card/receipt/[id]",
+    "/service/job-card/work-authorization/[id]",
+    "/inventory/shipment/print",
+    "/inventory/stock-dispatch/print",
+    "/inventory/stock-adjustment/print",
+    "/inventory/stock-details/print",
+    "/inventory/shipment/view",
+    "/work-track/share/[token]",
+    "/work-track/share/[token]/form/[detailId]",
+    "/inventory/stock-cycle-count/print",
+    "/sales/sales-quotation/print",
+    "/quotations/tech-pack/sewing/packing-print",
+    "/quotations/tech-pack/sewing/emb-sub-print",
+    "/quotations/tech-pack/sewing/cutting-print",
+    "/verified",
+    "/userverified",
+    "/authentication/forgot-password",
+    "/sales/sales-order/print",
+    "/sales/shipment-invoice/print",
+    "/sales/day-end/print",
+    "/sales/sales-return/print",
+    "/sales/pos-shift/print",
+    "/sales/pos-dayend/print",
+    "/sales/cash-in-out/print",
+    "/sales/daily-outstandings/print",
+    "/sales/invoice/print",
+    "/sales/deposit/print",
+    "/sales/credit-note/print",
+    "/finance/payments/print"
+  ];
+
+  const publicPath = (router.asPath || "").split("?")[0].split("#")[0];
+  const isPublicStandaloneRoute =
+    noLayoutRoutes.includes(router.pathname) || publicPath.startsWith("/work-track/share/");
+
+  const shouldUseLayout = !isPublicStandaloneRoute;
+  const shouldCheckToken = !isPublicStandaloneRoute;
+
+  // Customer portal users (UserType.EXTERNAL = 15): never paint the ERP layout/dashboard —
+  // show a spinner and go straight to the portal.
+  if (typeof window !== "undefined" && token) {
+    const userType = Number(localStorage.getItem("type"));
+    if (userType === 15 && router.pathname !== "/customer-portal" && !isPublicStandaloneRoute) {
+      router.replace("/customer-portal");
+      return (
+        <ThemeProvider theme={theme}>
+          <CssBaseline />
+          <div
+            style={{
+              width: "100vw",
+              height: "100vh",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <CircularProgress />
+          </div>
+        </ThemeProvider>
+      );
+    }
+  }
 
   if (token == null && landingVisible && shouldCheckToken) {
     return (
@@ -410,11 +521,11 @@ function MyApp({ Component, pageProps }) {
 
   if (token == null && shouldCheckToken) {
     if (ProjectNo === 1) {
-      return <SignIn /> ;
-    } else {
-      return <Calendar />;
+      const portalCustomerLogin = router.pathname === "/authentication/customer-sign-in";
+      return <SignIn portalCustomerLogin={portalCustomerLogin} />;
     }
 
+    return <Calendar />;
   }
 
   return (

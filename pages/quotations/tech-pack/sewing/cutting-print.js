@@ -254,17 +254,17 @@ const getPlacketColorDisplay = (neckTypeSource, type) => {
   const isInner = type === "inner";
   const candidates = isInner
     ? [
-        neckTypeSource.innerPlacketColorCodeName,
-        neckTypeSource.innerPlacketColorName,
-        neckTypeSource.InnerPlacketColorCodeName,
-        neckTypeSource.InnerPlacketColorName,
-      ]
+      neckTypeSource.innerPlacketColorCodeName,
+      neckTypeSource.innerPlacketColorName,
+      neckTypeSource.InnerPlacketColorCodeName,
+      neckTypeSource.InnerPlacketColorName,
+    ]
     : [
-        neckTypeSource.outerPlacketColorCodeName,
-        neckTypeSource.outerPlacketColorName,
-        neckTypeSource.OuterPlacketColorCodeName,
-        neckTypeSource.OuterPlacketColorName,
-      ];
+      neckTypeSource.outerPlacketColorCodeName,
+      neckTypeSource.outerPlacketColorName,
+      neckTypeSource.OuterPlacketColorCodeName,
+      neckTypeSource.OuterPlacketColorName,
+    ];
   const selected = candidates.find((value) => typeof value === "string" && value.trim());
   return selected ? selected.trim() : "-";
 };
@@ -407,11 +407,11 @@ const tryInlineImageSource = async (src, token) => {
     },
     ...(token && shouldUseAuthForImage(src)
       ? [
-          {
-            headers: { Authorization: `Bearer ${token}` },
-            credentials: "include",
-          },
-        ]
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
+        },
+      ]
       : []),
   ];
 
@@ -459,6 +459,17 @@ export default function CuttingPrintPage() {
 
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.id = "cutting-print-page-style";
+    style.innerHTML = `@media print { @page { margin: 0; size: A4 portrait; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }`;
+    document.head.appendChild(style);
+    return () => {
+      const el = document.getElementById("cutting-print-page-style");
+      if (el) el.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (!router.isReady || !inquiryId || !optionId || !sentQuotationId) return;
@@ -831,13 +842,13 @@ export default function CuttingPrintPage() {
   const combinedTotal =
     numQtyColumns >= 2
       ? sizeRowsForColumns.reduce(
-          (sum, row) =>
-            sum +
-            (Number(row?.totalQty) > 0
-              ? Number(row.totalQty)
-              : SIZE_KEYS.reduce((rowSum, { key }) => rowSum + (Number(row?.[key]) || 0), 0)),
-          0
-        )
+        (sum, row) =>
+          sum +
+          (Number(row?.totalQty) > 0
+            ? Number(row.totalQty)
+            : SIZE_KEYS.reduce((rowSum, { key }) => rowSum + (Number(row?.[key]) || 0), 0)),
+        0
+      )
       : 0;
 
   return (
@@ -849,7 +860,7 @@ export default function CuttingPrintPage() {
         alignItems: "flex-start",
         p: { xs: 2, sm: 3, md: 4 },
         backgroundColor: "#f5f5f5",
-        "@media print": { p: 0, backgroundColor: "#fff" },
+        "@media print": { p: 0, margin: 0, backgroundColor: "#fff" },
       }}
     >
       <Box
@@ -864,6 +875,9 @@ export default function CuttingPrintPage() {
         }}
       >
         <Box sx={{ display: "flex", justifyContent: "flex-end", alignItems: "center", mb: 2, pb: 1, borderBottom: "2px solid #e0e0e0", "@media print": { display: "none" } }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, "@media print": { borderBottom: "2px solid #000", pb: 1, mb: 1 } }}>
+            Cutting Sheet
+          </Typography>
           <Box display="flex" gap={1}>
             <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint} sx={{ textTransform: "none" }}>
               Print
@@ -891,115 +905,78 @@ export default function CuttingPrintPage() {
               boxSizing: "border-box",
               backgroundColor: "#fff",
               boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-              "@media print": { boxShadow: "none" },
+              "@media print": { padding: "0.4in", boxShadow: "none" },
             }}
           >
+            <Box sx={{ fontWeight: 700, fontSize: "1.2rem", mb: 1, borderBottom: "2px solid #000", pb: 0.5 }}>
+              Cutting Sheet
+            </Box>
             <Box
               sx={{
                 minHeight: { sm: "297mm" },
                 pageBreakAfter: "always",
                 breakAfter: "page",
-                "@media print": { minHeight: "297mm" },
+                "@media print": { minHeight: "auto" },
               }}
             >
-            <Box sx={{ border: "1px solid #000", mb: 1.5 }}>
-              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #000" }}>
-                <Box sx={{ p: 1, borderRight: "1px solid #000", fontSize: "0.8rem" }}>
-                  <strong>STYLE NAME :</strong> {data.inquiryStyleName}
-                </Box>
-                <Box sx={{ p: 1, fontSize: "0.8rem" }}>
-                  <strong>CLIENT NAME :</strong> {data.customerName}
-                </Box>
-              </Box>
-              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: "1px solid #000" }}>
-                <Box sx={{ p: 1, borderRight: "1px solid #000", fontSize: "0.8rem" }}>
-                  <strong>FABRIC :</strong> {data.fabricDisplay}
-                </Box>
-                <Box sx={{ p: 1, borderRight: "1px solid #000", fontSize: "0.8rem" }}>
-                  <strong>DATE :</strong> {data.date}
-                </Box>
-                <Box sx={{ p: 1, fontSize: "0.8rem" }}>
-                  <strong>TYPE :</strong> {data.type}
-                </Box>
-              </Box>
-              <Box sx={{ p: 1, fontSize: "0.8rem" }}>
-                <strong>DELIVERY DATE :</strong> {data.deliveryDate}
-              </Box>
-            </Box>
-
-            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, mb: 1.5 }}>
-              <Box sx={{ border: "1px solid #ccc", p: 1, minHeight: 290, display: "flex", justifyContent: "center", alignItems: "center" }}>
-                {data.frontImageUrl ? (
-                  <img src={data.frontImageUrl} alt="Front panel" style={{ maxWidth: "100%", maxHeight: "280px", objectFit: "contain" }} />
-                ) : (
-                  <Typography color="text.secondary" fontSize="0.75rem">No image</Typography>
-                )}
-              </Box>
-              <Box sx={{ border: "1px solid #ccc", p: 1, minHeight: 290, display: "flex", justifyContent: "center", alignItems: "center" }}>
-                {data.backImageUrl ? (
-                  <img src={data.backImageUrl} alt="Back panel" style={{ maxWidth: "100%", maxHeight: "280px", objectFit: "contain" }} />
-                ) : (
-                  <Typography color="text.secondary" fontSize="0.75rem">No image</Typography>
-                )}
-              </Box>
-            </Box>
-
-            <Box sx={{ display: "grid", gridTemplateColumns: "1fr 0.38fr", gap: 1.5 }}>
-              <Box sx={{ border: "1px solid #000" }}>
-                {specs.map((spec) => (
-                  <Box key={`${spec.label}-${spec.value}`} sx={{ display: "grid", gridTemplateColumns: "42% 58%", borderBottom: "1px solid #000", "&:last-of-type": { borderBottom: "none" } }}>
-                    <Box sx={{ p: 0.7, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem" }}>{spec.label}</Box>
-                    <Box sx={{ p: 0.7, fontSize: "0.72rem" }}>{spec.value}</Box>
+              <Box sx={{ border: "1px solid #000", mb: 1.5 }}>
+                <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #000" }}>
+                  <Box sx={{ p: 1, borderRight: "1px solid #000", fontSize: "0.8rem" }}>
+                    <strong>STYLE NAME :</strong> {data.inquiryStyleName}
                   </Box>
-                ))}
+                  <Box sx={{ p: 1, fontSize: "0.8rem" }}>
+                    <strong>CLIENT NAME :</strong> {data.customerName}
+                  </Box>
+                </Box>
+                <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: "1px solid #000" }}>
+                  <Box sx={{ p: 1, borderRight: "1px solid #000", fontSize: "0.8rem" }}>
+                    <strong>FABRIC :</strong> {data.fabricDisplay}
+                  </Box>
+                  <Box sx={{ p: 1, borderRight: "1px solid #000", fontSize: "0.8rem" }}>
+                    <strong>DATE :</strong> {data.date}
+                  </Box>
+                  <Box sx={{ p: 1, fontSize: "0.8rem" }}>
+                    <strong>TYPE :</strong> {data.type}
+                  </Box>
+                </Box>
+                <Box sx={{ p: 1, fontSize: "0.8rem" }}>
+                  <strong>DELIVERY DATE :</strong> {data.deliveryDate}
+                </Box>
               </Box>
 
-              <Box sx={{ border: "1px solid #000" }}>
-                <Box sx={{ display: "grid", gridTemplateColumns: `56px repeat(${numQtyColumns}, 1fr)`, borderBottom: "1px solid #000", backgroundColor: "#f9f9f9" }}>
-                  <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>Size</Box>
-                  {(numQtyColumns === 1 ? [null] : sizeRowsForColumns).map((_, idx) => (
-                    <Box
-                      key={`qty-head-${idx}`}
-                      sx={{
-                        p: 0.6,
-                        borderRight: idx === numQtyColumns - 1 ? "none" : "1px solid #000",
-                        fontWeight: 700,
-                        fontSize: "0.72rem",
-                        textAlign: "center",
-                      }}
-                    >
-                      Qty
+              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, mb: 1.5 }}>
+                <Box sx={{ border: "1px solid #ccc", p: 1, minHeight: 290, display: "flex", justifyContent: "center", alignItems: "center" }}>
+                  {data.frontImageUrl ? (
+                    <img src={data.frontImageUrl} alt="Front panel" style={{ maxWidth: "100%", maxHeight: "280px", objectFit: "contain" }} />
+                  ) : (
+                    <Typography color="text.secondary" fontSize="0.75rem">No image</Typography>
+                  )}
+                </Box>
+                <Box sx={{ border: "1px solid #ccc", p: 1, minHeight: 290, display: "flex", justifyContent: "center", alignItems: "center" }}>
+                  {data.backImageUrl ? (
+                    <img src={data.backImageUrl} alt="Back panel" style={{ maxWidth: "100%", maxHeight: "280px", objectFit: "contain" }} />
+                  ) : (
+                    <Typography color="text.secondary" fontSize="0.75rem">No image</Typography>
+                  )}
+                </Box>
+              </Box>
+
+              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 0.38fr", gap: 1.5 }}>
+                <Box sx={{ border: "1px solid #000" }}>
+                  {specs.map((spec) => (
+                    <Box key={`${spec.label}-${spec.value}`} sx={{ display: "grid", gridTemplateColumns: "42% 58%", borderBottom: "1px solid #000", "&:last-of-type": { borderBottom: "none" } }}>
+                      <Box sx={{ p: 0.7, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem" }}>{spec.label}</Box>
+                      <Box sx={{ p: 0.7, fontSize: "0.72rem" }}>{spec.value}</Box>
                     </Box>
                   ))}
                 </Box>
-                {SIZE_KEYS.map(({ key, label }) => (
-                  <Box key={key} sx={{ display: "grid", gridTemplateColumns: `56px repeat(${numQtyColumns}, 1fr)`, borderBottom: "1px solid #000" }}>
-                    <Box sx={{ p: 0.55, borderRight: "1px solid #000", fontSize: "0.68rem", textAlign: "center" }}>{label}</Box>
-                    {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, idx) => (
+
+                <Box sx={{ border: "1px solid #000" }}>
+                  <Box sx={{ display: "grid", gridTemplateColumns: `56px repeat(${numQtyColumns}, 1fr)`, borderBottom: "1px solid #000", backgroundColor: "#f9f9f9" }}>
+                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>Size</Box>
+                    {(numQtyColumns === 1 ? [null] : sizeRowsForColumns).map((_, idx) => (
                       <Box
-                        key={`${key}-${idx}`}
-                        sx={{
-                          p: 0.55,
-                          borderRight: idx === numQtyColumns - 1 ? "none" : "1px solid #000",
-                          fontSize: "0.68rem",
-                          textAlign: "center",
-                        }}
-                      >
-                        {getQty(row?.[key])}
-                      </Box>
-                    ))}
-                  </Box>
-                ))}
-                <Box sx={{ display: "grid", gridTemplateColumns: `56px repeat(${numQtyColumns}, 1fr)`, borderBottom: numQtyColumns >= 2 ? "1px solid #000" : "none" }}>
-                  <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>TOTAL</Box>
-                  {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, idx) => {
-                    const rowTotal =
-                      Number(row?.totalQty) > 0
-                        ? Number(row.totalQty)
-                        : SIZE_KEYS.reduce((sum, { key }) => sum + (Number(row?.[key]) || 0), 0);
-                    return (
-                      <Box
-                        key={`total-${idx}`}
+                        key={`qty-head-${idx}`}
                         sx={{
                           p: 0.6,
                           borderRight: idx === numQtyColumns - 1 ? "none" : "1px solid #000",
@@ -1008,419 +985,457 @@ export default function CuttingPrintPage() {
                           textAlign: "center",
                         }}
                       >
-                        {getQty(rowTotal)}
+                        Qty
                       </Box>
-                    );
-                  })}
-                </Box>
-                {numQtyColumns >= 2 && (
-                  <Box sx={{ display: "grid", gridTemplateColumns: "56px 1fr" }}>
-                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>TOTAL</Box>
-                    <Box sx={{ p: 0.6, fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>
-                      {getQty(combinedTotal)}
-                    </Box>
+                    ))}
                   </Box>
-                )}
+                  {SIZE_KEYS.map(({ key, label }) => (
+                    <Box key={key} sx={{ display: "grid", gridTemplateColumns: `56px repeat(${numQtyColumns}, 1fr)`, borderBottom: "1px solid #000" }}>
+                      <Box sx={{ p: 0.55, borderRight: "1px solid #000", fontSize: "0.68rem", textAlign: "center" }}>{label}</Box>
+                      {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, idx) => (
+                        <Box
+                          key={`${key}-${idx}`}
+                          sx={{
+                            p: 0.55,
+                            borderRight: idx === numQtyColumns - 1 ? "none" : "1px solid #000",
+                            fontSize: "0.68rem",
+                            textAlign: "center",
+                          }}
+                        >
+                          {getQty(row?.[key])}
+                        </Box>
+                      ))}
+                    </Box>
+                  ))}
+                  <Box sx={{ display: "grid", gridTemplateColumns: `56px repeat(${numQtyColumns}, 1fr)`, borderBottom: numQtyColumns >= 2 ? "1px solid #000" : "none" }}>
+                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>TOTAL</Box>
+                    {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, idx) => {
+                      const rowTotal =
+                        Number(row?.totalQty) > 0
+                          ? Number(row.totalQty)
+                          : SIZE_KEYS.reduce((sum, { key }) => sum + (Number(row?.[key]) || 0), 0);
+                      return (
+                        <Box
+                          key={`total-${idx}`}
+                          sx={{
+                            p: 0.6,
+                            borderRight: idx === numQtyColumns - 1 ? "none" : "1px solid #000",
+                            fontWeight: 700,
+                            fontSize: "0.72rem",
+                            textAlign: "center",
+                          }}
+                        >
+                          {getQty(rowTotal)}
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                  {numQtyColumns >= 2 && (
+                    <Box sx={{ display: "grid", gridTemplateColumns: "56px 1fr" }}>
+                      <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>TOTAL</Box>
+                      <Box sx={{ p: 0.6, fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>
+                        {getQty(combinedTotal)}
+                      </Box>
+                    </Box>
+                  )}
+                </Box>
               </Box>
-            </Box>
             </Box>
 
             <Box sx={{ display: "flex", flexDirection: "column" }}>
-            <Box
-              sx={{
-                pageBreakBefore: "always",
-                breakBefore: "page",
-                pt: 0,
-                mt: 1.5,
-                minHeight: { sm: "297mm" },
-                pageBreakAfter: "always",
-                breakAfter: "page",
-                order: 0,
-                "@media print": { minHeight: "297mm" },
-              }}
-            >
-              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, mb: 1.5 }}>
-                <Box>
-                  <Typography sx={{ textAlign: "center", fontWeight: 600, mb: 0.4 }}>Front</Typography>
-                  <Box sx={{ border: "1px solid #999", borderRadius: "12px", minHeight: 250, display: "flex", justifyContent: "center", alignItems: "center", p: 1 }}>
-                    {data.frontImageUrl ? (
-                      <img src={data.frontImageUrl} alt="Emb/Sub Front" style={{ maxWidth: "100%", maxHeight: "235px", objectFit: "contain" }} />
-                    ) : (
-                      <Typography color="text.secondary" fontSize="0.75rem">No image</Typography>
-                    )}
+              <Box
+                sx={{
+                  pageBreakBefore: "always",
+                  breakBefore: "page",
+                  pt: 0,
+                  minHeight: { sm: "297mm" },
+                  pageBreakAfter: "always",
+                  breakAfter: "page",
+                  order: 0,
+                  "@media print": { minHeight: "auto" },
+                }}
+              >
+
+                <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, mb: 1.5 }}>
+                  <Box>
+                    <Typography sx={{ textAlign: "center", fontWeight: 600, mb: 0.4 }}>Front</Typography>
+                    <Box sx={{ border: "1px solid #999", borderRadius: "12px", minHeight: 250, display: "flex", justifyContent: "center", alignItems: "center", p: 1 }}>
+                      {data.frontImageUrl ? (
+                        <img src={data.frontImageUrl} alt="Emb/Sub Front" style={{ maxWidth: "100%", maxHeight: "235px", objectFit: "contain" }} />
+                      ) : (
+                        <Typography color="text.secondary" fontSize="0.75rem">No image</Typography>
+                      )}
+                    </Box>
+                  </Box>
+                  <Box>
+                    <Typography sx={{ textAlign: "center", fontWeight: 600, mb: 0.4 }}>Back</Typography>
+                    <Box sx={{ border: "1px solid #999", borderRadius: "12px", minHeight: 250, display: "flex", justifyContent: "center", alignItems: "center", p: 1 }}>
+                      {data.backImageUrl ? (
+                        <img src={data.backImageUrl} alt="Emb/Sub Back" style={{ maxWidth: "100%", maxHeight: "235px", objectFit: "contain" }} />
+                      ) : (
+                        <Typography color="text.secondary" fontSize="0.75rem">No image</Typography>
+                      )}
+                    </Box>
                   </Box>
                 </Box>
-                <Box>
-                  <Typography sx={{ textAlign: "center", fontWeight: 600, mb: 0.4 }}>Back</Typography>
-                  <Box sx={{ border: "1px solid #999", borderRadius: "12px", minHeight: 250, display: "flex", justifyContent: "center", alignItems: "center", p: 1 }}>
-                    {data.backImageUrl ? (
-                      <img src={data.backImageUrl} alt="Emb/Sub Back" style={{ maxWidth: "100%", maxHeight: "235px", objectFit: "contain" }} />
-                    ) : (
-                      <Typography color="text.secondary" fontSize="0.75rem">No image</Typography>
-                    )}
+
+                <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, mb: 1.2 }}>
+                  <Box>
+                    <Typography sx={{ textAlign: "center", fontWeight: 600, mb: 0.4 }}>Left Sleeve</Typography>
+                    <Box sx={{ border: "1px solid #999", borderRadius: "12px", minHeight: 120, display: "flex", justifyContent: "center", alignItems: "center", p: 1 }}>
+                      {data.leftSleeveImageUrl ? (
+                        <img src={data.leftSleeveImageUrl} alt="Emb/Sub Left Sleeve" style={{ maxWidth: "100%", maxHeight: "105px", objectFit: "contain" }} />
+                      ) : (
+                        <Typography color="text.secondary" fontSize="0.75rem">No image</Typography>
+                      )}
+                    </Box>
+                  </Box>
+                  <Box>
+                    <Typography sx={{ textAlign: "center", fontWeight: 600, mb: 0.4 }}>Right Sleeve</Typography>
+                    <Box sx={{ border: "1px solid #999", borderRadius: "12px", minHeight: 120, display: "flex", justifyContent: "center", alignItems: "center", p: 1 }}>
+                      {data.rightSleeveImageUrl ? (
+                        <img src={data.rightSleeveImageUrl} alt="Emb/Sub Right Sleeve" style={{ maxWidth: "100%", maxHeight: "105px", objectFit: "contain" }} />
+                      ) : (
+                        <Typography color="text.secondary" fontSize="0.75rem">No image</Typography>
+                      )}
+                    </Box>
                   </Box>
                 </Box>
+
+                <Box sx={{ width: "100%", minWidth: 0, mb: 1.2 }}>
+                  <Typography sx={{ fontWeight: 700, fontSize: "0.78rem", mb: 0.4 }}>Quantity Breakdown</Typography>
+                  <Box sx={{ border: "1px solid #000" }}>
+                    <Box sx={{ display: "grid", gridTemplateColumns: `72px repeat(${SIZE_KEYS.length}, minmax(0, 1fr)) 52px`, borderBottom: "1px solid #000", backgroundColor: "#f9f9f9" }}>
+                      <Box sx={{ p: 0.45, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.62rem", textAlign: "center" }}>Size</Box>
+                      {SIZE_KEYS.map(({ label }) => (
+                        <Box key={label} sx={{ p: 0.45, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.62rem", textAlign: "center" }}>
+                          {label}
+                        </Box>
+                      ))}
+                      <Box sx={{ p: 0.45, fontWeight: 700, fontSize: "0.62rem", textAlign: "center" }}>TOTAL</Box>
+                    </Box>
+                    {((data.sizeRows && data.sizeRows.length > 0) ? data.sizeRows : [data.sizeRow]).map((row, rowIdx, arr) => {
+                      const rowTotal =
+                        Number(row?.totalQty) > 0
+                          ? Number(row.totalQty)
+                          : SIZE_KEYS.reduce((sum, { key }) => sum + (Number(row?.[key]) || 0), 0);
+                      return (
+                        <Box
+                          key={`emb-row-${rowIdx}`}
+                          sx={{
+                            display: "grid",
+                            gridTemplateColumns: `72px repeat(${SIZE_KEYS.length}, minmax(0, 1fr)) 52px`,
+                            borderBottom: rowIdx === arr.length - 1 ? "none" : "1px solid #000",
+                          }}
+                        >
+                          <Box sx={{ p: 0.45, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.62rem" }}>
+                            UNISEX {arr.length > 1 ? rowIdx + 1 : ""}
+                          </Box>
+                          {SIZE_KEYS.map(({ key }, idx) => (
+                            <Box
+                              key={`${key}-${rowIdx}`}
+                              sx={{
+                                p: 0.45,
+                                borderRight: idx === SIZE_KEYS.length - 1 ? "1px solid #000" : "1px solid #000",
+                                fontSize: "0.62rem",
+                                textAlign: "center",
+                              }}
+                            >
+                              {getQty(row?.[key])}
+                            </Box>
+                          ))}
+                          <Box sx={{ p: 0.45, fontSize: "0.62rem", textAlign: "center", fontWeight: 700 }}>
+                            {getQty(rowTotal)}
+                          </Box>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                </Box>
+
+                <Box sx={{ border: "1px solid #000", width: "100%", mb: 2 }}>
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 0.9fr 0.9fr", borderBottom: "1px solid #000" }}>
+                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.8rem" }}>MARKER LENGTH</Box>
+                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontSize: "0.8rem" }}></Box>
+                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.8rem", textAlign: "center" }}>REQVD</Box>
+                    <Box sx={{ p: 0.6, fontSize: "0.8rem" }}></Box>
+                  </Box>
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 0.9fr 0.9fr", borderBottom: "1px solid #000" }}>
+                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.8rem" }}>FABRIC</Box>
+                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontSize: "0.8rem" }}></Box>
+                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.8rem", textAlign: "center" }}>CUT</Box>
+                    <Box sx={{ p: 0.6, color: "#b04343", fontWeight: 700, fontSize: "0.8rem", textAlign: "center" }}>RE-CUT</Box>
+                  </Box>
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 0.9fr 0.9fr", borderBottom: "1px solid #000" }}>
+                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.8rem" }}>COLOR</Box>
+                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontSize: "0.8rem" }}></Box>
+                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.8rem", textAlign: "center" }}>OFF CUT</Box>
+                    <Box sx={{ p: 0.6, color: "#b04343", fontWeight: 700, fontSize: "0.8rem", textAlign: "center" }}>OFF CUT</Box>
+                  </Box>
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 0.9fr 0.9fr" }}>
+                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontSize: "0.8rem" }}></Box>
+                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontSize: "0.8rem" }}></Box>
+                    <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.8rem", textAlign: "center" }}>BALANCE</Box>
+                    <Box sx={{ p: 0.6, color: "#b04343", fontWeight: 700, fontSize: "0.8rem", textAlign: "center" }}>BALANCE</Box>
+                  </Box>
+                </Box>
+
               </Box>
 
-              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 2, mb: 1.2 }}>
-                <Box>
-                  <Typography sx={{ textAlign: "center", fontWeight: 600, mb: 0.4 }}>Left Sleeve</Typography>
-                  <Box sx={{ border: "1px solid #999", borderRadius: "12px", minHeight: 120, display: "flex", justifyContent: "center", alignItems: "center", p: 1 }}>
-                    {data.leftSleeveImageUrl ? (
-                      <img src={data.leftSleeveImageUrl} alt="Emb/Sub Left Sleeve" style={{ maxWidth: "100%", maxHeight: "105px", objectFit: "contain" }} />
-                    ) : (
-                      <Typography color="text.secondary" fontSize="0.75rem">No image</Typography>
-                    )}
-                  </Box>
-                </Box>
-                <Box>
-                  <Typography sx={{ textAlign: "center", fontWeight: 600, mb: 0.4 }}>Right Sleeve</Typography>
-                  <Box sx={{ border: "1px solid #999", borderRadius: "12px", minHeight: 120, display: "flex", justifyContent: "center", alignItems: "center", p: 1 }}>
-                    {data.rightSleeveImageUrl ? (
-                      <img src={data.rightSleeveImageUrl} alt="Emb/Sub Right Sleeve" style={{ maxWidth: "100%", maxHeight: "105px", objectFit: "contain" }} />
-                    ) : (
-                      <Typography color="text.secondary" fontSize="0.75rem">No image</Typography>
-                    )}
-                  </Box>
-                </Box>
-              </Box>
-
-              <Box sx={{ width: "100%", minWidth: 0, mb: 1.2 }}>
-                <Typography sx={{ fontWeight: 700, fontSize: "0.78rem", mb: 0.4 }}>Quantity Breakdown</Typography>
-                <Box sx={{ border: "1px solid #000" }}>
-                  <Box sx={{ display: "grid", gridTemplateColumns: `72px repeat(${SIZE_KEYS.length}, minmax(0, 1fr)) 52px`, borderBottom: "1px solid #000", backgroundColor: "#f9f9f9" }}>
-                    <Box sx={{ p: 0.45, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.62rem", textAlign: "center" }}>Size</Box>
-                    {SIZE_KEYS.map(({ label }) => (
-                      <Box key={label} sx={{ p: 0.45, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.62rem", textAlign: "center" }}>
-                        {label}
+              <Box
+                sx={{
+                  pageBreakBefore: "always",
+                  breakBefore: "page",
+                  pt: 0,
+                  mt: 1.5,
+                  minHeight: { sm: "297mm" },
+                  order: 2,
+                  "@media print": { minHeight: "auto" },
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    minHeight: { xs: "auto", sm: "250mm" },
+                    overflow: "hidden",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: { xs: "100%", sm: "252mm" },
+                      transform: { xs: "none", sm: "rotate(-90deg) scale(0.92)" },
+                      transformOrigin: "center center",
+                      transformBox: "fill-box",
+                    }}
+                  >
+                    <Box sx={{ border: "1px solid #000", mb: 1.2 }}>
+                      <Box sx={{ p: 0.7, borderBottom: "1px solid #000", textAlign: "center", fontWeight: 700, fontSize: "0.95rem" }}>
+                        STYLENAME : {data.inquiryStyleName || "-"}
                       </Box>
-                    ))}
-                    <Box sx={{ p: 0.45, fontWeight: 700, fontSize: "0.62rem", textAlign: "center" }}>TOTAL</Box>
-                  </Box>
-                  {((data.sizeRows && data.sizeRows.length > 0) ? data.sizeRows : [data.sizeRow]).map((row, rowIdx, arr) => {
-                    const rowTotal =
-                      Number(row?.totalQty) > 0
-                        ? Number(row.totalQty)
-                        : SIZE_KEYS.reduce((sum, { key }) => sum + (Number(row?.[key]) || 0), 0);
-                    return (
+
+                      <Box sx={{ display: "grid", gridTemplateColumns: `60px repeat(${numQtyColumns}, 45px) 1fr 1fr 1fr 1fr 1fr 1fr 120px`, borderBottom: "1px solid #000", backgroundColor: "#f9f9f9" }}>
+                        <Box sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>SIZE</Box>
+                        {(numQtyColumns === 1 ? [null] : sizeRowsForColumns).map((_, idx) => (
+                          <Box key={`p3-qty-head-${idx}`} sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>QTY</Box>
+                        ))}
+                        <Box sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>FRONT</Box>
+                        <Box sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>BACK</Box>
+                        <Box sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>SL/R</Box>
+                        <Box sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>SL/L</Box>
+                        <Box sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>CLR</Box>
+                        <Box sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>PKT</Box>
+                        <Box sx={{ py: 0.72, px: 0.55, fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>MARKER LENGTH</Box>
+                      </Box>
+
+                      {SIZE_KEYS.map(({ key, label }, idx, arr) => (
+                        <Box
+                          key={`third-page-${key}`}
+                          sx={{
+                            display: "grid",
+                            gridTemplateColumns: `60px repeat(${numQtyColumns}, 45px) 1fr 1fr 1fr 1fr 1fr 1fr 120px`,
+                            minHeight: "10mm",
+                            borderBottom: idx === arr.length - 1 ? "none" : "1px solid #000",
+                          }}
+                        >
+                          <Box sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", textAlign: "center" }}>{label}</Box>
+                          {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, qIdx) => (
+                            <Box key={`p3-${key}-${qIdx}`} sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", textAlign: "center" }}>
+                              {getQty(row?.[key])}
+                            </Box>
+                          ))}
+                          <Box sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000" }} />
+                          <Box sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000" }} />
+                          <Box sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000" }} />
+                          <Box sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000" }} />
+                          <Box sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000" }} />
+                          <Box sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000" }} />
+                          <Box sx={{ py: 0.62, px: 0.5 }} />
+                        </Box>
+                      ))}
                       <Box
-                        key={`emb-row-${rowIdx}`}
                         sx={{
                           display: "grid",
-                          gridTemplateColumns: `72px repeat(${SIZE_KEYS.length}, minmax(0, 1fr)) 52px`,
-                          borderBottom: rowIdx === arr.length - 1 ? "none" : "1px solid #000",
+                          gridTemplateColumns: `60px repeat(${numQtyColumns}, 45px) 1fr 1fr 1fr 1fr 1fr 1fr 120px`,
+                          borderTop: "1px solid #000",
                         }}
                       >
-                        <Box sx={{ p: 0.45, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.62rem" }}>
-                          UNISEX {arr.length > 1 ? rowIdx + 1 : ""}
+                        <Box sx={{ p: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", fontWeight: 700, textAlign: "center" }}>
+                          TOTAL
                         </Box>
-                        {SIZE_KEYS.map(({ key }, idx) => (
-                          <Box
-                            key={`${key}-${rowIdx}`}
-                            sx={{
-                              p: 0.45,
-                              borderRight: idx === SIZE_KEYS.length - 1 ? "1px solid #000" : "1px solid #000",
-                              fontSize: "0.62rem",
-                              textAlign: "center",
-                            }}
-                          >
-                            {getQty(row?.[key])}
+                        {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, qIdx) => {
+                          const rowTotal =
+                            Number(row?.totalQty) > 0
+                              ? Number(row.totalQty)
+                              : SIZE_KEYS.reduce((sum, { key }) => sum + (Number(row?.[key]) || 0), 0);
+                          return (
+                            <Box
+                              key={`p3-total-${qIdx}`}
+                              sx={{ p: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", fontWeight: 700, textAlign: "center" }}
+                            >
+                              {getQty(rowTotal)}
+                            </Box>
+                          );
+                        })}
+                        <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
+                        <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
+                        <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
+                        <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
+                        <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
+                        <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
+                        <Box sx={{ p: 0.5 }} />
+                      </Box>
+                    </Box>
+
+                    <Box sx={{ border: "1px solid #000", width: "56%", ml: "auto" }}>
+                      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #000" }}>
+                        <Box sx={{ p: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem" }}>FABRIC</Box>
+                        <Box sx={{ p: 0.55, fontSize: "0.72rem" }} />
+                      </Box>
+                      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #000" }}>
+                        <Box sx={{ p: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem" }}>COLOR</Box>
+                        <Box sx={{ p: 0.55, fontSize: "0.72rem" }} />
+                      </Box>
+                      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #000" }}>
+                        <Box sx={{ p: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem" }}>RECIVD CUT</Box>
+                        <Box sx={{ p: 0.55, fontSize: "0.72rem", color: "#b04343", fontWeight: 700 }}>RE-CUT</Box>
+                      </Box>
+                      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #000" }}>
+                        <Box sx={{ p: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem" }}>OFF CUT</Box>
+                        <Box sx={{ p: 0.55, fontSize: "0.72rem", color: "#b04343", fontWeight: 700 }}>OFF CUT</Box>
+                      </Box>
+                      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+                        <Box sx={{ p: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem" }}>BALANCE</Box>
+                        <Box sx={{ p: 0.55, fontSize: "0.72rem", color: "#b04343", fontWeight: 700 }}>BALANCE</Box>
+                      </Box>
+                    </Box>
+                  </Box>
+                </Box>
+              </Box>
+
+              <Box
+                sx={{
+                  pageBreakBefore: "always",
+                  breakBefore: "page",
+                  pt: 0,
+                  mt: 1.5,
+                  minHeight: { sm: "297mm" },
+                  order: 1,
+                  "@media print": { minHeight: "auto" },
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    minHeight: { xs: "auto", sm: "250mm" },
+                    overflow: "hidden",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: { xs: "100%", sm: "258mm" },
+                      transform: { xs: "none", sm: "rotate(-90deg) scale(0.93)" },
+                      transformOrigin: "center center",
+                      transformBox: "fill-box",
+                    }}
+                  >
+                    <Box sx={{ border: "1px solid #000" }}>
+                      <Box sx={{ p: 0.7, borderBottom: "1px solid #000", textAlign: "center", fontWeight: 700, fontSize: "0.95rem" }}>
+                        STYLENAME : {data.inquiryStyleName || "-"}
+                      </Box>
+
+                      <Box
+                        sx={{
+                          display: "grid",
+                          gridTemplateColumns: `70px repeat(${numQtyColumns}, 45px) 100px 75px 95px 60px repeat(${numQtyColumns}, 45px) 60px`,
+                          borderBottom: "1px solid #000",
+                          backgroundColor: "#f9f9f9",
+                        }}
+                      >
+                        <Box sx={{ py: 0.7, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>SIZE</Box>
+                        {(numQtyColumns === 1 ? [null] : sizeRowsForColumns).map((_, idx) => (
+                          <Box key={`last-qty-head-a-${idx}`} sx={{ py: 0.7, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center", color: "#b04343" }}>
+                            QTY
                           </Box>
                         ))}
-                        <Box sx={{ p: 0.45, fontSize: "0.62rem", textAlign: "center", fontWeight: 700 }}>
-                          {getQty(rowTotal)}
+                        <Box sx={{ py: 0.7, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>TUBE(2) / SNG: PLY(1)</Box>
+                        <Box sx={{ py: 0.7, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>RATIO</Box>
+                        <Box sx={{ py: 0.7, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>0.5 MARKER RATIO</Box>
+                        <Box sx={{ py: 0.7, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>PLY</Box>
+                        {(numQtyColumns === 1 ? [null] : sizeRowsForColumns).map((_, idx) => (
+                          <Box key={`last-qty-head-b-${idx}`} sx={{ py: 0.7, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>
+                            QTY
+                          </Box>
+                        ))}
+                        <Box sx={{ py: 0.7, px: 0.55, fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>+/-</Box>
+                      </Box>
+
+                      {SIZE_KEYS.map(({ key, label }, idx) => (
+                        <Box
+                          key={`last-page-${key}`}
+                          sx={{
+                            display: "grid",
+                            gridTemplateColumns: `70px repeat(${numQtyColumns}, 45px) 100px 75px 95px 60px repeat(${numQtyColumns}, 45px) 60px`,
+                            minHeight: "10mm",
+                            borderBottom: idx === SIZE_KEYS.length - 1 ? "none" : "1px solid #000",
+                          }}
+                        >
+                          <Box sx={{ py: 0.6, px: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", textAlign: "center" }}>{label}</Box>
+                          {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, qIdx) => (
+                            <Box key={`last-a-${key}-${qIdx}`} sx={{ py: 0.6, px: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", textAlign: "center", color: "#b04343", fontWeight: 700 }}>
+                              {getQty(row?.[key])}
+                            </Box>
+                          ))}
+                          <Box sx={{ py: 0.6, px: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", textAlign: "center" }}>2</Box>
+                          <Box sx={{ py: 0.6, px: 0.5, borderRight: "1px solid #000" }} />
+                          <Box sx={{ py: 0.6, px: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", textAlign: "center", color: "#b04343", fontWeight: 700 }}>0</Box>
+                          <Box sx={{ py: 0.6, px: 0.5, borderRight: "1px solid #000" }} />
+                          {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, qIdx) => (
+                            <Box key={`last-b-${key}-${qIdx}`} sx={{ py: 0.6, px: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", textAlign: "center", color: "#b04343", fontWeight: 700 }}>
+                              {getQty(row?.[key])}
+                            </Box>
+                          ))}
+                          <Box sx={{ py: 0.6, px: 0.5, fontSize: "0.7rem", textAlign: "center", color: "#b04343", fontWeight: 700 }}>0</Box>
                         </Box>
+                      ))}
+
+                      <Box sx={{ display: "grid", gridTemplateColumns: `70px repeat(${numQtyColumns}, 45px) 100px 75px 95px 60px repeat(${numQtyColumns}, 45px) 60px`, borderTop: "1px solid #000" }}>
+                        <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
+                        {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, idx) => {
+                          const rowTotal =
+                            Number(row?.totalQty) > 0
+                              ? Number(row.totalQty)
+                              : SIZE_KEYS.reduce((sum, { key }) => sum + (Number(row?.[key]) || 0), 0);
+                          return (
+                            <Box key={`last-total-a-${idx}`} sx={{ p: 0.5, borderRight: "1px solid #000", textAlign: "center", color: "#b04343", fontWeight: 700, fontSize: "0.78rem" }}>
+                              {getQty(rowTotal)}
+                            </Box>
+                          );
+                        })}
+                        <Box sx={{ p: 0.5, borderRight: "1px solid #000", textAlign: "center", fontSize: "0.72rem", fontWeight: 700 }} />
+                        <Box sx={{ p: 0.5, borderRight: "1px solid #000", textAlign: "center", color: "#b04343", fontWeight: 700, fontSize: "0.78rem" }}>0</Box>
+                        <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
+                        <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
+                        {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, idx) => {
+                          const rowTotal =
+                            Number(row?.totalQty) > 0
+                              ? Number(row.totalQty)
+                              : SIZE_KEYS.reduce((sum, { key }) => sum + (Number(row?.[key]) || 0), 0);
+                          return (
+                            <Box key={`last-total-b-${idx}`} sx={{ p: 0.5, borderRight: "1px solid #000", textAlign: "center", color: "#b04343", fontWeight: 700, fontSize: "0.78rem" }}>
+                              {getQty(rowTotal)}
+                            </Box>
+                          );
+                        })}
+                        <Box sx={{ p: 0.5, textAlign: "center", color: "#b04343", fontWeight: 700, fontSize: "1rem" }}>0</Box>
                       </Box>
-                    );
-                  })}
-                </Box>
-              </Box>
-
-              <Box sx={{ border: "1px solid #000", width: "100%", mb: 2 }}>
-                <Box sx={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 0.9fr 0.9fr", borderBottom: "1px solid #000" }}>
-                  <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.8rem" }}>MARKER LENGTH</Box>
-                  <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontSize: "0.8rem" }}></Box>
-                  <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.8rem", textAlign: "center" }}>REQVD</Box>
-                  <Box sx={{ p: 0.6, fontSize: "0.8rem" }}></Box>
-                </Box>
-                <Box sx={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 0.9fr 0.9fr", borderBottom: "1px solid #000" }}>
-                  <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.8rem" }}>FABRIC</Box>
-                  <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontSize: "0.8rem" }}></Box>
-                  <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.8rem", textAlign: "center" }}>CUT</Box>
-                  <Box sx={{ p: 0.6, color: "#b04343", fontWeight: 700, fontSize: "0.8rem", textAlign: "center" }}>RE-CUT</Box>
-                </Box>
-                <Box sx={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 0.9fr 0.9fr", borderBottom: "1px solid #000" }}>
-                  <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.8rem" }}>COLOR</Box>
-                  <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontSize: "0.8rem" }}></Box>
-                  <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.8rem", textAlign: "center" }}>OFF CUT</Box>
-                  <Box sx={{ p: 0.6, color: "#b04343", fontWeight: 700, fontSize: "0.8rem", textAlign: "center" }}>OFF CUT</Box>
-                </Box>
-                <Box sx={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 0.9fr 0.9fr" }}>
-                  <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontSize: "0.8rem" }}></Box>
-                  <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontSize: "0.8rem" }}></Box>
-                  <Box sx={{ p: 0.6, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.8rem", textAlign: "center" }}>BALANCE</Box>
-                  <Box sx={{ p: 0.6, color: "#b04343", fontWeight: 700, fontSize: "0.8rem", textAlign: "center" }}>BALANCE</Box>
-                </Box>
-              </Box>
-
-            </Box>
-
-            <Box
-              sx={{
-                pageBreakBefore: "always",
-                breakBefore: "page",
-                pt: 0,
-                mt: 1.5,
-                minHeight: { sm: "297mm" },
-                pageBreakAfter: "always",
-                breakAfter: "page",
-                order: 2,
-                "@media print": { minHeight: "297mm" },
-              }}
-            >
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  minHeight: { xs: "auto", sm: "250mm" },
-                  overflow: "hidden",
-                }}
-              >
-                <Box
-                  sx={{
-                    width: { xs: "100%", sm: "252mm" },
-                    transform: { xs: "none", sm: "rotate(-90deg) scale(0.92)" },
-                    transformOrigin: "center center",
-                    transformBox: "fill-box",
-                  }}
-                >
-              <Box sx={{ border: "1px solid #000", mb: 1.2 }}>
-                <Box sx={{ p: 0.7, borderBottom: "1px solid #000", textAlign: "center", fontWeight: 700, fontSize: "0.95rem" }}>
-                  STYLENAME : {data.inquiryStyleName || "-"}
-                </Box>
-
-                <Box sx={{ display: "grid", gridTemplateColumns: `60px repeat(${numQtyColumns}, 45px) 1fr 1fr 1fr 1fr 1fr 1fr 120px`, borderBottom: "1px solid #000", backgroundColor: "#f9f9f9" }}>
-                  <Box sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>SIZE</Box>
-                  {(numQtyColumns === 1 ? [null] : sizeRowsForColumns).map((_, idx) => (
-                    <Box key={`p3-qty-head-${idx}`} sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>QTY</Box>
-                  ))}
-                  <Box sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>FRONT</Box>
-                  <Box sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>BACK</Box>
-                  <Box sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>SL/R</Box>
-                  <Box sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>SL/L</Box>
-                  <Box sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>CLR</Box>
-                  <Box sx={{ py: 0.72, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>PKT</Box>
-                  <Box sx={{ py: 0.72, px: 0.55, fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>MARKER LENGTH</Box>
-                </Box>
-
-                {SIZE_KEYS.map(({ key, label }, idx, arr) => (
-                  <Box
-                    key={`third-page-${key}`}
-                    sx={{
-                      display: "grid",
-                      gridTemplateColumns: `60px repeat(${numQtyColumns}, 45px) 1fr 1fr 1fr 1fr 1fr 1fr 120px`,
-                      minHeight: "10mm",
-                      borderBottom: idx === arr.length - 1 ? "none" : "1px solid #000",
-                    }}
-                  >
-                    <Box sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", textAlign: "center" }}>{label}</Box>
-                    {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, qIdx) => (
-                      <Box key={`p3-${key}-${qIdx}`} sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", textAlign: "center" }}>
-                        {getQty(row?.[key])}
-                      </Box>
-                    ))}
-                    <Box sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000" }} />
-                    <Box sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000" }} />
-                    <Box sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000" }} />
-                    <Box sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000" }} />
-                    <Box sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000" }} />
-                    <Box sx={{ py: 0.62, px: 0.5, borderRight: "1px solid #000" }} />
-                    <Box sx={{ py: 0.62, px: 0.5 }} />
-                  </Box>
-                ))}
-                <Box
-                  sx={{
-                    display: "grid",
-                    gridTemplateColumns: `60px repeat(${numQtyColumns}, 45px) 1fr 1fr 1fr 1fr 1fr 1fr 120px`,
-                    borderTop: "1px solid #000",
-                  }}
-                >
-                  <Box sx={{ p: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", fontWeight: 700, textAlign: "center" }}>
-                    TOTAL
-                  </Box>
-                  {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, qIdx) => {
-                    const rowTotal =
-                      Number(row?.totalQty) > 0
-                        ? Number(row.totalQty)
-                        : SIZE_KEYS.reduce((sum, { key }) => sum + (Number(row?.[key]) || 0), 0);
-                    return (
-                      <Box
-                        key={`p3-total-${qIdx}`}
-                        sx={{ p: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", fontWeight: 700, textAlign: "center" }}
-                      >
-                        {getQty(rowTotal)}
-                      </Box>
-                    );
-                  })}
-                  <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
-                  <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
-                  <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
-                  <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
-                  <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
-                  <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
-                  <Box sx={{ p: 0.5 }} />
-                </Box>
-              </Box>
-
-              <Box sx={{ border: "1px solid #000", width: "56%", ml: "auto", mb: 1.5 }}>
-                <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #000" }}>
-                  <Box sx={{ p: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem" }}>FABRIC</Box>
-                  <Box sx={{ p: 0.55, fontSize: "0.72rem" }} />
-                </Box>
-                <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #000" }}>
-                  <Box sx={{ p: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem" }}>COLOR</Box>
-                  <Box sx={{ p: 0.55, fontSize: "0.72rem" }} />
-                </Box>
-                <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #000" }}>
-                  <Box sx={{ p: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem" }}>RECIVD CUT</Box>
-                  <Box sx={{ p: 0.55, fontSize: "0.72rem", color: "#b04343", fontWeight: 700 }}>RE-CUT</Box>
-                </Box>
-                <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #000" }}>
-                  <Box sx={{ p: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem" }}>OFF CUT</Box>
-                  <Box sx={{ p: 0.55, fontSize: "0.72rem", color: "#b04343", fontWeight: 700 }}>OFF CUT</Box>
-                </Box>
-                <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-                  <Box sx={{ p: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem" }}>BALANCE</Box>
-                  <Box sx={{ p: 0.55, fontSize: "0.72rem", color: "#b04343", fontWeight: 700 }}>BALANCE</Box>
-                </Box>
-              </Box>
-            </Box>
-                </Box>
-              </Box>
-
-            <Box
-              sx={{
-                pageBreakBefore: "always",
-                breakBefore: "page",
-                pt: 0,
-                mt: 1.5,
-                minHeight: { sm: "297mm" },
-                order: 1,
-                "@media print": { minHeight: "297mm" },
-              }}
-            >
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  minHeight: { xs: "auto", sm: "250mm" },
-                  overflow: "hidden",
-                }}
-              >
-                <Box
-                  sx={{
-                    width: { xs: "100%", sm: "258mm" },
-                    transform: { xs: "none", sm: "rotate(-90deg) scale(0.93)" },
-                    transformOrigin: "center center",
-                    transformBox: "fill-box",
-                  }}
-                >
-              <Box sx={{ border: "1px solid #000", mb: 1.2 }}>
-                <Box sx={{ p: 0.7, borderBottom: "1px solid #000", textAlign: "center", fontWeight: 700, fontSize: "0.95rem" }}>
-                  STYLENAME : {data.inquiryStyleName || "-"}
-                </Box>
-
-                <Box
-                  sx={{
-                    display: "grid",
-                    gridTemplateColumns: `70px repeat(${numQtyColumns}, 45px) 100px 75px 95px 60px repeat(${numQtyColumns}, 45px) 60px`,
-                    borderBottom: "1px solid #000",
-                    backgroundColor: "#f9f9f9",
-                  }}
-                >
-                  <Box sx={{ py: 0.7, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>SIZE</Box>
-                  {(numQtyColumns === 1 ? [null] : sizeRowsForColumns).map((_, idx) => (
-                    <Box key={`last-qty-head-a-${idx}`} sx={{ py: 0.7, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center", color: "#b04343" }}>
-                      QTY
                     </Box>
-                  ))}
-                  <Box sx={{ py: 0.7, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>TUBE(2) / SNG: PLY(1)</Box>
-                  <Box sx={{ py: 0.7, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>RATIO</Box>
-                  <Box sx={{ py: 0.7, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>0.5 MARKER RATIO</Box>
-                  <Box sx={{ py: 0.7, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>PLY</Box>
-                  {(numQtyColumns === 1 ? [null] : sizeRowsForColumns).map((_, idx) => (
-                    <Box key={`last-qty-head-b-${idx}`} sx={{ py: 0.7, px: 0.55, borderRight: "1px solid #000", fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>
-                      QTY
-                    </Box>
-                  ))}
-                  <Box sx={{ py: 0.7, px: 0.55, fontWeight: 700, fontSize: "0.72rem", textAlign: "center" }}>+/-</Box>
-                </Box>
-
-                {SIZE_KEYS.map(({ key, label }, idx) => (
-                  <Box
-                    key={`last-page-${key}`}
-                    sx={{
-                      display: "grid",
-                      gridTemplateColumns: `70px repeat(${numQtyColumns}, 45px) 100px 75px 95px 60px repeat(${numQtyColumns}, 45px) 60px`,
-                      minHeight: "10mm",
-                      borderBottom: idx === SIZE_KEYS.length - 1 ? "none" : "1px solid #000",
-                    }}
-                  >
-                    <Box sx={{ py: 0.6, px: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", textAlign: "center" }}>{label}</Box>
-                    {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, qIdx) => (
-                      <Box key={`last-a-${key}-${qIdx}`} sx={{ py: 0.6, px: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", textAlign: "center", color: "#b04343", fontWeight: 700 }}>
-                        {getQty(row?.[key])}
-                      </Box>
-                    ))}
-                    <Box sx={{ py: 0.6, px: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", textAlign: "center" }}>2</Box>
-                    <Box sx={{ py: 0.6, px: 0.5, borderRight: "1px solid #000" }} />
-                    <Box sx={{ py: 0.6, px: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", textAlign: "center", color: "#b04343", fontWeight: 700 }}>0</Box>
-                    <Box sx={{ py: 0.6, px: 0.5, borderRight: "1px solid #000" }} />
-                    {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, qIdx) => (
-                      <Box key={`last-b-${key}-${qIdx}`} sx={{ py: 0.6, px: 0.5, borderRight: "1px solid #000", fontSize: "0.7rem", textAlign: "center", color: "#b04343", fontWeight: 700 }}>
-                        {getQty(row?.[key])}
-                      </Box>
-                    ))}
-                    <Box sx={{ py: 0.6, px: 0.5, fontSize: "0.7rem", textAlign: "center", color: "#b04343", fontWeight: 700 }}>0</Box>
                   </Box>
-                ))}
-
-                <Box sx={{ display: "grid", gridTemplateColumns: `70px repeat(${numQtyColumns}, 45px) 100px 75px 95px 60px repeat(${numQtyColumns}, 45px) 60px`, borderTop: "1px solid #000" }}>
-                  <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
-                  {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, idx) => {
-                    const rowTotal =
-                      Number(row?.totalQty) > 0
-                        ? Number(row.totalQty)
-                        : SIZE_KEYS.reduce((sum, { key }) => sum + (Number(row?.[key]) || 0), 0);
-                    return (
-                      <Box key={`last-total-a-${idx}`} sx={{ p: 0.5, borderRight: "1px solid #000", textAlign: "center", color: "#b04343", fontWeight: 700, fontSize: "0.78rem" }}>
-                        {getQty(rowTotal)}
-                      </Box>
-                    );
-                  })}
-                  <Box sx={{ p: 0.5, borderRight: "1px solid #000", textAlign: "center", fontSize: "0.72rem", fontWeight: 700 }} />
-                  <Box sx={{ p: 0.5, borderRight: "1px solid #000", textAlign: "center", color: "#b04343", fontWeight: 700, fontSize: "0.78rem" }}>0</Box>
-                  <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
-                  <Box sx={{ p: 0.5, borderRight: "1px solid #000" }} />
-                  {(numQtyColumns === 1 ? [sizeRowsForColumns[0]] : sizeRowsForColumns).map((row, idx) => {
-                    const rowTotal =
-                      Number(row?.totalQty) > 0
-                        ? Number(row.totalQty)
-                        : SIZE_KEYS.reduce((sum, { key }) => sum + (Number(row?.[key]) || 0), 0);
-                    return (
-                      <Box key={`last-total-b-${idx}`} sx={{ p: 0.5, borderRight: "1px solid #000", textAlign: "center", color: "#b04343", fontWeight: 700, fontSize: "0.78rem" }}>
-                        {getQty(rowTotal)}
-                      </Box>
-                    );
-                  })}
-                  <Box sx={{ p: 0.5, textAlign: "center", color: "#b04343", fontWeight: 700, fontSize: "1rem" }}>0</Box>
                 </Box>
               </Box>
-                </Box>
-              </Box>
-            </Box>
             </Box>
           </Box>
         ) : (

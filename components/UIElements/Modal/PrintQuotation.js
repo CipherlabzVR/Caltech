@@ -6,6 +6,7 @@ import ReportGmailerrorredIcon from '@mui/icons-material/ReportGmailerrorred';
 import {
   FormControl,
   FormControlLabel,
+  FormHelperText,
   Grid,
   InputAdornment,
   OutlinedInput,
@@ -16,6 +17,10 @@ import {
 } from "@mui/material";
 import ViewQuotation from "./ViewQuotation";
 import BASE_URL from "Base/api";
+import {
+  isValidDecimalInput,
+  validateAdvancePaymentPercentage,
+} from "@/components/utils/summaryInquiryHelpers";
 
 const style = {
   position: "absolute",
@@ -62,7 +67,8 @@ export default function PrintQuotation({ quotationDet, fetchItems }) {
   const [termDays, setTermDays] = useState("");
   const [handoverDate, setHandoverDate] = useState();
   const [selectedStartDate, setSelectedStartDate] = useState(currentDate);
-  const [percentage, setPercentage] = useState();
+  const [percentage, setPercentage] = useState("");
+  const [percentageError, setPercentageError] = useState("");
 
   const handleClose = () => {
     setOpen(false);
@@ -71,7 +77,8 @@ export default function PrintQuotation({ quotationDet, fetchItems }) {
     setTermDays("")
     setHandoverDate();
     setSelectedStartDate(currentDate);
-    setPercentage();
+    setPercentage("");
+    setPercentageError("");
     setSelectedOption("");
     fetchItems();
   };
@@ -95,7 +102,23 @@ export default function PrintQuotation({ quotationDet, fetchItems }) {
   };
 
   const handlePercentageSelect = (value) => {
+    if (!isValidDecimalInput(value)) return;
+
     setPercentage(value);
+    if (value === "" || value === ".") {
+      setPercentageError("");
+      return;
+    }
+
+    const validation = validateAdvancePaymentPercentage(value);
+    setPercentageError(validation.valid ? "" : validation.message);
+  };
+
+  const hasValidPercentage = () => {
+    if (percentage === "" || percentage === null || percentage === undefined) {
+      return false;
+    }
+    return validateAdvancePaymentPercentage(percentage).valid;
   };
   const handleValidSelect = (value) => {
     if (value <= 40) {
@@ -152,7 +175,7 @@ export default function PrintQuotation({ quotationDet, fetchItems }) {
     if (
       selectedDate &&
       selectedStartDate &&
-      percentage &&
+      hasValidPercentage() &&
       validDate &&
       handoverDate &&
       selectedOption
@@ -249,15 +272,19 @@ export default function PrintQuotation({ quotationDet, fetchItems }) {
                   >
                     Advance Payment
                   </Typography>
-                  <FormControl fullWidth>
+                  <FormControl fullWidth error={Boolean(percentageError)}>
                     <OutlinedInput
                       value={percentage}
                       id="outlined-adornment-amount"
+                      inputMode="decimal"
                       onChange={(e) => handlePercentageSelect(e.target.value)}
                       endAdornment={
                         <InputAdornment position="start">%</InputAdornment>
                       }
                     />
+                    {percentageError ? (
+                      <FormHelperText>{percentageError}</FormHelperText>
+                    ) : null}
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} lg={4} mt={1} p={1}>
@@ -327,7 +354,7 @@ export default function PrintQuotation({ quotationDet, fetchItems }) {
                     </FormControl>
                   </Grid>
                 )}
-                {percentage && (
+                {hasValidPercentage() && (
                   <Grid item xs={12} mt={1} p={1}>
                     <Typography
                       as="h5"
@@ -390,7 +417,7 @@ export default function PrintQuotation({ quotationDet, fetchItems }) {
             </Box>
             <Grid item xs={12} mt={2}>
               <ViewQuotation
-                percentage={percentage}
+                percentage={validateAdvancePaymentPercentage(percentage).value}
                 startDate={formatDate(selectedStartDate)}
                 quotDetails={quotationDet}
                 selectedDate={formatDate(selectedDate)}

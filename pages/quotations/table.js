@@ -12,6 +12,12 @@ import {
 } from "@mui/material";
 import BASE_URL from "Base/api";
 import { formatCurrency } from "@/components/utils/formatHelper";
+import {
+  isValidDecimalInput,
+  isValidSignedDecimalInput,
+  parseDecimalInput,
+  toDecimalInputValue,
+} from "@/components/utils/summaryInquiryHelpers";
 
 const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSummaryChange }, ref) {
   const [items, setItems] = useState([]);
@@ -21,6 +27,8 @@ const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSu
   const [patternUCost, setPatternUCost] = useState(0);
   const [commissionItem, setCommissionItem] = useState({});
   const [commissionTotalCost, setCommissionTotalCost] = useState(0);
+  const [commissionInput, setCommissionInput] = useState("0");
+  const [patternInput, setPatternInput] = useState("0");
 
   const [totalCost, setTotalCost] = useState(0);
   const [noOfUnits, setNoOfUnits] = useState(0);
@@ -55,7 +63,7 @@ const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSu
       ];
       computeTotalCost(allItems);
     }
-  }, [items, patternTotalCost, commissionTotalCost]);
+  }, [items, patternTotalCost, commissionTotalCost, rawProfit]);
 
   // ✅ **Updated fetchItems with fallback logic**
   const fetchItems = async (inquiryId, optionId, windowType) => {
@@ -80,7 +88,10 @@ const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSu
         if (!item.approvedQuantity) {
             item.approvedQuantity = item.quantity;
         }
-        return item;
+        return {
+          ...item,
+          approvedUnitCostInput: toDecimalInputValue(item.approvedUnitCost ?? item.unitCost ?? 0),
+        };
       });
 
       const commission = allItems.find(
@@ -89,6 +100,7 @@ const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSu
       if (commission) {
         setCommissionItem(commission);
         setCommissionTotalCost(commission.approvedTotalCost || 0);
+        setCommissionInput(toDecimalInputValue(commission.approvedTotalCost || 0));
       }
 
       const regularItems = allItems.filter(
@@ -135,6 +147,7 @@ const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSu
 
       setPatternQuantity(qty);
       setPatternTotalCost(totalCost);
+      setPatternInput(toDecimalInputValue(totalCost));
       setPatternUCost(unitCost);
       setPatternItem({
         ...pattern,
@@ -161,7 +174,7 @@ const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSu
       const data = await response.json();
       if (!data.result) return;
       setTotalCost(data.result.apprvedTotalCost || 0);
-      setRawProfit(data.result.apprvedUnitProfit || 0);
+      setRawProfit(toDecimalInputValue(data.result.apprvedUnitProfit || 0));
       setFinalUnitCost(data.result.apprvedUnitCost || 0);
       setRevenue(data.result.apprvedRevanue || 0);
       setTotalProfit(data.result.apprvedTotalProfit || 0);
@@ -178,39 +191,50 @@ const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSu
   };
 
   const handleItemUnitCostChange = (index, value) => {
+    if (!isValidDecimalInput(value)) return;
+
     updateIsSaved(false);
+    const parsed = parseDecimalInput(value);
     const newItems = [...items];
-    const cost = parseFloat(value) || 0;
-    const tcost = parseFloat(cost) * newItems[index].quantity || 0;
-    newItems[index].approvedUnitCost = cost;
-    newItems[index].approvedTotalCost = tcost;
+    const qty = newItems[index].approvedQuantity ?? newItems[index].quantity ?? 0;
+    newItems[index].approvedUnitCostInput = value;
+    newItems[index].approvedUnitCost = parsed.value;
+    newItems[index].approvedTotalCost = parsed.value * qty;
     setItems(newItems);
   };
 
   const handlePatternTotalCostChange = (value) => {
+    if (!isValidDecimalInput(value)) return;
+
     updateIsSaved(false);
-    const cost = parseFloat(value) || 0;
-    const unitCost = patternQuantity > 0 ? cost / patternQuantity : 0;
-    setPatternTotalCost(cost);
+    const parsed = parseDecimalInput(value);
+    const unitCost = patternQuantity > 0 ? parsed.value / patternQuantity : 0;
+    setPatternInput(value);
+    setPatternTotalCost(parsed.value);
     setPatternUCost(unitCost);
     setPatternItem({
       ...patternItem,
       approvedUnitCost: unitCost,
-      approvedTotalCost: cost,
+      approvedTotalCost: parsed.value,
       approvedQuantity: patternQuantity,
       quantity: patternItem.quantity ?? patternQuantity,
     });
   };
 
   const handleCommissionTotalCostChange = (value) => {
+    if (!isValidDecimalInput(value)) return;
+
     updateIsSaved(false);
-    setCommissionTotalCost(parseFloat(value) || 0);
+    const parsed = parseDecimalInput(value);
+    setCommissionInput(value);
+    setCommissionTotalCost(parsed.value);
   };
 
   const handleProfitChange = (value) => {
+    if (!isValidSignedDecimalInput(value)) return;
+
     updateIsSaved(false);
-    const profitValue = parseFloat(value) || 0;
-    setRawProfit(profitValue);
+    setRawProfit(value);
   };
 
   const toLineRequest = (item, approvedUnitCost, approvedTotalCost, approvedQuantity) => {
@@ -323,8 +347,9 @@ const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSu
       0
     );
     const itemUnitCost = noOfUnits > 0 ? itemsTotalCost / noOfUnits : 0;
-    const totalProfit = parseFloat(rawProfit || 0) * noOfUnits;
-    const sellPrice = parseFloat(rawProfit || 0) + parseFloat(itemUnitCost || 0);
+    const profitValue = parseDecimalInput(rawProfit).value;
+    const totalProfit = profitValue * noOfUnits;
+    const sellPrice = profitValue + parseFloat(itemUnitCost || 0);
     const revenue = parseFloat(itemsTotalCost) + parseFloat(totalProfit);
     const profitPercentage =
       itemUnitCost > 0
@@ -340,7 +365,7 @@ const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSu
     setSellingPrice(sellPrice);
     setProfitPercentage(profitPercentage);
     handleSetData(
-      rawProfit,
+      profitValue,
       profitPercentage,
       sellPrice,
       totalProfit,
@@ -369,8 +394,9 @@ const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSu
                 <TableCell>{item.itemName}</TableCell>
                 <TableCell>
                   <input
-                    value={item.approvedUnitCost}
-                    style={{ width: "60px", border: "1px solid #e5e5e5" }}
+                    value={item.approvedUnitCostInput ?? toDecimalInputValue(item.approvedUnitCost ?? 0)}
+                    inputMode="decimal"
+                    style={{ width: "60px", border: "1px solid #e5e5e5", textAlign: "right" }}
                     onChange={(e) =>
                       handleItemUnitCostChange(index, e.target.value)
                     }
@@ -388,8 +414,9 @@ const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSu
               <TableCell>{patternQuantity}</TableCell>
               <TableCell align="right">
                 <input
-                  value={patternTotalCost}
-                  style={{ width: "60px", border: "1px solid #e5e5e5" }}
+                  value={patternInput}
+                  inputMode="decimal"
+                  style={{ width: "60px", border: "1px solid #e5e5e5", textAlign: "right" }}
                   onChange={(e) =>
                     handlePatternTotalCostChange(e.target.value)
                   }
@@ -402,8 +429,9 @@ const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSu
               <TableCell></TableCell>
               <TableCell align="right">
                 <input
-                  value={commissionTotalCost}
-                  style={{ width: "60px", border: "1px solid #e5e5e5" }}
+                  value={commissionInput}
+                  inputMode="decimal"
+                  style={{ width: "60px", border: "1px solid #e5e5e5", textAlign: "right" }}
                   onChange={(e) =>
                     handleCommissionTotalCostChange(e.target.value)
                   }
@@ -436,7 +464,8 @@ const TableData = forwardRef(function TableData({ onIsSavedChange, inquiry, onSu
               <TableCell align="right">
                 <input
                   value={rawProfit}
-                  style={{ width: "60px", border: "1px solid #e5e5e5" }}
+                  inputMode="decimal"
+                  style={{ width: "60px", border: "1px solid #e5e5e5", textAlign: "right" }}
                   onChange={(e) => handleProfitChange(e.target.value)}
                 />
               </TableCell>

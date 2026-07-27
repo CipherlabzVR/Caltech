@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
-import { ProjectNo } from "Base/catelogue";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
@@ -11,6 +10,7 @@ import "react-toastify/dist/ReactToastify.css";
 import { formatDate } from "@/components/utils/formatHelper";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import useLoggedUserCompanyLetterhead from "@/hooks/useLoggedUserCompanyLetterhead";
+import PrintPoweredByFooter from "@/components/UIElements/Print/PrintPoweredByFooter";
 
 export default function CustomerInvoice() {
   const router = useRouter();
@@ -168,49 +168,28 @@ export default function CustomerInvoice() {
         <Box
           sx={{
             display: "flex",
-            justifyContent: "space-between",
+            justifyContent: "flex-end",
             alignItems: "center",
             width: "100%",
             marginBottom: 1,
             paddingBottom: 1,
             borderBottom: "2px solid #e0e0e0",
-            flexDirection: { xs: "column", sm: "row" },
-            gap: { xs: 2, sm: 0 },
           }}
         >
-          <Box sx={{ width: { xs: "100%", sm: "auto" }, textAlign: { xs: "center", sm: "left" } }}>
-            <img
-              src={ProjectNo === 1 ? "/images/cbass-2.png" : "/images/DBlogo.png"}
-              alt="Logo"
-              style={{ maxWidth: "180px", height: "auto", width: "100%" }}
-            />
-          </Box>
-          <Box
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: { xs: "center", sm: "flex-end" },
-              gap: 1,
-              "@media print": {
-                display: "none",
-              },
-            }}
+          <Button
+            variant="outlined"
+            startIcon={<PictureAsPdfIcon />}
+            onClick={handleDownloadPDF}
+            sx={{ textTransform: "none", fontSize: { xs: "0.75rem", sm: "0.875rem" } }}
           >
-            <Button
-              variant="outlined"
-              startIcon={<PictureAsPdfIcon />}
-              onClick={handleDownloadPDF}
-              sx={{ textTransform: "none", fontSize: { xs: "0.75rem", sm: "0.875rem" } }}
-            >
-              Download PDF
-            </Button>
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
-              Date
-            </Typography>
-            <Typography variant="body1" sx={{ fontWeight: 600, fontSize: { xs: "0.875rem", sm: "1rem" } }}>
-              {currentDate}
-            </Typography>
-          </Box>
+            Download PDF
+          </Button>
+          <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5 }}>
+            Date
+          </Typography>
+          <Typography variant="body1" sx={{ fontWeight: 600, fontSize: { xs: "0.875rem", sm: "1rem" } }}>
+            {currentDate}
+          </Typography>
         </Box>
 
         <Box
@@ -223,13 +202,15 @@ export default function CustomerInvoice() {
             marginBottom: { xs: 2, sm: 4 },
             position: "relative",
             backgroundColor: "white",
-            backgroundImage: letterheadImage 
+            backgroundImage: letterheadImage
               ? { xs: "none", sm: `url('${letterheadImage}')` }
-              : { xs: "none", sm: "url('/images/quotation/cbassletter.jpg')" },
-            backgroundSize: "cover",
+              : "none",
+            backgroundSize: letterheadImage ? "cover" : undefined,
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
-            paddingTop: { xs: "10mm", sm: "60mm", md: "70mm" },
+            paddingTop: letterheadImage
+              ? { xs: "10mm", sm: "60mm", md: "70mm" }
+              : { xs: "10mm", sm: "15mm", md: "20mm" },
             paddingX: { xs: "5mm", sm: "25mm", md: "30mm" },
             paddingBottom: { xs: "10mm", sm: "25mm", md: "30mm" },
             boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
@@ -398,6 +379,7 @@ export default function CustomerInvoice() {
                   )}
                 </Box>
               </Box>
+              <PrintPoweredByFooter />
             </Box>
           ) : (
             <Box

@@ -64,7 +64,6 @@ const REPORT_MODULE_MAP = {
   SalesSummaryReport: "Sales",
   DoctorWiseSalesSummaryReport: "Sales",
   OutstandingReport: "Sales",
-  ShipmentSummaryReport: "Sales",
   CustomerPaymentSummaryReport: "Sales",
 
   // Inventory (includes purchasing-related summaries)
@@ -72,6 +71,7 @@ const REPORT_MODULE_MAP = {
   PurchaseOrderNotesSummaryReport: "Inventory",
   StockBalance: "Inventory",
   StockMovementReport: "Inventory",
+  ShipmentSummaryReport: "Inventory",
 
   // Finance
   CashBookSummaryReport: "Finance",

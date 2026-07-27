@@ -18,9 +18,20 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import AddCategory from "../category/AddCategory";
+import ItemTypeSelector from "@/components/Items/ItemTypeSelector";
 import AddSubCategory from "@/components/UIElements/Modal/AddSubCategory";
 import AddSupplier from "../supplier/AddSupplier";
 import AddUOM from "../uom/create";
+import { isItemCodeAvailable } from "@/components/utils/validateItemCode";
+import {
+  parseItemWebDetailDescription,
+  mergeItemWebDetailDescription,
+} from "@/components/utils/itemWebDetailDescription";
+import StockCountScheduleFields, {
+  STOCK_COUNT_FREQUENCY,
+  getDefaultStockCountSchedule,
+  validateStockCountSchedule,
+} from "@/components/UIElements/StockCountScheduleFields";
 
 const style = {
   position: "absolute",
@@ -33,33 +44,83 @@ const style = {
   p: 2,
 };
 
-const validationSchema = Yup.object().shape({
-  Name: Yup.string()
-    .required("Item Name is required")
-    .max(120, "Item Name must be at most 120 characters"),
-  Code: Yup.string().required("Item Code is required"),
-  CategoryId: Yup.number().required("Category is required"),
-  SubCategoryId: Yup.number().required("Sub Category is required"),
-  Supplier: Yup.number().required("Supplier is required"),
-  UOM: Yup.number().required("Unit of Measure is required"),
-  ReorderLevel: Yup.mixed()
-    .nullable()
-    .test(
-      "reorder-non-negative",
-      "Reorder Level cannot be negative",
-      (val) => {
-        if (val === null || val === undefined || val === "") return true;
-        const n = Number(val);
-        if (Number.isNaN(n)) return false;
-        return n >= 0;
-      }
-    ),
-});
+function transformEmptyToUndefinedNumber(orig) {
+  if (orig === "" || orig === null || orig === undefined) return undefined;
+  const n = Number(orig);
+  return Number.isNaN(n) ? orig : n;
+}
+
+function getItemsApiErrorMessage(response, data) {
+  if (data?.errors) {
+    return Object.entries(data.errors)
+      .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(", ") : msgs}`)
+      .join("; ");
+  }
+  return (
+    data?.message ??
+    data?.Message ??
+    data?.title ??
+    `Server error (${response?.status ?? "unknown"})`
+  );
+}
+
+function buildItemsValidationSchema(isSubCategoryNotRequired, isUOMNotRequired) {
+  const subCatField = isSubCategoryNotRequired
+    ? Yup.mixed().nullable().transform((_, orig) =>
+        orig === "" || orig === null || orig === undefined ? null : Number(orig))
+    : Yup.number()
+        .transform((_, orig) => transformEmptyToUndefinedNumber(orig))
+        .required("Sub Category is required");
+  const uomField = isUOMNotRequired
+    ? Yup.mixed().nullable().transform((_, orig) =>
+        orig === "" || orig === null || orig === undefined ? null : Number(orig))
+    : Yup.number()
+        .transform((_, orig) => transformEmptyToUndefinedNumber(orig))
+        .required("Unit of Measure is required");
+
+  return Yup.object().shape({
+    Name: Yup.string()
+      .required("Item Name is required")
+      .max(120, "Item Name must be at most 120 characters"),
+    Code: Yup.string()
+      .required("Item Code is required")
+      .test(
+        "unique-item-code",
+        "This item code is already assigned to another item",
+        async function (value) {
+          if (!value || !String(value).trim()) {
+            return true;
+          }
+          const result = await isItemCodeAvailable(value);
+          return result.available;
+        }
+      ),
+    CategoryId: Yup.number().required("Category is required"),
+    SubCategoryId: subCatField,
+    Supplier: Yup.number().required("Supplier is required"),
+    UOM: uomField,
+    Description: Yup.string().nullable(),
+    ReorderLevel: Yup.mixed()
+      .nullable()
+      .test(
+        "reorder-non-negative",
+        "Reorder Level cannot be negative",
+        (val) => {
+          if (val === null || val === undefined || val === "") return true;
+          const n = Number(val);
+          if (Number.isNaN(n)) return false;
+          return n >= 0;
+        }
+      ),
+  });
+}
 
 /** Maps GetItemById entity to Add Item Formik shape (excludes Id, InternalId, audit fields). */
 function mapApiItemToDuplicateFormValues(src) {
   if (!src) return null;
   const pick = (camel, pascal) => src[camel] ?? src[pascal];
+  const rawDesc = pick("description", "Description") || "";
+  const parsed = parseItemWebDetailDescription(rawDesc);
   return {
     Name: pick("name", "Name") || "",
     Code: pick("code", "Code") || "",
@@ -87,13 +148,18 @@ function mapApiItemToDuplicateFormValues(src) {
     IsNonInventoryItem: pick("isNonInventoryItem", "IsNonInventoryItem") ?? false,
     HasSerialNumbers: pick("hasSerialNumbers", "HasSerialNumbers") ?? false,
     IsWebView: pick("isWebView", "IsWebView") ?? false,
+    IsUpcoming: pick("isUpcoming", "IsUpcoming") ?? false,
     IsOutOfStock: pick("isOutOfStock", "IsOutOfStock") ?? false,
     IsItemEndInvolve: pick("isItemEndInvolve", "IsItemEndInvolve") ?? false,
-    Description: pick("description", "Description") || "",
+    StockMethod: pick("stockMethod", "StockMethod") ?? 1,
+    Description: parsed.plain,
+    ItemWebFeatures: parsed.features,
+    ItemWebSpecifications: parsed.specifications,
+    ItemWebWarranty: parsed.warranty,
   };
 }
 
-function getAddItemEmptyFormValues(code) {
+function getAddItemEmptyFormValues(code, upcomingMode = false) {
   return {
     Name: "",
     Code: code ?? "",
@@ -111,13 +177,21 @@ function getAddItemEmptyFormValues(code) {
     CostAccount: null,
     AssetsAccount: null,
     IncomeAccount: null,
-    IsActive: true,
+    IsActive: upcomingMode ? false : true,
     IsNonInventoryItem: false,
     HasSerialNumbers: false,
-    IsWebView: false,
+    IsWebView: upcomingMode ? true : false,
+    IsUpcoming: upcomingMode ? true : false,
     IsOutOfStock: false,
     IsItemEndInvolve: false,
+    StockMethod: 1,
     Description: "",
+    ItemWebFeatures: "",
+    ItemWebSpecifications: "",
+    ItemWebWarranty: "",
+    ItemTypeId: "",
+    IsAllVariantsSamePrice: false,
+    FeatureSelections: [],
   };
 }
 
@@ -126,6 +200,7 @@ const DUPLICATE_FORM_BOOLEAN_KEYS = new Set([
   "IsNonInventoryItem",
   "HasSerialNumbers",
   "IsWebView",
+  "IsUpcoming",
   "IsOutOfStock",
   "IsItemEndInvolve",
 ]);
@@ -144,6 +219,7 @@ const DUPLICATE_FORM_NUMERIC_KEYS = new Set([
   "CostAccount",
   "AssetsAccount",
   "IncomeAccount",
+  "StockMethod",
 ]);
 
 function normalizeItemFormValuesForDuplicateCompare(values) {
@@ -155,7 +231,7 @@ function normalizeItemFormValuesForDuplicateCompare(values) {
       v = null;
     } else if (DUPLICATE_FORM_BOOLEAN_KEYS.has(key)) {
       v = Boolean(v);
-    } else if (typeof v === "string" && ["Name", "Code", "Description", "Barcode"].includes(key)) {
+    } else if (typeof v === "string" && ["Name", "Code", "Description", "Barcode", "ItemWebFeatures", "ItemWebSpecifications", "ItemWebWarranty"].includes(key)) {
       v = v.trim();
       if (v === "") v = null;
     } else if (DUPLICATE_FORM_NUMERIC_KEYS.has(key) && v !== null) {
@@ -193,8 +269,29 @@ function areDuplicateItemFormValuesUnchanged(current, snapshot) {
   return sortedStringifyForDuplicateCompare(pick(a)) === sortedStringifyForDuplicateCompare(pick(b));
 }
 
+async function fetchNextItemCode() {
+  const response = await fetch(
+    `${BASE_URL}/DocumentSequence/GetNextDocumentNumber?documentType=13`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("token")}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch next item code");
+  }
+
+  const result = await response.json();
+  return result.result;
+}
+
 export default function AddItems({
   fetchItems,
+  onMasterLookupRefresh,
   isPOSSystem,
   uoms,
   isGarmentSystem,
@@ -203,16 +300,30 @@ export default function AddItems({
   IsEcommerceWebSiteAvailable,
   subCategories = [],
   duplicateRequestSeq = 0,
+  isSubCategoryNotRequired = false,
+  isUOMNotRequired = false,
+  showItemWebDetailFields = false,
+  /** When true (ecom Upcoming Products), presets IsUpcoming + Show in web. */
+  upcomingMode = false,
 }) {
+  const validationSchema = useMemo(
+    () => buildItemsValidationSchema(!!isSubCategoryNotRequired, !!isUOMNotRequired),
+    [isSubCategoryNotRequired, isUOMNotRequired]
+  );
   const router = useRouter();
   const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
+  const { data: enableItemTypeFilter } = IsAppSettingEnabled("EnableItemTypeFilter");
   const [itemCode, setItemCode] = useState(null);
   const [duplicateSourceId, setDuplicateSourceId] = useState(null);
   const [duplicatePrefill, setDuplicatePrefill] = useState(null);
   const [initialDuplicateSnapshot, setInitialDuplicateSnapshot] = useState(null);
   const [open, setOpen] = React.useState(false);
   const handleClose = () => {
+    clearDuplicateContext();
     setOpen(false);
+    setTabValue(0);
+    setSelectedImage(null);
+    setSelectedFile(null);
     setSubImages((prev) => {
       prev.forEach((item) => {
         if (item.preview) URL.revokeObjectURL(item.preview);
@@ -236,6 +347,9 @@ export default function AddItems({
   const [createSupplierOpen, setCreateSupplierOpen] = useState(false);
   const [createUOMOpen, setCreateUOMOpen] = useState(false);
   const [uomList, setUomList] = useState(uoms || []);
+  const [stockCountSchedule, setStockCountSchedule] = useState(
+    getDefaultStockCountSchedule()
+  );
 
   const clearDuplicateContext = () => {
     localStorage.removeItem("duplicateItemId");
@@ -277,24 +391,14 @@ export default function AddItems({
     clearDuplicateContext();
     setSelectedCat(undefined);
     setSubCategoryList([]);
+    setStockCountSchedule(getDefaultStockCountSchedule());
+    setTabValue(0);
+    setSelectedImage(null);
+    setSelectedFile(null);
+    setSubImages([]);
     try {
-      const response = await fetch(
-        `${BASE_URL}/DocumentSequence/GetNextDocumentNumber?documentType=13`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch");
-      }
-
-      const result = await response.json();
-      setItemCode(result.result);
+      const nextCode = await fetchNextItemCode();
+      setItemCode(nextCode);
     } catch (err) {
       //
     }
@@ -393,6 +497,10 @@ export default function AddItems({
         const formValues = mapApiItemToDuplicateFormValues(src);
         if (!formValues) return;
 
+        const newCode = await fetchNextItemCode();
+        formValues.Code = newCode;
+        formValues.Barcode = null;
+
         const categoryId = src.categoryId ?? src.CategoryId;
         if (categoryId) {
           setSelectedCat(categoryId);
@@ -405,15 +513,48 @@ export default function AddItems({
           }
         }
 
+        try {
+          const scheduleRes = await fetch(
+            `${BASE_URL}/Items/GetStockCountScheduleByItemId?itemId=${duplicateSourceId}`,
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+          if (scheduleRes.ok) {
+            const scheduleData = await scheduleRes.json();
+            const s = scheduleData.result;
+            setStockCountSchedule({
+              frequency: s?.frequency ?? STOCK_COUNT_FREQUENCY.DAILY,
+              dayOfMonth: s?.dayOfMonth ?? "",
+              month: s?.scheduleMonth ?? "",
+              day: s?.scheduleDay ?? "",
+            });
+          } else {
+            setStockCountSchedule(getDefaultStockCountSchedule());
+          }
+        } catch {
+          setStockCountSchedule(getDefaultStockCountSchedule());
+        }
+
         setDuplicatePrefill(formValues);
         setInitialDuplicateSnapshot(
           typeof structuredClone === "function"
             ? structuredClone(formValues)
             : JSON.parse(JSON.stringify(formValues))
         );
-        setItemCode(formValues.Code ?? "");
+        setItemCode(newCode);
+        setTabValue(0);
+        setSelectedImage(null);
+        setSelectedFile(null);
+        setSubImages([]);
       } catch (error) {
         console.error("Error loading duplicate item:", error);
+        clearDuplicateContext();
+        toast.error("Could not load item for duplication. Please try again.");
       }
     };
 
@@ -473,8 +614,8 @@ export default function AddItems({
   }, [uoms]);
 
   const formInitialValues = useMemo(
-    () => duplicatePrefill ?? getAddItemEmptyFormValues(itemCode),
-    [duplicatePrefill, itemCode]
+    () => duplicatePrefill ?? getAddItemEmptyFormValues(itemCode, upcomingMode),
+    [duplicatePrefill, itemCode, upcomingMode]
   );
 
   const fetchUOMList = async () => {
@@ -591,13 +732,18 @@ export default function AddItems({
     }
   };
 
-  const handleSubmit = (values) => {
+  const handleSubmit = async (values) => {
     if (values.IsWebView && !selectedFile) {
       toast.warning("Please upload an item image before enabling Show in web.");
       return;
     }
     if (values.IsWebView && values.AveragePrice === null) {
       toast.warning("Please enter the average price for web view.");
+      return;
+    }
+    const codeCheck = await isItemCodeAvailable(values.Code);
+    if (!codeCheck.available) {
+      toast.error("This item code is already assigned to another item.");
       return;
     }
     const wp =
@@ -620,6 +766,13 @@ export default function AddItems({
         return;
       }
     }
+    if (values.IsItemEndInvolve) {
+      const scheduleError = validateStockCountSchedule(stockCountSchedule);
+      if (scheduleError) {
+        toast.warning(scheduleError);
+        return;
+      }
+    }
     if (
       initialDuplicateSnapshot &&
       areDuplicateItemFormValuesUnchanged(values, initialDuplicateSnapshot)
@@ -632,45 +785,74 @@ export default function AddItems({
     formData.append("Name", values.Name);
     formData.append("Code", values.Code);
     formData.append("AveragePrice", values.AveragePrice);
-    formData.append(
-      "WholesalePrice",
-      values.WholesalePrice !== null && values.WholesalePrice !== "" ? values.WholesalePrice : "",
-    );
-    formData.append(
-      "WholesaleMinimumQuantity",
-      values.WholesaleMinimumQuantity !== null && values.WholesaleMinimumQuantity !== ""
-        ? values.WholesaleMinimumQuantity
-        : "",
-    );
-    formData.append("ShipmentTarget", values.ShipmentTarget ? values.ShipmentTarget : "");
+    if (values.WholesalePrice !== null && values.WholesalePrice !== "") {
+      formData.append("WholesalePrice", values.WholesalePrice);
+    }
+    if (
+      values.WholesaleMinimumQuantity !== null &&
+      values.WholesaleMinimumQuantity !== ""
+    ) {
+      formData.append("WholesaleMinimumQuantity", values.WholesaleMinimumQuantity);
+    }
+    if (values.ShipmentTarget !== null && values.ShipmentTarget !== "") {
+      formData.append("ShipmentTarget", values.ShipmentTarget);
+    }
     {
       const rl = values.ReorderLevel;
       const rlNum =
         rl != null && rl !== "" ? Math.max(0, Number(rl)) : null;
-      formData.append(
-        "ReorderLevel",
-        rlNum != null && !Number.isNaN(rlNum) ? String(rlNum) : ""
-      );
+      if (rlNum != null && !Number.isNaN(rlNum)) {
+        formData.append("ReorderLevel", String(rlNum));
+      }
     }
     formData.append("CategoryId", values.CategoryId);
-    formData.append("SubCategoryId", values.SubCategoryId);
+    if (values.SubCategoryId !== "" && values.SubCategoryId != null) {
+      formData.append("SubCategoryId", values.SubCategoryId);
+    }
     formData.append("Supplier", values.Supplier);
-    formData.append("UOM", values.UOM);
+    if (values.UOM !== "" && values.UOM != null) {
+      formData.append("UOM", values.UOM);
+    }
     if (values.CurrencyId) {
       formData.append("CurrencyId", values.CurrencyId);
     }
     if (values.Barcode !== undefined && values.Barcode !== null && values.Barcode !== "") {
       formData.append("Barcode", values.Barcode);
     }
-    formData.append("CostAccount", values.CostAccount ? values.CostAccount : "");
-    formData.append("AssetsAccount", values.AssetsAccount ? values.AssetsAccount : "");
-    formData.append("IncomeAccount", values.IncomeAccount ? values.IncomeAccount : "");
+    if (values.CostAccount) {
+      formData.append("CostAccount", values.CostAccount);
+    }
+    if (values.AssetsAccount) {
+      formData.append("AssetsAccount", values.AssetsAccount);
+    }
+    if (values.IncomeAccount) {
+      formData.append("IncomeAccount", values.IncomeAccount);
+    }
     formData.append("IsActive", values.IsActive);
     formData.append("IsNonInventoryItem", values.IsNonInventoryItem);
     formData.append("HasSerialNumbers", values.HasSerialNumbers);
-    formData.append("IsWebView", values.IsWebView);
+    formData.append("IsWebView", values.IsWebView || values.IsUpcoming);
+    formData.append("IsUpcoming", values.IsUpcoming);
     formData.append("IsOutOfStock", values.IsOutOfStock);
     formData.append("IsItemEndInvolve", values.IsItemEndInvolve);
+    formData.append("StockMethod", values.StockMethod ?? 1);
+    if (values.IsItemEndInvolve && stockCountSchedule.frequency) {
+      formData.append("StockCountFrequency", stockCountSchedule.frequency);
+      if (
+        stockCountSchedule.frequency === STOCK_COUNT_FREQUENCY.MONTHLY &&
+        stockCountSchedule.dayOfMonth
+      ) {
+        formData.append("StockCountDayOfMonth", stockCountSchedule.dayOfMonth);
+      }
+      if (stockCountSchedule.frequency === STOCK_COUNT_FREQUENCY.YEARLY) {
+        if (stockCountSchedule.month) {
+          formData.append("StockCountMonth", stockCountSchedule.month);
+        }
+        if (stockCountSchedule.day) {
+          formData.append("StockCountDay", stockCountSchedule.day);
+        }
+      }
+    }
     formData.append("ProductImage", selectedFile ? selectedFile : null);
     (subImages || []).forEach((item) => {
       if (item.file) formData.append("SubImages", item.file);
@@ -686,37 +868,55 @@ export default function AddItems({
         };
       });
     formData.append("SubImagesMeta", JSON.stringify(subImagesMeta));
-    if (values.Description && values.Description.trim() !== "") {
-      formData.append("Description", values.Description);
+    const mergedDescription = mergeItemWebDetailDescription(values.Description || "", {
+      features: values.ItemWebFeatures,
+      specifications: values.ItemWebSpecifications,
+      warranty: values.ItemWebWarranty,
+    });
+    formData.append("Description", mergedDescription);
+    if (values.ItemTypeId !== "" && values.ItemTypeId != null) {
+      formData.append("ItemTypeId", values.ItemTypeId);
     }
+    formData.append("IsAllVariantsSamePrice", !!values.IsAllVariantsSamePrice);
+    formData.append(
+      "FeatureSelections",
+      JSON.stringify(values.FeatureSelections || [])
+    );
 
-    fetch(`${BASE_URL}/Items/CreateItems`, {
-      method: "POST",
-      body: formData,
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-    })
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.statusCode == 200) {
-          toast.success(data.message);
-          clearDuplicateContext();
-          setOpen(false);
-          setSubImages((prev) => {
-            prev.forEach((item) => {
-              if (item.preview) URL.revokeObjectURL(item.preview);
-            });
-            return [];
-          });
-          fetchItems();
-        } else {
-          toast.error(data.message);
-        }
-      })
-      .catch((error) => {
-        toast.error(error.message || "");
+    try {
+      const response = await fetch(`${BASE_URL}/Items/CreateItems`, {
+        method: "POST",
+        body: formData,
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
       });
+      const data = await response.json().catch(() => null);
+
+      if (response.ok && data?.statusCode == 200) {
+        toast.success(data.message);
+        clearDuplicateContext();
+        setOpen(false);
+        setSubImages((prev) => {
+          prev.forEach((item) => {
+            if (item.preview) URL.revokeObjectURL(item.preview);
+          });
+          return [];
+        });
+        if (typeof onMasterLookupRefresh === "function") {
+          try {
+            await onMasterLookupRefresh();
+          } catch {
+            //
+          }
+        }
+        fetchItems();
+      } else {
+        toast.error(getItemsApiErrorMessage(response, data));
+      }
+    } catch (error) {
+      toast.error(error.message || "");
+    }
   };
   return (
     <>
@@ -736,7 +936,7 @@ export default function AddItems({
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
-            {({ errors, touched, values, setFieldValue, resetForm }) => {
+            {({ errors, touched, submitCount, values, setFieldValue, resetForm }) => {
               // Store setFieldValue in component scope for modal handlers
               window.currentSetFieldValue = setFieldValue;
               return (
@@ -875,21 +1075,28 @@ export default function AddItems({
                                   setFieldValue("SubCategoryId", e.target.value);
                                 }}
                               >
-                              {!selectedCat ? (
-                                <MenuItem disabled>
+                              {!selectedCat && (
+                                <MenuItem key="__nocat" disabled>
                                   Please Select Category First
                                 </MenuItem>
-                              ) : subCategoryList.length === 0 ? (
-                                <MenuItem disabled>
-                                  No Sub Categories Available
-                                </MenuItem>
-                              ) : (
-                                subCategoryList.map((subcategory, index) => (
-                                  <MenuItem key={index} value={subcategory.id}>
+                              )}
+                              {selectedCat && isSubCategoryNotRequired && (
+                                <MenuItem key="__none" value="">None</MenuItem>
+                              )}
+                              {selectedCat &&
+                                subCategoryList.length === 0 &&
+                                !isSubCategoryNotRequired && (
+                                  <MenuItem key="__empty" disabled>
+                                    No Sub Categories Available
+                                  </MenuItem>
+                                )}
+                              {selectedCat &&
+                                subCategoryList.length > 0 &&
+                                subCategoryList.map((subcategory) => (
+                                  <MenuItem key={subcategory.id} value={subcategory.id}>
                                     {subcategory.name}
                                   </MenuItem>
-                                ))
-                              )}
+                                ))}
                               </Field>
                               {touched.SubCategoryId &&
                                 Boolean(errors.SubCategoryId) && (
@@ -1104,7 +1311,11 @@ export default function AddItems({
                                 name="UOM"
                                 size="small"
                               >
-                              {uomList.filter(uom => uom.isActive).length === 0 ? (
+                              {isUOMNotRequired && (
+                                <MenuItem value="">None</MenuItem>
+                              )}
+                              {uomList.filter(uom => uom.isActive).length === 0 &&
+                              !isUOMNotRequired ? (
                                 <MenuItem disabled>No Active UOM Available</MenuItem>
                               ) : (
                                 uomList
@@ -1132,6 +1343,33 @@ export default function AddItems({
                               <AddIcon fontSize="small" />
                             </IconButton>
                           </Box>
+                        </Grid>
+                        <Grid item xs={12} lg={6} mt={1}>
+                          <Typography
+                            sx={{
+                              fontWeight: "500",
+                              fontSize: "14px",
+                              mb: "5px",
+                            }}
+                          >
+                            Outbound Method
+                          </Typography>
+                          <FormControl fullWidth>
+                            <Field
+                              as={TextField}
+                              select
+                              fullWidth
+                              name="StockMethod"
+                              size="small"
+                            >
+                              <MenuItem value={1}>FIFO (First In First Out)</MenuItem>
+                              <MenuItem value={2}>LIFO (Last In First Out)</MenuItem>
+                              <MenuItem value={3}>FEFO (First Expired First Out)</MenuItem>
+                              <MenuItem value={4}>LEFO (Last Expired First Out)</MenuItem>
+                              <MenuItem value={5}>BIFO (Batch In First Out)</MenuItem>
+                              <MenuItem value={6}>BILO (Batch In Last Out)</MenuItem>
+                            </Field>
+                          </FormControl>
                         </Grid>
                         <Grid item xs={12} lg={6} mt={1}>
                           <Typography
@@ -1308,8 +1546,81 @@ export default function AddItems({
                             size="small"
                             multiline
                             rows={4}
+                            error={(touched.Description || submitCount > 0) && Boolean(errors.Description)}
+                            helperText={(touched.Description || submitCount > 0) && errors.Description}
                           />
                         </Grid>
+                        {enableItemTypeFilter && (
+                          <Grid item xs={12} mt={1}>
+                            <ItemTypeSelector
+                              values={values}
+                              setFieldValue={setFieldValue}
+                              averagePrice={values.AveragePrice}
+                            />
+                          </Grid>
+                        )}
+                        {showItemWebDetailFields && (
+                          <>
+                            <Grid item xs={12} mt={1}>
+                              <Typography
+                                sx={{
+                                  fontWeight: "500",
+                                  fontSize: "14px",
+                                  mb: "5px",
+                                }}
+                              >
+                                Features
+                              </Typography>
+                              <Field
+                                as={TextField}
+                                fullWidth
+                                name="ItemWebFeatures"
+                                size="small"
+                                multiline
+                                rows={3}
+                                placeholder="Bullet-style or short text for web product page"
+                              />
+                            </Grid>
+                            <Grid item xs={12} mt={1}>
+                              <Typography
+                                sx={{
+                                  fontWeight: "500",
+                                  fontSize: "14px",
+                                  mb: "5px",
+                                }}
+                              >
+                                Specifications
+                              </Typography>
+                              <Field
+                                as={TextField}
+                                fullWidth
+                                name="ItemWebSpecifications"
+                                size="small"
+                                multiline
+                                rows={3}
+                              />
+                            </Grid>
+                            <Grid item xs={12} mt={1}>
+                              <Typography
+                                sx={{
+                                  fontWeight: "500",
+                                  fontSize: "14px",
+                                  mb: "5px",
+                                }}
+                              >
+                                Warranty
+                              </Typography>
+                              <Field
+                                as={TextField}
+                                fullWidth
+                                name="ItemWebWarranty"
+                                size="small"
+                                multiline
+                                rows={3}
+                              />
+                            </Grid>
+                          </>
+                        )}
                         <Grid item xs={12} p={1}>
                           <Grid container>
                             <Grid item xs={12} lg={6}>
@@ -1384,6 +1695,36 @@ export default function AddItems({
                               </Grid>
                             )}
 
+                            {IsEcommerceWebSiteAvailable && showItemWebDetailFields && (
+                              <Grid item xs={12} lg={6} mt={1}>
+                                <FormControlLabel
+                                  control={
+                                    <Field
+                                      as={Checkbox}
+                                      name="IsUpcoming"
+                                      checked={values.IsUpcoming}
+                                      onChange={() => {
+                                        const next = !values.IsUpcoming;
+                                        setFieldValue("IsUpcoming", next);
+                                        if (next) {
+                                          if (!selectedFile && !values.IsWebView) {
+                                            toast.warning(
+                                              "Please upload an item image before marking as Upcoming."
+                                            );
+                                            setFieldValue("IsUpcoming", false);
+                                            return;
+                                          }
+                                          setFieldValue("IsWebView", true);
+                                          setFieldValue("IsActive", false);
+                                        }
+                                      }}
+                                    />
+                                  }
+                                  label="Upcoming (Coming Soon on website)"
+                                />
+                              </Grid>
+                            )}
+
                             {isItemEndInvolveEnable && (
                               <Grid item xs={12} lg={6} mt={1}>
                                 <FormControlLabel
@@ -1396,6 +1737,14 @@ export default function AddItems({
                                     />
                                   }
                                   label="Is Item End Involve"
+                                />
+                              </Grid>
+                            )}
+                            {isItemEndInvolveEnable && values.IsItemEndInvolve && (
+                              <Grid item xs={12} mt={1}>
+                                <StockCountScheduleFields
+                                  schedule={stockCountSchedule}
+                                  onChange={setStockCountSchedule}
                                 />
                               </Grid>
                             )}

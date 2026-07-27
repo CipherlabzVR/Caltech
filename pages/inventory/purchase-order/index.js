@@ -26,9 +26,9 @@ import { useRouter } from "next/router";
 import { formatDate } from "@/components/utils/formatHelper";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
+import DescriptionIcon from "@mui/icons-material/Description";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
-import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
-import { toast } from "react-toastify";
+import { toast, ToastContainer } from "react-toastify";
 import ShareReports from "@/components/UIElements/Modal/Reports/ShareReports";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
@@ -40,10 +40,9 @@ import { Report } from "Base/report";
 export default function PurchaseOrder() {
   const name = localStorage.getItem("name");
   const cId = sessionStorage.getItem("category")
-  const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+  const { navigate, create, update, remove, print, customPrint, whatsAppShare } = IsPermissionEnabled(cId);
   const router = useRouter();
   const { data: ReportName } = GetReportSettingValueByName("PurchaseOrder");
-  const { data: isCustomReportsEnabled } = IsAppSettingEnabled("IsCustomReportsEnabled");
   const { data: isFiscalPeriodAvailable } = IsFiscalPeriodAvailable();
 
   const navigateToCreate = () => {
@@ -63,6 +62,18 @@ export default function PurchaseOrder() {
   const navigateToEdit = (id) => {
     router.push(`/inventory/purchase-order/edit-po?id=${id}`);
   };
+
+  const isLocalPOItem = (item) => (item.type ?? item.purchasingOrderType) == 1;
+
+const canShowEditIcon = (item) => {
+  if (item.documentNo) {   
+    return false;
+  }
+  if (isLocalPOItem(item)) {
+    return !item.isPurchasingOrderComplete;
+  }
+  return true;
+};
 
   const openPurchaseOrderPrintPopup = (item) => {
     const query = new URLSearchParams({
@@ -107,10 +118,9 @@ export default function PurchaseOrder() {
     fetchReceiptList(1, search, size);
   };
 
-  console.log(poList);
-
   return (
     <>
+    <ToastContainer />
       <div className={styles.pageTitle}>
         <h1>Purchase Order</h1>
         <ul>
@@ -186,7 +196,7 @@ export default function PurchaseOrder() {
                         <TableCell align="right">
                           <Box display="flex" justifyContent="end" gap={1}>
                             
-                            {update && !item.isPurchasingOrderComplete ? <Tooltip title="Edit" placement="top">
+                            {update && canShowEditIcon(item) ? <Tooltip title="Edit" placement="top">
                               <IconButton
                                 onClick={() => navigateToEdit(item.id)}
                                 aria-label="edit"
@@ -198,26 +208,29 @@ export default function PurchaseOrder() {
                                 />
                               </IconButton>
                             </Tooltip> : ""}
-                            <ShareReports url={whatsapp} mobile={item.supplierMobileNo} />
-                            {isCustomReportsEnabled ? (
-                              print ? <Tooltip title="Print" placement="top">
+                            {whatsAppShare ? (
+                              <ShareReports url={whatsapp} mobile={item.supplierMobileNo} />
+                            ) : ""}
+                            {customPrint ? (
+                              <Tooltip title="Print (Custom)" placement="top">
                                 <a href={`${Report}${reportLink}`} target="_blank" rel="noopener noreferrer">
-                                  <IconButton aria-label="print" size="small">
-                                    <LocalPrintshopIcon color="primary" fontSize="medium" />
+                                  <IconButton aria-label="print custom" size="small">
+                                    <DescriptionIcon color="action" fontSize="medium" />
                                   </IconButton>
                                 </a>
-                              </Tooltip> : ""
-                            ) : (
-                              print ? <Tooltip title="Print" placement="top">
+                              </Tooltip>
+                            ) : ""}
+                            {print ? (
+                              <Tooltip title="Print (Default)" placement="top">
                                 <IconButton
-                                  aria-label="print"
+                                  aria-label="print default"
                                   size="small"
                                   onClick={() => openPurchaseOrderPrintPopup(item)}
                                 >
                                   <LocalPrintshopIcon color="primary" fontSize="medium" />
                                 </IconButton>
-                              </Tooltip> : ""
-                            )}
+                              </Tooltip>
+                            ) : ""}
                           </Box>
                         </TableCell>
                       </TableRow>

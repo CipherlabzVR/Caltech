@@ -9,7 +9,8 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
-import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select } from "@mui/material";
+import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Tooltip, IconButton, Box } from "@mui/material";
+import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import { ToastContainer } from "react-toastify";
 import BASE_URL from "Base/api";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
@@ -74,6 +75,19 @@ export default function POSDayEnd() {
     fetchDayEndList();
   }, []);
 
+  const openPOSDayEndPrintPopup = (item) => {
+    const query = new URLSearchParams({
+      id: String(item.id ?? ""),
+      documentNumber: item.documentNo ?? "",
+    });
+
+    window.open(
+      `/sales/pos-dayend/print?${query.toString()}`,
+      `pos-dayend-print-${item.id}`,
+      "popup=yes,width=1200,height=900,scrollbars=yes,resizable=yes"
+    );
+  };
+
   if (!navigate) {
     return <AccessDenied />;
   }
@@ -113,23 +127,39 @@ export default function POSDayEnd() {
                   <TableCell>Invoice Total</TableCell>
                   <TableCell>Cash Invoice Total</TableCell>
                   <TableCell>Remark</TableCell>
+                  <TableCell align="right">Action</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {dayEndList.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7}>
+                    <TableCell colSpan={6}>
                       <Typography color="error">No Data Available</Typography>
                     </TableCell>
                   </TableRow>
                 ) : (
                   dayEndList.map((item, index) => (
-                    <TableRow key={index}>
+                    <TableRow key={item.id ?? index}>
                       <TableCell>{formatDate(item.endDate)}</TableCell>
                       <TableCell>{item.documentNo}</TableCell>
                       <TableCell>{formatCurrency(item.totalInvoice)}</TableCell>
                       <TableCell>{formatCurrency(item.totalCashInvoice)}</TableCell>
                       <TableCell>{item.remark}</TableCell>
+                      <TableCell align="right">
+                        {print ? (
+                          <Tooltip title="Print (Default)" placement="top">
+                            <IconButton
+                              aria-label="print default"
+                              size="small"
+                              onClick={() => openPOSDayEndPrintPopup(item)}
+                            >
+                              <LocalPrintshopIcon color="action" fontSize="medium" />
+                            </IconButton>
+                          </Tooltip>
+                        ) : (
+                          ""
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))
                 )}

@@ -25,6 +25,7 @@ import BASE_URL from "Base/api";
 import { toast } from "react-toastify";
 import useCRMAccounts from "hooks/useCRMAccounts";
 import useContactsByAccount from "hooks/useContactsByAccount";
+import useActiveCampaigns from "hooks/useActiveCampaigns";
 
 const getAccountValue = (account) => String(account.id);
 
@@ -40,7 +41,8 @@ export default function EditLeadModal({ lead, onLeadUpdated }) {
     leadScore: 0,
     notes: "",
     accountId: "",
-    contactId: ""
+    contactId: "",
+    campaignId: "",
   });
   const [statusOptions, setStatusOptions] = React.useState([]);
   const [loadingStatuses, setLoadingStatuses] = React.useState(false);
@@ -52,6 +54,7 @@ export default function EditLeadModal({ lead, onLeadUpdated }) {
   const [confirmDialogOpen, setConfirmDialogOpen] = React.useState(false);
   const [pendingStatusChange, setPendingStatusChange] = React.useState(null);
   const { accounts, isLoading: accountsLoading, error: accountsError } = useCRMAccounts();
+  const { campaigns, isLoading: campaignsLoading } = useActiveCampaigns();
   const { contacts: accountContacts, isLoading: contactsLoading, error: contactsError } = useContactsByAccount(formValues.accountId);
 
   const fetchStatuses = React.useCallback(async () => {
@@ -173,7 +176,8 @@ export default function EditLeadModal({ lead, onLeadUpdated }) {
         leadScore: typeof lead.leadScore === "number" ? lead.leadScore : 50,
         notes: lead.notes || lead.description || "",
         accountId: lead.accountId ? String(lead.accountId) : "",
-        contactId: lead.contactId ? String(lead.contactId) : ""
+        contactId: lead.contactId ? String(lead.contactId) : "",
+        campaignId: lead.campaignId ? String(lead.campaignId) : "",
       });
     }
   }, [lead, open]);
@@ -270,7 +274,8 @@ export default function EditLeadModal({ lead, onLeadUpdated }) {
       LeadScore: Number(formValues.leadScore) || 0,
       Description: formValues.notes?.trim() || "",
       AccountId: formValues.accountId || null,
-      ContactId: contactId
+      ContactId: contactId,
+      CampaignId: formValues.campaignId ? Number(formValues.campaignId) : null,
     };
 
     try {
@@ -477,6 +482,27 @@ export default function EditLeadModal({ lead, onLeadUpdated }) {
                     max={100}
                   />
                 </Box>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Campaign</InputLabel>
+                  <Select
+                    value={formValues.campaignId}
+                    label="Campaign"
+                    disabled={campaignsLoading}
+                    onChange={handleChange("campaignId")}
+                  >
+                    <MenuItem value="">
+                      <em>Direct / No Campaign</em>
+                    </MenuItem>
+                    {campaigns.map((c) => (
+                      <MenuItem key={c.id} value={String(c.id)}>
+                        {c.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Grid>
 
               <Grid item xs={12}>

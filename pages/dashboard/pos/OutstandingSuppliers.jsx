@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { Box, Typography } from "@mui/material";
+import React, { useMemo, useState, useEffect } from "react";
+import { Box, Typography, TextField, InputAdornment } from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
 import Card from "@mui/material/Card";
 import Table from "@mui/material/Table";
 import TableHead from "@mui/material/TableHead";
@@ -13,6 +14,8 @@ import useApi from "@/components/utils/useApi";
 
 const OutstandingSuppliers = () => {
   const [supplierOutstanding, setSupplierOutstanding] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+
   const { data: supplierOutstandingList } = useApi(
     "/Supplier/GetAllOutstandingGroupedBySupplier"
   );
@@ -23,10 +26,24 @@ const OutstandingSuppliers = () => {
     }
   }, [supplierOutstandingList]);
 
-  const totalOutstandingSum = supplierOutstanding.reduce(
+  const filteredSuppliers = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) {
+      return supplierOutstanding;
+    }
+
+    return supplierOutstanding.filter((supplier) =>
+      (supplier.supplierName ?? "").toLowerCase().includes(term)
+    );
+  }, [supplierOutstanding, searchTerm]);
+
+  const totalOutstandingSum = filteredSuppliers.reduce(
     (sum, supplier) => sum + Number(supplier.outstandingAmount || 0),
     0
   );
+
+  const displayCount = filteredSuppliers.length;
+  const displayTotal = totalOutstandingSum;
 
   return (
     <Card
@@ -37,13 +54,63 @@ const OutstandingSuppliers = () => {
         mb: "15px",
       }}
     >
-      <Box sx={{ paddingBottom: "10px" }} display="flex" justifyContent="space-between">
+      <Box
+        sx={{
+          paddingBottom: "10px",
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 2,
+        }}
+      >
         <Typography as="h3" sx={{ fontSize: 18, fontWeight: 500 }}>
           Suppliers Outstanding
         </Typography>
-        <Typography as="h3" sx={{ fontSize: 18, fontWeight: 500 }}>
-          Total :  Rs. {formatCurrency(totalOutstandingSum)}
-        </Typography>
+
+        <TextField
+          size="small"
+          placeholder="Search supplier..."
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon sx={{ fontSize: 20, color: "#999" }} />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ flex: 1, minWidth: 200, maxWidth: 320 }}
+        />
+      </Box>
+
+      <Box
+        sx={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 3,
+          mb: 2,
+          p: 1.5,
+          borderRadius: "8px",
+          backgroundColor: "#F7FAFF",
+        }}
+      >
+        <Box>
+          <Typography sx={{ fontSize: 12, color: "#666" }}>
+            Suppliers with outstanding
+          </Typography>
+          <Typography sx={{ fontSize: 22, fontWeight: 600, color: "#260944" }}>
+            {displayCount}
+          </Typography>
+        </Box>
+        <Box>
+          <Typography sx={{ fontSize: 12, color: "#666" }}>
+            Total due amount
+          </Typography>
+          <Typography sx={{ fontSize: 22, fontWeight: 600, color: "#260944" }}>
+            Rs. {formatCurrency(displayTotal)}
+          </Typography>
+        </Box>
       </Box>
 
       <TableContainer
@@ -84,17 +151,17 @@ const OutstandingSuppliers = () => {
           </TableHead>
 
           <TableBody>
-            {supplierOutstanding.length === 0 ? (
+            {filteredSuppliers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={2}>
-                  <Typography variant="h6" color="error">
-                    No outstanding supplier data available.
-                  </Typography>
+                <TableCell colSpan={2} sx={{ textAlign: "center", py: 3, color: "#666" }}>
+                  {searchTerm.trim()
+                    ? "No suppliers match your search."
+                    : "No outstanding supplier data available."}
                 </TableCell>
               </TableRow>
             ) : (
-              supplierOutstanding.map((supplier, index) => (
-                <TableRow key={index}>
+              filteredSuppliers.map((supplier, index) => (
+                <TableRow key={supplier.supplierId ?? index}>
                   <TableCell
                     sx={{
                       fontWeight: "500",
@@ -119,7 +186,7 @@ const OutstandingSuppliers = () => {
                 </TableRow>
               ))
             )}
-            {supplierOutstanding.length > 0 && (
+            {filteredSuppliers.length > 0 && (
               <TableRow>
                 <TableCell sx={{ fontWeight: 600, padding: "10px" }}>
                   Total

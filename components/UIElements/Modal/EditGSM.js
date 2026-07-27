@@ -22,8 +22,13 @@ const style = {
   p: 4,
 };
 
+const GSM_NAME_MAX_LENGTH = 100;
+
 const validationSchema = Yup.object().shape({
-  Name: Yup.string().required("Name is required"),
+  Name: Yup.string()
+    .trim()
+    .required("Name is required")
+    .max(GSM_NAME_MAX_LENGTH, `Max ${GSM_NAME_MAX_LENGTH} characters`),
 });
 
 export default function EditGSM({fetchItems,item}) {
@@ -101,6 +106,7 @@ export default function EditGSM({fetchItems,item}) {
                         as={TextField}
                         fullWidth
                         name="Name"
+                        inputProps={{ maxLength: GSM_NAME_MAX_LENGTH }}
                         error={touched.Name && Boolean(errors.Name)}
                         helperText={touched.Name && errors.Name}
                       />

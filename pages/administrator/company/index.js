@@ -23,6 +23,8 @@ import {
 } from "@mui/material";
 import ImageIcon from "@mui/icons-material/Image";
 import CloseIcon from "@mui/icons-material/Close";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import { toast } from "react-toastify";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import BASE_URL from "Base/api";
 import { ToastContainer } from "react-toastify";
@@ -33,6 +35,7 @@ import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { formatCurrency } from "@/components/utils/formatHelper";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
+import { encryptLink } from "@/components/utils/linkCrypto";
 
 export default function Company() {
   const cId = sessionStorage.getItem("category")
@@ -79,6 +82,16 @@ export default function Company() {
   const handleCloseLetterheadModal = () => {
     setLetterheadModalOpen(false);
     setSelectedLetterheadImage("");
+  };
+
+  const handleCopyApiKey = async (apiKey) => {
+    if (!apiKey) return;
+    try {
+      await navigator.clipboard.writeText(apiKey);
+      toast.success("API Key copied to clipboard");
+    } catch {
+      toast.error("Unable to copy API Key");
+    }
   };
 
 
@@ -190,6 +203,7 @@ export default function Company() {
                   <TableCell>Billing Type</TableCell>
                   <TableCell>Description</TableCell>
                   <TableCell>Letter Head</TableCell>
+                  <TableCell>API Key</TableCell>
                   <TableCell align="right">Action</TableCell>
                 </TableRow>
               </TableHead>
@@ -198,7 +212,7 @@ export default function Company() {
                   <TableRow
                     sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                   >
-                    <TableCell component="th" scope="row" colSpan={8}>
+                    <TableCell component="th" scope="row" colSpan={12}>
                       <Typography color="error">
                         No Companies Available
                       </Typography>
@@ -234,6 +248,30 @@ export default function Company() {
                               <ImageIcon fontSize="inherit" />
                             </IconButton>
                           </Tooltip>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            -
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {company.usersUrl ? (
+                          <Box display="flex" alignItems="center" gap={0.5}>
+                            <Typography variant="body2" color="text.secondary">
+                              Generated from Users URL
+                            </Typography>
+                            <Tooltip title="Copy API Key">
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                onClick={() =>
+                                  handleCopyApiKey(encryptLink(company.usersUrl))
+                                }
+                              >
+                                <ContentCopyIcon fontSize="inherit" />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
                         ) : (
                           <Typography variant="body2" color="text.secondary">
                             -

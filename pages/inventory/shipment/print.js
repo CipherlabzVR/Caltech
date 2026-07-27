@@ -7,10 +7,11 @@ import Typography from "@mui/material/Typography";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import PrintIcon from "@mui/icons-material/Print";
 import BASE_URL from "Base/api";
-import { ProjectNo } from "Base/catelogue";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import useLoggedUserCompanyLetterhead from "@/hooks/useLoggedUserCompanyLetterhead";
+import PrintCompanyLogo from "@/components/UIElements/Print/PrintCompanyLogo";
+import PrintPoweredByFooter from "@/components/UIElements/Print/PrintPoweredByFooter";
 
 const FIRST_PAGE_ROW_LIMIT = 5;
 const NEXT_PAGE_ROW_LIMIT = 10;
@@ -214,9 +215,6 @@ export default function ShipmentPrintPage() {
     return lines;
   }, [companyData?.contactNumber, warehouseData]);
 
-  const companyLogoSrc =
-    sidebarLogo || (ProjectNo === 1 ? "/images/cbass.png" : "/images/db-logo.png");
-
   const shipmentPages = useMemo(() => {
     if (lineItems.length === 0) {
       return [[]];
@@ -404,13 +402,7 @@ export default function ShipmentPrintPage() {
           pb: 2,
         }}
       >
-        <Box sx={{ width: { xs: "135px", sm: "220px" }, flexShrink: 0 }}>
-          <img
-            src={companyLogoSrc}
-            alt="Company logo"
-            style={{ width: "100%", height: "auto", objectFit: "contain" }}
-          />
-        </Box>
+        <PrintCompanyLogo src={sidebarLogo} />
         <Box sx={{ flex: 1, textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
           <Typography sx={{ fontWeight: 700, fontSize: { xs: "1rem", sm: "1.25rem" }, lineHeight: 1.2 }}>
             {companyData?.name || warehouseData?.name || "Company"}
@@ -593,18 +585,7 @@ export default function ShipmentPrintPage() {
                   <Box sx={{ position: "relative", width: "100%", mx: "auto", boxSizing: "border-box", backgroundColor: "transparent", flex: 1 }}>
                     {renderPageContent(items, pageIndex)}
                   </Box>
-                  <Typography
-                    sx={{
-                      mt: 2,
-                      pt: 1,
-                      borderTop: "1px solid #d9d9d9",
-                      textAlign: "center",
-                      fontSize: { xs: "0.62rem", sm: "0.8rem" },
-                      fontWeight: 600,
-                    }}
-                  >
-                    Powered By : CBASS-AI
-                  </Typography>
+                  <PrintPoweredByFooter />
                 </Box>
               );
             })

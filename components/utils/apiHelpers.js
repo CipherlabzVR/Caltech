@@ -10,6 +10,12 @@ export const createAuthHeaders = () => {
   };
 };
 
+/** Authorization only — use with FormData/body `multipart/form-data`. Do not set Content-Type; the browser sets the boundary. */
+export const createAuthHeadersFormData = () => {
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
 /**
  * Gets the organization ID from session storage
  * @returns {number|null} Organization ID or null if not found

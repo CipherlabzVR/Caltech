@@ -1,12 +1,25 @@
-import React, { useContext, useEffect } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import QuickAccessContent from "@/components/quickaccess/QuickAccessContent";
 import WelcomeHero from "@/components/landing/WelcomeHero";
 import { TopbarContext } from "@/components/_App/TopbarContext";
 
+const MOBILE_VIEWPORT_MAX = 1199;
+
 const Landing = () => {
   const { activeButton } = useContext(TopbarContext);
   const router = useRouter();
+  const [isMobileView, setIsMobileView] = useState(false);
+
+  useEffect(() => {
+    const syncViewport = () => {
+      setIsMobileView(window.innerWidth <= MOBILE_VIEWPORT_MAX);
+    };
+
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => window.removeEventListener("resize", syncViewport);
+  }, []);
 
   useEffect(() => {
     // Check if user is helpdesksupport (UserType 14) and redirect to self dashboard
@@ -22,7 +35,7 @@ const Landing = () => {
     }
   }, [router, activeButton]);
 
-  if (activeButton === "quick-access") {
+  if (isMobileView) {
     return <QuickAccessContent />;
   }
 

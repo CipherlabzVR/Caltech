@@ -227,8 +227,8 @@ export default function Reservation() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredData.map((reservation, index) => (
-                    <TableRow key={index} sx={{ background: reservation.status === 2 ? "#FFFECE" : "" }}>
+                  filteredData.map((reservation) => (
+                    <TableRow key={reservation.id} sx={{ background: reservation.status === 2 ? "#FFFECE" : "" }}>
                       <TableCell>{reservation.documentNo}</TableCell>
                       <TableCell>{reservation.paymentCode}</TableCell>
                       <TableCell>{formatDate(reservation.initialPaymentDate)}</TableCell>                      
@@ -281,7 +281,7 @@ export default function Reservation() {
                       
                       <TableCell>
                         <Box display="flex" gap={1}>
-                          {update && tabIndex == 0 ? <UpdateReservation reservation={reservation} fetchItems={fetchResList} approve1={approve1} /> : ""}
+                          {update && tabIndex == 0 ? <UpdateReservation key={reservation.id} reservation={reservation} fetchItems={fetchResList} approve1={approve1} /> : ""}
                           {galleryCreate ? <ReservationMedia id={reservation.id} /> : ""}
                           {tabIndex == 0 && remove ? <CancelConfirmation id={reservation.id} fetchItems={fetchResList} /> : ""}
                           {tabIndex == 1 && update ? <RecreateConfirmation id={reservation.id} fetchItems={fetchResList} /> : ""}

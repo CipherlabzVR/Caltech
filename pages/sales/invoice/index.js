@@ -16,6 +16,7 @@ import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import { useRouter } from "next/router";
 import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
+import ArticleIcon from "@mui/icons-material/Article";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
 import { Report } from "Base/report";
 import useShiftCheck from "@/components/utils/useShiftCheck";
@@ -31,7 +32,7 @@ import { getPaymentMethods } from "@/components/types/types";
 
 export default function Invoice() {
   const cId = sessionStorage.getItem("category")
-  const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+  const { navigate, create, update, remove, print, customPrint, whatsAppShare } = IsPermissionEnabled(cId);
   const router = useRouter();
   const name = localStorage.getItem("name");
   const { data: InvoiceReportName } = GetReportSettingValueByName("Invoice");
@@ -93,6 +94,19 @@ export default function Invoice() {
     router.push({
       pathname: "/sales/invoice/create-invoice",
     });
+  };
+
+  const openInvoicePrintPopup = (item) => {
+    const query = new URLSearchParams({
+      id: String(item.id ?? ""),
+      documentNumber: item.documentNo ?? "",
+    });
+
+    window.open(
+      `/sales/invoice/print?${query.toString()}`,
+      `invoice-print-${item.id}`,
+      "popup=yes,width=1200,height=900,scrollbars=yes,resizable=yes"
+    );
   };
 
   if (!navigate) {
@@ -191,8 +205,10 @@ export default function Invoice() {
                         <TableCell>{item.remark}</TableCell>
                         <TableCell align="right">
                           <Box display="flex" justifyContent="end" gap={1}>
-                            <ShareReports url={whatsapp} mobile={item.customerContactNo} />
-                            {print ? <>
+                            {whatsAppShare ? (
+                              <ShareReports url={whatsapp} mobile={item.customerContactNo} />
+                            ) : ""}
+                            {print ? (
                               <Tooltip title="Print" placement="top">
                                 <a href={`${Report}` + invoiceReportLink} target="_blank">
                                   <IconButton aria-label="print" size="small">
@@ -200,13 +216,27 @@ export default function Invoice() {
                                   </IconButton>
                                 </a>
                               </Tooltip>
-                              <Tooltip title="Print" placement="top">
+                            ) : ""}
+                            {print ? (
+                              <Tooltip title="Print (Local)" placement="top">
+                                <IconButton
+                                  aria-label="print local"
+                                  size="small"
+                                  onClick={() => openInvoicePrintPopup(item)}
+                                >
+                                  <ArticleIcon color="primary" fontSize="medium" />
+                                </IconButton>
+                              </Tooltip>
+                            ) : ""}
+                            {customPrint ? (
+                              <Tooltip title="Print (Custom)" placement="top">
                                 <a href={`${Report}` + POSInvoiceReportLink} target="_blank">
-                                  <IconButton aria-label="print" size="small">
+                                  <IconButton aria-label="print custom" size="small">
                                     <ReceiptIcon color="primary" fontSize="medium" />
                                   </IconButton>
                                 </a>
-                              </Tooltip></> : ""}
+                              </Tooltip>
+                            ) : ""}
                             {remove ? <CancelConfirmationById invId={item.id} fetchItems={fetchInvoiceList} /> : ""}
                           </Box>
                         </TableCell>

@@ -21,8 +21,16 @@ const style = {
   p: 4,
 };
 
+const OPTION_NAME_MAX_LENGTH = 100;
+
 const validationSchema = Yup.object().shape({
-  OptionName: Yup.string().required("Option Name is required"),
+  OptionName: Yup.string()
+    .trim()
+    .required("Option Name is required")
+    .max(
+      OPTION_NAME_MAX_LENGTH,
+      `Max ${OPTION_NAME_MAX_LENGTH} characters`
+    ),
 });
 
 export default function AddOption({ category, fetchItems }) {
@@ -116,6 +124,7 @@ export default function AddOption({ category, fetchItems }) {
                         fullWidth
                         name="OptionName"
                         inputRef={inputRef}
+                        inputProps={{ maxLength: OPTION_NAME_MAX_LENGTH }}
                         error={touched.OptionName && Boolean(errors.OptionName)}
                         helperText={touched.OptionName && errors.OptionName}
                       />

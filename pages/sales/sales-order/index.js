@@ -19,21 +19,34 @@ import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
+import DescriptionIcon from "@mui/icons-material/Description";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
-import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import useShiftCheck from "@/components/utils/useShiftCheck";
 import { toast, ToastContainer } from "react-toastify";
 import { Report } from "Base/report";
 import { Catelogue } from "Base/catelogue";
 
+const canModifySalesOrder = (item) => item.receiptId == null && item.invoiceId == null;
+
+const getEditTooltip = (item) => {
+  if (item.invoiceId != null) return "Cannot edit after invoice generated";
+  if (item.receiptId != null) return "Cannot edit after receipt created";
+  return "Edit Sales Order";
+};
+
+const getDeleteTooltip = (item) => {
+  if (item.invoiceId != null) return "Cannot delete after invoice generated";
+  if (item.receiptId != null) return "Cannot delete after receipt created";
+  return "Delete Sales Order";
+};
+
 export default function SalesOrder() {
   const cId = sessionStorage.getItem("category");
   const name = localStorage.getItem("name");
-  const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+  const { navigate, create, update, remove, print, customPrint } = IsPermissionEnabled(cId);
   const { result: shiftResult, message: shiftMessage } = useShiftCheck();
   const { data: reportName } = GetReportSettingValueByName("SalesOrder");
-  const { data: isCustomReportsEnabled } = IsAppSettingEnabled("IsCustomReportsEnabled");
   const [deleteSalesOrderId, setDeleteSalesOrderId] = React.useState(null);
   const router = useRouter();
   const {
@@ -171,14 +184,14 @@ export default function SalesOrder() {
                         <TableCell align="right">
                           <Box display="flex" justifyContent="end" alignItems="center" gap={0.5}>
                             {update ? (
-                              item.receiptId == null ? (
-                                <Tooltip title="Edit Sales Order" placement="top">
+                              canModifySalesOrder(item) ? (
+                                <Tooltip title={getEditTooltip(item)} placement="top">
                                   <IconButton aria-label="edit" size="small" onClick={() => navigateToEdit(item.id)}>
                                     <EditIcon color="primary" fontSize="inherit" />
                                   </IconButton>
                                 </Tooltip>
                               ) : (
-                                <Tooltip title="Cannot edit after receipt created" placement="top">
+                                <Tooltip title={getEditTooltip(item)} placement="top">
                                   <span>
                                     <IconButton aria-label="edit-disabled" size="small" disabled>
                                       <EditIcon color="disabled" fontSize="inherit" />
@@ -190,8 +203,8 @@ export default function SalesOrder() {
                               ""
                             )}
                             {remove ? (
-                              item.receiptId == null ? (
-                                <Tooltip title="Delete Sales Order" placement="top">
+                              canModifySalesOrder(item) ? (
+                                <Tooltip title={getDeleteTooltip(item)} placement="top">
                                   <IconButton
                                     aria-label="delete"
                                     size="small"
@@ -201,7 +214,7 @@ export default function SalesOrder() {
                                   </IconButton>
                                 </Tooltip>
                               ) : (
-                                <Tooltip title="Cannot delete after receipt created" placement="top">
+                                <Tooltip title={getDeleteTooltip(item)} placement="top">
                                   <span>
                                     <IconButton aria-label="delete-disabled" size="small" disabled>
                                       <DeleteIcon color="disabled" fontSize="inherit" />
@@ -212,29 +225,26 @@ export default function SalesOrder() {
                             ) : (
                               ""
                             )}
-                            {print ? (
-                              isCustomReportsEnabled ? (
-                                <Tooltip title="Print" placement="top">
-                                  <a href={`${Report}${reportLink}`} target="_blank" rel="noopener noreferrer">
-                                    <IconButton aria-label="print" size="small">
-                                      <LocalPrintshopIcon color="primary" fontSize="medium" />
-                                    </IconButton>
-                                  </a>
-                                </Tooltip>
-                              ) : (
-                                <Tooltip title="Print" placement="top">
-                                  <IconButton
-                                    aria-label="print"
-                                    size="small"
-                                    onClick={() => openSalesOrderPrintPopup(item)}
-                                  >
-                                    <LocalPrintshopIcon color="primary" fontSize="medium" />
+                            {customPrint ? (
+                              <Tooltip title="Print (Custom)" placement="top">
+                                <a href={`${Report}${reportLink}`} target="_blank" rel="noopener noreferrer">
+                                  <IconButton aria-label="print custom" size="small">
+                                    <DescriptionIcon color="action" fontSize="medium" />
                                   </IconButton>
-                                </Tooltip>
-                              )
-                            ) : (
-                              ""
-                            )}
+                                </a>
+                              </Tooltip>
+                            ) : ""}
+                            {print ? (
+                              <Tooltip title="Print (Default)" placement="top">
+                                <IconButton
+                                  aria-label="print default"
+                                  size="small"
+                                  onClick={() => openSalesOrderPrintPopup(item)}
+                                >
+                                  <LocalPrintshopIcon color="primary" fontSize="medium" />
+                                </IconButton>
+                              </Tooltip>
+                            ) : ""}
                           </Box>
                         </TableCell>
                       </TableRow>

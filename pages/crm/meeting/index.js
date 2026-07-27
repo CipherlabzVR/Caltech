@@ -14,6 +14,52 @@ import { toast, ToastContainer } from "react-toastify";
 import CreateMeetingModal from "./create";
 import EditMeetingModal from "./edit";
 
+const readMeetingField = (meeting, camelKey, pascalKey) =>
+  meeting?.[camelKey] ?? meeting?.[pascalKey];
+
+const parseTimeParts = (timeValue) => {
+  if (timeValue == null || timeValue === "") return null;
+  if (typeof timeValue === "string") {
+    const parts = timeValue.split(":").map(Number);
+    if (parts.length >= 2 && !Number.isNaN(parts[0]) && !Number.isNaN(parts[1])) {
+      return { hours: parts[0], minutes: parts[1], seconds: parts[2] || 0 };
+    }
+    return null;
+  }
+  if (typeof timeValue === "object") {
+    const hours = timeValue.hours ?? timeValue.Hours;
+    const minutes = timeValue.minutes ?? timeValue.Minutes;
+    if (hours != null && minutes != null) {
+      return {
+        hours: Number(hours),
+        minutes: Number(minutes),
+        seconds: Number(timeValue.seconds ?? timeValue.Seconds ?? 0),
+      };
+    }
+  }
+  return null;
+};
+
+const buildLocalDateTime = (meetingDateValue, timeValue) => {
+  if (!meetingDateValue) return null;
+  const dateStr = String(meetingDateValue).split("T")[0];
+  const time = parseTimeParts(timeValue);
+  if (!time) return null;
+  const [year, month, day] = dateStr.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day, time.hours, time.minutes, time.seconds, 0);
+};
+
+/** FullCalendar month view: dateInfo.start is the first *visible* cell (often prior month). */
+const getCalendarMonthYear = (calendarApi) => {
+  const anchor = calendarApi?.getDate?.() ?? new Date();
+  const viewDate = anchor instanceof Date ? anchor : new Date(anchor);
+  return {
+    month: viewDate.getMonth() + 1,
+    year: viewDate.getFullYear(),
+  };
+};
+
 export default function MeetingCalendar() {
   const calendarRef = useRef(null);
   const [meetings, setMeetings] = useState([]);
@@ -51,69 +97,52 @@ export default function MeetingCalendar() {
 
       // Transform meetings to FullCalendar events format
       const events = meetingsList.map((meeting) => {
-        const accountName = meeting.accountName || "Unknown Account";
-        const subject = meeting.subject || "Meeting";
-        const meetingType = meeting.meetingType || 1;
-        
-        // Determine color based on meeting type
+        const meetingId = readMeetingField(meeting, "id", "Id");
+        const accountName =
+          readMeetingField(meeting, "accountName", "AccountName") || "Unknown Account";
+        const subject = readMeetingField(meeting, "subject", "Subject") || "Meeting";
+        const meetingType =
+          readMeetingField(meeting, "meetingType", "MeetingType") || 1;
+        const meetingDate = readMeetingField(meeting, "meetingDate", "MeetingDate");
+        const startTime = readMeetingField(meeting, "startTime", "StartTime");
+        const endTime = readMeetingField(meeting, "endTime", "EndTime");
+
         const eventColor = meetingType === 2 ? onlineColor : physicalColor;
         const meetingTypeLabel = meetingType === 2 ? "Online" : "Physical";
-        
-        // Combine meetingDate with startTime and endTime
-        // meetingDate is in format "2025-12-19T18:30:00" (includes timezone offset)
-        // startTime and endTime are in format "09:00:00"
-        let startDateTime = null;
-        let endDateTime = null;
-        
-        if (meeting.meetingDate && meeting.startTime) {
-          // Extract just the date part from meetingDate
-          const dateStr = meeting.meetingDate.split("T")[0]; // "2025-12-19"
-          const [hours, minutes, seconds] = meeting.startTime.split(":").map(Number);
-          // Create date string with time: "2025-12-19T09:00:00"
-          const dateTimeStr = `${dateStr}T${String(hours).padStart(2, "0")}:${String(minutes || 0).padStart(2, "0")}:${String(seconds || 0).padStart(2, "0")}`;
-          startDateTime = new Date(dateTimeStr);
-        }
-        
-        if (meeting.meetingDate && meeting.endTime) {
-          // Extract just the date part from meetingDate
-          const dateStr = meeting.meetingDate.split("T")[0]; // "2025-12-19"
-          const [hours, minutes, seconds] = meeting.endTime.split(":").map(Number);
-          // Create date string with time: "2025-12-19T10:00:00"
-          const dateTimeStr = `${dateStr}T${String(hours).padStart(2, "0")}:${String(minutes || 0).padStart(2, "0")}:${String(seconds || 0).padStart(2, "0")}`;
-          endDateTime = new Date(dateTimeStr);
-        }
-        
-        // Format time for display
+
+        const startDateTime = buildLocalDateTime(meetingDate, startTime);
+        const endDateTime = buildLocalDateTime(meetingDate, endTime);
+
         const startTimeDisplay = startDateTime
-          ? startDateTime.toLocaleTimeString("en-US", { 
-              hour: "numeric", 
+          ? startDateTime.toLocaleTimeString("en-US", {
+              hour: "numeric",
               minute: "2-digit",
-              hour12: true 
+              hour12: true,
             })
           : "";
-        
+
         return {
-          id: String(meeting.id),
+          id: String(meetingId),
           title: `${startTimeDisplay ? startTimeDisplay + " - " : ""}${subject} (${meetingTypeLabel})`,
-          start: startDateTime ? startDateTime.toISOString() : meeting.meetingDate,
-          end: endDateTime ? endDateTime.toISOString() : null,
+          start: startDateTime || meetingDate,
+          end: endDateTime || undefined,
           backgroundColor: eventColor,
           borderColor: eventColor,
           textColor: "#ffffff",
           extendedProps: {
-            accountId: meeting.accountId,
+            accountId: readMeetingField(meeting, "accountId", "AccountId"),
             accountName: accountName,
-            description: meeting.description,
-            location: meeting.location,
+            description: readMeetingField(meeting, "description", "Description"),
+            location: readMeetingField(meeting, "location", "Location"),
             subject: subject,
             meetingType: meetingType,
             meetingTypeLabel: meetingTypeLabel,
-            startTime: meeting.startTime,
-            endTime: meeting.endTime,
+            startTime: startTime,
+            endTime: endTime,
             meeting: meeting,
           },
         };
-      });
+      }).filter((event) => event.start);
 
       setMeetings(events);
     } catch (error) {
@@ -126,10 +155,17 @@ export default function MeetingCalendar() {
   };
 
   const handleDatesSet = (dateInfo) => {
-    const viewDate = new Date(dateInfo.start);
-    const month = viewDate.getMonth() + 1; // getMonth() returns 0-11, API expects 1-12
-    const year = viewDate.getFullYear();
-    setCurrentDate(viewDate);
+    const calendarApi = dateInfo.view?.calendar ?? calendarRef.current?.getApi?.();
+    const { month, year } = getCalendarMonthYear(calendarApi);
+    const anchor = calendarApi?.getDate?.() ?? dateInfo.view?.currentStart ?? dateInfo.start;
+    setCurrentDate(anchor instanceof Date ? anchor : new Date(anchor));
+    fetchMeetings(month, year);
+  };
+
+  const refreshVisibleMeetings = () => {
+    const calendarApi = calendarRef.current?.getApi?.();
+    if (!calendarApi) return;
+    const { month, year } = getCalendarMonthYear(calendarApi);
     fetchMeetings(month, year);
   };
 
@@ -194,43 +230,37 @@ export default function MeetingCalendar() {
     setEditModalOpen(true);
   };
 
-  const handleCreateSuccess = () => {
-    if (calendarRef.current) {
-      const calendarApi = calendarRef.current.getApi();
-      const view = calendarApi.view;
-      const viewDate = new Date(view.activeStart);
-      const month = viewDate.getMonth() + 1;
-      const year = viewDate.getFullYear();
-      fetchMeetings(month, year);
-    }
+  const handleCreateSuccess = (message) => {
+    refreshVisibleMeetings();
     setCreateModalOpen(false);
     setSelectedDate(null);
+    const successMessage =
+      typeof message === "string" && message.trim()
+        ? message
+        : "Meeting scheduled successfully.";
+    window.setTimeout(() => toast.success(successMessage), 0);
   };
 
-  const handleEditSuccess = () => {
-    if (calendarRef.current) {
-      const calendarApi = calendarRef.current.getApi();
-      const view = calendarApi.view;
-      const viewDate = new Date(view.activeStart);
-      const month = viewDate.getMonth() + 1;
-      const year = viewDate.getFullYear();
-      fetchMeetings(month, year);
-    }
+  const handleEditSuccess = (message) => {
+    refreshVisibleMeetings();
     setEditModalOpen(false);
     setSelectedMeeting(null);
+    const successMessage =
+      typeof message === "string" && message.trim()
+        ? message
+        : "Meeting updated successfully.";
+    window.setTimeout(() => toast.success(successMessage), 0);
   };
 
-  const handleDeleteSuccess = () => {
-    if (calendarRef.current) {
-      const calendarApi = calendarRef.current.getApi();
-      const view = calendarApi.view;
-      const viewDate = new Date(view.activeStart);
-      const month = viewDate.getMonth() + 1;
-      const year = viewDate.getFullYear();
-      fetchMeetings(month, year);
-    }
+  const handleDeleteSuccess = (message) => {
+    refreshVisibleMeetings();
     setEditModalOpen(false);
     setSelectedMeeting(null);
+    const successMessage =
+      typeof message === "string" && message.trim()
+        ? message
+        : "Meeting deleted successfully.";
+    window.setTimeout(() => toast.success(successMessage), 0);
   };
 
   return (

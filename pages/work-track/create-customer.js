@@ -18,6 +18,7 @@ import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import * as Yup from "yup";
 import BASE_URL from "Base/api";
+import { isValidContactPhone } from "@/components/utils/contactPhoneValidation";
 
 const validationSchema = Yup.object().shape({
   Title: Yup.string().required("Title is required"),
@@ -28,7 +29,11 @@ const validationSchema = Yup.object().shape({
     Yup.object().shape({
       ContactName: Yup.string().required("Contact Name is required"),
       EmailAddress: Yup.string().email("Invalid email address"),
-      ContactNo: Yup.string().matches(/^\d+$/, "Contact No must contain only digits"),
+      ContactNo: Yup.string().test(
+        "contact-phone",
+        "Invalid contact number",
+        (value) => isValidContactPhone(value)
+      ),
     })
   ),
 });

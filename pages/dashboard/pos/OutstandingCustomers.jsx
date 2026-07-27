@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { Box, Grid, Typography } from "@mui/material";
+import React, { useMemo, useState, useEffect } from "react";
+import { Box, Grid, Typography, TextField, InputAdornment } from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
 import Card from "@mui/material/Card";
 import Table from "@mui/material/Table";
 import TableHead from "@mui/material/TableHead";
@@ -13,8 +14,17 @@ import useApi from "@/components/utils/useApi";
 import TotalSalesCard from "./TotalSalesCard";
 import TotalOutstandingCard from "./TotalOutstandingCard";
 
+const getOrganizationName = (row) =>
+  row?.organization ??
+  row?.Organization ??
+  row?.company ??
+  row?.Company ??
+  "-";
+
 const OutstandingCustomers = ({ totalProfit, totalProfitMargin, totalSales, totalCustomers }) => {
   const [customersOutstanding, setCustomersOutstanding] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+
   const { data: customerOutstandingList } = useApi(
     "/Outstanding/GetAllOutstandingsGroupedByCustomer"
   );
@@ -25,7 +35,24 @@ const OutstandingCustomers = ({ totalProfit, totalProfitMargin, totalSales, tota
     }
   }, [customerOutstandingList]);
 
-  const totalOutstandingSum = customersOutstanding.reduce(
+  const filteredCustomers = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) {
+      return customersOutstanding;
+    }
+
+    return customersOutstanding.filter((customer) => {
+      const customerName = (customer.customerName ?? "").toLowerCase();
+      const organizationName = getOrganizationName(customer).toLowerCase();
+
+      return (
+        customerName.includes(term) ||
+        (organizationName !== "-" && organizationName.includes(term))
+      );
+    });
+  }, [customersOutstanding, searchTerm]);
+
+  const totalOutstandingSum = filteredCustomers.reduce(
     (sum, customer) => sum + Number(customer.totalOutstanding || 0),
     0
   );
@@ -52,12 +79,37 @@ const OutstandingCustomers = ({ totalProfit, totalProfitMargin, totalSales, tota
           mb: "15px",
         }}
       >
-        <Box sx={{ paddingBottom: "10px" }} display="flex" justifyContent="space-between">
+        <Box
+          sx={{
+            paddingBottom: "10px",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 2,
+          }}
+        >
           <Typography as="h3" sx={{ fontSize: 18, fontWeight: 500 }}>
             Customers Outstanding
           </Typography>
+
+          <TextField
+            size="small"
+            placeholder="Search customer or organization..."
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ fontSize: 20, color: "#999" }} />
+                </InputAdornment>
+              ),
+            }}
+            sx={{ flex: 1, minWidth: 200, maxWidth: 320 }}
+          />
+
           <Typography as="h3" sx={{ fontSize: 18, fontWeight: 500 }}>
-            Total :  Rs. {formatCurrency(totalOutstandingSum)}
+            Total : Rs. {formatCurrency(totalOutstandingSum)}
           </Typography>
         </Box>
 
@@ -93,23 +145,32 @@ const OutstandingCustomers = ({ totalProfit, totalProfitMargin, totalSales, tota
                     padding: "15px 10px",
                   }}
                 >
+                  Organization
+                </TableCell>
+                <TableCell
+                  sx={{
+                    borderBottom: "1px solid #F7FAFF",
+                    fontSize: "13.5px",
+                    padding: "15px 10px",
+                  }}
+                >
                   Total Outstanding Amount
                 </TableCell>
               </TableRow>
             </TableHead>
 
             <TableBody>
-              {customersOutstanding.length === 0 ? (
+              {filteredCustomers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={2}>
-                    <Typography variant="h6" color="error">
-                      No outstanding customer data available.
-                    </Typography>
+                  <TableCell colSpan={3} sx={{ textAlign: "center", py: 3, color: "#666" }}>
+                    {searchTerm.trim()
+                      ? "No customers match your search."
+                      : "No outstanding customer data available."}
                   </TableCell>
                 </TableRow>
               ) : (
-                customersOutstanding.map((customer, index) => (
-                  <TableRow key={index}>
+                filteredCustomers.map((customer, index) => (
+                  <TableRow key={customer.customerId ?? index}>
                     <TableCell
                       sx={{
                         fontWeight: "500",
@@ -120,6 +181,16 @@ const OutstandingCustomers = ({ totalProfit, totalProfitMargin, totalSales, tota
                       }}
                     >
                       {customer.customerName || "N/A"}
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        fontSize: "13px",
+                        borderBottom: "1px solid #F7FAFF",
+                        color: "#260944",
+                        padding: "9px 10px",
+                      }}
+                    >
+                      {getOrganizationName(customer)}
                     </TableCell>
                     <TableCell
                       sx={{
@@ -134,11 +205,12 @@ const OutstandingCustomers = ({ totalProfit, totalProfitMargin, totalSales, tota
                   </TableRow>
                 ))
               )}
-              {customersOutstanding.length > 0 && (
+              {filteredCustomers.length > 0 && (
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600, padding: "10px" }}>
                     Total
                   </TableCell>
+                  <TableCell sx={{ padding: "10px" }} />
                   <TableCell sx={{ fontWeight: 600, padding: "10px" }}>
                     Rs. {formatCurrency(totalOutstandingSum)}
                   </TableCell>

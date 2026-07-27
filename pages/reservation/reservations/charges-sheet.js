@@ -21,6 +21,42 @@ import { useRouter } from "next/router";
 import BASE_URL from "Base/api";
 import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
 import * as XLSX from 'xlsx';
+import ChargesSheetInvoiceView from "@/components/UIElements/Modal/ChargesSheetInvoiceView";
+
+const PREFERRED_TIME_LABELS = { 1: "Morning", 2: "Evening" };
+const BRIDAL_TYPE_LABELS = { 1: "Kandyan", 2: "Indian", 3: "Western", 4: "Hindu" };
+const LOCATION_LABELS = { 1: "Studio", 2: "Away", 3: "Overseas" };
+const FUNCTION_TYPE_LABELS = {
+  1: "Wedding",
+  2: "Home Coming",
+  3: "Wedding & Home Coming",
+  4: "Normal Dressing",
+  5: "Photo Shoot",
+  6: "Outfit Only",
+  7: "Engagement",
+};
+const PAYMENT_TYPE_LABELS = {
+  1: "Cash",
+  2: "Card",
+  3: "Cash & Card",
+  4: "Bank Transfer",
+  5: "Cheque",
+  6: "No Advance",
+  7: "Credit",
+};
+
+const buildAddress = (reservation) =>
+  [reservation?.addressLine1, reservation?.addressLine2, reservation?.addressLine3]
+    .filter((line) => line && String(line).trim() !== "")
+    .join(", ");
+
+const buildCategories = (reservation) =>
+  [
+    PREFERRED_TIME_LABELS[reservation?.preferdTime],
+    BRIDAL_TYPE_LABELS[reservation?.bridleType],
+    LOCATION_LABELS[reservation?.location],
+    FUNCTION_TYPE_LABELS[reservation?.reservationFunctionType],
+  ].filter(Boolean);
 
 
 const ChargesSheet = () => {
@@ -353,7 +389,26 @@ const ChargesSheet = () => {
       >
         <Grid item xs={12} display="flex" justifyContent="space-between">
           <Typography>NIC/Passport No : {reservation?.nic} / Contact No : {reservation?.mobileNo}</Typography>
-          <Button variant="outlined" color="success" onClick={handleDownload}>Download Excel</Button>
+          <Box display="flex" gap={1}>
+            <ChargesSheetInvoiceView
+              customerName={reservation?.chargeSheetCustomerName}
+              nic={reservation?.nic}
+              mobileNo={reservation?.mobileNo}
+              address={buildAddress(reservation)}
+              categories={buildCategories(reservation)}
+              reservationDate={reservation?.chargeSheetReservationDate}
+              advancePaymentDate={reservation?.advancePaymentDate}
+              advancePaidAmount={reservation?.advancePaidAmount}
+              advancePaymentMethod={PAYMENT_TYPE_LABELS[reservation?.advancePaymentType]}
+              charges={charges}
+              refunds={refunds}
+              grossTotal={grossTotal}
+              netTotal={netTotal}
+              discountPercentage={discountPercentage}
+              discountValue={discountValue}
+            />
+            <Button variant="outlined" color="success" onClick={handleDownload}>Download Excel</Button>
+          </Box>
         </Grid>
         <Grid item xs={12} lg={6} mt={2}>
           <TableContainer component={Paper}>

@@ -7,13 +7,29 @@ import Typography from "@mui/material/Typography";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import PrintIcon from "@mui/icons-material/Print";
 import BASE_URL from "Base/api";
-import { ProjectNo } from "Base/catelogue";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import useLoggedUserCompanyLetterhead from "@/hooks/useLoggedUserCompanyLetterhead";
+import PrintCompanyLogo from "@/components/UIElements/Print/PrintCompanyLogo";
+import PrintPoweredByFooter from "@/components/UIElements/Print/PrintPoweredByFooter";
 
 const FIRST_PAGE_ROW_LIMIT = 8;
 const NEXT_PAGE_ROW_LIMIT = 14;
+
+// Customizable HTML template key (managed under Report Template > Sales > Sales Order Print Template).
+const REPORT_KEY = "SALESORDER";
+
+const escapeHtml = (value) => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+};
 
 const formatDisplayDate = (value) => {
   if (!value) {
@@ -50,9 +66,57 @@ const formatQty = (value) => {
     : numericValue.toFixed(2);
 };
 
+// Builds one <tr> per sales order line for the customizable HTML template:
+// Product | Code | Qty | Unit Price | Line Total
+const buildLineItemsRows = (items) => {
+  if (!items || items.length === 0) {
+    return `<tr><td colspan="5" style="text-align:center;padding:16px;">No items available</td></tr>`;
+  }
+
+  return items
+    .map(
+      (item) => `<tr>
+        <td>${escapeHtml(item.productName || "-")}</td>
+        <td>${escapeHtml(item.productCode || "-")}</td>
+        <td class="num">${escapeHtml(formatQty(item.qty))}</td>
+        <td class="num">${escapeHtml(formatAmount(item.unitPrice))}</td>
+        <td class="num">${escapeHtml(formatAmount(item.lineTotal))}</td>
+      </tr>`
+    )
+    .join("\n");
+};
+
+const applyTemplate = (templateHtml, tokenMap, rowsHtml) => {
+  if (!templateHtml) {
+    return "";
+  }
+
+  let output = templateHtml.replace(/\{\{\s*lineItemsRows\s*\}\}/gi, rowsHtml);
+  output = output.replace(/\{\{\s*companyLogo\s*\}\}/gi, tokenMap.companyLogo || "");
+
+  Object.entries(tokenMap).forEach(([key, value]) => {
+    if (key === "companyLogo") {
+      return;
+    }
+    const pattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "gi");
+    output = output.replace(pattern, escapeHtml(value));
+  });
+
+  const printStyle =
+    '<style>@page{size:A4;margin:0;}@media print{html,body{margin:0!important;}}</style>';
+  if (/<\/head>/i.test(output)) {
+    output = output.replace(/<\/head>/i, `${printStyle}</head>`);
+  } else {
+    output = `${printStyle}${output}`;
+  }
+
+  return output;
+};
+
 export default function SalesOrderPrintPage() {
   const router = useRouter();
   const contentRef = useRef(null);
+  const iframeRef = useRef(null);
   const salesOrderId = router.query.id;
   const documentNumber = router.query.documentNumber;
 
@@ -60,6 +124,9 @@ export default function SalesOrderPrintPage() {
   const [warehouseData, setWarehouseData] = useState(null);
   const [loadingSalesOrder, setLoadingSalesOrder] = useState(true);
   const [sidebarLogo, setSidebarLogo] = useState("");
+  const [templateHtml, setTemplateHtml] = useState("");
+  const [isTemplateCustomized, setIsTemplateCustomized] = useState(false);
+  const [iframeHeight, setIframeHeight] = useState(1123);
 
   const { companyData } = useLoggedUserCompanyLetterhead();
 
@@ -181,6 +248,38 @@ export default function SalesOrderPrintPage() {
     fetchSidebarLogo();
   }, [salesOrderData?.warehouseId]);
 
+  // Load the customizable Sales Order HTML template. Only a saved (customized)
+  // template overrides the built-in layout; otherwise the default React layout is used.
+  useEffect(() => {
+    const fetchTemplate = async () => {
+      try {
+        const token =
+          typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+        const response = await fetch(
+          `${BASE_URL}/ReportTemplate/GetReportTemplateByKey?reportKey=${REPORT_KEY}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          }
+        );
+
+        const data = await response.json().catch(() => null);
+        if (response.ok && data && data.isCustomized && data.htmlContent) {
+          setTemplateHtml(data.htmlContent);
+          setIsTemplateCustomized(true);
+        }
+      } catch (error) {
+        console.error("Error fetching sales order report template:", error);
+      }
+    };
+
+    fetchTemplate();
+  }, []);
+
   const lineItems = salesOrderData?.salesOrderLineDetails ?? [];
   const companyAddressLines = useMemo(
     () =>
@@ -212,9 +311,6 @@ export default function SalesOrderPrintPage() {
     return lines;
   }, [companyData?.contactNumber, warehouseData]);
 
-  const companyLogoSrc =
-    sidebarLogo || (ProjectNo === 1 ? "/images/cbass.png" : "/images/db-logo.png");
-
   const salesOrderPages = useMemo(() => {
     if (lineItems.length === 0) {
       return [[]];
@@ -241,7 +337,161 @@ export default function SalesOrderPrintPage() {
   const grossTotal = Number(salesOrderData?.grossTotal ?? 0);
   const netTotal = Number(salesOrderData?.netTotal ?? 0);
 
+  const tokenMap = useMemo(
+    () => ({
+      companyLogo: sidebarLogo
+        ? `<img src="${escapeHtml(sidebarLogo)}" alt="Company Logo" />`
+        : "",
+      companyName: companyData?.name || warehouseData?.name || "Company",
+      companyAddress: companyAddressLines.join(", "),
+      companyContact: companyContactLines.join("  |  "),
+      documentNo: salesOrderData?.documentNo || documentNumber || "-",
+      customerName: salesOrderData?.customerName || "-",
+      orderDate: formatDisplayDate(salesOrderData?.documentDate),
+      warehouseName: salesOrderData?.warehouseName || warehouseData?.name || "-",
+      salesPerson: salesOrderData?.salesPersonName || "-",
+      remark: salesOrderData?.remark || "-",
+      totalQty: formatQty(totalQty),
+      grossTotal: formatAmount(grossTotal),
+      netTotal: formatAmount(netTotal),
+    }),
+    [
+      sidebarLogo,
+      companyData?.name,
+      warehouseData?.name,
+      companyAddressLines,
+      companyContactLines,
+      salesOrderData,
+      documentNumber,
+      totalQty,
+      grossTotal,
+      netTotal,
+    ]
+  );
+
+  const finalHtml = useMemo(() => {
+    if (!isTemplateCustomized || !templateHtml || !salesOrderData) {
+      return "";
+    }
+    return applyTemplate(templateHtml, tokenMap, buildLineItemsRows(lineItems));
+  }, [isTemplateCustomized, templateHtml, salesOrderData, tokenMap, lineItems]);
+
+  const usingCustomTemplate = Boolean(finalHtml);
+
+  const resizeIframe = () => {
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    if (!doc || !doc.documentElement) {
+      return;
+    }
+    const height = Math.max(
+      doc.documentElement.scrollHeight,
+      doc.body ? doc.body.scrollHeight : 0
+    );
+    if (height > 0) {
+      setIframeHeight(height);
+    }
+  };
+
+  const handleIframeLoad = () => {
+    resizeIframe();
+    setTimeout(resizeIframe, 300);
+  };
+
+  const handleDownloadTemplatePDF = async () => {
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    if (!doc) {
+      toast.error("Nothing to export yet.");
+      return;
+    }
+
+    try {
+      const target = doc.querySelector(".page") || doc.body;
+
+      const images = target.querySelectorAll("img");
+      await Promise.all(
+        Array.from(images).map((img) => {
+          if (img.complete) {
+            return Promise.resolve();
+          }
+          return new Promise((resolve) => {
+            img.onload = resolve;
+            img.onerror = resolve;
+            setTimeout(resolve, 2000);
+          });
+        })
+      );
+
+      const html2canvas = (await import("html2canvas")).default;
+      const { jsPDF } = await import("jspdf");
+
+      const canvas = await html2canvas(target, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+      });
+
+      const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+      const pageWidthMm = 210;
+      const pageHeightMm = 297;
+      const pxPerMm = canvas.width / pageWidthMm;
+      const pageHeightPx = Math.floor(pageHeightMm * pxPerMm);
+
+      let renderedHeight = 0;
+      let pageIndex = 0;
+
+      while (renderedHeight < canvas.height) {
+        const sliceHeight = Math.min(pageHeightPx, canvas.height - renderedHeight);
+
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceHeight;
+
+        const ctx = pageCanvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        ctx.drawImage(
+          canvas,
+          0,
+          renderedHeight,
+          canvas.width,
+          sliceHeight,
+          0,
+          0,
+          canvas.width,
+          sliceHeight
+        );
+
+        const imgData = pageCanvas.toDataURL("image/jpeg", 0.98);
+        const sliceHeightMm = sliceHeight / pxPerMm;
+
+        if (pageIndex > 0) {
+          pdf.addPage();
+        }
+        pdf.addImage(imgData, "JPEG", 0, 0, pageWidthMm, sliceHeightMm);
+
+        renderedHeight += sliceHeight;
+        pageIndex += 1;
+      }
+
+      pdf.save(
+        `Sales_Order_${salesOrderData?.documentNo || documentNumber || "document"}.pdf`
+      );
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast.error("Failed to download PDF. Please try again.");
+    }
+  };
+
   const handleDownloadPDF = async () => {
+    if (usingCustomTemplate) {
+      await handleDownloadTemplatePDF();
+      return;
+    }
+
     if (!contentRef.current) {
       return;
     }
@@ -306,6 +556,11 @@ export default function SalesOrderPrintPage() {
   };
 
   const handlePrint = () => {
+    if (usingCustomTemplate && iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.focus();
+      iframeRef.current.contentWindow.print();
+      return;
+    }
     if (typeof window !== "undefined") {
       window.print();
     }
@@ -394,13 +649,7 @@ export default function SalesOrderPrintPage() {
           pb: 2,
         }}
       >
-        <Box sx={{ width: { xs: "135px", sm: "220px" }, flexShrink: 0 }}>
-          <img
-            src={companyLogoSrc}
-            alt="Company logo"
-            style={{ width: "100%", height: "auto", objectFit: "contain" }}
-          />
-        </Box>
+        <PrintCompanyLogo src={sidebarLogo} />
         <Box sx={{ flex: 1, textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
           <Typography sx={{ fontWeight: 700, fontSize: { xs: "1rem", sm: "1.25rem" }, lineHeight: 1.2 }}>
             {companyData?.name || warehouseData?.name || "Company"}
@@ -549,6 +798,28 @@ export default function SalesOrderPrintPage() {
               </Typography>
             </Box>
           ) : salesOrderData ? (
+            usingCustomTemplate ? (
+              <Box
+                component="iframe"
+                ref={iframeRef}
+                title="Sales Order Print Preview"
+                srcDoc={finalHtml}
+                onLoad={handleIframeLoad}
+                sx={{
+                  width: { xs: "100%", sm: "210mm" },
+                  maxWidth: "100%",
+                  height: `${iframeHeight}px`,
+                  margin: "0 auto",
+                  border: "none",
+                  backgroundColor: "#fff",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+                  "@media print": {
+                    boxShadow: "none",
+                    width: "100%",
+                  },
+                }}
+              />
+            ) : (
             salesOrderPages.map((items, pageIndex) => {
               const isLastPage = pageIndex === salesOrderPages.length - 1;
 
@@ -585,21 +856,11 @@ export default function SalesOrderPrintPage() {
                   <Box sx={{ position: "relative", width: "100%", mx: "auto", boxSizing: "border-box", backgroundColor: "transparent", flex: 1 }}>
                     {renderPageContent(items, pageIndex, isLastPage)}
                   </Box>
-                  <Typography
-                    sx={{
-                      mt: 2,
-                      pt: 1,
-                      borderTop: "1px solid #d9d9d9",
-                      textAlign: "center",
-                      fontSize: { xs: "0.62rem", sm: "0.8rem" },
-                      fontWeight: 600,
-                    }}
-                  >
-                    Powered By : CBASS-AI
-                  </Typography>
+                  <PrintPoweredByFooter />
                 </Box>
               );
             })
+            )
           ) : (
             <Box
               sx={{

@@ -25,7 +25,9 @@ export default function EditSetting({ item, fetchItems }) {
     const payload = {
       ...values,
       Value:
-        item.settingName === "AutoLogoutTimeMinutes" && values.Value !== undefined && values.Value !== null
+        (item.settingName === "AutoLogoutTimeMinutes" || item.settingName === "ProformaInvoiceUnitEditTolerance") &&
+        values.Value !== undefined &&
+        values.Value !== null
           ? String(values.Value)
           : values.Value,
     };
@@ -116,62 +118,43 @@ export default function EditSetting({ item, fetchItems }) {
                           mb: "5px",
                         }}
                       >
-                        Value
+                        {item.settingName === "OnlineOrderWhatsAppNotificationPhone"
+                          ? "WhatsApp Numbers"
+                          : "Value"}
                       </Typography>
-                      <Field
-                        as={TextField}
-                        fullWidth
-                        size="small"
-                        name="Value"
-                        type={
-                          item.settingName === "IsBackDateEnabled"
-                            ? "datetime-local"
-                            : item.settingName === "AutoLogoutTimeMinutes"
-                            ? "number"
-                            : "text"
-                        }
-                        inputProps={
-                          item.settingName === "AutoLogoutTimeMinutes"
-                            ? { inputMode: "numeric", pattern: "\\d*", min: 0 }
-                            : undefined
-                        }
-                      />
-                    </Grid>
-                    <Grid item xs={12} mt={1}>
-                      <Typography
-                        as="h5"
-                        sx={{
-                          fontWeight: "400",
-                          mb: "5px",
-                        }}
-                      >
-                        Description
-                      </Typography>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        value={item.description || "-"}
-                        disabled
-                        multiline
-                        rows={2}
-                      />
-                    </Grid>
-                    <Grid item xs={12} mt={1}>
-                      <Typography
-                        as="h5"
-                        sx={{
-                          fontWeight: "400",
-                          mb: "5px",
-                        }}
-                      >
-                        Document Link
-                      </Typography>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        value={item.documentLink || "-"}
-                        disabled
-                      />
+                      {item.settingName === "OnlineOrderWhatsAppNotificationPhone" ? (
+                        <Field
+                          as={TextField}
+                          fullWidth
+                          size="small"
+                          name="Value"
+                          multiline
+                          rows={4}
+                          placeholder="Enter numbers, one per line"
+                          helperText="One number per line, or comma-separated"
+                        />
+                      ) : (
+                        <Field
+                          as={TextField}
+                          fullWidth
+                          size="small"
+                          name="Value"
+                          type={
+                            item.settingName === "IsBackDateEnabled"
+                              ? "datetime-local"
+                              : item.settingName === "AutoLogoutTimeMinutes" ||
+                                item.settingName === "ProformaInvoiceUnitEditTolerance"
+                              ? "number"
+                              : "text"
+                          }
+                          inputProps={
+                            item.settingName === "AutoLogoutTimeMinutes" ||
+                            item.settingName === "ProformaInvoiceUnitEditTolerance"
+                              ? { inputMode: "numeric", pattern: "\\d*", min: 0 }
+                              : undefined
+                          }
+                        />
+                      )}
                     </Grid>
                   </Grid>
                 </Box>
@@ -202,7 +185,7 @@ const style = {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: 400,
+  width: 440,
   bgcolor: "background.paper",
   boxShadow: 24,
   p: 2,

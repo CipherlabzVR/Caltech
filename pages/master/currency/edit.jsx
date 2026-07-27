@@ -23,7 +23,7 @@ const style = {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: { lg: 320, xs: 300 },
+  width: { lg: 400, xs: 400 },
   bgcolor: "background.paper",
   boxShadow: 24,
   p: 2,
@@ -39,6 +39,12 @@ const validationSchema = Yup.object().shape({
   Name: Yup.string().trim().required("Name is required"),
   Description: Yup.string().trim(),
   Symbol: Yup.string().trim().required("Symbol is required"),
+  ExchangeRate: Yup.number()
+    .nullable()
+    .transform((value, originalValue) =>
+      originalValue === "" || originalValue === null ? null : value
+    )
+    .min(0, "Exchange rate must be zero or greater"),
 });
 
 export default function EditCurrency({ fetchItems, item }) {
@@ -69,6 +75,10 @@ export default function EditCurrency({ fetchItems, item }) {
       Description: values.Description?.trim() || "",
       Symbol: values.Symbol.trim(),
       IsActive: values.IsActive,
+      ExchangeRate:
+        values.ExchangeRate === "" || values.ExchangeRate == null
+          ? null
+          : Number(values.ExchangeRate),
     };
 
     fetch(`${BASE_URL}/Currency/UpdateCurrency`, {
@@ -127,6 +137,10 @@ export default function EditCurrency({ fetchItems, item }) {
               Name: item.name || "",
               Description: item.description || "",
               Symbol: item.symbol || "",
+              ExchangeRate:
+                item.exchangeRate != null && item.exchangeRate !== ""
+                  ? item.exchangeRate
+                  : "",
               IsActive: item.isActive !== undefined ? item.isActive : true,
             }}
             validationSchema={validationSchema}
@@ -229,6 +243,26 @@ export default function EditCurrency({ fetchItems, item }) {
                           size="small"
                           error={touched.Symbol && Boolean(errors.Symbol)}
                           helperText={touched.Symbol && errors.Symbol}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Typography
+                          sx={{
+                            fontWeight: "500",
+                            mb: "5px",
+                          }}
+                        >
+                          Exchange Rate
+                        </Typography>
+                        <Field
+                          as={TextField}
+                          fullWidth
+                          name="ExchangeRate"
+                          size="small"
+                          type="number"
+                          inputProps={{ min: 0, step: "0.0001" }}
+                          error={touched.ExchangeRate && Boolean(errors.ExchangeRate)}
+                          helperText={touched.ExchangeRate && errors.ExchangeRate}
                         />
                       </Grid>
                       <Grid item xs={12} mt={1} p={1}>

@@ -25,7 +25,30 @@ import { getDeviceIdentity } from "@/components/utils/getDeviceId";
 import DeviceNameDialog from "@/components/Authentication/DeviceNameDialog";
 import TwoFactorChallengeDialog from "@/components/Authentication/TwoFactorChallengeDialog";
 
-const SignInForm = () => {
+/** Reserved-customer portal role from backend (UserType.EXTERNAL). */
+const EXTERNAL_USER_TYPE = 15;
+
+const MOBILE_VIEWPORT_MAX = 1199;
+
+function isMobileViewport() {
+  return typeof window !== "undefined" && window.innerWidth <= MOBILE_VIEWPORT_MAX;
+}
+
+function resolvePostLoginPath(userTypeRaw) {
+  const t = Number(userTypeRaw);
+  if (t === EXTERNAL_USER_TYPE) return "/customer-portal";
+  return isMobileViewport() ? "/quick-access" : "/";
+}
+
+function shouldReloadAfterStaffLogin(target) {
+  return target === "/" || target === "/quick-access";
+}
+
+/** Same gold as `BRAND` in pages/customer-portal (reservation customer portal). */
+const PORTAL_GOLD = "#C5A028";
+const PORTAL_GOLD_HOVER = "#9E7E1A";
+
+const SignInForm = ({ portalCustomerEntry = false }) => {
   const [showError, setShowError] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loginNote, setLoginNote] = useState("");
@@ -75,14 +98,18 @@ const SignInForm = () => {
       return;
     }
 
-    router.push("/");
-    window.location.reload();
+    const target = resolvePostLoginPath(result.userType ?? result.UserType);
+    router.replace(target);
+    // Staff ERP needs a full reload to hydrate sidebar/permissions; portal is standalone.
+    if (shouldReloadAfterStaffLogin(target)) {
+      window.location.reload();
+    }
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const email = data.get("email");
+    const email = String(data.get("email") ?? "").trim();
     const password = data.get("password");
 
     if (!email || !password) {
@@ -291,8 +318,12 @@ const SignInForm = () => {
 
   const handleDeviceDialogCancel = () => {
     setDeviceDialogOpen(false);
-    router.push("/");
-    window.location.reload();
+    const ut = loginResult?.userType ?? loginResult?.UserType ?? localStorage.getItem("type");
+    const target = resolvePostLoginPath(ut);
+    router.replace(target);
+    if (shouldReloadAfterStaffLogin(target)) {
+      window.location.reload();
+    }
   };
 
   const handleDeviceDialogConfirm = async () => {
@@ -357,8 +388,15 @@ const SignInForm = () => {
     }
 
     setDeviceDialogOpen(false);
-    router.push("/");
-    window.location.reload();
+    const ut =
+      loginResult?.userType ??
+      loginResult?.UserType ??
+      localStorage.getItem("type");
+    const target = resolvePostLoginPath(ut);
+    router.replace(target);
+    if (shouldReloadAfterStaffLogin(target)) {
+      window.location.reload();
+    }
   };
 
   return (
@@ -368,7 +406,7 @@ const SignInForm = () => {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "#f0f2f5",
+        backgroundColor: portalCustomerEntry ? "#FAF7F0" : "#f0f2f5",
         p: 2,
       }}
     >
@@ -387,7 +425,7 @@ const SignInForm = () => {
           xs={12}
           md={5}
           sx={{
-            backgroundColor: "#5e81f4",
+            backgroundColor: portalCustomerEntry ? PORTAL_GOLD : "#5e81f4",
             color: "#fff",
             display: "flex",
             flexDirection: "column",
@@ -400,16 +438,18 @@ const SignInForm = () => {
           }}
         >
           <Typography variant="h4" fontWeight={700} mb={1}>
-            Welcome Back!
+            {portalCustomerEntry ? "Reservation portal" : "Welcome Back!"}
           </Typography>
           <Typography variant="body2">
-            Log in to access your account and continue where you left off.
+            {portalCustomerEntry
+              ? "Sign in with the email and password issued for your wedding reservation."
+              : "Log in to access your account and continue where you left off."}
           </Typography>
         </Grid>
 
         <Grid item xs={12} md={7} sx={{ p: 4 }}>
           <Typography variant="h5" fontWeight={700} mb={3}>
-            Login
+            {portalCustomerEntry ? "Customer portal login" : "Login"}
           </Typography>
 
           <Box component="form" noValidate onSubmit={handleSubmit}>
@@ -473,14 +513,25 @@ const SignInForm = () => {
               mt={1}
             >
               <FormControlLabel
-                control={<Checkbox color="primary" />}
+                control={
+                  <Checkbox
+                    {...(portalCustomerEntry
+                      ? {
+                          sx: {
+                            color: PORTAL_GOLD,
+                            "&.Mui-checked": { color: PORTAL_GOLD },
+                          },
+                        }
+                      : { color: "primary" })}
+                  />
+                }
                 label="Remember me"
               />
               <Link
                 href="/authentication/forgot-password"
                 style={{
                   fontSize: 14,
-                  color: "#5e81f4",
+                  color: portalCustomerEntry ? PORTAL_GOLD : "#5e81f4",
                   textDecoration: "none",
                 }}
               >
@@ -499,33 +550,50 @@ const SignInForm = () => {
                 fontWeight: 600,
                 fontSize: 16,
                 borderRadius: "8px",
-                backgroundColor: "#5e81f4",
-                "&:hover": { backgroundColor: "#4a6fd0" },
+                backgroundColor: portalCustomerEntry ? PORTAL_GOLD : "#5e81f4",
+                "&:hover": {
+                  backgroundColor: portalCustomerEntry ? PORTAL_GOLD_HOVER : "#4a6fd0",
+                },
               }}
             >
-              {submitting ? "Signing in..." : "Login"}
+              {submitting ? "Signing in..." : portalCustomerEntry ? "Sign in to my reservation" : "Login"}
             </Button>
 
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              align="center"
-              mt={3}
-            >
-              or login with social platforms
-            </Typography>
+            {portalCustomerEntry ? (
+              <Typography variant="body2" align="center" sx={{ mt: 2 }}>
+                Staff or business user?{" "}
+                <Link
+                  href="/authentication/sign-in"
+                  style={{ color: PORTAL_GOLD, fontWeight: 600 }}
+                >
+                  Staff login
+                </Link>
+              </Typography>
+            ) : null}
 
-            <Box display="flex" justifyContent="center" gap={2} mt={1}>
-              <IconButton variant="outlined" size="small">
-                <FacebookIcon/>
-              </IconButton>
-              <IconButton variant="outlined" size="small">
-                <WhatsAppIcon/>
-              </IconButton>
-              <IconButton variant="outlined" size="small">
-                <LinkedInIcon/>
-              </IconButton>
-            </Box>
+            {!portalCustomerEntry ? (
+              <>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  align="center"
+                  mt={3}
+                >
+                  or login with social platforms
+                </Typography>
+                <Box display="flex" justifyContent="center" gap={2} mt={1}>
+                  <IconButton variant="outlined" size="small">
+                    <FacebookIcon />
+                  </IconButton>
+                  <IconButton variant="outlined" size="small">
+                    <WhatsAppIcon />
+                  </IconButton>
+                  <IconButton variant="outlined" size="small">
+                    <LinkedInIcon />
+                  </IconButton>
+                </Box>
+              </>
+            ) : null}
           </Box>
         </Grid>
       </Grid>

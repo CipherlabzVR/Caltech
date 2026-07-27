@@ -119,7 +119,8 @@ async function fetchAllReferenceData() {
   return { categories, subCategories, uoms, suppliers, items, accounts, currencies };
 }
 
-function buildTemplateWorkbook(wb, refData) {
+function buildTemplateWorkbook(wb, refData, opts = {}) {
+  const { isSubCategoryNotRequired = false, isUOMNotRequired = false } = opts;
   const { categories, subCategories, uoms, suppliers, items, accounts } = refData;
 
   const headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1976D2" } };
@@ -149,9 +150,9 @@ function buildTemplateWorkbook(wb, refData) {
     { header: "Item Name *", key: "Name", width: 28 },
     { header: "Item Code *", key: "Code", width: 20 },
     { header: "Category Name *", key: "CategoryName", width: 25 },
-    { header: "Subcategory Name *", key: "SubCategoryName", width: 25 },
+    { header: `Subcategory Name${isSubCategoryNotRequired ? "" : " *"}`, key: "SubCategoryName", width: 25 },
     { header: "Supplier Name *", key: "SupplierName", width: 25 },
-    { header: "Unit of Measure *", key: "UOMName", width: 22 },
+    { header: `Unit of Measure${isUOMNotRequired ? "" : " *"}`, key: "UOMName", width: 22 },
     { header: "Average Price", key: "AveragePrice", width: 16 },
     { header: "Reorder Level", key: "ReorderLevel", width: 16 },
     { header: "Shipment Target", key: "ShipmentTarget", width: 18 },
@@ -322,13 +323,15 @@ function parseYesNo(val, defaultVal = false) {
   return defaultVal;
 }
 
-function validateAndResolveRows(rows, refData) {
+function validateAndResolveRows(rows, refData, flags = {}) {
+  const {
+    isSubCategoryNotRequired = false,
+    isUOMNotRequired = false,
+  } = flags;
   const { categories, subCategories, uoms, suppliers, accounts, currencies } = refData;
 
   const catByName = {};
   categories.forEach((c) => { if (c.isActive) catByName[c.name.trim().toLowerCase()] = c; });
-  const subCatByName = {};
-  subCategories.forEach((sc) => { if (sc.isActive) subCatByName[sc.name.trim().toLowerCase()] = sc; });
   const uomByName = {};
   uoms.forEach((u) => { if (u.isActive) uomByName[u.name.trim().toLowerCase()] = u; });
   const supplierByName = {};
@@ -355,9 +358,11 @@ function validateAndResolveRows(rows, refData) {
     if (!name) rowErrors.push({ field: "Item Name", message: "Item Name is required" });
     if (!code) rowErrors.push({ field: "Item Code", message: "Item Code is required" });
     if (!categoryName) rowErrors.push({ field: "Category Name", message: "Category Name is required" });
-    if (!subCategoryName) rowErrors.push({ field: "Subcategory Name", message: "Subcategory Name is required" });
+    if (!subCategoryName && !isSubCategoryNotRequired)
+      rowErrors.push({ field: "Subcategory Name", message: "Subcategory Name is required" });
     if (!supplierName) rowErrors.push({ field: "Supplier Name", message: "Supplier Name is required" });
-    if (!uomName) rowErrors.push({ field: "Unit of Measure", message: "Unit of Measure is required" });
+    if (!uomName && !isUOMNotRequired)
+      rowErrors.push({ field: "Unit of Measure", message: "Unit of Measure is required" });
 
     let resolvedCat = null;
     let resolvedSubCat = null;
@@ -369,11 +374,24 @@ function validateAndResolveRows(rows, refData) {
       if (!resolvedCat) rowErrors.push({ field: "Category Name", message: `Category "${categoryName}" not found or inactive` });
     }
     if (subCategoryName) {
-      resolvedSubCat = subCatByName[subCategoryName.toLowerCase()];
-      if (!resolvedSubCat) {
-        rowErrors.push({ field: "Subcategory Name", message: `Subcategory "${subCategoryName}" not found or inactive` });
-      } else if (resolvedCat && resolvedSubCat.categoryId !== resolvedCat.id) {
-        rowErrors.push({ field: "Subcategory Name", message: `Subcategory "${subCategoryName}" does not belong to Category "${categoryName}"` });
+      if (!resolvedCat) {
+        rowErrors.push({
+          field: "Subcategory Name",
+          message: `Cannot resolve subcategory "${subCategoryName}" without a valid category`,
+        });
+      } else {
+        resolvedSubCat = subCategories.find(
+          (sc) =>
+            sc.isActive &&
+            sc.name.trim().toLowerCase() === subCategoryName.toLowerCase() &&
+            sc.categoryId === resolvedCat.id
+        );
+        if (!resolvedSubCat) {
+          rowErrors.push({
+            field: "Subcategory Name",
+            message: `Subcategory "${subCategoryName}" not found or inactive under Category "${categoryName}"`,
+          });
+        }
       }
     }
     if (supplierName) {
@@ -431,9 +449,9 @@ function validateAndResolveRows(rows, refData) {
         Name: name,
         Code: code,
         CategoryId: resolvedCat.id,
-        SubCategoryId: resolvedSubCat.id,
+        SubCategoryId: resolvedSubCat != null ? resolvedSubCat.id : null,
         Supplier: resolvedSupplier.id,
-        UOM: resolvedUom.id,
+        UOM: resolvedUom != null ? resolvedUom.id : null,
         AveragePrice: avgPrice !== undefined && avgPrice !== null && avgPrice !== "" ? Number(avgPrice) : null,
         ReorderLevel: reorderLevel !== undefined && reorderLevel !== null && reorderLevel !== "" ? Number(reorderLevel) : null,
         ShipmentTarget: shipmentTarget !== undefined && shipmentTarget !== null && shipmentTarget !== "" ? Number(shipmentTarget) : null,
@@ -462,9 +480,13 @@ async function submitItem(itemData) {
   formData.append("Code", itemData.Code);
   formData.append("AveragePrice", itemData.AveragePrice != null ? String(itemData.AveragePrice) : "0");
   formData.append("CategoryId", itemData.CategoryId);
-  formData.append("SubCategoryId", itemData.SubCategoryId);
+  if (itemData.SubCategoryId != null && itemData.SubCategoryId !== "") {
+    formData.append("SubCategoryId", itemData.SubCategoryId);
+  }
   formData.append("Supplier", itemData.Supplier);
-  formData.append("UOM", itemData.UOM);
+  if (itemData.UOM != null && itemData.UOM !== "") {
+    formData.append("UOM", itemData.UOM);
+  }
   formData.append("IsActive", itemData.IsActive);
   formData.append("IsNonInventoryItem", itemData.IsNonInventoryItem);
   formData.append("HasSerialNumbers", itemData.HasSerialNumbers);
@@ -662,7 +684,7 @@ function buildPreviewRows(rawRows, errorRows) {
   });
 }
 
-async function validateUploadedWorkbook(file, { createHighlightedCopy = false } = {}) {
+async function validateUploadedWorkbook(file, { createHighlightedCopy = false, isSubCategoryNotRequired = false, isUOMNotRequired = false } = {}) {
   const arrayBuffer = await file.arrayBuffer();
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(arrayBuffer);
@@ -691,7 +713,10 @@ async function validateUploadedWorkbook(file, { createHighlightedCopy = false } 
   }
 
   const refData = await fetchAllReferenceData();
-  const { validRows, errorRows } = validateAndResolveRows(rawRows, refData);
+  const { validRows, errorRows } = validateAndResolveRows(rawRows, refData, {
+    isSubCategoryNotRequired: !!isSubCategoryNotRequired,
+    isUOMNotRequired: !!isUOMNotRequired,
+  });
 
   let highlightedBuffer = null;
   if (createHighlightedCopy && errorRows.length > 0) {
@@ -709,7 +734,7 @@ async function validateUploadedWorkbook(file, { createHighlightedCopy = false } 
   };
 }
 
-export default function ProductUpload({ fetchItems }) {
+export default function ProductUpload({ fetchItems, isSubCategoryNotRequired = false, isUOMNotRequired = false }) {
   const [open, setOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -754,7 +779,10 @@ export default function ProductUpload({ fetchItems }) {
     try {
       const refData = await fetchAllReferenceData();
       const wb = new ExcelJS.Workbook();
-      buildTemplateWorkbook(wb, refData);
+      buildTemplateWorkbook(wb, refData, {
+        isSubCategoryNotRequired: !!isSubCategoryNotRequired,
+        isUOMNotRequired: !!isUOMNotRequired,
+      });
       const buffer = await wb.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       const url = URL.createObjectURL(blob);
@@ -791,7 +819,11 @@ export default function ProductUpload({ fetchItems }) {
 
     setValidatingFile(true);
     try {
-      const validation = await validateUploadedWorkbook(file, { createHighlightedCopy: true });
+      const validation = await validateUploadedWorkbook(file, {
+        createHighlightedCopy: true,
+        isSubCategoryNotRequired,
+        isUOMNotRequired,
+      });
 
       if (validation.error) {
         setFileValidationStatus("error");
@@ -860,7 +892,11 @@ export default function ProductUpload({ fetchItems }) {
     setResults(null);
 
     try {
-      const validation = await validateUploadedWorkbook(uploadedFile, { createHighlightedCopy: true });
+      const validation = await validateUploadedWorkbook(uploadedFile, {
+        createHighlightedCopy: true,
+        isSubCategoryNotRequired,
+        isUOMNotRequired,
+      });
 
       if (validation.error) {
         toast.error(validation.error);

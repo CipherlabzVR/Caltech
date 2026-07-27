@@ -7,7 +7,7 @@ import Select from "@mui/material/Select";
 import { useState, useEffect } from "react";
 import useApi from "@/components/utils/useApi";
 
-export default function BasicSelect({onChangeWarehouse}) {
+export default function BasicSelect({ onChangeWarehouse, size = "medium" }) {
   const [outlet, setOutlet] = React.useState(0);
   const [warehouseList, setWarehouseList] = useState([]);
   const { data: warehouses } = useApi("/Warehouse/GetAllWarehouse");
@@ -24,12 +24,13 @@ export default function BasicSelect({onChangeWarehouse}) {
 
   return (
     <Box sx={{ minWidth: 120 }}>
-      <FormControl fullWidth>
+      <FormControl fullWidth size={size}>
         <InputLabel id="demo-simple-select-label">Select Outlet</InputLabel>
         <Select
           labelId="demo-simple-select-label"
           id="demo-simple-select"
           value={outlet}
+          size={size}
           label="Select Outlet"
           onChange={(e)=>{
             handleChange(e.target.value);

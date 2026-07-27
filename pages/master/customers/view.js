@@ -20,11 +20,13 @@ import {
 } from "@mui/material";
 import Link from "next/link";
 import VisibilityIcon from "@mui/icons-material/Visibility";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 
 export default function ViewCustomerDialog({ customerId }) {
   const [open, setOpen] = React.useState(false);
   const [scroll, setScroll] = React.useState("paper");
   const [customer, setCustomer] = useState();
+  const { data: isSimpleCustomerForm } = IsAppSettingEnabled("IsSimpleCustomerFormEnable");
 
   console.log(customer);
   const fetchCustomerDetails = async () => {
@@ -121,6 +123,7 @@ export default function ViewCustomerDialog({ customerId }) {
                           )}
                         </TableCell>
                       </TableRow>
+                      {!isSimpleCustomerForm && (
                       <TableRow>
                         <TableCell sx={{ width: "30%", px: 0 }}>
                           Designation
@@ -129,6 +132,8 @@ export default function ViewCustomerDialog({ customerId }) {
                           {customer && customer.designation}
                         </TableCell>
                       </TableRow>
+                      )}
+                      {!isSimpleCustomerForm && (
                       <TableRow>
                         <TableCell sx={{ width: "30%", px: 0 }}>
                           Company
@@ -137,6 +142,8 @@ export default function ViewCustomerDialog({ customerId }) {
                           {customer && customer.company}
                         </TableCell>
                       </TableRow>
+                      )}
+                      {!isSimpleCustomerForm && (
                       <TableRow>
                         <TableCell sx={{ width: "30%", px: 0 }}>
                           Date Of Birth
@@ -145,6 +152,7 @@ export default function ViewCustomerDialog({ customerId }) {
                           {customer && formatDateOfBirth(customer.dateofBirth)}
                         </TableCell>
                       </TableRow>
+                      )}
                       <TableRow>
                         <TableCell sx={{ width: "30%", px: 0 }}>
                           Created On

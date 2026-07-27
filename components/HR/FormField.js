@@ -183,7 +183,9 @@ const FormField = ({
 
   return (
     <Grid item xs={xs} sm={sm} md={md}>
-      {renderField()}
+      <Box sx={{ pt: 1.5, mb: -1.5 }}>
+        {renderField()}
+      </Box>
     </Grid>
   );
 };

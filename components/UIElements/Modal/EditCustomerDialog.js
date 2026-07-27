@@ -20,6 +20,8 @@ import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import * as Yup from "yup";
 import BASE_URL from "Base/api";
+import { normalizeNicInput } from "@/components/utils/nicBirthYearValidation";
+import { isValidContactPhone } from "@/components/utils/contactPhoneValidation";
 
 const validationSchema = Yup.object().shape({
   Title: Yup.string().required("Title is required"),
@@ -30,18 +32,25 @@ const validationSchema = Yup.object().shape({
   AddressLine3: Yup.string(),
   Designation: Yup.string(),
   Company: Yup.string(),
-  NIC: Yup.string().matches(
-    /^\d{9}(\d{3})?$/,
-    "NIC must be either 9 or 12 digits long"
-  ),
+  NIC: Yup.string().test("nic-format", function (value) {
+    const digits = String(value ?? "").replace(/\D/g, "");
+    if (!digits.length) {
+      return this.createError({ message: "NIC is required" });
+    }
+    if (!/^\d{9}(\d{3})?$/.test(digits)) {
+      return this.createError({ message: "Invalid NIC" });
+    }
+    return true;
+  }),
   DateOfBirth: Yup.date(),
   CustomerContactDetails: Yup.array().of(
     Yup.object().shape({
       ContactName: Yup.string().required("Contact Name is required"),
       EmailAddress: Yup.string().email("Invalid email address"),
-      ContactNo: Yup.string().matches(
-        /^\d+$/,
-        "Contact No must contain only digits"
+      ContactNo: Yup.string().test(
+        "contact-phone",
+        "Invalid contact number",
+        (value) => isValidContactPhone(value)
       ),
     })
   ),
@@ -116,6 +125,7 @@ export default function EditCustomerDialog({ fetchItems, item }) {
   }, [open]);
 
   const handleSubmit = (values) => {
+    values.NIC = normalizeNicInput(values.NIC || "");
     values.DateOfBirth = birthdate ? birthdate : "1000-01-01";
     values.LastName = values.LastName ? values.LastName : "-";
 
@@ -152,42 +162,56 @@ export default function EditCustomerDialog({ fetchItems, item }) {
       });
   };
   const calculateBirthdateFromNIC = (value) => {
+    const norm = normalizeNicInput(String(value ?? ""));
+    const digits = norm.replace(/\D/g, "");
+    if (!norm || digits.length === 0) {
+      setBirthdate("");
+      return;
+    }
+    if (digits.length !== 9 && digits.length !== 12) {
+      return;
+    }
+
     let year, number;
-    if (value.length === 9 || value.length === 12) {
-      if (value.length === 9) {
-        year = parseInt(value.slice(0, 2), 10);
-        number = parseInt(value.slice(2, 5), 10);
-        let currentYear = new Date().getFullYear();
-        let prefix = Math.floor(currentYear / 100) * 100;
-        let threshold = 50;
+    if (digits.length === 9) {
+      year = parseInt(digits.slice(0, 2), 10);
+      number = parseInt(digits.slice(2, 5), 10);
+      let currentYear = new Date().getFullYear();
+      let prefix = Math.floor(currentYear / 100) * 100;
+      let threshold = 50;
 
-        if (year <= threshold) {
-          year = prefix + year;
-        } else {
-          year = prefix - 100 + year;
-        }
-      } else if (value.length === 12) {
-        year = parseInt(value.slice(0, 4), 10);
-        number = parseInt(value.slice(4, 7), 10);
+      if (year <= threshold) {
+        year = prefix + year;
+      } else {
+        year = prefix - 100 + year;
       }
+    } else {
+      year = parseInt(digits.slice(0, 4), 10);
+      number = parseInt(digits.slice(4, 7), 10);
+    }
 
-      if (number > 500) {
-        number -= 500;
+    if (number > 500) {
+      number -= 500;
+      if (!isLeapYear(year)) {
+        number -= 1;
+      }
+    } else {
+      if (number > 59) {
         if (!isLeapYear(year)) {
           number -= 1;
         }
       }
-
-      const date = new Date(year, 0);
-      date.setDate(number);
-      const month = date.getMonth() + 1;
-      const day = date.getDate();
-      const formattedDate = `${year}-${month.toString().padStart(2, "0")}-${day
-        .toString()
-        .padStart(2, "0")}`;
-      setBirthdate(formattedDate);
-      return formattedDate;
     }
+
+    const date = new Date(year, 0);
+    date.setDate(number);
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const formattedDate = `${year}-${month.toString().padStart(2, "0")}-${day
+      .toString()
+      .padStart(2, "0")}`;
+    setBirthdate(formattedDate);
+    return formattedDate;
   };
 
   const isLeapYear = (year) => {
@@ -416,8 +440,9 @@ export default function EditCustomerDialog({ fetchItems, item }) {
                         error={touched.NIC && Boolean(errors.NIC)}
                         helperText={touched.NIC && errors.NIC}
                         onChange={(e) => {
-                          setFieldValue("NIC", e.target.value);
-                          calculateBirthdateFromNIC(e.target.value);
+                          const nicValue = normalizeNicInput(e.target.value ?? "");
+                          setFieldValue("NIC", nicValue);
+                          calculateBirthdateFromNIC(nicValue);
                         }}
                       />
                     </Grid>

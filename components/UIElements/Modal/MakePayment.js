@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   Card,
   Grid,
@@ -21,6 +21,7 @@ import { toast } from "react-toastify";
 import { formatCurrency } from "@/components/utils/formatHelper";
 import getNext from "@/components/utils/getNext";
 import DoNotDisturbIcon from '@mui/icons-material/DoNotDisturb';
+import CustomerCredentialsPopup from "@/components/UIElements/Modal/CustomerCredentialsPopup";
 
 const style = {
   position: "absolute",
@@ -68,6 +69,51 @@ export default function MakePayment({
   const handleClose = () => setOpen(false);
   const [selectedValue, setSelectedValue] = useState(1);
   const { data: documentNo } = getNext(`15`);
+  const [credsOpen, setCredsOpen] = useState(false);
+  const [credentials, setCredentials] = useState(null);
+  const pendingAfterCredsRef = useRef(false);
+
+  const flushPendingAfterCredentials = useCallback(async () => {
+    if (!pendingAfterCredsRef.current) return;
+    pendingAfterCredsRef.current = false;
+    await fetchItems?.();
+    closeParentModal?.();
+  }, [fetchItems, closeParentModal]);
+
+  /** Initial advance payment (type 1): generate portal login as soon as payment is recorded (pending approval). */
+  const generateAndShowCredentials = async (reservationId, mobileNo) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${BASE_URL}/ReservedCustomer/GenerateLogin`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          reservationId,
+          mobileNo,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || "Failed to generate customer login");
+      }
+      const result = data?.result ?? null;
+      setCredentials(result);
+      if (result) {
+        setCredsOpen(true);
+        return true;
+      }
+      toast.error(
+        "Login could not be returned. You can open credentials from Notes after approval."
+      );
+      return false;
+    } catch (e) {
+      toast.error(e.message || "Failed to generate customer login");
+      return false;
+    }
+  };
 
   const handleCardClick = (value, setFieldValue) => {
     setTotalAmount(item ? item.totalAmount : null);
@@ -175,14 +221,30 @@ export default function MakePayment({
       if (response.ok) {
         toast.success(responseData.result.message);
         setOpen(false);
-        fetchItems();
-        closeParentModal();
+
+        if (type === 1 && res) {
+          const reservationId = res.id ?? res.Id ?? customer ?? resId;
+          const mobileNo = res.mobileNo ?? res.MobileNo;
+          const showedCreds = await generateAndShowCredentials(reservationId, mobileNo);
+          if (showedCreds) {
+            pendingAfterCredsRef.current = true;
+            return;
+          }
+        }
+
+        await fetchItems?.();
+        closeParentModal?.();
       }
     } catch (error) {
       console.error("Error submitting form:", error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCredentialsClose = async () => {
+    setCredsOpen(false);
+    await flushPendingAfterCredentials();
   };
 
   return (
@@ -456,6 +518,13 @@ export default function MakePayment({
           </Formik>
         </Box>
       </Modal>
+
+      <CustomerCredentialsPopup
+        open={credsOpen}
+        onClose={handleCredentialsClose}
+        credentials={credentials}
+        variant="fresh"
+      />
     </>
   );
 }

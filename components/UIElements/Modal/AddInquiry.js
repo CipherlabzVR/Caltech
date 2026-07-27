@@ -32,9 +32,14 @@ const style = {
   p: 4,
 };
 
+const STYLE_NAME_MAX_LENGTH = 100;
+
 const validationSchema = Yup.object().shape({
   CustomerName: Yup.string().required("Customer Name is required"),
-  StyleName: Yup.string().required("Style Name is required"),
+  StyleName: Yup.string()
+    .trim()
+    .required("Style Name is required")
+    .max(STYLE_NAME_MAX_LENGTH, `Max ${STYLE_NAME_MAX_LENGTH} characters`),
   InquiryMode: Yup.number().required("Inquiry Mode is required"),
 });
 
@@ -224,6 +229,7 @@ export default function AddInquiry({ fetchItems, type }) {
                         as={TextField}
                         fullWidth
                         name="StyleName"
+                        inputProps={{ maxLength: STYLE_NAME_MAX_LENGTH }}
                         error={touched.StyleName && Boolean(errors.StyleName)}
                         helperText={touched.StyleName && errors.StyleName}
                       />

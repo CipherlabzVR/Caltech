@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Grid,
   Typography,
@@ -12,6 +12,7 @@ import {
   TextField,
   Divider,
   Alert,
+  Chip,
 } from "@mui/material";
 import Box from "@mui/material/Box";
 import Modal from "@mui/material/Modal";
@@ -24,11 +25,11 @@ const style = {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: { lg: 800, xs: 350 },
+  width: { lg: 920, xs: 360 },
   bgcolor: "background.paper",
   boxShadow: 24,
-  p: 4,
-  borderRadius: "10px",
+  p: 0,
+  borderRadius: "14px",
   maxHeight: "90vh",
   overflowY: "auto",
 };
@@ -54,14 +55,56 @@ const getStatusName = (statusValue) => {
   }
 };
 
+const getStatusColor = (statusValue) => {
+  switch (statusValue) {
+    case 3:
+      return "success";
+    case 1:
+    case 2:
+    case 5:
+      return "warning";
+    case 6:
+    case 7:
+      return "error";
+    default:
+      return "default";
+  }
+};
+
 export default function ViewAsset({ item, fetchItems, approve1 }) {
   const [open, setOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [locationHistory, setLocationHistory] = useState([]);
 
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
+
+  useEffect(() => {
+    if (!open || !item?.id) return;
+
+    const fetchLocationHistory = async () => {
+      try {
+        const response = await fetch(`${BASE_URL}/assets/${item.id}/location-history`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        });
+        const data = await response.json();
+        if (
+          response.ok &&
+          (data.statusCode === 200 || data.isSuccess || data.status === "SUCCESS")
+        ) {
+          setLocationHistory(data.result || []);
+        }
+      } catch (error) {
+        console.error("Error loading asset location history:", error);
+      }
+    };
+
+    fetchLocationHistory();
+  }, [open, item?.id]);
 
   // Asset API Calls
   const handleAction = async (action, payload = null) => {
@@ -105,12 +148,14 @@ export default function ViewAsset({ item, fetchItems, approve1 }) {
 
   const DetailRow = ({ label, value }) => (
     <Grid item xs={12} sm={6} md={4}>
-      <Typography variant="caption" color="textSecondary">
-        {label}
-      </Typography>
-      <Typography variant="body2" fontWeight="500">
-        {value || "—"}
-      </Typography>
+      <Box sx={{ border: "1px solid #eef0f4", borderRadius: 2, p: 1.5, height: "100%", bgcolor: "#fafafa" }}>
+        <Typography variant="caption" color="textSecondary">
+          {label}
+        </Typography>
+        <Typography variant="body2" fontWeight="600" sx={{ mt: 0.5 }}>
+          {value || "—"}
+        </Typography>
+      </Box>
     </Grid>
   );
 
@@ -124,12 +169,21 @@ export default function ViewAsset({ item, fetchItems, approve1 }) {
 
       <Modal open={open} onClose={handleClose} aria-labelledby="view-asset-modal">
         <Box sx={style}>
+          <Box sx={{ p: 3, bgcolor: "#f7f9fc", borderBottom: "1px solid #e8edf3" }}>
+            <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={2}>
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                  {item.assetName || "Asset Details"}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  {item.assetCode || `Asset #${item.id}`}
+                </Typography>
+              </Box>
+              <Chip size="small" label={getStatusName(item.status)} color={getStatusColor(item.status)} />
+            </Box>
+          </Box>
+          <Box sx={{ p: 3 }}>
           <Grid container spacing={2}>
-            <Grid item xs={12}>
-              <Typography variant="h5" sx={{ fontWeight: "600", mb: 1 }}>
-                Asset Details
-              </Typography>
-            </Grid>
 
             {(item.isRejected || item.isReject) && (
               <Grid item xs={12}>
@@ -143,7 +197,7 @@ export default function ViewAsset({ item, fetchItems, approve1 }) {
 
             {/* General Info */}
             <Grid item xs={12}>
-              <Typography variant="subtitle2" color="primary">
+              <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 700 }}>
                 General Information
               </Typography>
               <Divider sx={{ mb: 1 }} />
@@ -156,7 +210,7 @@ export default function ViewAsset({ item, fetchItems, approve1 }) {
 
             {/* Procurement & Financials */}
             <Grid item xs={12} mt={1}>
-              <Typography variant="subtitle2" color="primary">
+              <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 700 }}>
                 Procurement & Financials
               </Typography>
               <Divider sx={{ mb: 1 }} />
@@ -177,7 +231,7 @@ export default function ViewAsset({ item, fetchItems, approve1 }) {
 
             {/* Identification & Usage */}
             <Grid item xs={12} mt={1}>
-              <Typography variant="subtitle2" color="primary">
+              <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 700 }}>
                 Identification & Usage
               </Typography>
               <Divider sx={{ mb: 1 }} />
@@ -196,6 +250,72 @@ export default function ViewAsset({ item, fetchItems, approve1 }) {
                 Notes
               </Typography>
               <Typography variant="body2">{item.notes || "—"}</Typography>
+            </Grid>
+
+            <Grid item xs={12} mt={1}>
+              <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 700 }}>
+                Attachments
+              </Typography>
+              <Divider sx={{ mb: 1 }} />
+              {item.attachments?.length > 0 ? (
+                <Box display="flex" flexDirection="column" gap={1}>
+                  {item.attachments.map((attachment) => (
+                    <a
+                      key={attachment.id}
+                      href={attachment.storageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {attachment.fileName}
+                    </a>
+                  ))}
+                </Box>
+              ) : (
+                <Typography variant="body2">—</Typography>
+              )}
+            </Grid>
+
+            <Grid item xs={12} mt={1}>
+              <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 700 }}>
+                Location History
+              </Typography>
+              <Divider sx={{ mb: 1 }} />
+              {locationHistory.length > 0 ? (
+                <Box display="flex" flexDirection="column" gap={1}>
+                  {locationHistory.map((history) => (
+                    <Box
+                      key={history.id}
+                      sx={{
+                        border: "1px solid #e0e0e0",
+                        borderRadius: 1,
+                        p: 1,
+                      }}
+                    >
+                      <Typography variant="body2" fontWeight="600">
+                        {history.fromLocation?.locationName || "—"} →{" "}
+                        {history.toLocation?.locationName || "—"}
+                      </Typography>
+                      <Typography variant="caption" color="textSecondary" display="block">
+                        Moved On:{" "}
+                        {history.movedOn ? new Date(history.movedOn).toLocaleString() : "—"} |
+                        Moved By: {history.movedBy || "—"}
+                      </Typography>
+                      <Typography variant="caption" color="textSecondary" display="block">
+                        Custodian: {history.fromCustodianId || "—"} →{" "}
+                        {history.toCustodianId || "—"} | Department:{" "}
+                        {history.fromDepartmentId || "—"} → {history.toDepartmentId || "—"}
+                      </Typography>
+                      {history.movementReason && (
+                        <Typography variant="caption" display="block">
+                          Reason: {history.movementReason}
+                        </Typography>
+                      )}
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                <Typography variant="body2">No location history available.</Typography>
+              )}
             </Grid>
 
             {/* Buttons / Actions */}
@@ -239,6 +359,7 @@ export default function ViewAsset({ item, fetchItems, approve1 }) {
               </Box>
             </Grid>
           </Grid>
+          </Box>
         </Box>
       </Modal>
 

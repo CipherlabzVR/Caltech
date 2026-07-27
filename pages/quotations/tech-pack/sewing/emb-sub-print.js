@@ -563,6 +563,17 @@ export default function EmbSubPrintPage() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
+    const style = document.createElement("style");
+    style.id = "print-page-style";
+    style.innerHTML = `@media print { @page { margin: 0; size: A4 portrait; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }`;
+    document.head.appendChild(style);
+    return () => {
+      const el = document.getElementById("print-page-style");
+      if (el) el.remove();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!router.isReady || !inquiryId || !optionId || !sentQuotationId) return;
 
     const run = async () => {
@@ -1015,6 +1026,7 @@ export default function EmbSubPrintPage() {
         backgroundColor: "#f5f5f5",
         "@media print": {
           p: 0,
+          margin: 0,
           backgroundColor: "#fff",
         },
       }}
@@ -1046,6 +1058,9 @@ export default function EmbSubPrintPage() {
             "@media print": { display: "none" },
           }}
         >
+          <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, "@media print": { borderBottom: "2px solid #000", pb: 1, mb: 1 } }}>
+            Embroidery / Sublimation Sheet
+          </Typography>
           <Box display="flex" gap={1}>
             <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint} sx={{ textTransform: "none" }}>
               Print
@@ -1085,16 +1100,20 @@ export default function EmbSubPrintPage() {
               backgroundColor: "#fff",
               boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
               "@media print": {
+                padding: "0.4in",
                 boxShadow: "none",
               },
             }}
           >
+            <Box sx={{ fontWeight: 700, fontSize: "1.2rem", mb: 1, borderBottom: "2px solid #000", pb: 0.5 }}>
+              Embroidery / Sublimation Sheet
+            </Box>
             <Box
               sx={{
                 minHeight: { sm: "297mm" },
                 pageBreakAfter: "always",
                 breakAfter: "page",
-                "@media print": { minHeight: "297mm" },
+                "@media print": { minHeight: "auto" },
               }}
             >
             <Box sx={{ border: "1px solid #000", mb: 1.5 }}>
@@ -1246,7 +1265,7 @@ export default function EmbSubPrintPage() {
                 pt: 0,
                 mt: 0,
                 minHeight: { sm: "297mm" },
-                "@media print": { minHeight: "297mm" },
+                "@media print": { minHeight: "auto" },
               }}
             >
               <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr 0.9fr", gap: 1.2, mb: 1.2 }}>

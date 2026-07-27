@@ -219,6 +219,52 @@ function formatEmbellishments(types) {
     .join("\n");
 }
 
+function getWindowTypeName(windowTypeNum) {
+  switch (Number(windowTypeNum)) {
+    case 1:
+      return "T-Shirt";
+    case 2:
+      return "Shirt";
+    case 3:
+      return "Cap";
+    case 4:
+      return "Visor";
+    case 5:
+      return "Hat";
+    case 6:
+      return "Bag";
+    case 7:
+      return "Bottom";
+    default:
+      return "Short";
+  }
+}
+
+function getQuotationItemDisplay(windowTypeNum, sleeveLabel) {
+  const wt = Number(windowTypeNum);
+  const isShort =
+    sleeveLabel === "Short" || sleeveLabel === "Short Sleeve";
+  const isLong = sleeveLabel === "Long" || sleeveLabel === "Long Sleeve";
+
+  if (wt === 1) {
+    if (isShort) return "Tshirt - Short Sleeve";
+    if (isLong) return "Tshirt - Long Sleeve";
+    return "Tshirt";
+  }
+
+  if (wt === 2) {
+    if (isShort) return "Shirt - Short Sleeve";
+    if (isLong) return "Shirt - Long Sleeve";
+    return "Shirt";
+  }
+
+  const windowTypeName = getWindowTypeName(wt);
+  const effectiveSleeve = sleeveLabel || "";
+  return effectiveSleeve
+    ? `${windowTypeName} - ${effectiveSleeve}`
+    : windowTypeName;
+}
+
 
 export default function ViewQuotation({
   quotDetails,
@@ -524,23 +570,6 @@ export default function ViewQuotation({
     }
   };
 
-  const windowType =
-    quotDetails.windowType == 1
-      ? "T-Shirt"
-      : quotDetails.windowType == 2
-        ? "Shirt"
-        : quotDetails.windowType == 3
-          ? "Cap"
-          : quotDetails.windowType == 4
-            ? "Visor"
-            : quotDetails.windowType == 5
-              ? "Hat"
-              : quotDetails.windowType == 6
-                ? "Bag"
-                : quotDetails.windowType == 7
-                  ? "Bottom"
-                  : "Short";
-
   const MyDocument = (
     <Document>
       <Page size="A4" fileName={quotDetails.inqCode} style={styles.page}>
@@ -622,10 +651,10 @@ export default function ViewQuotation({
               </View>
               <View style={{ ...styles.tablecell2, width: "55px" }}>
                 <Text>
-                  {(() => {
-                    const effectiveSleeve = sleeveLabel || (quotDetails.windowType === 2 ? "Short" : "");
-                    return effectiveSleeve ? `${windowType} - ${effectiveSleeve}` : windowType;
-                  })()}
+                  {getQuotationItemDisplay(
+                    quotDetails.windowType,
+                    sleeveLabel
+                  )}
                 </Text>
               </View>
               <View style={{ ...styles.tablecell2, width: "80px" }}>

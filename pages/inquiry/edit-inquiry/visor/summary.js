@@ -11,6 +11,7 @@ import "react-toastify/dist/ReactToastify.css";
 import DocumentListVisor from "./document-list";
 import FabListInq from "../summary-fab";
 import SumTable from "../summary-table";
+import { validateProfitValue } from "@/components/utils/summaryInquiryHelpers";
 import { DashboardHeader } from "@/components/shared/dashboard-header";
 import { DashboardSummaryHeader } from "@/components/shared/dashboard-summary-header";
 
@@ -77,6 +78,11 @@ export default function Summary() {
   const handleSaveValues = () => {
     if (!isSavedFromChild) {
       toast.warning("Please Update Changes");
+      return;
+    }
+    const profitValidation = validateProfitValue(formData?.profit);
+    if (!profitValidation.valid) {
+      toast.error(profitValidation.message);
       return;
     }
 

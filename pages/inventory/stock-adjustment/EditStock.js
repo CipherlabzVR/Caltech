@@ -10,6 +10,7 @@ import Button from "@mui/material/Button";
 import Modal from "@mui/material/Modal";
 import TextField from "@mui/material/TextField";
 import { Field, Form, Formik } from "formik";
+import * as Yup from "yup";
 import BASE_URL from "Base/api";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -25,6 +26,13 @@ const style = {
   boxShadow: 24,
   p: 2,
 };
+
+const stockEditValidation = Yup.object({
+  UpdatedQty: Yup.number()
+    .typeError("Enter a valid number")
+    .min(0, "New Quantity cannot be negative")
+    .required("New Quantity is required"),
+});
 
 export default function EditStock({ fetchItems, item }) {
   const [open, setOpen] = React.useState(false);
@@ -81,9 +89,10 @@ export default function EditStock({ fetchItems, item }) {
               Remark: "",
               WarehouseId:1,
             }}
+            validationSchema={stockEditValidation}
             onSubmit={handleSubmit}
           >
-            {() => (
+            {({ errors, touched }) => (
               <Form>
                 <Grid container>
                   <Grid item xs={12}>
@@ -185,6 +194,14 @@ export default function EditStock({ fetchItems, item }) {
                       fullWidth
                       type="number"
                       name="UpdatedQty"
+                      inputProps={{ min: 0, step: "any" }}
+                      error={touched.UpdatedQty && Boolean(errors.UpdatedQty)}
+                      helperText={touched.UpdatedQty && errors.UpdatedQty}
+                      onKeyDown={(e) => {
+                        if (e.key === "-" || e.key === "e" || e.key === "E" || e.key === "+") {
+                          e.preventDefault();
+                        }
+                      }}
                     />
                   </Grid>
                   <Grid item xs={12} p={1}>

@@ -433,6 +433,17 @@ export default function SewingPackingPrintPage() {
   const [headerData, setHeaderData] = useState(null);
 
   useEffect(() => {
+    const style = document.createElement("style");
+    style.id = "print-page-style";
+    style.innerHTML = `@media print { @page { margin: 0; size: A4 portrait; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }`;
+    document.head.appendChild(style);
+    return () => {
+      const el = document.getElementById("print-page-style");
+      if (el) el.remove();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!router.isReady || !inquiryId || !optionId || !sentQuotationId) {
       return;
     }
@@ -813,6 +824,7 @@ export default function SewingPackingPrintPage() {
         backgroundColor: "#f5f5f5",
         "@media print": {
           p: 0,
+          margin: 0,
           backgroundColor: "#fff",
         },
       }}
@@ -846,6 +858,9 @@ export default function SewingPackingPrintPage() {
             },
           }}
         >
+          <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, "@media print": { borderBottom: "2px solid #000", pb: 1, mb: 1 } }}>
+            Sewing / Packing Sheet
+          </Typography>
           <Box display="flex" gap={1}>
             <Button
               variant="outlined"
@@ -895,10 +910,14 @@ export default function SewingPackingPrintPage() {
               backgroundColor: "#fff",
               boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
               "@media print": {
+                padding: "0.4in",
                 boxShadow: "none",
               },
             }}
           >
+            <Box sx={{ fontWeight: 700, fontSize: "1.2rem", mb: 1, borderBottom: "2px solid #000", pb: 0.5 }}>
+              Sewing / Packing Sheet
+            </Box>
             <Box sx={{ border: "1px solid #000", mb: 1.5 }}>
               <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: "1px solid #000" }}>
                 <Box sx={{ p: 1, borderRight: "1px solid #000", fontSize: "0.8rem" }}>

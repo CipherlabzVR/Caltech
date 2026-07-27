@@ -34,6 +34,16 @@ const SearchItemByName = forwardRef(({
     focus: () => {
       inputRef.current?.focus();
     },
+    clear: () => {
+      if (debounceTimeout.current) {
+        clearTimeout(debounceTimeout.current);
+        debounceTimeout.current = null;
+      }
+      setSearchValue("");
+      setResults([]);
+      setShowDropdown(false);
+      setHighlightedIndex(-1);
+    },
   }));
 
   useEffect(() => {

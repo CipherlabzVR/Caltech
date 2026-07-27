@@ -18,14 +18,14 @@ import {
   Select,
   Button,
   Box,
-  FormControlLabel,
-  Checkbox,
   IconButton,
   Tooltip,
+  CircularProgress,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
+import DescriptionIcon from "@mui/icons-material/Description";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import { ToastContainer } from "react-toastify";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
@@ -36,16 +36,24 @@ import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import CancelSalesQuotationById from "./CancelSalesQuotationById";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
-import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import { Report } from "Base/report";
 import { Catelogue } from "Base/catelogue";
+
+const getQuotationDiscountDetails = (item) => {
+  const gross = Number(item?.grossTotal ?? item?.GrossTotal ?? 0);
+  const net = Number(item?.netTotal ?? item?.NetTotal ?? 0);
+  const discount = Math.max(0, Number((gross - net).toFixed(2)));
+  const discountPercentOfGross =
+    gross > 0.000001 ? Math.round((discount / gross) * 10000) / 100 : 0;
+  return { gross, net, discount, discountPercentOfGross };
+};
 
 export default function SalesQuotation() {
   const cId = typeof window !== "undefined" ? sessionStorage.getItem("category") : null;
   const name = typeof window !== "undefined" ? localStorage.getItem("name") : "";
-  const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+  const { navigate, create, update, remove, print, customPrint, whatsAppShare, permissionsLoading } =
+    IsPermissionEnabled(cId);
   const { data: reportName } = GetReportSettingValueByName("SalesQuotation");
-  const { data: isCustomReportsEnabled } = IsAppSettingEnabled("IsCustomReportsEnabled");
   const router = useRouter();
 
   const {
@@ -54,37 +62,29 @@ export default function SalesQuotation() {
     page,
     pageSize,
     search,
-    isCurrentDate,
     setPage,
     setPageSize,
     setSearch,
-    setIsCurrentDate,
     fetchData: fetchQuotationList,
-  } = usePaginatedFetch("SalesQuotation/GetAll");
+  } = usePaginatedFetch("SalesQuotation/GetAll", "", 10, false);
 
   const handleSearchChange = (event) => {
     const value = event.target.value;
     setSearch(value);
     setPage(1);
-    fetchQuotationList(1, value, pageSize, isCurrentDate);
+    fetchQuotationList(1, value, pageSize);
   };
 
   const handlePageChange = (event, value) => {
     setPage(value);
-    fetchQuotationList(value, search, pageSize, isCurrentDate);
+    fetchQuotationList(value, search, pageSize);
   };
 
   const handlePageSizeChange = (event) => {
     const size = event.target.value;
     setPageSize(size);
     setPage(1);
-    fetchQuotationList(1, search, size, isCurrentDate);
-  };
-
-  const handleToggleCurrentDate = (event) => {
-    const checked = event.target.checked;
-    setIsCurrentDate(checked);
-    fetchQuotationList(1, search, pageSize, checked);
+    fetchQuotationList(1, search, size);
   };
 
   const navigateToCreate = () => {
@@ -94,12 +94,20 @@ export default function SalesQuotation() {
   };
 
   const buildQuotationShareText = (item) => {
+    const { gross, net, discount, discountPercentOfGross } =
+      getQuotationDiscountDetails(item);
     const parts = [
       `Sales Quotation: ${item.documentNo || ""}`,
       `Customer: ${item.customerName || ""}`,
       `Date: ${formatDate(item.documentDate)}`,
-      `Net total: ${formatCurrency(item.netTotal)}`,
+      `Gross total: ${formatCurrency(gross)}`,
     ];
+    if (discount >= 0.01) {
+      parts.push(
+        `Discount: ${formatCurrency(discount)} (${discountPercentOfGross}% of gross)`
+      );
+    }
+    parts.push(`Net total: ${formatCurrency(net)}`);
     if (item.remark) parts.push(`Remark: ${item.remark}`);
     return parts.join("\n");
   };
@@ -122,6 +130,14 @@ export default function SalesQuotation() {
     );
   };
 
+  if (permissionsLoading) {
+    return (
+      <Box display="flex" justifyContent="center" py={6}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   if (!navigate) {
     return <AccessDenied />;
   }
@@ -141,7 +157,7 @@ export default function SalesQuotation() {
         <Grid item xs={12} lg={4} order={{ xs: 2, lg: 1 }}>
           <Search className="search-form">
             <StyledInputBase
-              placeholder="Search by Quotation No, Customer or Salesperson.."
+              placeholder="Search by Quotation No, Customer"
               inputProps={{ "aria-label": "search" }}
               value={search}
               onChange={handleSearchChange}
@@ -154,19 +170,9 @@ export default function SalesQuotation() {
           lg={8}
           mb={1}
           display="flex"
-          justifyContent="space-between"
+          justifyContent="flex-end"
           order={{ xs: 1, lg: 2 }}
         >
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={isCurrentDate}
-                onChange={handleToggleCurrentDate}
-                color="primary"
-              />
-            }
-            label="Today's Quotations"
-          />
           {create && (
             <Button variant="outlined" onClick={navigateToCreate}>
               + Add New
@@ -183,6 +189,9 @@ export default function SalesQuotation() {
                   <TableCell>Quotation No</TableCell>
                   <TableCell>Customer</TableCell>
                   <TableCell>Salesperson</TableCell>
+                  <TableCell align="right">Gross Total (Rs)</TableCell>
+                  {/* <TableCell align="right">Discount (Rs)</TableCell>
+                  <TableCell align="right">Disc. %</TableCell> */}
                   <TableCell align="right">Net Total (Rs)</TableCell>
                   <TableCell>Remark</TableCell>
                   <TableCell align="right">Action</TableCell>
@@ -191,7 +200,7 @@ export default function SalesQuotation() {
               <TableBody>
                 {quotationList.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} align="center">
+                    <TableCell colSpan={11} align="center">
                       <Typography color="error">
                         No Sales Quotations Available
                       </Typography>
@@ -199,6 +208,8 @@ export default function SalesQuotation() {
                   </TableRow>
                 ) : (
                   quotationList.map((item, index) => {
+                    const { gross, net, discount, discountPercentOfGross } =
+                      getQuotationDiscountDetails(item);
                     const reportLink = `/PrintDocumentsLocal?InitialCatalog=${Catelogue}&documentNumber=${item.documentNo}&reportName=${reportName}&warehouseId=${item.warehouseId}&currentUser=${name}`;
                     return (
                     <TableRow key={item.id}>
@@ -207,50 +218,50 @@ export default function SalesQuotation() {
                       <TableCell>{item.documentNo}</TableCell>
                       <TableCell>{item.customerName}</TableCell>
                       <TableCell>{item.salesPersonName || "-"}</TableCell>
+                      <TableCell align="right">{formatCurrency(gross)}</TableCell>
+                      {/* <TableCell align="right">{formatCurrency(discount)}</TableCell>
                       <TableCell align="right">
-                        {formatCurrency(item.netTotal)}
-                      </TableCell>
+                        {discount >= 0.01
+                          ? `${discountPercentOfGross}%`
+                          : "—"}
+                      </TableCell> */}
+                      <TableCell align="right">{formatCurrency(net)}</TableCell>
                       <TableCell>{item.remark}</TableCell>
                       <TableCell align="right">
                         <Box display="flex" justifyContent="end" gap={0.5} flexWrap="wrap">
-                          <Tooltip title="Share via WhatsApp" placement="top">
-                            <IconButton
-                              size="small"
-                              aria-label="share quotation on WhatsApp"
-                              onClick={() => openWhatsAppForQuotation(item)}
-                              sx={{ color: "#7b68ee" }}
-                            >
-                              <WhatsAppIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          {print ? (
-                            isCustomReportsEnabled ? (
-                              <Tooltip title="Print" placement="top">
-                                <a href={`${Report}${reportLink}`} target="_blank" rel="noopener noreferrer">
-                                  <IconButton
-                                    size="small"
-                                    aria-label="print quotation"
-                                    sx={{ color: "#7b68ee" }}
-                                  >
-                                    <LocalPrintshopIcon fontSize="small" />
-                                  </IconButton>
-                                </a>
-                              </Tooltip>
-                            ) : (
-                              <Tooltip title="Print" placement="top">
-                                <IconButton
-                                  size="small"
-                                  aria-label="print quotation"
-                                  onClick={() => openSalesQuotationPrintPopup(item)}
-                                  sx={{ color: "#7b68ee" }}
-                                >
-                                  <LocalPrintshopIcon fontSize="small" />
+                          {whatsAppShare ? (
+                            <Tooltip title="Share via WhatsApp" placement="top">
+                              <IconButton
+                                size="small"
+                                aria-label="share quotation on WhatsApp"
+                                onClick={() => openWhatsAppForQuotation(item)}
+                                sx={{ color: "#7b68ee" }}
+                              >
+                                <WhatsAppIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          ) : ""}
+                          {customPrint ? (
+                            <Tooltip title="Print (Custom)" placement="top">
+                              <a href={`${Report}${reportLink}`} target="_blank" rel="noopener noreferrer">
+                                <IconButton size="small" aria-label="print quotation custom">
+                                  <DescriptionIcon color="action" fontSize="small" />
                                 </IconButton>
-                              </Tooltip>
-                            )
-                          ) : (
-                            ""
-                          )}
+                              </a>
+                            </Tooltip>
+                          ) : ""}
+                          {print ? (
+                            <Tooltip title="Print (Default)" placement="top">
+                              <IconButton
+                                size="small"
+                                aria-label="print quotation default"
+                                onClick={() => openSalesQuotationPrintPopup(item)}
+                                sx={{ color: "#7b68ee" }}
+                              >
+                                <LocalPrintshopIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          ) : ""}
                           {update && (
                             <IconButton
                               size="small"

@@ -1,4 +1,4 @@
-import React, { } from "react";
+import React, { useState } from "react";
 import {
   Grid,
   IconButton,
@@ -14,6 +14,7 @@ import BASE_URL from "Base/api";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
+import LoadingButton from "@/components/UIElements/Buttons/LoadingButton";
 
 const style = {
   position: "absolute",
@@ -28,34 +29,42 @@ const style = {
 
 export default function EditOutlet({ fetchItems, item }) {
   const [open, setOpen] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDisable, setIsDisable] = useState(false);
   const handleOpen = () => {
     setOpen(true)
   };
   const handleClose = () => setOpen(false);
 
 
-  const handleSubmit = (values) => {
-    fetch(`${BASE_URL}/Outlet/UpdateOutlets?id=${values.Id}&value=${values.Value}`, {
-      method: "POST",
-      body: JSON.stringify(values),
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-    })
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.statusCode == 200) {
-          toast.success(data.message);
-          setOpen(false);
-          fetchItems();
-        } else {
-          toast.error(data.message);
+  const handleSubmit = async (values) => {
+    if (isSubmitting || isDisable) return;
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(
+        `${BASE_URL}/Outlet/UpdateOutlets?id=${values.Id}&value=${values.Value}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
         }
-      })
-      .catch((error) => {
-        toast.error(error.message || "");
-      });
+      );
+      const json = await response.json();
+      if (json.statusCode == 200) {
+        setIsDisable(true);
+        toast.success(json.message);
+        setOpen(false);
+        fetchItems();
+      } else {
+        toast.error(json.message);
+      }
+    } catch (error) {
+      toast.error(error.message || "Something went wrong");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   return (
     <>
@@ -79,7 +88,7 @@ export default function EditOutlet({ fetchItems, item }) {
             }}
             onSubmit={handleSubmit}
           >
-            {({ errors, touched, values, setFieldValue }) => (
+            {({ errors, touched, values, setFieldValue, submitForm }) => (
               <Form>
                 <Grid container>
                   <Grid item xs={12}>
@@ -149,9 +158,11 @@ export default function EditOutlet({ fetchItems, item }) {
                     >
                       Cancel
                     </Button>
-                    <Button type="submit" variant="contained" size="small">
-                      Save
-                    </Button>
+                    <LoadingButton
+                      loading={isSubmitting}
+                      handleSubmit={() => submitForm()}
+                      disabled={isDisable || isSubmitting}
+                    />
                   </Grid>
                 </Grid>
               </Form>

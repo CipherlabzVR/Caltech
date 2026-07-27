@@ -22,6 +22,7 @@ export default function CategoryAutocomplete({
   disabled = false,
   error = false,
   helperText = "",
+  activeOnly = false,
 }) {
   const valueNum =
     value === "" || value === null || value === undefined
@@ -53,8 +54,12 @@ export default function CategoryAutocomplete({
       if (json.result?.items) items = json.result.items;
       else if (json.result?.result?.items) items = json.result.result.items;
 
+      const filteredItems = activeOnly
+        ? items.filter((x) => x.isActive !== false)
+        : items;
+
       setOptions(
-        items.map((x) => ({
+        filteredItems.map((x) => ({
           id: x.id,
           label: x.categoryCode
             ? `${x.categoryCode} — ${x.categoryName || ""}`
@@ -66,7 +71,7 @@ export default function CategoryAutocomplete({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeOnly]);
 
   const debouncedSearch = useMemo(
     () => debounce((term) => fetchCategories(term), 350),

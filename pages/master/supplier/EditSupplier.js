@@ -32,15 +32,40 @@ const style = {
   p: 2,
 };
 
-/** Optional leading + then digits only (e.g. +94771234567). */
+/** Digits with optional international + (E.164). + may be leading or after separators, e.g. (+94) 771. */
 function sanitizeSupplierMobileInput(raw) {
-  const s = String(raw ?? "");
+  const s = String(raw ?? "").trim();
+  const hasPlus = /[+\uFF0B]/.test(s);
   const digits = s.replace(/\D/g, "");
-  return s.trim().startsWith("+") ? `+${digits}` : digits;
+  if (!digits) {
+    return hasPlus ? "+" : "";
+  }
+  return hasPlus ? `+${digits}` : digits;
 }
 
+const SUPPLIER_NAME_FIELD_MAX_LENGTH = 150;
+const nameFieldMaxLengthProps = {
+  maxLength: SUPPLIER_NAME_FIELD_MAX_LENGTH,
+};
+
 const validationSchema = Yup.object().shape({
-  Name: Yup.string().required("Name is required"),
+  FirstName: Yup.string()
+    .trim()
+    .required("First name is required")
+    .max(
+      SUPPLIER_NAME_FIELD_MAX_LENGTH,
+      `Max ${SUPPLIER_NAME_FIELD_MAX_LENGTH} characters`
+    ),
+  LastName: Yup.string().max(
+    SUPPLIER_NAME_FIELD_MAX_LENGTH,
+    `Max ${SUPPLIER_NAME_FIELD_MAX_LENGTH} characters`
+  ),
+  Name: Yup.string()
+    .required("Display name is required")
+    .max(
+      SUPPLIER_NAME_FIELD_MAX_LENGTH,
+      `Max ${SUPPLIER_NAME_FIELD_MAX_LENGTH} characters`
+    ),
   MobileNo: Yup.string()
     .required("Mobile No is required")
     .matches(
@@ -77,6 +102,8 @@ export default function EditSupplier({
     }
     const payload = {
       ...values,
+      FirstName: String(values.FirstName ?? "").trim(),
+      LastName: String(values.LastName ?? "").trim(),
       MobileNo: sanitizeSupplierMobileInput(values.MobileNo),
       BankId: selectedBank?.id || null,
       BankName: selectedBank?.name || "",
@@ -124,6 +151,8 @@ export default function EditSupplier({
           <Formik
             initialValues={{
               Id: item.id,
+              FirstName: item.firstName ?? item.FirstName ?? "",
+              LastName: item.lastName ?? item.LastName ?? "",
               Name: item.name || "",
               MobileNo: sanitizeSupplierMobileInput(item.mobileNo),
               Email: item.email || "",
@@ -157,13 +186,54 @@ export default function EditSupplier({
                           mb: "5px",
                         }}
                       >
-                        Supplier Name
+                        First name
+                      </Typography>
+                      <Field
+                        as={TextField}
+                        fullWidth
+                        name="FirstName"
+                        size="small"
+                        inputProps={nameFieldMaxLengthProps}
+                        error={touched.FirstName && Boolean(errors.FirstName)}
+                        helperText={touched.FirstName && errors.FirstName}
+                      />
+                    </Grid>
+                    <Grid item xs={12} mt={1}>
+                      <Typography
+                        sx={{
+                          fontWeight: "500",
+                          fontSize: "14px",
+                          mb: "5px",
+                        }}
+                      >
+                        Last name
+                      </Typography>
+                      <Field
+                        as={TextField}
+                        fullWidth
+                        name="LastName"
+                        size="small"
+                        inputProps={nameFieldMaxLengthProps}
+                        error={touched.LastName && Boolean(errors.LastName)}
+                        helperText={touched.LastName && errors.LastName}
+                      />
+                    </Grid>
+                    <Grid item xs={12} mt={1}>
+                      <Typography
+                        sx={{
+                          fontWeight: "500",
+                          fontSize: "14px",
+                          mb: "5px",
+                        }}
+                      >
+                        Display name
                       </Typography>
                       <Field
                         as={TextField}
                         fullWidth
                         name="Name"
                         size="small"
+                        inputProps={nameFieldMaxLengthProps}
                         error={touched.Name && Boolean(errors.Name)}
                         helperText={touched.Name && errors.Name}
                       />

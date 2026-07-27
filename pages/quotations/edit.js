@@ -6,7 +6,7 @@ import { Box, Button, Modal, Typography } from "@mui/material";
 import BASE_URL from "Base/api";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import SummarySleeve from "pages/inquiry/tshirt/summary-sleeve";
+import SummarySleeve from "pages/inquiry/edit-inquiry/tshirt/summary-sleeve";
 import FabList from "./summary-fab";
 import SizesList from "./summary-sizes";
 import { useRouter } from "next/router";
@@ -247,7 +247,7 @@ export default function EditQuotation() {
           <Grid container>
             <Grid item xs={12} p={1} lg={5}>
               <TableData ref={tableDataRef} onIsSavedChange={handleIsSavedChange} inquiry={inquiry} onSummaryChange={handleSetData} />
-              {inquiry && inquiry.windowType === 1 ? <SummarySleeve /> : ""}
+              {inquiry && inquiry.windowType === 1 ? <SummarySleeve inquiry={inquiry} /> : ""}
             </Grid>
             <Grid item xs={12} p={1} lg={7}>
               <Grid container>

@@ -20,13 +20,14 @@ import IsDailyDepositDone from "@/components/utils/IsDailyDepositDone";
 import { Report } from "Base/report";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
+import DescriptionIcon from "@mui/icons-material/Description";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { Catelogue } from "Base/catelogue";
 
 export default function DailyDeposits() {
   const cId = sessionStorage.getItem("category")
-  const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+  const { navigate, create, update, remove, print, customPrint } = IsPermissionEnabled(cId);
   const [deposits, setDeposits] = useState([]);
   const [lineItems, setLineItems] = useState([]);
   const [open, setOpen] = useState(false);
@@ -95,6 +96,19 @@ export default function DailyDeposits() {
   useEffect(() => {
     fetchDepositList();
   }, []);
+
+  const openDepositPrintPopup = (item) => {
+    const query = new URLSearchParams({
+      id: String(item.id ?? ""),
+      documentNumber: item.documentNo ?? "",
+    });
+
+    window.open(
+      `/sales/deposit/print?${query.toString()}`,
+      `daily-deposit-print-${item.id}`,
+      "popup=yes,width=1200,height=900,scrollbars=yes,resizable=yes"
+    );
+  };
 
   const navigateToCreate = async () => {
     // const latestDayEndDone = await refetchDayEndDone();
@@ -172,13 +186,34 @@ export default function DailyDeposits() {
                         <TableCell align="right">
                           <Box display="flex" justifyContent="end" gap={1}>
                             <Button onClick={() => handleOpen(item)} size="small">Details</Button>
-                            {print ? <Tooltip title="Print" placement="top">
-                              <a href={`${Report}` + reportLink} target="_blank">
-                                <IconButton aria-label="print" size="small">
+                            {customPrint ? (
+                              <Tooltip title="Print (Custom)" placement="top">
+                                <a
+                                  href={`${Report}` + reportLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  <IconButton aria-label="print custom" size="small">
+                                    <DescriptionIcon color="action" fontSize="medium" />
+                                  </IconButton>
+                                </a>
+                              </Tooltip>
+                            ) : (
+                              ""
+                            )}
+                            {print ? (
+                              <Tooltip title="Print (Default)" placement="top">
+                                <IconButton
+                                  aria-label="print default"
+                                  size="small"
+                                  onClick={() => openDepositPrintPopup(item)}
+                                >
                                   <LocalPrintshopIcon color="primary" fontSize="medium" />
                                 </IconButton>
-                              </a>
-                            </Tooltip> : ""}
+                              </Tooltip>
+                            ) : (
+                              ""
+                            )}
                           </Box>
                         </TableCell>
                       </TableRow>

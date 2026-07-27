@@ -11,6 +11,9 @@ const SearchDropdown = ({
   tokenKey = "token",
   onSelect,
   getResultLabel = (item) => item.name,
+  wideDropdown = false,
+  dropdownMinWidth = 360,
+  getOptionDisplay,
 }) => {
   const [searchValue, setSearchValue] = useState("");
   const [results, setResults] = useState([]);
@@ -111,6 +114,57 @@ const SearchDropdown = ({
     }
   };
 
+  const defaultOptionDisplay = (item) =>
+    `${getResultLabel(item)} - ${uomInfo[item.uom]?.name || ""} - ${catInfo[item.categoryId]?.name || "-"} - ${subCatInfo[item.subCategoryId]?.name || "-"}`;
+
+  const resolveOptionDisplay = (item) =>
+    getOptionDisplay ? getOptionDisplay(item, { uomInfo, catInfo, subCatInfo }) : defaultOptionDisplay(item);
+
+  const dropdownPaperStyle = wideDropdown
+    ? {
+        position: "absolute",
+        zIndex: 1300,
+        top: "100%",
+        left: 0,
+        minWidth: dropdownMinWidth,
+        width: "max-content",
+        maxWidth: Math.max(dropdownMinWidth, 480),
+        maxHeight: 200,
+        overflowY: "auto",
+        overflowX: "hidden",
+      }
+    : {
+        position: "absolute",
+        zIndex: 1,
+        top: "100%",
+        left: 0,
+        right: 0,
+        maxHeight: 200,
+        overflowY: "auto",
+      };
+
+  const listItemSx = wideDropdown
+    ? {
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        display: "block",
+      }
+    : undefined;
+
+  const listItemTextProps = wideDropdown
+    ? {
+        primaryTypographyProps: {
+          noWrap: true,
+          sx: {
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            display: "block",
+          },
+        },
+      }
+    : {};
+
   return (
     <div style={{ position: "relative", width: "100%" }}>
       <TextField
@@ -124,30 +178,20 @@ const SearchDropdown = ({
         onKeyDown={handleKeyDown}
       />
       {showDropdown && results.length > 0 && (
-        <Paper
-          style={{
-            position: "absolute",
-            zIndex: 1,
-            top: "100%",
-            left: 0,
-            right: 0,
-            maxHeight: 200,
-            overflowY: "auto",
-          }}
-        >
-          <List>
+        <Paper style={dropdownPaperStyle}>
+          <List dense={wideDropdown}>
             {results.map((item, index) => (
               <ListItem
                 button
                 key={item.id}
                 onClick={() => handleItemSelect(item)}
                 selected={highlightedIndex === index}
+                sx={listItemSx}
               >
-
                 <ListItemText
-                  primary={`${getResultLabel(item)} - ${uomInfo[item.uom]?.name || ""} - ${catInfo[item.categoryId]?.name || "-"} - ${subCatInfo[item.subCategoryId]?.name || "-"}`}
+                  primary={resolveOptionDisplay(item)}
+                  {...listItemTextProps}
                 />
-
               </ListItem>
             ))}
           </List>

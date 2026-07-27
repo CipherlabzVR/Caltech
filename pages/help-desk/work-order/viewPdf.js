@@ -7,7 +7,7 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import { Card, CardContent, Box, Typography, Button, CircularProgress } from "@mui/material";
-import Image from "next/image";
+import PrintPoweredByFooter from "@/components/UIElements/Print/PrintPoweredByFooter";
 
 /**
  * Work Order PDF View Component - Navigation button
@@ -323,34 +323,15 @@ export default function ViewPdfPage() {
                 position: 'relative',
               }}
             >
-              {/* Top Section: Logo and WORK ORDER Title */}
+              {/* Top Section: WORK ORDER Title */}
               <Box
               sx={{
                   display: 'flex',
-                  justifyContent: 'space-between',
+                  justifyContent: 'flex-end',
                   alignItems: 'center',
                   padding: "15px"
                 }}
               >
-                {/* Logo Section - Center */}
-                <Box
-                  sx={{
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Image
-                    src="/images/cbass.png"
-                    alt="CBASS Logo"
-                    width={150}
-                    height={60}
-                    style={{ objectFit: 'contain' }}
-                  />
-        </Box>
-
                 {/* WORK ORDER Title - Right */}
                 <Box
                   sx={{
@@ -1453,6 +1434,7 @@ export default function ViewPdfPage() {
                 </Box>
               </Box>
             </Box>
+            <PrintPoweredByFooter sx={{ fontSize: "0.7rem" }} />
           </CardContent>
         </Card>
 
@@ -1887,6 +1869,7 @@ export default function ViewPdfPage() {
                 </Typography>
               </Box>
             </Box>
+            <PrintPoweredByFooter sx={{ fontSize: "0.7rem" }} />
           </CardContent>
         </Card>
       </Box>

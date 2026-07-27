@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import {
@@ -9,6 +9,8 @@ import {
   Pagination,
   MenuItem,
   Chip,
+  FormControlLabel,
+  Switch,
 } from "@mui/material";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -46,6 +48,7 @@ import SchoolIcon from "@mui/icons-material/School";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import UploadIcon from "@mui/icons-material/Upload";
+import PhotoCamera from "@mui/icons-material/PhotoCamera";
 import AddIcon from "@mui/icons-material/Add";
 import Avatar from "@mui/material/Avatar";
 import Button from "@mui/material/Button";
@@ -83,6 +86,18 @@ const EMPLOYMENT_STATUS_LABELS = {
   Retired: "Retired",
   Alumni: "Alumni",
 };
+
+/** Status dropdown in Employee Directory: only string keys from EMPLOYMENT_STATUS_LABELS (not 0–7), plus On Leave — avoids duplicate menu items */
+const EMPLOYMENT_STATUS_FILTER_OPTIONS = [
+  { value: "", label: "All Statuses" },
+  ...Object.entries(EMPLOYMENT_STATUS_LABELS)
+    .filter(([key]) => Number.isNaN(Number(key)))
+    .map(([value, label]) => ({ value, label })),
+  { value: "On Leave", label: "On Leave" },
+];
+
+const HR_EMPLOYEE_LIFECYCLE_DASHBOARD_VISIBLE_KEY =
+  "hr-employee-lifecycle-dashboard-visible";
 
 // Map enum values to form values
 const mapEnumToFormStatus = (status) => {
@@ -192,6 +207,7 @@ const EmployeeLifecycle = () => {
   const [formLoading, setFormLoading] = useState(false);
   const [formStep, setFormStep] = useState(0);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [portalCredentialsDownloadingId, setPortalCredentialsDownloadingId] = useState(null);
   const [selectedEmployeeProfile, setSelectedEmployeeProfile] = useState(null);
   const [profileTabValue, setProfileTabValue] = useState(0);
   const [employmentTimeline, setEmploymentTimeline] = useState([]);
@@ -226,6 +242,108 @@ const EmployeeLifecycle = () => {
   const [filteredEmployeesDialogOpen, setFilteredEmployeesDialogOpen] = useState(false);
   const [filteredEmployeesTitle, setFilteredEmployeesTitle] = useState("");
   const [filteredEmployees, setFilteredEmployees] = useState([]);
+  const [onboardingStatusMap, setOnboardingStatusMap] = useState({});
+  const [profilePhotoUploading, setProfilePhotoUploading] = useState(false);
+  const profilePhotoInputRef = useRef(null);
+  const [showEmployeeLifecycleDashboard, setShowEmployeeLifecycleDashboard] =
+    useState(true);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(
+        HR_EMPLOYEE_LIFECYCLE_DASHBOARD_VISIBLE_KEY
+      );
+      if (raw !== null) {
+        setShowEmployeeLifecycleDashboard(raw === "1" || raw === "true");
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const handleEmployeeLifecycleDashboardToggle = useCallback((event, checked) => {
+    setShowEmployeeLifecycleDashboard(checked);
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(
+          HR_EMPLOYEE_LIFECYCLE_DASHBOARD_VISIBLE_KEY,
+          checked ? "1" : "0"
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
+
+  const handleProfilePhotoUpload = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file (JPG, PNG, GIF, WebP).");
+      e.target.value = "";
+      return;
+    }
+    const maxBytes = 5 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      toast.error("Image must be 5 MB or smaller.");
+      e.target.value = "";
+      return;
+    }
+    setProfilePhotoUploading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const ext = file.name.split(".").pop() || "jpg";
+      const safeExt = ext.replace(/[^a-zA-Z0-9]/g, "") || "jpg";
+      const fileName = `emp-profile-${Date.now()}.${safeExt}`;
+      const formDataUpload = new FormData();
+      formDataUpload.append("File", file);
+      formDataUpload.append("FileName", fileName);
+      formDataUpload.append("storePath", "HR/EmployeeProfiles");
+
+      const response = await fetch(`${BASE_URL}/AWS/DocumentUploadCommon`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formDataUpload,
+      });
+      const text = await response.text();
+      let url = "";
+      if (response.ok) {
+        if (text.startsWith("{") || text.startsWith("[")) {
+          try {
+            const data = JSON.parse(text);
+            url =
+              data?.result ??
+              data?.Result ??
+              (typeof data === "string" ? data : "");
+            if (url && typeof url === "object") {
+              url =
+                url?.documentURL ??
+                url?.DocumentURL ??
+                url?.url ??
+                url?.Url ??
+                "";
+            }
+          } catch {
+            url = "";
+          }
+        } else {
+          url = text.trim().replace(/^"|"$/g, "");
+        }
+      }
+      if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+        setFormData((prev) => ({ ...prev, profilePhotoUrl: url }));
+        toast.success("Profile photo uploaded. Save the employee to apply.");
+      } else {
+        throw new Error(text || "Upload did not return a valid URL.");
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to upload profile photo.");
+    } finally {
+      setProfilePhotoUploading(false);
+      e.target.value = "";
+    }
+  }, []);
 
   const loadDepartments = useCallback(async () => {
     try {
@@ -281,236 +399,266 @@ const EmployeeLifecycle = () => {
     }
   }, []);
 
+  const loadEmployeeProfiles = useCallback(async () => {
+    if (!navigate) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const orgId = getOrgId();
+      const headers = createAuthHeaders();
+      const skip = (page - 1) * pageSize;
+
+      let query = `${BASE_URL}/hr/employees?OrgId=${orgId || 0}&SkipCount=${skip}&MaxResultCount=${pageSize}`;
+      
+      if (search) {
+        query += `&Search=${encodeURIComponent(search)}`;
+      }
+      
+      if (departmentFilter) {
+        query += `&DepartmentId=${departmentFilter}`;
+      }
+      
+      if (statusFilter) {
+        query += `&EmploymentStatus=${encodeURIComponent(statusFilter)}`;
+      }
+      
+      if (employmentTypeFilter) {
+        query += `&EmploymentType=${encodeURIComponent(employmentTypeFilter)}`;
+      }
+      
+
+      const [employeesResponse, dashboardResponse] = await Promise.all([
+        fetch(query, { headers }),
+        fetch(`${BASE_URL}/hr/employees/dashboard?orgId=${orgId || 0}`, { headers }),
+      ]);
+
+      if (!employeesResponse.ok) {
+        throw new Error("Unable to load employee profiles");
+      }
+
+      const employeesJson = await employeesResponse.json();
+      const payload = parsePagedResponse(employeesJson);
+      
+      // Debug: Check if Tags JSON is in the response for employee 002
+      if (payload.items && payload.items.length > 0) {
+        const emp002 = payload.items.find(e => (e.employeeCode === "002" || e.EmployeeCode === "002"));
+        if (emp002) {
+          console.log("Raw API Response for employee 002:", {
+            hasTags: !!(emp002.tags || emp002.Tags),
+            tagsValue: emp002.tags || emp002.Tags,
+            tagsType: typeof (emp002.tags || emp002.Tags),
+            allKeys: Object.keys(emp002).filter(k => k.toLowerCase().includes('tag') || k.toLowerCase().includes('employment'))
+          });
+        }
+      }
+      
+      if (dashboardResponse.ok) {
+        const dashboardData = parseObjectResponse(await dashboardResponse.json());
+        console.log("Dashboard API Response:", dashboardData);
+        
+        // Calculate probation employees from loaded employee profiles if not provided by API
+        const probationCount = payload.items?.filter(emp => {
+          const status = emp.employmentStatus !== undefined ? emp.employmentStatus : (emp.EmploymentStatus !== undefined ? emp.EmploymentStatus : null);
+          return status === 2 || status === "Probation" || status === "probation" || status === "2" || String(status) === "2";
+        }).length || 0;
+        
+        // Extract values with proper fallback - API returns PascalCase
+        const metrics = {
+          totalEmployees: dashboardData.TotalEmployees ?? dashboardData.totalEmployees ?? 0,
+          activeEmployees: dashboardData.ActiveEmployees ?? dashboardData.activeEmployees ?? 0,
+          onProbationEmployees: dashboardData.ProbationEmployees ?? dashboardData.onProbationEmployees ?? probationCount,
+          onboardingEmployees: dashboardData.OnboardingsInProgress ?? dashboardData.onboardingEmployees ?? dashboardData.onboardingsInProgress ?? 0,
+          offboardingEmployees: dashboardData.OffboardingsInProgress ?? dashboardData.offboardingEmployees ?? dashboardData.offboardingsInProgress ?? 0,
+          upcomingReminders: dashboardData.PendingReminders ?? dashboardData.upcomingReminders ?? dashboardData.pendingReminders ?? 0,
+          openGrievances: dashboardData.OpenGrievances ?? dashboardData.openGrievances ?? 0,
+          newHiresThisMonth: dashboardData.NewHires ?? dashboardData.newHiresThisMonth ?? dashboardData.newHires ?? 0,
+        };
+        
+        console.log("Extracted Metrics:", metrics);
+        setDashboardMetrics(metrics);
+      } else {
+        console.error("Dashboard API failed:", dashboardResponse.status, dashboardResponse.statusText);
+      }
+
+      const loadedProfiles = payload.items ?? [];
+      // Normalize data to have both camelCase and PascalCase properties
+      const normalizedProfiles = loadedProfiles.map(emp => {
+        // Parse Tags JSON to extract location and employmentType (same as profile view does)
+        let tagsData = {};
+        try {
+          if (emp.tags || emp.Tags) {
+            const tagsStr = emp.tags || emp.Tags;
+            if (tagsStr && typeof tagsStr === 'string' && tagsStr.trim() !== "") {
+              tagsData = JSON.parse(tagsStr);
+            }
+          }
+        } catch (e) {
+          // Tags JSON parsing failed, continue with empty object
+        }
+        
+        // Extract location from Tags JSON or direct properties (same as profile view)
+        const locationFromTags = tagsData.location || tagsData.Location;
+        const locationFromDirect = emp.location ?? emp.Location;
+        const location = locationFromTags ?? locationFromDirect ?? null;
+        
+        // Preserve all original properties including Tags JSON (EXACT same as profile view expects)
+        const normalized = {
+          ...emp,
+          // Preserve Tags JSON exactly as received (critical for employmentType and location - same as profile view)
+          tags: emp.tags ?? emp.Tags ?? null,
+          Tags: emp.Tags ?? emp.tags ?? null,
+          // Ensure both camelCase and PascalCase for IDs
+          departmentId: emp.departmentId ?? emp.DepartmentId ?? null,
+          DepartmentId: emp.DepartmentId ?? emp.departmentId ?? null,
+          jobTitleId: emp.jobTitleId ?? emp.JobTitleId ?? null,
+          JobTitleId: emp.JobTitleId ?? emp.jobTitleId ?? null,
+          // Extract location from Tags JSON if not in direct properties
+          location: location,
+          Location: location,
+          // Ensure names are available if provided
+          departmentName: emp.departmentName ?? emp.DepartmentName ?? null,
+          DepartmentName: emp.DepartmentName ?? emp.departmentName ?? null,
+          jobTitleName: emp.jobTitleName ?? emp.JobTitleName ?? null,
+          JobTitleName: emp.JobTitleName ?? emp.jobTitleName ?? null,
+          portalCredentialsPending: !!(
+            emp.portalCredentialsPending ??
+            emp.PortalCredentialsPending
+          ),
+          PortalCredentialsPending: !!(
+            emp.PortalCredentialsPending ??
+            emp.portalCredentialsPending
+          ),
+        };
+        
+        return normalized;
+      });
+      
+      // Enrich profiles with individual employee data if Tags JSON is missing or incomplete
+      // This uses the EXACT same endpoint and method as profile view (handleViewProfile)
+      const enrichedProfiles = await Promise.all(normalizedProfiles.map(async (emp) => {
+        const empId = emp.id || emp.internalId || emp.Id || emp.InternalId;
+        
+        // Check if Tags JSON exists and has employmentType (same check as profile view)
+        let tagsData = {};
+        let hasEmploymentType = false;
+        try {
+          if (emp.tags || emp.Tags) {
+            const tagsStr = emp.tags || emp.Tags;
+            if (tagsStr && typeof tagsStr === 'string' && tagsStr.trim() !== "") {
+              tagsData = JSON.parse(tagsStr);
+              hasEmploymentType = !!(tagsData.employmentType || tagsData.EmploymentType);
+            }
+          }
+        } catch (e) {
+          // Tags JSON parsing failed
+        }
+        
+        // If Tags JSON is missing or doesn't have employmentType, fetch individual employee data
+        // This is the EXACT same fetch as profile view uses (line 647)
+        if (!hasEmploymentType && empId) {
+          try {
+            const headers = createAuthHeaders();
+            const response = await fetch(`${BASE_URL}/hr/employees/${empId}`, { headers });
+            if (response.ok) {
+              const data = await response.json();
+              const profileData = parseObjectResponse(data);
+              const profile = profileData.profile || profileData.Profile || profileData;
+
+              const pending = !!(
+                profile.portalCredentialsPending ??
+                profile.PortalCredentialsPending
+              );
+              emp.portalCredentialsPending = pending;
+              emp.PortalCredentialsPending = pending;
+
+              // Use EXACT same structure as profile view (lines 2717-2741)
+              // Merge Tags JSON from individual employee data
+              if (profile.tags || profile.Tags) {
+                emp.tags = profile.tags || profile.Tags;
+                emp.Tags = profile.Tags || profile.tags;
+
+                // Extract location from enriched Tags JSON (same as profile view)
+                try {
+                  const enrichedTagsData = JSON.parse(profile.tags || profile.Tags);
+                  const locationFromTags = enrichedTagsData.location || enrichedTagsData.Location;
+                  if (locationFromTags) {
+                    emp.location = locationFromTags;
+                    emp.Location = locationFromTags;
+                  }
+                } catch (e) {
+                  // Failed to parse enriched Tags JSON
+                }
+                
+                // Cache Tags JSON for render function (same as profile view uses)
+                setEmployeeTagsCache(prev => ({
+                  ...prev,
+                  [empId]: profile.tags || profile.Tags
+                }));
+              }
+            }
+          } catch (e) {
+            console.error(`Failed to enrich employee ${empId}:`, e);
+          }
+        } else if (hasEmploymentType && empId) {
+          // Cache Tags JSON if it already exists
+          setEmployeeTagsCache(prev => ({
+            ...prev,
+            [empId]: emp.tags || emp.Tags
+          }));
+        }
+        
+        return emp;
+      }));
+      
+      setEmployeeProfiles(enrichedProfiles);
+      setTotalCount(payload.totalCount ?? 0);
+
+      // Fetch all onboarding records in one call and build a status map
+      try {
+        const onboardingRes = await fetch(
+          `${BASE_URL}/hr/onboarding?skipCount=0&maxResultCount=1000`,
+          { headers }
+        );
+        if (onboardingRes.ok) {
+          const onboardingJson = await onboardingRes.json();
+          const onboardingItems =
+            onboardingJson.items ??
+            onboardingJson.result?.items ??
+            onboardingJson.result ??
+            [];
+          // Keep the most recent record per employee (first wins since API orders by desc)
+          const map = {};
+          for (const rec of onboardingItems) {
+            const empId = rec.employeeProfileId ?? rec.EmployeeProfileId;
+            if (empId != null && map[empId] === undefined) {
+              map[empId] = rec.status ?? rec.Status ?? "NotStarted";
+            }
+          }
+          setOnboardingStatusMap(map);
+        }
+      } catch (_) {
+        // Non-critical — silently ignore onboarding fetch failures
+      }
+    } catch (err) {
+      setError(err.message || "Failed to load employee profiles");
+    } finally {
+      setLoading(false);
+    }
+  }, [navigate, page, pageSize, search, departmentFilter, statusFilter, employmentTypeFilter]);
+
   useEffect(() => {
     if (!navigate) {
       return;
     }
 
-    let ignore = false;
-
-    const loadEmployeeProfiles = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const orgId = getOrgId();
-        const headers = createAuthHeaders();
-        const skip = (page - 1) * pageSize;
-
-        let query = `${BASE_URL}/hr/employees?OrgId=${orgId || 0}&SkipCount=${skip}&MaxResultCount=${pageSize}`;
-        
-        if (search) {
-          query += `&Search=${encodeURIComponent(search)}`;
-        }
-        
-        if (departmentFilter) {
-          query += `&DepartmentId=${departmentFilter}`;
-        }
-        
-        if (statusFilter) {
-          query += `&EmploymentStatus=${encodeURIComponent(statusFilter)}`;
-        }
-        
-        if (employmentTypeFilter) {
-          query += `&EmploymentType=${encodeURIComponent(employmentTypeFilter)}`;
-        }
-        
-
-        const [employeesResponse, dashboardResponse] = await Promise.all([
-          fetch(query, { headers }),
-          fetch(`${BASE_URL}/hr/employees/dashboard?orgId=${orgId || 0}`, { headers }),
-        ]);
-
-        if (!employeesResponse.ok) {
-          throw new Error("Unable to load employee profiles");
-        }
-
-        const employeesJson = await employeesResponse.json();
-        const payload = parsePagedResponse(employeesJson);
-        
-        // Debug: Check if Tags JSON is in the response for employee 002
-        if (payload.items && payload.items.length > 0) {
-          const emp002 = payload.items.find(e => (e.employeeCode === "002" || e.EmployeeCode === "002"));
-          if (emp002) {
-            console.log("Raw API Response for employee 002:", {
-              hasTags: !!(emp002.tags || emp002.Tags),
-              tagsValue: emp002.tags || emp002.Tags,
-              tagsType: typeof (emp002.tags || emp002.Tags),
-              allKeys: Object.keys(emp002).filter(k => k.toLowerCase().includes('tag') || k.toLowerCase().includes('employment'))
-            });
-          }
-        }
-        
-        if (dashboardResponse.ok) {
-          const dashboardData = parseObjectResponse(await dashboardResponse.json());
-          console.log("Dashboard API Response:", dashboardData);
-          
-          if (!ignore) {
-            // Calculate probation employees from loaded employee profiles if not provided by API
-            const probationCount = payload.items?.filter(emp => {
-              const status = emp.employmentStatus !== undefined ? emp.employmentStatus : (emp.EmploymentStatus !== undefined ? emp.EmploymentStatus : null);
-              return status === 2 || status === "Probation" || status === "probation" || status === "2" || String(status) === "2";
-            }).length || 0;
-            
-            // Extract values with proper fallback - API returns PascalCase
-            const metrics = {
-              totalEmployees: dashboardData.TotalEmployees ?? dashboardData.totalEmployees ?? 0,
-              activeEmployees: dashboardData.ActiveEmployees ?? dashboardData.activeEmployees ?? 0,
-              onProbationEmployees: dashboardData.ProbationEmployees ?? dashboardData.onProbationEmployees ?? probationCount,
-              onboardingEmployees: dashboardData.OnboardingsInProgress ?? dashboardData.onboardingEmployees ?? dashboardData.onboardingsInProgress ?? 0,
-              offboardingEmployees: dashboardData.OffboardingsInProgress ?? dashboardData.offboardingEmployees ?? dashboardData.offboardingsInProgress ?? 0,
-              upcomingReminders: dashboardData.PendingReminders ?? dashboardData.upcomingReminders ?? dashboardData.pendingReminders ?? 0,
-              openGrievances: dashboardData.OpenGrievances ?? dashboardData.openGrievances ?? 0,
-              newHiresThisMonth: dashboardData.NewHires ?? dashboardData.newHiresThisMonth ?? dashboardData.newHires ?? 0,
-            };
-            
-            console.log("Extracted Metrics:", metrics);
-            setDashboardMetrics(metrics);
-          }
-        } else {
-          console.error("Dashboard API failed:", dashboardResponse.status, dashboardResponse.statusText);
-        }
-
-        if (ignore) {
-          return;
-        }
-
-        const loadedProfiles = payload.items ?? [];
-        // Normalize data to have both camelCase and PascalCase properties
-        const normalizedProfiles = loadedProfiles.map(emp => {
-          // Parse Tags JSON to extract location and employmentType (same as profile view does)
-          let tagsData = {};
-          try {
-            if (emp.tags || emp.Tags) {
-              const tagsStr = emp.tags || emp.Tags;
-              if (tagsStr && typeof tagsStr === 'string' && tagsStr.trim() !== "") {
-                tagsData = JSON.parse(tagsStr);
-              }
-            }
-          } catch (e) {
-            // Tags JSON parsing failed, continue with empty object
-          }
-          
-          // Extract location from Tags JSON or direct properties (same as profile view)
-          const locationFromTags = tagsData.location || tagsData.Location;
-          const locationFromDirect = emp.location ?? emp.Location;
-          const location = locationFromTags ?? locationFromDirect ?? null;
-          
-          // Preserve all original properties including Tags JSON (EXACT same as profile view expects)
-          const normalized = {
-            ...emp,
-            // Preserve Tags JSON exactly as received (critical for employmentType and location - same as profile view)
-            tags: emp.tags ?? emp.Tags ?? null,
-            Tags: emp.Tags ?? emp.tags ?? null,
-            // Ensure both camelCase and PascalCase for IDs
-            departmentId: emp.departmentId ?? emp.DepartmentId ?? null,
-            DepartmentId: emp.DepartmentId ?? emp.departmentId ?? null,
-            jobTitleId: emp.jobTitleId ?? emp.JobTitleId ?? null,
-            JobTitleId: emp.JobTitleId ?? emp.jobTitleId ?? null,
-            // Extract location from Tags JSON if not in direct properties
-            location: location,
-            Location: location,
-            // Ensure names are available if provided
-            departmentName: emp.departmentName ?? emp.DepartmentName ?? null,
-            DepartmentName: emp.DepartmentName ?? emp.departmentName ?? null,
-            jobTitleName: emp.jobTitleName ?? emp.JobTitleName ?? null,
-            JobTitleName: emp.JobTitleName ?? emp.jobTitleName ?? null,
-          };
-          
-          return normalized;
-        });
-        
-        // Enrich profiles with individual employee data if Tags JSON is missing or incomplete
-        // This uses the EXACT same endpoint and method as profile view (handleViewProfile)
-        const enrichedProfiles = await Promise.all(normalizedProfiles.map(async (emp) => {
-          const empId = emp.id || emp.internalId || emp.Id || emp.InternalId;
-          
-          // Check if Tags JSON exists and has employmentType (same check as profile view)
-          let tagsData = {};
-          let hasEmploymentType = false;
-          try {
-            if (emp.tags || emp.Tags) {
-              const tagsStr = emp.tags || emp.Tags;
-              if (tagsStr && typeof tagsStr === 'string' && tagsStr.trim() !== "") {
-                tagsData = JSON.parse(tagsStr);
-                hasEmploymentType = !!(tagsData.employmentType || tagsData.EmploymentType);
-              }
-            }
-          } catch (e) {
-            // Tags JSON parsing failed
-          }
-          
-          // If Tags JSON is missing or doesn't have employmentType, fetch individual employee data
-          // This is the EXACT same fetch as profile view uses (line 647)
-          if (!hasEmploymentType && empId) {
-            try {
-              const headers = createAuthHeaders();
-              const response = await fetch(`${BASE_URL}/hr/employees/${empId}`, { headers });
-              if (response.ok) {
-                const data = await response.json();
-                const profileData = parseObjectResponse(data);
-                const profile = profileData.profile || profileData.Profile || profileData;
-                
-                // Use EXACT same structure as profile view (lines 2717-2741)
-                // Merge Tags JSON from individual employee data
-                if (profile.tags || profile.Tags) {
-                  emp.tags = profile.tags || profile.Tags;
-                  emp.Tags = profile.Tags || profile.tags;
-                  
-                  // Extract location from enriched Tags JSON (same as profile view)
-                  try {
-                    const enrichedTagsData = JSON.parse(profile.tags || profile.Tags);
-                    const locationFromTags = enrichedTagsData.location || enrichedTagsData.Location;
-                    if (locationFromTags) {
-                      emp.location = locationFromTags;
-                      emp.Location = locationFromTags;
-                    }
-                  } catch (e) {
-                    // Failed to parse enriched Tags JSON
-                  }
-                  
-                  // Cache Tags JSON for render function (same as profile view uses)
-                  setEmployeeTagsCache(prev => ({
-                    ...prev,
-                    [empId]: profile.tags || profile.Tags
-                  }));
-                }
-              }
-            } catch (e) {
-              console.error(`Failed to enrich employee ${empId}:`, e);
-            }
-          } else if (hasEmploymentType && empId) {
-            // Cache Tags JSON if it already exists
-            setEmployeeTagsCache(prev => ({
-              ...prev,
-              [empId]: emp.tags || emp.Tags
-            }));
-          }
-          
-          return emp;
-        }));
-        
-        setEmployeeProfiles(enrichedProfiles);
-        setTotalCount(payload.totalCount ?? 0);
-      } catch (err) {
-        if (!ignore) {
-          setError(err.message || "Failed to load employee profiles");
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    };
-
     loadEmployeeProfiles();
     loadDepartments();
     loadJobTitles();
-
-    return () => {
-      ignore = true;
-    };
-  }, [navigate, page, pageSize, search, departmentFilter, statusFilter, employmentTypeFilter]);
+  }, [navigate, loadEmployeeProfiles, loadDepartments, loadJobTitles]);
 
   const handlePageChange = (event, value) => {
     setPage(value);
@@ -692,6 +840,14 @@ const EmployeeLifecycle = () => {
           DepartmentName: profile.DepartmentName ?? profile.departmentName ?? null,
           jobTitleName: profile.jobTitleName ?? profile.JobTitleName ?? null,
           JobTitleName: profile.JobTitleName ?? profile.jobTitleName ?? null,
+          portalCredentialsPending: !!(
+            profile.portalCredentialsPending ??
+            profile.PortalCredentialsPending
+          ),
+          PortalCredentialsPending: !!(
+            profile.PortalCredentialsPending ??
+            profile.portalCredentialsPending
+          ),
         };
         
         // Get employment timeline from profileData
@@ -706,6 +862,74 @@ const EmployeeLifecycle = () => {
     } catch (error) {
       console.error("Error loading employee profile:", error);
       toast.error("Error loading employee profile");
+    }
+  };
+
+  const handleDownloadPortalCredentials = async (employeeProfileId) => {
+    if (employeeProfileId == null || employeeProfileId === "") return;
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const headers = { Authorization: `Bearer ${token || ""}` };
+    setPortalCredentialsDownloadingId(employeeProfileId);
+    try {
+      const res = await fetch(
+        `${BASE_URL}/hr/employees/${employeeProfileId}/portal-credentials/download`,
+        { method: "POST", headers }
+      );
+      if (!res.ok) {
+        let msg = "Download failed";
+        try {
+          const err = await res.json();
+          msg = err.message || err.Message || msg;
+        } catch {
+          /* not JSON */
+        }
+        toast.error(msg);
+        return;
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition");
+      let fileName = `portal-credentials-${employeeProfileId}.txt`;
+      if (cd) {
+        const m = /filename\*=UTF-8''([^;]+)|filename="([^"]+)"/i.exec(cd);
+        const raw = m && (m[1] || m[2]);
+        if (raw) {
+          try {
+            fileName = decodeURIComponent(raw.replace(/"/g, ""));
+          } catch {
+            fileName = raw.replace(/"/g, "");
+          }
+        }
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success(
+        "Credentials downloaded. They are no longer available from this screen."
+      );
+
+      const clearPending = (p) => {
+        if (!p) return p;
+        const pid = p.id ?? p.Id ?? p.internalId ?? p.InternalId;
+        if (pid !== employeeProfileId) return p;
+        return {
+          ...p,
+          portalCredentialsPending: false,
+          PortalCredentialsPending: false,
+        };
+      };
+      setEmployeeProfiles((prev) => prev.map(clearPending));
+      setFilteredEmployees((prev) => prev.map(clearPending));
+      setSelectedEmployeeProfile((prev) => clearPending(prev));
+    } catch (e) {
+      toast.error(e.message || "Download failed");
+    } finally {
+      setPortalCredentialsDownloadingId(null);
     }
   };
 
@@ -1055,9 +1279,24 @@ const EmployeeLifecycle = () => {
         EmployeeCode: formData.employeeCode?.trim() || null, // Auto-generated if null
         FirstName: formData.firstName?.trim() || "",
         LastName: formData.lastName?.trim() || "",
+        FullName: formData.fullName?.trim() || "",
+        NameWithInitials: formData.nameWithInitials?.trim() || "",
+        // Required by API model binding — not only inside Tags / AddressJson
+        NIC: formData.nic?.trim() || "",
+        PassportNo: formData.passportNo?.trim() || null,
+        Gender: formData.gender?.trim() || null,
+        MaritalStatus: formData.maritalStatus?.trim() || null,
+        DependentsCount:
+          formData.dependentsCount !== undefined && formData.dependentsCount !== ""
+            ? parseInt(String(formData.dependentsCount), 10) || 0
+            : 0,
         DateOfBirth: dateOfBirth,
         Email: formData.email?.trim() || null,
         Phone: formData.phone?.trim() || null,
+        MobileNumber: formData.mobileNumber?.trim() || "",
+        LandlineNumber: formData.landlineNumber?.trim() || null,
+        Location: formData.location?.trim() || null,
+        EmploymentType: formData.employmentType?.trim() || "Permanent",
         // Employment Info
         HireDate: hireDate,
         DepartmentId: formData.departmentId ? parseInt(formData.departmentId, 10) : null,
@@ -1066,6 +1305,7 @@ const EmployeeLifecycle = () => {
         EmploymentStatus: employmentStatusString,
         ProbationEndDate: formatDateForPayload(formData.probationEndDate),
         ContractEndDate: formatDateForPayload(formData.contractEndDate),
+        ProfilePhotoUrl: formData.profilePhotoUrl?.trim() || null,
         // Legacy JSON fields (store additional data here)
         AddressJson: JSON.stringify({
           addressLine1: formData.addressLine1,
@@ -1180,86 +1420,7 @@ const EmployeeLifecycle = () => {
 
       setFormOpen(false);
       toast.success(formMode === "add" ? "Employee created successfully!" : "Employee updated successfully!");
-      
-      // Reload the employee list instead of full page reload
-      const reloadOrgId = getOrgId();
-      const skip = (page - 1) * pageSize;
-      let query = `${BASE_URL}/hr/employees?OrgId=${reloadOrgId || 0}&SkipCount=${skip}&MaxResultCount=${pageSize}`;
-      
-      if (search) {
-        query += `&Search=${encodeURIComponent(search)}`;
-      }
-      
-      if (departmentFilter) {
-        query += `&DepartmentId=${departmentFilter}`;
-      }
-      
-      if (statusFilter) {
-        query += `&EmploymentStatus=${encodeURIComponent(statusFilter)}`;
-      }
-
-      // Reload the employee list
-      try {
-        const reloadResponse = await fetch(query, { headers });
-        if (reloadResponse.ok) {
-          const reloadData = parsePagedResponse(await reloadResponse.json());
-          const reloadedProfiles = reloadData.items ?? [];
-          // Normalize data to have both camelCase and PascalCase properties
-          const normalizedReloadedProfiles = reloadedProfiles.map(emp => {
-            // Parse Tags JSON to extract location if it's stored there
-            let tagsData = {};
-            try {
-              if (emp.tags || emp.Tags) {
-                const tagsStr = emp.tags || emp.Tags;
-                if (tagsStr && typeof tagsStr === 'string') {
-                  tagsData = JSON.parse(tagsStr);
-                }
-              }
-            } catch (e) {
-              // Silently fail - tags might not be valid JSON
-            }
-            
-            // Get location from Tags JSON or direct properties (same as handleEdit)
-            const locationFromTags = tagsData.location || tagsData.Location;
-            const locationFromDirect = emp.location ?? emp.Location;
-            const location = locationFromTags ?? locationFromDirect ?? null;
-            
-            // Get employmentType from Tags JSON or direct properties (same as handleEdit)
-            // Use || instead of ?? to handle empty strings
-            const employmentTypeFromTags = tagsData.employmentType || tagsData.EmploymentType || tagsData.employment_type;
-            const employmentTypeFromDirect = emp.employmentType || emp.EmploymentType;
-            const employmentType = employmentTypeFromTags || employmentTypeFromDirect || null;
-            
-            return {
-              ...emp,
-              // Ensure both camelCase and PascalCase for IDs (preserve existing, add missing)
-              departmentId: emp.departmentId ?? emp.DepartmentId ?? null,
-              DepartmentId: emp.DepartmentId ?? emp.departmentId ?? null,
-              jobTitleId: emp.jobTitleId ?? emp.JobTitleId ?? null,
-              JobTitleId: emp.JobTitleId ?? emp.jobTitleId ?? null,
-              // Extract location from Tags JSON if not in direct properties
-              location: location,
-              Location: location,
-              // Extract employmentType from Tags JSON if not in direct properties
-              employmentType: employmentType,
-              EmploymentType: employmentType,
-              // Ensure names are available if provided
-              departmentName: emp.departmentName ?? emp.DepartmentName ?? null,
-              DepartmentName: emp.DepartmentName ?? emp.departmentName ?? null,
-              jobTitleName: emp.jobTitleName ?? emp.JobTitleName ?? null,
-              JobTitleName: emp.JobTitleName ?? emp.jobTitleName ?? null,
-            };
-          });
-          setEmployeeProfiles(normalizedReloadedProfiles);
-          setTotalCount(reloadData.totalCount ?? 0);
-        }
-      } catch (reloadError) {
-        console.error("Error reloading employee list:", reloadError);
-        // Fallback to page reload if API reload fails
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
-      }
+      await loadEmployeeProfiles();
     } catch (error) {
       toast.error(error.message || "Failed to save employee");
     } finally {
@@ -1293,9 +1454,7 @@ const EmployeeLifecycle = () => {
       setSelectedItem(null);
       
       toast.success("Employee deleted successfully!");
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      await loadEmployeeProfiles();
     } catch (error) {
       toast.error(error.message || "Failed to delete employee");
     }
@@ -1403,7 +1562,19 @@ const EmployeeLifecycle = () => {
         const profiles = data.items || data.Items || [];
 
         // Generate CSV
-        const csvHeaders = ["Employee No", "Name", "Dept", "Employment Type", "Location", "Status", "Email", "Mobile", "NIC", "Date Joined"];
+        const csvHeaders = [
+          "Employee No",
+          "Name",
+          "Dept",
+          "Employment Type",
+          "Location",
+          "Status",
+          "Email",
+          "Portal credentials pending",
+          "Mobile",
+          "NIC",
+          "Date Joined",
+        ];
         const csvRows = profiles.map(emp => {
           // Parse Tags JSON to get employmentType
           let tagsData = {};
@@ -1413,6 +1584,10 @@ const EmployeeLifecycle = () => {
             }
           } catch (e) {}
           const employmentType = tagsData.employmentType || tagsData.EmploymentType || emp.employmentType || emp.EmploymentType || "";
+          const portalPending = !!(
+            emp.portalCredentialsPending ??
+            emp.PortalCredentialsPending
+          );
           
           return [
             emp.employeeCode || emp.EmployeeCode || "",
@@ -1422,6 +1597,7 @@ const EmployeeLifecycle = () => {
             emp.location || emp.Location || "",
             emp.status || emp.Status || emp.employmentStatus || emp.EmploymentStatus || "",
             emp.email || emp.Email || "",
+            portalPending ? "Yes" : "No",
             emp.mobileNumber || emp.MobileNumber || emp.phone || emp.Phone || "",
             emp.nic || emp.NIC || "",
             emp.dateJoined || emp.DateJoined || emp.hireDate || emp.HireDate || "",
@@ -1493,102 +1669,131 @@ const EmployeeLifecycle = () => {
             </Box>
           ) : null}
 
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard
-                title="Total Employees"
-                value={statusCounts.Total}
-                subtitle="All employees in system"
-                icon={<PeopleIcon />}
-                color="primary"
-                onClick={() => {
-                  setFilteredEmployees(employeeProfiles);
-                  setFilteredEmployeesTitle("All Employees");
-                  setFilteredEmployeesDialogOpen(true);
-                }}
-              />
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "flex-end",
+              alignItems: "center",
+              mb: showEmployeeLifecycleDashboard ? 2 : 1,
+            }}
+          >
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showEmployeeLifecycleDashboard}
+                  onChange={handleEmployeeLifecycleDashboardToggle}
+                  color="primary"
+                  size="small"
+                />
+              }
+              label={
+                <Typography variant="body2" color="text.secondary">
+                  Hide dashboard
+                </Typography>
+              }
+              labelPlacement="start"
+              sx={{ mr: 0, userSelect: "none" }}
+            />
+          </Box>
+
+          {showEmployeeLifecycleDashboard && (
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <MetricCard
+                  title="Total Employees"
+                  value={statusCounts.Total}
+                  subtitle="All employees in system"
+                  icon={<PeopleIcon />}
+                  color="primary"
+                  onClick={() => {
+                    setFilteredEmployees(employeeProfiles);
+                    setFilteredEmployeesTitle("All Employees");
+                    setFilteredEmployeesDialogOpen(true);
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <MetricCard
+                  title="Draft"
+                  value={statusCounts.Draft}
+                  subtitle="Draft employees"
+                  icon={<EditNoteIcon />}
+                  color="info"
+                  onClick={() => handleMetricCardClick("Draft")}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <MetricCard
+                  title="Active"
+                  value={statusCounts.Active}
+                  subtitle="Currently active"
+                  icon={<CheckCircleIcon />}
+                  color="success"
+                  onClick={() => handleMetricCardClick("Active")}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <MetricCard
+                  title="Probation"
+                  value={statusCounts.Probation}
+                  subtitle="Under probation period"
+                  icon={<HourglassEmptyIcon />}
+                  color="warning"
+                  onClick={() => handleMetricCardClick("Probation")}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <MetricCard
+                  title="Suspended"
+                  value={statusCounts.Suspended}
+                  subtitle="Suspended employees"
+                  icon={<BlockIcon />}
+                  color="error"
+                  onClick={() => handleMetricCardClick("Suspended")}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <MetricCard
+                  title="Terminated"
+                  value={statusCounts.Terminated}
+                  subtitle="Terminated employees"
+                  icon={<CancelIcon />}
+                  color="error"
+                  onClick={() => handleMetricCardClick("Terminated")}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <MetricCard
+                  title="Resigned"
+                  value={statusCounts.Resigned}
+                  subtitle="Resigned employees"
+                  icon={<ExitToAppIcon />}
+                  color="secondary"
+                  onClick={() => handleMetricCardClick("Resigned")}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <MetricCard
+                  title="Retired"
+                  value={statusCounts.Retired}
+                  subtitle="Retired employees"
+                  icon={<SchoolIcon />}
+                  color="info"
+                  onClick={() => handleMetricCardClick("Retired")}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <MetricCard
+                  title="Alumni"
+                  value={statusCounts.Alumni}
+                  subtitle="Alumni employees"
+                  icon={<PeopleIcon />}
+                  color="info"
+                  onClick={() => handleMetricCardClick("Alumni")}
+                />
+              </Grid>
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard
-                title="Draft"
-                value={statusCounts.Draft}
-                subtitle="Draft employees"
-                icon={<EditNoteIcon />}
-                color="info"
-                onClick={() => handleMetricCardClick("Draft")}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard
-                title="Active"
-                value={statusCounts.Active}
-                subtitle="Currently active"
-                icon={<CheckCircleIcon />}
-                color="success"
-                onClick={() => handleMetricCardClick("Active")}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard
-                title="Probation"
-                value={statusCounts.Probation}
-                subtitle="Under probation period"
-                icon={<HourglassEmptyIcon />}
-                color="warning"
-                onClick={() => handleMetricCardClick("Probation")}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard
-                title="Suspended"
-                value={statusCounts.Suspended}
-                subtitle="Suspended employees"
-                icon={<BlockIcon />}
-                color="error"
-                onClick={() => handleMetricCardClick("Suspended")}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard
-                title="Terminated"
-                value={statusCounts.Terminated}
-                subtitle="Terminated employees"
-                icon={<CancelIcon />}
-                color="error"
-                onClick={() => handleMetricCardClick("Terminated")}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard
-                title="Resigned"
-                value={statusCounts.Resigned}
-                subtitle="Resigned employees"
-                icon={<ExitToAppIcon />}
-                color="secondary"
-                onClick={() => handleMetricCardClick("Resigned")}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard
-                title="Retired"
-                value={statusCounts.Retired}
-                subtitle="Retired employees"
-                icon={<SchoolIcon />}
-                color="info"
-                onClick={() => handleMetricCardClick("Retired")}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <MetricCard
-                title="Alumni"
-                value={statusCounts.Alumni}
-                subtitle="Alumni employees"
-                icon={<PeopleIcon />}
-                color="info"
-                onClick={() => handleMetricCardClick("Alumni")}
-              />
-            </Grid>
-          </Grid>
+          )}
 
           <Box sx={{ mb: 3 }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
@@ -1678,16 +1883,7 @@ const EmployeeLifecycle = () => {
                     setStatusFilter(e.target.value);
                     setPage(1);
                   }}
-                  options={[
-                    { value: "", label: "All Statuses" },
-                    { value: "Active", label: "Active" },
-                    { value: "Resigned", label: "Resigned" },
-                    { value: "On Leave", label: "On Leave" },
-                    ...Object.keys(EMPLOYMENT_STATUS_LABELS).map((status) => ({
-                      value: status,
-                      label: EMPLOYMENT_STATUS_LABELS[status],
-                    })),
-                  ]}
+                  options={EMPLOYMENT_STATUS_FILTER_OPTIONS}
                 />
               </Grid>
             </Grid>
@@ -1856,6 +2052,65 @@ const EmployeeLifecycle = () => {
                   },
                 },
                 {
+                  id: "onboardingStatus",
+                  label: "Onboarding",
+                  render: (value) => {
+                    if (!value || value === "none") {
+                      return (
+                        <Chip label="None" size="small" color="default" variant="outlined" />
+                      );
+                    }
+                    if (value === "Completed") {
+                      return (
+                        <Chip label="Completed" size="small" color="success" sx={{ fontWeight: 600 }} />
+                      );
+                    }
+                    if (value === "InProgress") {
+                      return <Chip label="In Progress" size="small" color="warning" sx={{ fontWeight: 600 }} />;
+                    }
+                    if (value === "NotStarted") {
+                      return <Chip label="Not Started" size="small" color="default" sx={{ fontWeight: 600 }} />;
+                    }
+                    return <Chip label={value} size="small" color="default" />;
+                  },
+                },
+                {
+                  id: "portalCredentialsPending",
+                  label: "Portal credentials",
+                  align: "center",
+                  render: (_, row) => {
+                    const empId = row.id;
+                    const pending =
+                      row.portalCredentialsPending === true ||
+                      row.PortalCredentialsPending === true;
+                    const busy = portalCredentialsDownloadingId === empId;
+                    if (!pending) {
+                      return (
+                        <Typography variant="body2" color="text.secondary">
+                          —
+                        </Typography>
+                      );
+                    }
+                    return (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={
+                          busy ? (
+                            <CircularProgress color="inherit" size={16} />
+                          ) : (
+                            <FileDownloadIcon />
+                          )
+                        }
+                        disabled={busy}
+                        onClick={() => handleDownloadPortalCredentials(empId)}
+                      >
+                        {busy ? "Downloading…" : "Download once"}
+                      </Button>
+                    );
+                  },
+                },
+                {
                   id: "actions",
                   label: "Actions",
                   align: "center",
@@ -1883,6 +2138,10 @@ const EmployeeLifecycle = () => {
                 lastName: profile.lastName || profile.LastName,
                 fullName: profile.fullName || profile.FullName,
                 email: profile.email || profile.Email || "-",
+                portalCredentialsPending: !!(
+                  profile.portalCredentialsPending ??
+                  profile.PortalCredentialsPending
+                ),
                 phone: profile.phone || profile.Phone || "-",
                 departmentId: profile.departmentId || profile.DepartmentId || "-",
                 departmentName: profile.departmentName || profile.DepartmentName,
@@ -1893,6 +2152,7 @@ const EmployeeLifecycle = () => {
                 employmentStatus: profile.employmentStatus || profile.EmploymentStatus,
                 hireDate: profile.hireDate || profile.HireDate,
                 profilePhotoUrl: profile.profilePhotoUrl || profile.ProfilePhotoUrl,
+                onboardingStatus: onboardingStatusMap[profile.id] ?? onboardingStatusMap[profile.Id] ?? "none",
               }))}
               emptyMessage="No employee profiles found"
             />
@@ -2075,6 +2335,73 @@ const EmployeeLifecycle = () => {
                 <>
                   <Grid item xs={12}>
                     <Typography variant="h6" sx={{ mb: 2 }}>Personal Information</Typography>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                        gap: 2,
+                        mb: 2,
+                        p: 2,
+                        border: "1px solid",
+                        borderColor: "divider",
+                        borderRadius: 1,
+                        bgcolor: "action.hover",
+                      }}
+                    >
+                      <Avatar
+                        src={formData.profilePhotoUrl || undefined}
+                        alt="Profile"
+                        sx={{ width: 96, height: 96 }}
+                      >
+                        {(formData.firstName || formData.lastName || "E")
+                          .toString()
+                          .charAt(0)
+                          .toUpperCase()}
+                      </Avatar>
+                      <Box>
+                        <input
+                          ref={profilePhotoInputRef}
+                          type="file"
+                          accept="image/*"
+                          hidden
+                          onChange={handleProfilePhotoUpload}
+                        />
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<PhotoCamera />}
+                          disabled={profilePhotoUploading}
+                          onClick={() => profilePhotoInputRef.current?.click()}
+                        >
+                          {profilePhotoUploading ? "Uploading…" : "Upload photo"}
+                        </Button>
+                        {formData.profilePhotoUrl ? (
+                          <Button
+                            size="small"
+                            sx={{ ml: 1 }}
+                            onClick={() =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                profilePhotoUrl: "",
+                              }))
+                            }
+                          >
+                            Remove
+                          </Button>
+                        ) : null}
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          display="block"
+                          sx={{ mt: 0.5 }}
+                        >
+                          JPG, PNG, GIF or WebP — max 5 MB. Save the form after uploading.
+                        </Typography>
+                      </Box>
+                    </Box>
                   </Grid>
               <FormField
                 name="employeeCode"
@@ -2824,6 +3151,45 @@ const EmployeeLifecycle = () => {
                         <Typography variant="body2" gutterBottom>
                           {selectedEmployeeProfile.email || selectedEmployeeProfile.Email || "-"}
                         </Typography>
+                        <Typography variant="caption" color="text.secondary">Portal sign-in</Typography>
+                        <Box sx={{ mb: 1 }}>
+                          {(() => {
+                            const pending =
+                              selectedEmployeeProfile.portalCredentialsPending === true ||
+                              selectedEmployeeProfile.PortalCredentialsPending === true;
+                            const empId =
+                              selectedEmployeeProfile.id ??
+                              selectedEmployeeProfile.Id ??
+                              selectedEmployeeProfile.internalId ??
+                              selectedEmployeeProfile.InternalId;
+                            if (!pending) {
+                              return (
+                                <Typography variant="body2" color="text.secondary">
+                                  No one-time credential file pending. Employees sign in with employee code or work email and their own password after setup.
+                                </Typography>
+                              );
+                            }
+                            return (
+                              <>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  startIcon={<FileDownloadIcon />}
+                                  disabled={portalCredentialsDownloadingId === empId}
+                                  onClick={() => handleDownloadPortalCredentials(empId)}
+                                  sx={{ mt: 0.5 }}
+                                >
+                                  {portalCredentialsDownloadingId === empId
+                                    ? "Downloading…"
+                                    : "Download portal credentials (once)"}
+                                </Button>
+                                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                                  This downloads sign-in email and temporary password in a text file, then removes them from HR screens. Share the file securely with the employee; they should change password after first login.
+                                </Typography>
+                              </>
+                            );
+                          })()}
+                        </Box>
                         <Typography variant="caption" color="text.secondary">Mobile</Typography>
                         <Typography variant="body2">
                           {addressData.mobileNumber || selectedEmployeeProfile.mobileNumber || selectedEmployeeProfile.MobileNumber || "-"}
@@ -3145,6 +3511,42 @@ const EmployeeLifecycle = () => {
                   },
                 },
                 {
+                  id: "portalCredentialsPending",
+                  label: "Portal credentials",
+                  align: "center",
+                  render: (_, row) => {
+                    const empId = row.id;
+                    const pending =
+                      row.portalCredentialsPending === true ||
+                      row.PortalCredentialsPending === true;
+                    const busy = portalCredentialsDownloadingId === empId;
+                    if (!pending) {
+                      return (
+                        <Typography variant="body2" color="text.secondary">
+                          —
+                        </Typography>
+                      );
+                    }
+                    return (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={
+                          busy ? (
+                            <CircularProgress color="inherit" size={16} />
+                          ) : (
+                            <FileDownloadIcon />
+                          )
+                        }
+                        disabled={busy}
+                        onClick={() => handleDownloadPortalCredentials(empId)}
+                      >
+                        {busy ? "Downloading…" : "Download once"}
+                      </Button>
+                    );
+                  },
+                },
+                {
                   id: "hireDate",
                   label: "Hire Date",
                   render: (value) => formatDate(value),
@@ -3174,6 +3576,10 @@ const EmployeeLifecycle = () => {
                 lastName: profile.lastName || profile.LastName,
                 fullName: profile.fullName || profile.FullName,
                 email: profile.email || profile.Email || "-",
+                portalCredentialsPending: !!(
+                  profile.portalCredentialsPending ??
+                  profile.PortalCredentialsPending
+                ),
                 phone: profile.phone || profile.Phone || "-",
                 departmentId: profile.departmentId || profile.DepartmentId || "-",
                 departmentName: profile.departmentName || profile.DepartmentName,

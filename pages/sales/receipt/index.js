@@ -15,7 +15,7 @@ import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import { useRouter } from "next/router";
 import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
-import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
+import DescriptionIcon from "@mui/icons-material/Description";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
 import { Report } from "Base/report";
 import useShiftCheck from "@/components/utils/useShiftCheck";
@@ -27,7 +27,7 @@ import { Catelogue } from "Base/catelogue";
 
 export default function Receipt() {
   const cId = sessionStorage.getItem("category")
-  const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+  const { navigate, create, update, remove, print, whatsAppShare } = IsPermissionEnabled(cId);
   const router = useRouter();
   const name = localStorage.getItem("name");
   const { data: ReportName } = GetReportSettingValueByName("Receipt");
@@ -153,11 +153,13 @@ export default function Receipt() {
                         <TableCell>{item.remark}</TableCell>
                         <TableCell align="right">
                           <Box display="flex" justifyContent="end" gap={1}>
-                            <ShareReports url={whatsapp} mobile={item.customerContactNo} />
-                            {print ? <Tooltip title="Print" placement="top">
-                              <a href={`${Report}` + reportLink} target="_blank">
-                                <IconButton aria-label="print" size="small">
-                                  <LocalPrintshopIcon color="primary" fontSize="medium" />
+                            {whatsAppShare ? (
+                              <ShareReports url={whatsapp} mobile={item.customerContactNo} />
+                            ) : ""}
+                            {print ? <Tooltip title="Print (Custom)" placement="top">
+                              <a href={`${Report}` + reportLink} target="_blank" rel="noopener noreferrer">
+                                <IconButton aria-label="print custom" size="small">
+                                  <DescriptionIcon color="action" fontSize="medium" />
                                 </IconButton>
                               </a>
                             </Tooltip> : ""}

@@ -17,7 +17,12 @@ const nextConfig = {
     locales: ['en', 'ar'],
     defaultLocale: 'en',
   },
-  webpack: (config) => {
+  webpack: (config, { dev }) => {
+    // Avoid Windows dev-server errors: ENOENT renaming .next/cache/webpack pack files
+    // (filesystem pack cache races on some drives/antivirus setups).
+    if (dev && process.platform === 'win32') {
+      config.cache = { type: 'memory' };
+    }
     config.resolve.alias = {
       ...config.resolve.alias,
       '@': path.resolve(__dirname),

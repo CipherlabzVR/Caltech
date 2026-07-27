@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Grid from "@mui/material/Grid";
 import {
   Box,
   Button,
+  IconButton,
   Paper,
   Table,
   TableBody,
@@ -11,30 +12,54 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import LoadingButton from "@/components/UIElements/Buttons/LoadingButton";
-import SearchQuotationByDocumentNo from "@/components/utils/SearchQuotationByDocumentNo";
 import BASE_URL from "Base/api";
 import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
 import { useRouter } from "next/router";
+import getSettingValueByName from "@/components/utils/getSettingValueByName";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
+
+const recalculateLineAmounts = (row, quantity) => {
+  const sellingPrice = parseFloat(row.sellingPrice) || 0;
+  const percentage = parseFloat(row.advancePaymentPercentage) || 0;
+  const totalAmount = sellingPrice * quantity;
+  const advanceAmount = (totalAmount * percentage) / 100;
+  const balanceAmount = totalAmount - advanceAmount;
+
+  return {
+    quantity,
+    totalAmount,
+    advanceAmount,
+    balanceAmount: balanceAmount < 0 ? 0 : balanceAmount,
+  };
+};
 
 const InvoiceCreate = () => {
   const router = useRouter();
   const inquiryId = router.query.id;
-  const proformaInvoiceId = router.query.proformaInvoiceId; // Get ProformaInvoice ID if editing from Sent tab
+  const proformaInvoiceId = router.query.proformaInvoiceId;
+  const isPendingEdit = !proformaInvoiceId;
   const [invoiceDate, setInvoiceDate] = useState();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedInquiry, setSelectedInquiry] = useState(null);
   const [totalAdvance, setTotalAdvance] = useState(0);
   const [quotations, setQuotations] = useState([]);
 
-  const handleSubmit = async () => {
+  const { data: isUnitEditEnabled } = IsAppSettingEnabled("ProformaInvoiceUnitEditTolerance");
+  const { data: unitEditToleranceValue } = getSettingValueByName("ProformaInvoiceUnitEditTolerance");
+  const unitEditTolerance = Math.max(0, parseFloat(unitEditToleranceValue) || 0);
+  const canEditUnits = isPendingEdit && isUnitEditEnabled && unitEditTolerance > 0;
 
+  const handleSubmit = async () => {
     const invalidRow = quotations.find(
       (row) => parseFloat(row.advanceAmount) > parseFloat(row.totalAmount)
     );
@@ -42,6 +67,26 @@ const InvoiceCreate = () => {
     if (invalidRow) {
       toast.warning("Advance amount cannot be greater than total amount");
       return;
+    }
+
+    if (canEditUnits) {
+      const invalidUnitRow = quotations.find((row) => {
+        const quantity = parseFloat(row.quantity);
+        const { minUnits, maxUnits } = getUnitBounds(row);
+        if (Number.isNaN(quantity)) {
+          return true;
+        }
+        return quantity < minUnits || quantity > maxUnits;
+      });
+
+      if (invalidUnitRow) {
+        const { minUnits, maxUnits } = getUnitBounds(invalidUnitRow);
+        const baseQuantity = parseFloat(invalidUnitRow.baseQuantity);
+        toast.warning(
+          `Units must be between ${minUnits} and ${maxUnits} (original ${baseQuantity} ± ${unitEditTolerance}).`
+        );
+        return;
+      }
     }
 
     const x = quotations.reduce(
@@ -64,8 +109,9 @@ const InvoiceCreate = () => {
         AdvancePayment: row.advanceAmount,
         BalancePayment: row.balanceAmount,
         QuotationId: row.id,
+        ...(canEditUnits ? { Quantity: parseFloat(row.quantity) } : {}),
       })),
-    }
+    };
 
     try {
       setIsSubmitting(true);
@@ -80,25 +126,24 @@ const InvoiceCreate = () => {
 
       if (response.ok) {
         const jsonResponse = await response.json();
-        if (jsonResponse.message != "") {
-          toast.success(jsonResponse.result.message);
-          // After editing, invoice should go to Processing tab (backend moves it there)
-          // Store flag to switch to Processing tab after navigation
-          // Also store the invoice ID to help with refresh
+        const result = jsonResponse.result;
+        const isSuccess = result?.statusCode === 200 || result?.statusCode === "SUCCESS";
+
+        if (isSuccess) {
+          toast.success(result.message);
           if (proformaInvoiceId) {
             sessionStorage.setItem("editedInvoiceId", proformaInvoiceId.toString());
           }
           sessionStorage.setItem("switchToProcessingTab", "true");
-          // Small delay to ensure backend has committed changes
           setTimeout(() => {
-            // Navigate back to list page
             router.push("/quotations/proforma-list/");
           }, 300);
         } else {
-          toast.error(jsonResponse.result.message);
+          toast.error(result?.message || "Failed to update proforma invoice");
         }
       } else {
-        toast.error("Please fill all required fields");
+        const errorResponse = await response.json().catch(() => null);
+        toast.error(errorResponse?.message || "Please fill all required fields");
       }
     } catch (error) {
       console.error("Error:", error);
@@ -127,65 +172,71 @@ const InvoiceCreate = () => {
   };
 
   useEffect(() => {
+    if (!inquiryId) {
+      return;
+    }
     fetchInquiry(inquiryId);
     fetchQuotationList(inquiryId);
   }, [inquiryId]);
 
   const fetchQuotationList = async (inquiry) => {
-      try {
-        // Try multiple statuses to get all confirmed quotations for this proforma invoice
-        // Status 12 = ProformaInvoiceProcessing, Status 10 = ProformaInvoiceCreated, Status 2 = QuotationConfirmed
-        const statusesToTry = [12, 10, 2];
-        let allQuotations = [];
-        
-        for (const status of statusesToTry) {
-          const response = await fetch(`${BASE_URL}/Inquiry/GetAllQuotationsByInquiryIdAndStatus?status=${status}&inquiryId=${inquiry}`, {
+    try {
+      const statusesToTry = [12, 10, 2];
+      let allQuotations = [];
+
+      for (const status of statusesToTry) {
+        const response = await fetch(
+          `${BASE_URL}/Inquiry/GetAllQuotationsByInquiryIdAndStatus?status=${status}&inquiryId=${inquiry}`,
+          {
             method: "GET",
             headers: {
               Authorization: `Bearer ${localStorage.getItem("token")}`,
               "Content-Type": "application/json",
             },
-          });
-    
-          if (response.ok) {
-            const data = await response.json();
-            const items = data.result || [];
-            if (items.length > 0) {
-              allQuotations = [...allQuotations, ...items];
-            }
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const items = data.result || [];
+          if (items.length > 0) {
+            allQuotations = [...allQuotations, ...items];
           }
         }
-        
-        // Remove duplicates based on ID
-        const quotations = allQuotations.filter(
-          (quotation, index, self) => index === self.findIndex((q) => q.id === quotation.id)
-        );
-        
-        // Map quotations to include advanceAmount and balanceAmount if not present
-        const updatedResult = quotations.map(item => {
-          // If advanceAmount and balanceAmount already exist, use them
-          if (item.advanceAmount !== undefined && item.balanceAmount !== undefined) {
-            return item;
-          }
-          
-          // Otherwise calculate from totalAmount and advancePaymentPercentage
-          const total = parseFloat(item.totalAmount) || 0;
-          const percentage = parseFloat(item.advancePaymentPercentage) || 0;
-          const advanceAmount = (total * percentage) / 100;
-          const balanceAmount = total - advanceAmount;
+      }
 
+      const quotations = allQuotations.filter(
+        (quotation, index, self) => index === self.findIndex((q) => q.id === quotation.id)
+      );
+
+      const updatedResult = quotations.map((item) => {
+        const baseQuantity = parseFloat(item.quantity) || 0;
+
+        if (item.advanceAmount !== undefined && item.balanceAmount !== undefined) {
           return {
             ...item,
-            advanceAmount,
-            balanceAmount: balanceAmount < 0 ? 0 : balanceAmount
+            baseQuantity,
           };
-        });
-        
-        setQuotations(updatedResult);
-      } catch (error) {
-        console.error("Error:", error);
-      }
-    };
+        }
+
+        const total = parseFloat(item.totalAmount) || 0;
+        const percentage = parseFloat(item.advancePaymentPercentage) || 0;
+        const advanceAmount = (total * percentage) / 100;
+        const balanceAmount = total - advanceAmount;
+
+        return {
+          ...item,
+          baseQuantity,
+          advanceAmount,
+          balanceAmount: balanceAmount < 0 ? 0 : balanceAmount,
+        };
+      });
+
+      setQuotations(updatedResult);
+    } catch (error) {
+      console.error("Error:", error);
+    }
+  };
 
   const handleAdvanceAmountChange = (index, value) => {
     const newValue = parseFloat(value) || 0;
@@ -202,6 +253,112 @@ const InvoiceCreate = () => {
     });
   };
 
+  const getUnitBounds = (row) => {
+    const baseQuantity = parseFloat(row.baseQuantity) || 0;
+    return {
+      minUnits: Math.max(1, baseQuantity - unitEditTolerance),
+      maxUnits: baseQuantity + unitEditTolerance,
+      baseQuantity,
+    };
+  };
+
+  const isQuantityWithinBounds = (quantity, row) => {
+    const { minUnits, maxUnits } = getUnitBounds(row);
+    return quantity >= minUnits && quantity <= maxUnits;
+  };
+
+  const handleQuantityChange = (index, value) => {
+    if (value !== "" && !/^\d+$/.test(value)) {
+      return;
+    }
+
+    setQuotations((prev) => {
+      const updated = [...prev];
+      const row = updated[index];
+      const { minUnits, maxUnits } = getUnitBounds(row);
+
+      if (value === "") {
+        updated[index] = {
+          ...row,
+          quantity: value,
+        };
+        return updated;
+      }
+
+      const parsed = parseInt(value, 10);
+      if (!isQuantityWithinBounds(parsed, row)) {
+        toast.warning(
+          `Units must be between ${minUnits} and ${maxUnits}. Maximum allowed is ${maxUnits}.`
+        );
+        return prev;
+      }
+
+      updated[index] = {
+        ...row,
+        ...recalculateLineAmounts(row, parsed),
+      };
+      return updated;
+    });
+  };
+
+  const handleQuantityBlur = (index) => {
+    setQuotations((prev) => {
+      const updated = [...prev];
+      const row = updated[index];
+      const { minUnits, maxUnits, baseQuantity } = getUnitBounds(row);
+      const parsed = parseFloat(row.quantity);
+
+      if (Number.isNaN(parsed)) {
+        const fallback = baseQuantity || minUnits;
+        updated[index] = {
+          ...row,
+          ...recalculateLineAmounts(row, fallback),
+        };
+        return updated;
+      }
+
+      if (!isQuantityWithinBounds(parsed, row)) {
+        toast.warning(
+          `Units must be between ${minUnits} and ${maxUnits} (original ${baseQuantity} ± ${unitEditTolerance}).`
+        );
+        updated[index] = {
+          ...row,
+          ...recalculateLineAmounts(row, baseQuantity),
+        };
+        return updated;
+      }
+
+      updated[index] = {
+        ...row,
+        ...recalculateLineAmounts(row, parsed),
+      };
+      return updated;
+    });
+  };
+
+  const handleQuantityStep = (index, direction) => {
+    setQuotations((prev) => {
+      const updated = [...prev];
+      const row = updated[index];
+      const { minUnits, maxUnits } = getUnitBounds(row);
+      const current = parseFloat(row.quantity);
+      const safeCurrent = Number.isNaN(current) ? parseFloat(row.baseQuantity) || minUnits : current;
+      const nextQuantity =
+        direction > 0
+          ? Math.min(safeCurrent + 1, maxUnits)
+          : Math.max(safeCurrent - 1, minUnits);
+
+      if (nextQuantity === safeCurrent) {
+        return prev;
+      }
+
+      updated[index] = {
+        ...row,
+        ...recalculateLineAmounts(row, nextQuantity),
+      };
+      return updated;
+    });
+  };
 
   const navigateToBack = () => {
     router.push({
@@ -296,6 +453,11 @@ const InvoiceCreate = () => {
                 </Grid>
                 <Grid item xs={12} mt={2} display="flex" justifyContent="space-between" alignItems="center">
                   <Typography variant="h6" component="label">Confirmed Quotations</Typography>
+                  {canEditUnits ? (
+                    <Typography variant="body2" color="text.secondary">
+                      Type or use arrows to adjust units, up to ±{unitEditTolerance} from original
+                    </Typography>
+                  ) : null}
                 </Grid>
                 <Grid item xs={12} lg={12} my={2}>
                   <TableContainer component={Paper}>
@@ -315,20 +477,129 @@ const InvoiceCreate = () => {
                       <TableBody>
                         {quotations.length === 0 ?
                           <>
-                          </> : quotations.map((item, index) => (
-                            <TableRow key={index}>
-                              <TableCell>{item.documentNo}</TableCell>
-                              <TableCell>{item.optionName}</TableCell>
-                              <TableCell>{item.quantity}</TableCell>
-                              <TableCell>{item.sellingPrice}</TableCell>
-                              <TableCell>{item.advancePaymentPercentage}</TableCell>
-                              <TableCell>{item.totalAmount}</TableCell>
-                              <TableCell>
-                                <TextField size="small" type="number" value={item.advanceAmount} onChange={(e) => handleAdvanceAmountChange(index, e.target.value)} />
-                              </TableCell>
-                              <TableCell>{item.balanceAmount}</TableCell>
-                            </TableRow>
-                          ))}
+                          </> : quotations.map((item, index) => {
+                            const { minUnits, maxUnits } = getUnitBounds(item);
+                            const currentUnits = parseFloat(item.quantity);
+                            const hasValidQuantity = !Number.isNaN(currentUnits);
+                            const effectiveUnits = hasValidQuantity
+                              ? currentUnits
+                              : parseFloat(item.baseQuantity) || minUnits;
+                            const isAtMin = hasValidQuantity && effectiveUnits <= minUnits;
+                            const isAtMax = hasValidQuantity && effectiveUnits >= maxUnits;
+
+                            return (
+                              <TableRow key={index}>
+                                <TableCell>{item.documentNo}</TableCell>
+                                <TableCell>{item.optionName}</TableCell>
+                                <TableCell>
+                                  {canEditUnits ? (
+                                    <Box
+                                      sx={{
+                                        display: "inline-flex",
+                                        alignItems: "stretch",
+                                        border: "1px solid",
+                                        borderColor: "divider",
+                                        borderRadius: 1,
+                                        overflow: "hidden",
+                                        bgcolor: "background.paper",
+                                      }}
+                                    >
+                                        <TextField
+                                          size="small"
+                                          type="text"
+                                          value={item.quantity}
+                                          onChange={(e) => handleQuantityChange(index, e.target.value)}
+                                          onBlur={() => handleQuantityBlur(index)}
+                                          variant="standard"
+                                          InputProps={{
+                                            disableUnderline: true,
+                                          }}
+                                          inputProps={{
+                                            inputMode: "numeric",
+                                            pattern: "[0-9]*",
+                                            "aria-label": "Units",
+                                            title: `Allowed range: ${minUnits} to ${maxUnits}`,
+                                            style: {
+                                              textAlign: "center",
+                                              padding: "6px 4px",
+                                              width: 48,
+                                              fontWeight: 600,
+                                            },
+                                          }}
+                                          sx={{
+                                            "& .MuiInputBase-root": {
+                                              height: "100%",
+                                              alignItems: "center",
+                                            },
+                                          }}
+                                        />
+                                        <Box
+                                          sx={{
+                                            display: "flex",
+                                            flexDirection: "column",
+                                            borderLeft: "1px solid",
+                                            borderColor: "divider",
+                                          }}
+                                        >
+                                          <Tooltip title="Increase by 1" placement="top">
+                                            <span>
+                                              <IconButton
+                                                size="small"
+                                                onClick={() => handleQuantityStep(index, 1)}
+                                                disabled={isAtMax}
+                                                aria-label="Increase units"
+                                                sx={{
+                                                  borderRadius: 0,
+                                                  p: 0.25,
+                                                  width: 28,
+                                                  height: 22,
+                                                }}
+                                              >
+                                                <KeyboardArrowUpIcon sx={{ fontSize: 18 }} />
+                                              </IconButton>
+                                            </span>
+                                          </Tooltip>
+                                          <Tooltip title="Decrease by 1" placement="bottom">
+                                            <span>
+                                              <IconButton
+                                                size="small"
+                                                onClick={() => handleQuantityStep(index, -1)}
+                                                disabled={isAtMin}
+                                                aria-label="Decrease units"
+                                                sx={{
+                                                  borderRadius: 0,
+                                                  p: 0.25,
+                                                  width: 28,
+                                                  height: 22,
+                                                  borderTop: "1px solid",
+                                                  borderColor: "divider",
+                                                }}
+                                              >
+                                                <KeyboardArrowDownIcon sx={{ fontSize: 18 }} />
+                                              </IconButton>
+                                            </span>
+                                          </Tooltip>
+                                        </Box>
+                                    </Box>
+                                  ) : (
+                                    item.quantity
+                                  )}
+                                </TableCell>
+                                <TableCell>{item.sellingPrice}</TableCell>
+                                <TableCell>{item.advancePaymentPercentage}</TableCell>
+                                <TableCell>{item.totalAmount}</TableCell>
+                                <TableCell>
+                                  <TextField
+                                    size="small"
+                                    type="number"
+                                    value={item.advanceAmount}
+                                    onChange={(e) => handleAdvanceAmountChange(index, e.target.value)}
+                                  />
+                                </TableCell>
+                                <TableCell>{item.balanceAmount}</TableCell>
+                              </TableRow>
+                            );
+                          })}
                         <TableRow>
                           <TableCell colSpan={6}>Total Advance Payment</TableCell>
                           <TableCell colSpan={2}>
@@ -356,4 +627,3 @@ const InvoiceCreate = () => {
 };
 
 export default InvoiceCreate;
-

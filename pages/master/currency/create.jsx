@@ -19,7 +19,7 @@ const style = {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: 320,
+  width: 400,
   bgcolor: "background.paper",
   boxShadow: 24,
   p: 2,
@@ -36,6 +36,12 @@ const validationSchema = Yup.object({
   Name: Yup.string().trim().required("Name is required"),
   Description: Yup.string().trim(),
   Symbol: Yup.string().trim().required("Symbol is required"),
+  ExchangeRate: Yup.number()
+    .nullable()
+    .transform((value, originalValue) =>
+      originalValue === "" || originalValue === null ? null : value
+    )
+    .min(0, "Exchange rate must be zero or greater"),
 });
 
 export default function CreateCurrencyModal({ fetchItems }) {
@@ -60,6 +66,10 @@ export default function CreateCurrencyModal({ fetchItems }) {
         Description: values.Description?.trim() || "",
         Symbol: values.Symbol.trim(),
         IsActive: values.IsActive,
+        ExchangeRate:
+          values.ExchangeRate === "" || values.ExchangeRate == null
+            ? null
+            : Number(values.ExchangeRate),
       };
 
       const token = localStorage.getItem("token");
@@ -134,7 +144,14 @@ export default function CreateCurrencyModal({ fetchItems }) {
       <Modal open={open} onClose={() => handleClose()}>
         <Box sx={style}>
           <Formik
-            initialValues={{ Code: "", Name: "", Description: "", Symbol: "", IsActive: true }}
+            initialValues={{
+              Code: "",
+              Name: "",
+              Description: "",
+              Symbol: "",
+              ExchangeRate: "",
+              IsActive: true,
+            }}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
@@ -227,6 +244,22 @@ export default function CreateCurrencyModal({ fetchItems }) {
                           fullWidth
                           error={touched.Symbol && Boolean(errors.Symbol)}
                           helperText={touched.Symbol && errors.Symbol}
+                        />
+                      </Grid>
+
+                      <Grid item xs={12}>
+                        <Typography sx={{ fontWeight: 500, mb: "5px" }}>
+                          Exchange Rate
+                        </Typography>
+                        <Field
+                          as={TextField}
+                          name="ExchangeRate"
+                          size="small"
+                          fullWidth
+                          type="number"
+                          inputProps={{ min: 0, step: "0.0001" }}
+                          error={touched.ExchangeRate && Boolean(errors.ExchangeRate)}
+                          helperText={touched.ExchangeRate && errors.ExchangeRate}
                         />
                       </Grid>
 

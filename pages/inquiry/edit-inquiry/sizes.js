@@ -19,6 +19,7 @@ import {
   RadioGroup,
   FormControlLabel,
   Radio,
+  Alert,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
@@ -38,6 +39,7 @@ export default function SelectSizes() {
   const [inqType, setInqType] = useState(null);
   const [selectedOption, setSelectedOption] = useState("");
   const [inquirySizeList, setInquirySizeList] = useState([]);
+  const [validationError, setValidationError] = useState("");
 
   const fetchInquiryById = async () => {
     try {
@@ -129,10 +131,16 @@ export default function SelectSizes() {
   };
 
   useEffect(() => {
-    if (inqId,optId) {
+    if (inqId && optId) {
       fetchInquiryById();
     }
-  }, []);
+  }, [inqId, optId]);
+
+  useEffect(() => {
+    if (inquirySizeList.length > 0) {
+      setValidationError("");
+    }
+  }, [inquirySizeList.length]);
 
   const handleOptionChange = async (event, index) => {
     setSelectedOption(event.target.value);
@@ -173,6 +181,20 @@ export default function SelectSizes() {
       pathname: routes[inquiry.windowType],
       query: { id: inquiry.inquiryId, option: inquiry.optionId },
     });
+  };
+
+  const handleNavigationNext = () => {
+    if (!inquiry) return;
+
+    if (inquirySizeList.length === 0) {
+      const message = "Please add at least one size before proceeding.";
+      setValidationError(message);
+      toast.error(message);
+      return;
+    }
+
+    setValidationError("");
+    NavigationNext();
   };
 
   const DeleteInquirySize = (SizeID) => {
@@ -235,7 +257,7 @@ export default function SelectSizes() {
               variant="outlined"
               color="primary"
               endIcon={<NavigateNextIcon />}
-              onClick={() => NavigationNext()}
+              onClick={handleNavigationNext}
             >
               next
             </Button>
@@ -243,6 +265,11 @@ export default function SelectSizes() {
         </Grid>
         <Grid item xs={12}>
           <Grid container>
+            {validationError && (
+              <Grid item xs={12} p={1}>
+                <Alert severity="error">{validationError}</Alert>
+              </Grid>
+            )}
             <Grid item xs={12} p={1}>
               <TableContainer component={Paper}>
                 <Table aria-label="simple table" className="dark-table">

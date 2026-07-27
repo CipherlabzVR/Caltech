@@ -5,12 +5,12 @@ import { Button, Box } from "@mui/material";
 import styles from "@/styles/PageTitle.module.css";
 import Features from "@/components/Dashboard/ProjectManagement/Features";
 import BASE_URL from "Base/api";
-import TotalItems from "@/components/Dashboard/ProjectManagement/TotalItems";
 import SalesAnalytics from "./SalesAnalytics";
 import AudienceOverview from "./AudienceOverview";
 import OutstandingCustomers from "./OutstandingCustomers";
 import ShippingTargetData from "./ShippingTargetData";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
+import useDashboardWidgetPermissions from "@/components/utils/useDashboardWidgetPermissions";
 import { formatCurrency, formatDateWithTime } from "@/components/utils/formatHelper";
 
 const MAIN_DASHBOARD_CATEGORY_ID = 39;
@@ -20,19 +20,19 @@ export default function Dashboard() {
   const [outstandingCustomers, setOutstandingCustomers] = useState([]);
   const [activeShifts, setActiveShifts] = useState([]);
   const { approve1: hasApprovalLevel1 } = IsPermissionEnabled(MAIN_DASHBOARD_CATEGORY_ID);
+  const widgets = useDashboardWidgetPermissions();
+
+  const authHeaders = {
+    Authorization: `Bearer ${localStorage.getItem("token")}`,
+    "Content-Type": "application/json",
+  };
 
   const fetchIncomeDetails = async () => {
     try {
-      const response = await fetch(
-        `${BASE_URL}/Receipt/GetPaymentTypeWiseTotal`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      const response = await fetch(`${BASE_URL}/Receipt/GetPaymentTypeWiseTotal`, {
+        method: "GET",
+        headers: authHeaders,
+      });
 
       if (!response.ok) {
         throw new Error("Failed to fetch");
@@ -51,10 +51,7 @@ export default function Dashboard() {
         `${BASE_URL}/Outstanding/GetAllOutstandingsGroupedByCustomer`,
         {
           method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
+          headers: authHeaders,
         }
       );
 
@@ -63,24 +60,28 @@ export default function Dashboard() {
       }
 
       const data = await response.json();
-      setOutstandingCustomers(data.result);
+      const items = data.result ?? [];
+      setOutstandingCustomers(
+        items.map((item) => ({
+          customerId: item.customerId,
+          customerName: item.customerName,
+          companyName: item.companyName ?? item.CompanyName ?? "",
+          totalOutstanding: item.totalOutstanding,
+          outstandingAmount: item.totalOutstanding,
+        }))
+      );
     } catch (error) {
       console.error("Error fetching:", error);
+      setOutstandingCustomers([]);
     }
   };
 
   const fetchActiveShifts = async () => {
     try {
-      const response = await fetch(
-        `${BASE_URL}/Shift/GetAllActiveShifts`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      const response = await fetch(`${BASE_URL}/Shift/GetAllActiveShifts`, {
+        method: "GET",
+        headers: authHeaders,
+      });
 
       if (!response.ok) {
         throw new Error("Failed to fetch");
@@ -96,8 +97,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchIncomeDetails();
-    fetchOutstandingCustomers();
+  }, []);
+
+  useEffect(() => {
     fetchActiveShifts();
+  }, []);
+
+  useEffect(() => {
+    fetchOutstandingCustomers();
   }, []);
 
   return (
@@ -111,7 +118,9 @@ export default function Dashboard() {
         </ul>
       </div>
 
-      <Features features={features} />
+      {widgets.paymentSummary && (
+        <Features features={features} periodLabel="Payments this month" />
+      )}
 
       <Grid
         container
@@ -119,12 +128,11 @@ export default function Dashboard() {
         columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}
       >
         <Grid item xs={12} md={12} lg={6} xl={6}>
-          {hasApprovalLevel1 && <AudienceOverview />}
-          {/* <TotalItems /> */}
-          <ShippingTargetData />
+          {widgets.salesSummary && hasApprovalLevel1 && <AudienceOverview />}
+          {widgets.shippingTarget && <ShippingTargetData />}
         </Grid>
         <Grid item xs={12} md={12} lg={6} xl={6}>
-          {activeShifts.length > 0 && (
+          {widgets.activeShifts && activeShifts.length > 0 && (
             <Grid container>
               <Grid item xs={12} mb={2}>
                 <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
@@ -167,9 +175,10 @@ export default function Dashboard() {
               </Grid>
             </Grid>
           )}
-          <OutstandingCustomers outstandingCustomers={outstandingCustomers} />
-          <SalesAnalytics />
-
+          {widgets.outstandingCustomers && (
+            <OutstandingCustomers outstandingCustomers={outstandingCustomers} />
+          )}
+          {widgets.stockBalance && <SalesAnalytics />}
         </Grid>
       </Grid>
     </>

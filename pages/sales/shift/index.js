@@ -22,6 +22,7 @@ import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import CashInOut from "./create-cash-in-out";
 import ViewCashInOut from "./view-cash-in-out";
 import ShiftItemReport from "./shift-item-report";
+import ShiftStockVariance from "./stock-variance";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { Catelogue } from "Base/catelogue";
@@ -39,6 +40,7 @@ export default function Shift() {
   const { data: ReportName } = GetReportSettingValueByName("ShiftEndReport");
   const name = localStorage.getItem("name");
   const { data: showCashInvoiceTotalsInShiftAndDayend } = IsAppSettingEnabled("ShowCashInvoiceTotalsInShiftAndDayend");
+  const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
 
 
   const handlePageChange = (event, value) => {
@@ -193,6 +195,9 @@ export default function Shift() {
                           ) : (
                             <>
                               <ShiftItemReport shiftId={item.id} />
+                              {isItemEndInvolveEnable ? (
+                                <ShiftStockVariance shift={item} />
+                              ) : null}
                               {print ? (
                                 <Tooltip title="Print" placement="top">
                                   <a

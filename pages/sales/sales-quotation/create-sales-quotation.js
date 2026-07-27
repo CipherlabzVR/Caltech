@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Grid from "@mui/material/Grid";
 import {
   Autocomplete,
@@ -53,11 +53,27 @@ const goBackButtonSx = {
   },
 };
 
+const clampDiscountPercent = (value) => {
+  const n = Number(value);
+  if (Number.isNaN(n) || !Number.isFinite(n)) return 0;
+  return Math.min(100, Math.max(0, n));
+};
+
+/** Applies qty × price and line-level discount % → lineTotal (net for the line). */
+const applyLinePricing = (row) => {
+  const qty = Number(row.qty) || 0;
+  const price = Number(row.sellingPrice) || 0;
+  const discPct = clampDiscountPercent(row.discountPercent);
+  const lineSubtotal = qty * price;
+  const lineTotal = Number((lineSubtotal * (1 - discPct / 100)).toFixed(2));
+  return { ...row, discountPercent: discPct, lineTotal };
+};
+
 const CreateSalesQuotation = () => {
   const today = new Date();
   const router = useRouter();
   const cId = typeof window !== "undefined" ? sessionStorage.getItem("category") : null;
-  const { create, update } = IsPermissionEnabled(cId);
+  const { create, update, permissionsLoading } = IsPermissionEnabled(cId);
   const editIdParam = router.query?.id;
   const editId = Array.isArray(editIdParam) ? editIdParam[0] : editIdParam;
   const isEditMode = Boolean(editId);
@@ -76,7 +92,7 @@ const CreateSalesQuotation = () => {
   const [address4, setAddress4] = useState("");
 
   const [selectedRows, setSelectedRows] = useState([]);
-  const [grossTotal, setGrossTotal] = useState(0);
+  const [orderDiscountPercent, setOrderDiscountPercent] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadingQuotation, setLoadingQuotation] = useState(false);
   const [loadedQuotation, setLoadedQuotation] = useState(null);
@@ -149,13 +165,35 @@ const CreateSalesQuotation = () => {
     }
   };
 
-  useEffect(() => {
-    const sum = selectedRows.reduce(
-      (total, row) => total + (Number(row.lineTotal) || 0),
-      0
+  const quotationTotals = useMemo(() => {
+    let subTotalGross = 0;
+    let netSum = 0;
+    selectedRows.forEach((row) => {
+      const qty = Number(row.qty) || 0;
+      const price = Number(row.sellingPrice) || 0;
+      const discPct = clampDiscountPercent(row.discountPercent);
+      const lineSub = qty * price;
+      const lineNet = lineSub * (1 - discPct / 100);
+      subTotalGross += lineSub;
+      netSum += lineNet;
+    });
+    const subGross = Number(subTotalGross.toFixed(2));
+    const lineDiscountTotal = Number((subTotalGross - netSum).toFixed(2));
+    const merchandiseTotal = Number(netSum.toFixed(2));
+    const orderPct = clampDiscountPercent(orderDiscountPercent);
+    const orderDiscountAmount = Number(
+      (merchandiseTotal * (orderPct / 100)).toFixed(2)
     );
-    setGrossTotal(sum.toFixed(2));
-  }, [selectedRows]);
+    const finalTotal = Number((merchandiseTotal - orderDiscountAmount).toFixed(2));
+    return {
+      subTotalGross: subGross,
+      totalDiscount: lineDiscountTotal,
+      netTotal: merchandiseTotal,
+      orderDiscountPercent: orderPct,
+      orderDiscountAmount,
+      finalTotal,
+    };
+  }, [selectedRows, orderDiscountPercent]);
 
   const updateQuotationNo = async () => {
     try {
@@ -231,19 +269,39 @@ const CreateSalesQuotation = () => {
         setAddress3(q.billToline3 || "");
         setAddress4(q.billToline4 || "");
 
+        const odp = Number(q.orderDiscountPercent ?? q.OrderDiscountPercent ?? 0);
+        setOrderDiscountPercent(clampDiscountPercent(odp));
+
         const rawLines = q.salesQuotationLines || q.SalesQuotationLines || [];
         const lineRows = rawLines
-          .map((l) => ({
-            productId: l.productId ?? l.ProductId,
-            productCode: l.productCode || l.ProductCode || "",
-            productName: l.productName || l.ProductName || "",
-            qty: l.qty ?? l.Qty,
-            sellingPrice: Number(l.sellingPrice ?? l.SellingPrice ?? 0),
-            lineTotal:
+          .map((l) => {
+            const qtyN = Number(l.qty ?? l.Qty) || 0;
+            const priceN = Number(l.sellingPrice ?? l.SellingPrice ?? 0);
+            const lineNetFromApi =
               Number(l.lineTotal ?? l.LineTotal) ||
-              Number(l.qty ?? l.Qty) * Number(l.sellingPrice ?? l.SellingPrice ?? 0),
-            sequanceNo: l.sequanceNo ?? l.SequanceNo ?? 0,
-          }))
+              qtyN * priceN;
+            const sub = qtyN * priceN;
+            const fromApi = Number(l.discountPercent ?? l.DiscountPercent);
+            let discountPercent = 0;
+            if (Number.isFinite(fromApi) && fromApi > 0) {
+              discountPercent = clampDiscountPercent(fromApi);
+            } else if (sub > 0.000001) {
+              const impliedPct = (1 - lineNetFromApi / sub) * 100;
+              discountPercent = clampDiscountPercent(
+                Math.round(impliedPct * 100) / 100
+              );
+            }
+            return applyLinePricing({
+              productId: l.productId ?? l.ProductId,
+              productCode: l.productCode || l.ProductCode || "",
+              productName: l.productName || l.ProductName || "",
+              qty: l.qty ?? l.Qty,
+              sellingPrice: priceN,
+              discountPercent,
+              lineTotal: lineNetFromApi,
+              sequanceNo: l.sequanceNo ?? l.SequanceNo ?? 0,
+            });
+          })
           .sort((a, b) => (a.sequanceNo || 0) - (b.sequanceNo || 0));
         setSelectedRows(lineRows);
         setLoadedQuotation(q);
@@ -313,14 +371,15 @@ const CreateSalesQuotation = () => {
     }
 
     const sellingPrice = Number(item.sellingPrice ?? item.unitPrice ?? 0);
-    const newRow = {
+    const newRow = applyLinePricing({
       productId: item.id,
       productCode: item.code || "",
       productName: item.name || "",
       qty: 1,
       sellingPrice,
+      discountPercent: 0,
       lineTotal: sellingPrice,
-    };
+    });
 
     setSelectedRows((prev) => {
       const updated = [...prev, newRow];
@@ -339,12 +398,7 @@ const CreateSalesQuotation = () => {
     setSelectedRows((prev) => {
       const next = [...prev];
       const qty = value === "" ? "" : Number(value);
-      next[index] = {
-        ...next[index],
-        qty,
-        lineTotal:
-          (Number(qty) || 0) * (Number(next[index].sellingPrice) || 0),
-      };
+      next[index] = applyLinePricing({ ...next[index], qty });
       return next;
     });
   };
@@ -353,12 +407,19 @@ const CreateSalesQuotation = () => {
     setSelectedRows((prev) => {
       const next = [...prev];
       const price = value === "" ? "" : Number(value);
-      next[index] = {
-        ...next[index],
-        sellingPrice: price,
-        lineTotal:
-          (Number(next[index].qty) || 0) * (Number(price) || 0),
-      };
+      next[index] = applyLinePricing({ ...next[index], sellingPrice: price });
+      return next;
+    });
+  };
+
+  const handleDiscountPercentChange = (index, value) => {
+    setSelectedRows((prev) => {
+      const next = [...prev];
+      const parsed = value === "" ? 0 : Number(value);
+      const discountPercent = Number.isNaN(parsed)
+        ? 0
+        : clampDiscountPercent(parsed);
+      next[index] = applyLinePricing({ ...next[index], discountPercent });
       return next;
     });
   };
@@ -392,13 +453,29 @@ const CreateSalesQuotation = () => {
     for (let i = 0; i < selectedRows.length; i++) {
       const row = selectedRows[i];
       const qty = Number(row.qty);
-      const price = Number(row.sellingPrice);
+      const rawPrice = row.sellingPrice;
+      const price = Number(rawPrice);
       if (!qty || qty <= 0) {
         toast.error(`Quantity for "${row.productName}" must be greater than 0.`);
         return false;
       }
-      if (price < 0 || Number.isNaN(price)) {
-        toast.error(`Selling price for "${row.productName}" is invalid.`);
+      if (
+        rawPrice === "" ||
+        rawPrice == null ||
+        Number.isNaN(price) ||
+        !Number.isFinite(price) ||
+        price <= 0
+      ) {
+        toast.error(
+          `Selling price for "${row.productName}" must be a valid amount greater than zero.`
+        );
+        return false;
+      }
+      const disc = Number(row.discountPercent);
+      if (Number.isNaN(disc) || disc < 0 || disc > 100) {
+        toast.error(
+          `Discount % for "${row.productName}" must be between 0 and 100.`
+        );
         return false;
       }
     }
@@ -410,17 +487,29 @@ const CreateSalesQuotation = () => {
 
     setIsSubmitting(true);
 
-    const lines = selectedRows.map((row, idx) => ({
-      productId: row.productId,
-      productCode: row.productCode,
-      productName: row.productName,
-      qty: Number(row.qty),
-      sellingPrice: Number(row.sellingPrice),
-      lineTotal: Number(row.qty) * Number(row.sellingPrice),
-      sequanceNo: idx + 1,
-    }));
+    const lines = selectedRows.map((row, idx) => {
+      const priced = applyLinePricing(row);
+      return {
+        productId: priced.productId,
+        productCode: priced.productCode,
+        productName: priced.productName,
+        qty: Number(priced.qty),
+        sellingPrice: Number(priced.sellingPrice),
+        discountPercent: clampDiscountPercent(priced.discountPercent),
+        lineTotal: priced.lineTotal,
+        sequanceNo: idx + 1,
+      };
+    });
 
-    const totalGross = lines.reduce((acc, l) => acc + l.lineTotal, 0);
+    const totalGross = lines.reduce(
+      (acc, l) => acc + l.qty * l.sellingPrice,
+      0
+    );
+    const merchandiseNet = lines.reduce((acc, l) => acc + l.lineTotal, 0);
+    const lineDisc = totalGross - merchandiseNet;
+    const orderPct = quotationTotals.orderDiscountPercent;
+    const orderAmt = quotationTotals.orderDiscountAmount;
+    const finalNet = quotationTotals.finalTotal;
 
     const payload = {
       ...(isEditMode && editId ? { id: Number(editId) } : {}),
@@ -435,8 +524,11 @@ const CreateSalesQuotation = () => {
       billToline2: address2,
       billToline3: address3,
       billToline4: address4,
-      grossTotal: totalGross,
-      netTotal: totalGross,
+      grossTotal: Number(totalGross.toFixed(2)),
+      lineDiscountTotal: Number(lineDisc.toFixed(2)),
+      orderDiscountPercent: orderPct,
+      orderDiscountAmount: orderAmt,
+      netTotal: finalNet,
       salesPersonId: salesPerson?.id || null,
       salesPersonCode: salesPerson?.code || "",
       salesPersonName: salesPerson?.name || salesPerson?.Name || "",
@@ -491,6 +583,17 @@ const CreateSalesQuotation = () => {
   };
 
   if (!router.isReady) {
+    return (
+      <>
+        <ToastContainer />
+        <Box display="flex" justifyContent="center" py={6}>
+          <CircularProgress />
+        </Box>
+      </>
+    );
+  }
+
+  if (permissionsLoading) {
     return (
       <>
         <ToastContainer />
@@ -711,7 +814,7 @@ const CreateSalesQuotation = () => {
                     width: "35%",
                   }}
                 >
-                  Date <span style={{ color: "red" }}>*</span>
+                  Date
                 </Typography>
                 <TextField
                   sx={{ width: "60%" }}
@@ -795,13 +898,8 @@ const CreateSalesQuotation = () => {
         </Grid>
 
         <Box mt={3}>
-          <Typography
-            sx={{ fontWeight: 600, fontSize: "15px", mb: 1 }}
-          >
-            Items
-          </Typography>
           <Grid container spacing={1} alignItems="center">
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12}>
               <SearchItemByName
                 ref={searchRef}
                 label="Search Item"
@@ -816,20 +914,21 @@ const CreateSalesQuotation = () => {
           <TableContainer component={Paper} sx={{ mt: 2 }}>
             <Table size="small" className="dark-table">
               <TableHead>
-                <TableRow>
-                  <TableCell>#</TableCell>
-                  <TableCell>Item Code</TableCell>
-                  <TableCell>Item Name</TableCell>
-                  <TableCell align="right">Qty</TableCell>
-                  <TableCell align="right">Selling Price (Rs)</TableCell>
-                  <TableCell align="right">Line Total (Rs)</TableCell>
-                  <TableCell align="right">Action</TableCell>
+                <TableRow sx={{ background: "#757fef" }}>
+                  <TableCell sx={{ color: "#fff" }}>#</TableCell>
+                  <TableCell sx={{ color: "#fff" }}>Item Code</TableCell>
+                  <TableCell sx={{ color: "#fff" }}>Item Name</TableCell>
+                  <TableCell sx={{ color: "#fff" }} align="right">Qty</TableCell>
+                  <TableCell sx={{ color: "#fff" }} align="right">Selling Price (Rs)</TableCell>
+                  <TableCell sx={{ color: "#fff" }} align="right">Disc. %</TableCell>
+                  <TableCell sx={{ color: "#fff" }} align="right">Line Total (Rs)</TableCell>
+                  <TableCell sx={{ color: "#fff" }} align="right">Action</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {selectedRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} align="center">
+                    <TableCell colSpan={8} align="center">
                       <Typography color="text.secondary">
                         No items added. Use the search above to add items.
                       </Typography>
@@ -863,6 +962,23 @@ const CreateSalesQuotation = () => {
                         />
                       </TableCell>
                       <TableCell align="right">
+                        <TextField
+                          size="small"
+                          type="number"
+                          inputProps={{
+                            min: 0,
+                            max: 100,
+                            step: 0.01,
+                            style: { textAlign: "right" },
+                          }}
+                          value={row.discountPercent ?? 0}
+                          onChange={(e) =>
+                            handleDiscountPercentChange(index, e.target.value)
+                          }
+                          sx={{ width: 88 }}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
                         {formatCurrency(row.lineTotal)}
                       </TableCell>
                       <TableCell align="right">
@@ -893,15 +1009,47 @@ const CreateSalesQuotation = () => {
               }}
             >
               <Box display="flex" justifyContent="space-between">
-                <Typography sx={{ fontWeight: 500 }}>Gross Total (Rs)</Typography>
+                <Typography sx={{ fontWeight: 500 }}>Sub Total (Rs)</Typography>
                 <Typography sx={{ fontWeight: 600 }}>
-                  {formatCurrency(grossTotal)}
+                  {formatCurrency(quotationTotals.subTotalGross)}
                 </Typography>
               </Box>
-              <Box display="flex" justifyContent="space-between" mt={1}>
-                <Typography sx={{ fontWeight: 600 }}>Net Total (Rs)</Typography>
+              <Box display="flex" justifyContent="space-between" mt={0.5}>
+                <Typography sx={{ fontWeight: 500 }}>Line Discount (Rs)</Typography>
+                <Typography sx={{ fontWeight: 600 }}>
+                  {formatCurrency(quotationTotals.totalDiscount)}
+                </Typography>
+              </Box>
+              <Box display="flex" justifyContent="space-between" mt={0.5}>
+                <Typography sx={{ fontWeight: 600 }}>Total (Rs)</Typography>
+                <Typography sx={{ fontWeight: 600 }}>
+                  {formatCurrency(quotationTotals.netTotal)}
+                </Typography>
+              </Box>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mt={1} gap={1}>
+                <Typography sx={{ fontWeight: 500 }}>Order Discount (%)</Typography>
+                <TextField
+                  size="small"
+                  type="number"
+                  value={orderDiscountPercent}
+                  onChange={(e) => {
+                    const v = e.target.value === "" ? 0 : Number(e.target.value);
+                    setOrderDiscountPercent(clampDiscountPercent(v));
+                  }}
+                  inputProps={{ min: 0, max: 100, step: 0.01, style: { textAlign: "right", width: 72 } }}
+                  sx={{ width: 100 }}
+                />
+              </Box>
+              <Box display="flex" justifyContent="space-between" mt={0.5}>
+                <Typography sx={{ fontWeight: 500 }}>Total Discount (Rs)</Typography>
+                <Typography sx={{ fontWeight: 600 }}>
+                  {formatCurrency(quotationTotals.orderDiscountAmount)}
+                </Typography>
+              </Box>
+              <Box display="flex" justifyContent="space-between" mt={1} pt={0.5} borderTop="1px solid rgba(0,0,0,0.12)">
+                <Typography sx={{ fontWeight: 600 }}>Gross Total (Rs)</Typography>
                 <Typography sx={{ fontWeight: 700 }}>
-                  {formatCurrency(grossTotal)}
+                  {formatCurrency(quotationTotals.finalTotal)}
                 </Typography>
               </Box>
             </Box>

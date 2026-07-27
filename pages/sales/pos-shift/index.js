@@ -19,6 +19,7 @@ import ViewShift from "./view-denomination";
 import { Report } from "Base/report";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
+import DescriptionIcon from "@mui/icons-material/Description";
 import CashInOut from "./create-cash-in-out";
 import ViewCashInOut from "./view-cash-in-out";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
@@ -27,16 +28,28 @@ import { Catelogue } from "Base/catelogue";
 
 export default function POSShift() {
   const cId = sessionStorage.getItem("category")
-  const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+  const { navigate, create, update, remove, print, customPrint } = IsPermissionEnabled(cId);
   const [shifts, setShifts] = useState([]);
   const [searchTerm] = useState("");
   const [page, setPage] = useState(1);
   const [activeShiftId, setActiveShiftId] = useState(null);
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
-  const { data: ReportName } = GetReportSettingValueByName("ShiftEndReport");
   const name = localStorage.getItem("name");
+  const { data: ReportName } = GetReportSettingValueByName("ShiftEndReport");
 
+  const openPOSShiftPrintPopup = (item) => {
+    const query = new URLSearchParams({
+      id: String(item.id ?? ""),
+      documentNumber: item.documentNo ?? "",
+    });
+
+    window.open(
+      `/sales/pos-shift/print?${query.toString()}`,
+      `pos-shift-print-${item.id}`,
+      "popup=yes,width=1200,height=900,scrollbars=yes,resizable=yes"
+    );
+  };
 
   const handlePageChange = (event, value) => {
     setPage(value);
@@ -179,18 +192,32 @@ export default function POSShift() {
                               <EditShift fetchItems={fetchShifts} item={item} />
                             ) : null
                           ) : (
-                            print ? (
-                              <Tooltip title="Print" placement="top">
-                                <a
-                                  href={`${Report}/PrintShiftEndLocal?InitialCatalog=${Catelogue}&documentNumber=${item.documentNo}&reportName=${ReportName}&warehouseId=${item.warehouseId}&currentUser=${name}`}
-                                  target="_blank"
-                                >
-                                  <IconButton aria-label="print" size="small">
-                                    <LocalPrintshopIcon color="primary" fontSize="inherit" />
+                            <>
+                              {customPrint ? (
+                                <Tooltip title="Print (Custom)" placement="top">
+                                  <a
+                                    href={`${Report}/PrintShiftEndLocal?InitialCatalog=${Catelogue}&documentNumber=${item.documentNo}&reportName=${ReportName}&warehouseId=${item.warehouseId}&currentUser=${name}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    <IconButton aria-label="print custom" size="small">
+                                      <DescriptionIcon color="action" fontSize="medium" />
+                                    </IconButton>
+                                  </a>
+                                </Tooltip>
+                              ) : null}
+                              {print ? (
+                                <Tooltip title="Print (Default)" placement="top">
+                                  <IconButton
+                                    aria-label="print default"
+                                    size="small"
+                                    onClick={() => openPOSShiftPrintPopup(item)}
+                                  >
+                                    <LocalPrintshopIcon color="primary" fontSize="medium" />
                                   </IconButton>
-                                </a>
-                              </Tooltip>
-                            ) : null
+                                </Tooltip>
+                              ) : null}
+                            </>
                           )}
                         </Box>
                       </TableCell>

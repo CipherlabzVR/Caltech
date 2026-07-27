@@ -25,6 +25,7 @@ import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirma
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import CreateCurrencyModal from "./create";
 import EditCurrency from "./edit";
+import { formatCurrency } from "@/components/utils/formatHelper";
 
 const Index = () => {
   const cId = sessionStorage.getItem("category");
@@ -113,6 +114,7 @@ const Index = () => {
                   <TableCell>Name</TableCell>
                   <TableCell>Description</TableCell>
                   <TableCell>Symbol</TableCell>
+                  <TableCell>Exchange Rate</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell align="right">Action</TableCell>
                 </TableRow>
@@ -120,7 +122,7 @@ const Index = () => {
               <TableBody>
                 {CurrencyList.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6}>
+                    <TableCell colSpan={7}>
                       <Typography color="error">
                         No Currency Available
                       </Typography>
@@ -133,6 +135,9 @@ const Index = () => {
                       <TableCell>{item.name}</TableCell>
                       <TableCell>{item.description || "-"}</TableCell>
                       <TableCell>{item.symbol}</TableCell>
+                      <TableCell>
+                        {formatCurrency(item.exchangeRate != null ? item.exchangeRate : "-")}
+                      </TableCell>
                       <TableCell>
                         {item.isActive == true ? (
                           <span className="successBadge">Active</span>

@@ -11,6 +11,7 @@ import "react-toastify/dist/ReactToastify.css";
 import BASE_URL from "Base/api";
 import { styled } from "@mui/material/styles";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import { encryptLink } from "@/components/utils/linkCrypto";
 
 const VisuallyHiddenInput = styled("input")({
   clip: "rect(0 0 0 0)",
@@ -78,6 +79,42 @@ export default function AddCompany({ fetchItems }) {
   const [letterheadImage, setLetterheadImage] = useState("");
   const [letterheadFile, setLetterheadFile] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [currencies, setCurrencies] = useState([]);
+
+  const fetchCurrencies = async () => {
+    try {
+      const response = await fetch(
+        `${BASE_URL}/Currency/GetAllCurrency?SkipCount=0&MaxResultCount=1000&Search=null`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch currencies");
+      }
+
+      const data = await response.json();
+      let list = [];
+      if (data.result?.items) {
+        list = data.result.items;
+      } else if (Array.isArray(data.result)) {
+        list = data.result;
+      }
+      setCurrencies(list.filter((currency) => currency.isActive !== false));
+    } catch (error) {
+      console.error("Error fetching currencies:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchCurrencies();
+  }, []);
+
   const handleOpen = async () => {
     setOpen(true);
   };
@@ -99,26 +136,31 @@ export default function AddCompany({ fetchItems }) {
     }
   }, [open]);
 
-  const validateA4Size = (file) => {
+  const validateLetterheadDimensions = (file) => {
+    const minWidthPrint = 2480;
+    const minWidthRelaxed = 690;
     return new Promise((resolve, reject) => {
       const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
       img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
         const width = img.width;
         const height = img.height;
-        // A4 aspect ratio: 210mm x 297mm = 0.707 (width/height)
-        // Allow ±5% tolerance
-        const aspectRatio = width / height;
-        const a4Ratio = 210 / 297; // 0.707
-        const tolerance = 0.05;
-
-        if (Math.abs(aspectRatio - a4Ratio) <= tolerance) {
+        if (width >= minWidthPrint || width >= minWidthRelaxed) {
           resolve(true);
         } else {
-          reject(new Error(`Image must be A4 size (210mm x 297mm / 2480 x 3508 px at 300 DPI). Current dimensions: ${width} x ${height}px`));
+          reject(
+            new Error(
+              `Letterhead width must be at least ${minWidthRelaxed}px (or ${minWidthPrint}px+ for print). Any height is allowed. Current: ${width} × ${height}px`
+            )
+          );
         }
       };
-      img.onerror = () => reject(new Error("Invalid image file"));
-      img.src = URL.createObjectURL(file);
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("Invalid image file"));
+      };
+      img.src = objectUrl;
     });
   };
 
@@ -133,7 +175,7 @@ export default function AddCompany({ fetchItems }) {
     }
 
     try {
-      await validateA4Size(file);
+      await validateLetterheadDimensions(file);
       setLetterheadFile(file);
       setLetterheadImage(URL.createObjectURL(file));
     } catch (error) {
@@ -151,11 +193,13 @@ export default function AddCompany({ fetchItems }) {
     formData.append("ContactNumber", values.ContactNumber);
     formData.append("CompanyLogo", logo ? logo : null);
     formData.append("LetterHeadImage", letterheadFile ? letterheadFile : null);
+    formData.append("UsersUrl", values.UsersUrl || "");
     formData.append("LandingPage", values.LandingPage);
     formData.append("RenewalDate", values.RenewalDate ? Number(values.RenewalDate) : "");
     formData.append("RenewalMonth", values.BillingType === "2" && values.RenewalMonth ? Number(values.RenewalMonth) : "");
     formData.append("HostingFee", values.HostingFee || null);
     formData.append("BillingType", values.BillingType || 1);
+    formData.append("CurrencyId", values.currencyId || "");
 
     try {
       setLoading(true);
@@ -171,7 +215,12 @@ export default function AddCompany({ fetchItems }) {
 
       const data = await response.json();
       if (data.statusCode == 200) {
-        toast.success(data.message);
+        const mobileApiKey = encryptLink(values.UsersUrl);
+        toast.success(
+          mobileApiKey
+            ? `${data.message}. API Key: ${mobileApiKey}`
+            : data.message
+        );
         setOpen(false);
         fetchItems();
       } else {
@@ -219,11 +268,14 @@ export default function AddCompany({ fetchItems }) {
               ContactPerson: "",
               ContactNumber: "",
               Description: "",
+              UsersUrl:
+                typeof window !== "undefined" ? window.location.origin : "",
               LandingPage: "1",
               RenewalDate: "",
               RenewalMonth: "",
               HostingFee: "",
               BillingType: "",
+              currencyId: "",
             }}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
@@ -235,7 +287,14 @@ export default function AddCompany({ fetchItems }) {
                   setFieldValue("RenewalMonth", "");
                 }
               }, [values.BillingType, values.RenewalMonth, setFieldValue]);
-              
+
+              // Auto-set Users URL from current site origin (used to generate mobile API key)
+              useEffect(() => {
+                if (open && !values.UsersUrl && typeof window !== "undefined") {
+                  setFieldValue("UsersUrl", window.location.origin);
+                }
+              }, [open, values.UsersUrl, setFieldValue]);
+
               return (
               <Form>
                 {tabIndex === 0 && (
@@ -349,6 +408,33 @@ export default function AddCompany({ fetchItems }) {
                             <MenuItem value="2">Quick Access</MenuItem>
                           </Field>
                         </Grid>
+                        <Grid item xs={12} mt={1}>
+                          <Typography
+                            sx={{
+                              fontWeight: "500",
+                              fontSize: "14px",
+                              mb: "5px",
+                            }}
+                          >
+                            Currency
+                          </Typography>
+                          <Field
+                            as={TextField}
+                            select
+                            fullWidth
+                            name="currencyId"
+                            size="small"
+                          >
+                            <MenuItem value="">
+                              <em>Select Currency</em>
+                            </MenuItem>
+                            {currencies.map((currency) => (
+                              <MenuItem key={currency.id} value={String(currency.id)}>
+                                {currency.currencyName || currency.name} ({currency.code})
+                              </MenuItem>
+                            ))}
+                          </Field>
+                        </Grid>
                         <Grid item xs={12} mb={3} mt={1}>
                           <Typography
                             sx={{
@@ -431,7 +517,7 @@ export default function AddCompany({ fetchItems }) {
                       </Grid>
                       <Grid item xs={12}>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                          Upload Letterhead Image (A4 size: 210mm x 297mm / 2480 x 3508 px at 300 DPI)
+                          Upload Letterhead Image (min width 690px, or 2480px+ for print quality; any height)
                         </Typography>
                         <Button
                           component="label"

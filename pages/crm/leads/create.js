@@ -23,6 +23,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import BASE_URL from "Base/api";
 import { toast } from "react-toastify";
 import useContactsByAccount from "hooks/useContactsByAccount";
+import useActiveCampaigns from "hooks/useActiveCampaigns";
 
 // Debounce helper function
 function debounce(func, wait) {
@@ -66,9 +67,11 @@ export default function CreateLead({ onLeadCreated }) {
     leadStatus: "",
     description: "",
     accountId: "",
-    contactId: ""
+    contactId: "",
+    campaignId: "",
   });
   const { contacts: accountContacts, isLoading: contactsLoading, error: contactsError } = useContactsByAccount(formValues.accountId);
+  const { campaigns, isLoading: campaignsLoading } = useActiveCampaigns();
 
   const fetchStatuses = React.useCallback(async () => {
     try {
@@ -216,7 +219,8 @@ export default function CreateLead({ onLeadCreated }) {
       leadStatus: "",
       description: "",
       accountId: "",
-      contactId: ""
+      contactId: "",
+      campaignId: "",
     });
     setLeadScore(50);
     setSelectedAccount(null);
@@ -299,6 +303,7 @@ export default function CreateLead({ onLeadCreated }) {
       Description: formValues.description?.trim() || "",
       AccountId: formValues.accountId || null,
       ContactId: contactId,
+      CampaignId: formValues.campaignId ? Number(formValues.campaignId) : null,
     };
 
     try {
@@ -318,11 +323,17 @@ export default function CreateLead({ onLeadCreated }) {
       }
 
       const data = await response.json();
-      toast.success(data?.message || "Lead created successfully.");
+      const successMessage =
+        typeof data?.message === "string" && data.message.trim()
+          ? data.message
+          : "Lead created successfully.";
+
       setOpen(false);
       resetForm();
       if (typeof onLeadCreated === "function") {
-        onLeadCreated();
+        onLeadCreated(successMessage);
+      } else {
+        window.setTimeout(() => toast.success(successMessage), 0);
       }
     } catch (error) {
       toast.error(error.message || "Unable to create lead");
@@ -483,6 +494,27 @@ export default function CreateLead({ onLeadCreated }) {
                     {statusOptions.map((option) => (
                       <MenuItem key={option.value} value={option.value}>
                         {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Campaign</InputLabel>
+                  <Select
+                    value={formValues.campaignId}
+                    label="Campaign"
+                    disabled={campaignsLoading}
+                    onChange={handleChange("campaignId")}
+                  >
+                    <MenuItem value="">
+                      <em>Direct / No Campaign</em>
+                    </MenuItem>
+                    {campaigns.map((c) => (
+                      <MenuItem key={c.id} value={String(c.id)}>
+                        {c.name}{c.campaignType ? ` (${c.campaignType === 1 ? "Email" : c.campaignType === 2 ? "Social" : c.campaignType === 3 ? "Event" : c.campaignType === 4 ? "Referral" : c.campaignType === 5 ? "Webinar" : c.campaignType === 6 ? "Ad" : c.campaignType === 7 ? "Direct" : "Other"})` : ""}
                       </MenuItem>
                     ))}
                   </Select>

@@ -7,7 +7,6 @@ import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
 import FormControl from "@mui/material/FormControl";
 import Select from "@mui/material/Select";
-import * as Yup from "yup";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import TextField from "@mui/material/TextField";
@@ -16,6 +15,14 @@ import PropTypes from "prop-types";
 import BASE_URL from "Base/api";
 import { Field, Form, Formik } from "formik";
 import { useRouter } from "next/router";
+import {
+  buildNormalSizeValidationSchema,
+  buildSpecialSizeValidationSchema,
+  calculateNormalSizeTotal,
+  isDecimalInput,
+  isWholeNumberInput,
+  parseDecimalInput,
+} from "@/components/utils/sizeInquiryHelpers";
 
 const style = {
   position: "absolute",
@@ -75,9 +82,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
   const [threeXLValue, setThreeXLValue] = useState(0);
   const [fourXLValue, setFourXLValue] = useState(0);
   const [fiveXLValue, setFiveXLValue] = useState(0);
-  const [length, setLength] = useState(0);
-  const [width, setWidth] = useState(0);
-  const [quantity, setQuantity] = useState(0);
+  const [length, setLength] = useState("");
+  const [width, setWidth] = useState("");
+  const [quantity, setQuantity] = useState("");
   const [value, setValue] = React.useState(0);
   const [sizeList, setSizeList] = useState([]);
   const inqId = inquiry ? inquiry.inquiryId : 1;
@@ -87,29 +94,157 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
   const WinType = inquiry ? inquiry.windowType : 1;
   const inqType = inquiry ? inquiry.windowType : 1;
 
-  const validationSchemaNormalSize = Yup.object().shape({
-    TwoXS: Yup.number().typeError("Invalid"),
-    XS: Yup.number().typeError("Invalid"),
-    S: Yup.number().integer().typeError("Invalid"),
-    M: Yup.number().typeError("Invalid"),
-    L: Yup.number().typeError("Invalid"),
-    XL: Yup.number().typeError("Invalid"),
-    TwoXL: Yup.number().typeError("Invalid"),
-    ThreeXL: Yup.number().typeError("Invalid"),
-    FourXL: Yup.number().typeError("Invalid"),
-    FiveXL: Yup.number().typeError("Invalid"),
-    TotalQty: Yup.number().typeError("Invalid"),
-    SizeName: Yup.string().required("Required"),
-    Sleavetype: Yup.string(),
+  const validationSchemaNormalSize = buildNormalSizeValidationSchema();
+  const validationSchemaSpecialSize = buildSpecialSizeValidationSchema();
+
+  const refreshSizeList = () => {
+    if (inquiry) {
+      fetchItems(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
+    } else {
+      fetchItems();
+    }
+  };
+
+  const getNormalSizeValues = (overrides = {}) => ({
+    inqType,
+    twoXS: overrides.twoXS ?? twoXSValue,
+    xs: overrides.xs ?? xSValue,
+    s: overrides.s ?? sValue,
+    m: overrides.m ?? mValue,
+    l: overrides.l ?? lValue,
+    xl: overrides.xl ?? xLValue,
+    twoXL: overrides.twoXL ?? twoXLValue,
+    threeXL: overrides.threeXL ?? threeXLValue,
+    fourXL: overrides.fourXL ?? fourXLValue,
+    fiveXL: overrides.fiveXL ?? fiveXLValue,
+    width: overrides.width ?? width,
+    length: overrides.length ?? length,
   });
 
-  const validationSchemaSpecialSize = Yup.object().shape({
-    SizeName: Yup.string().required("Required"),
-    Width: Yup.number().typeError("Invalid"),
-    Length: Yup.number().typeError("Invalid"),
-    TotalQty: Yup.number().typeError("Invalid").required("Required"),
-    Sleavetype: Yup.string(),
-  });
+  const syncNormalTotal = (overrides, setFieldValue) => {
+    const sum = calculateNormalSizeTotal(getNormalSizeValues(overrides));
+    setTotal(sum);
+    setFinalTotal(sum);
+    if (setFieldValue) {
+      setFieldValue("TotalQty", sum);
+    }
+    return sum;
+  };
+
+  const onTotalDirectChange = (raw, setFieldValue) => {
+    if (!isWholeNumberInput(raw)) return;
+    const num = raw === "" ? 0 : parseInt(raw, 10);
+    setTotal(num);
+    setFinalTotal(num);
+    setFieldValue("TotalQty", raw === "" ? "" : num);
+  };
+
+  const onNormalSizeChange = (raw, sizeCode, setFieldValue) => {
+    if (!isWholeNumberInput(raw)) return;
+    const num = raw === "" ? 0 : parseInt(raw, 10);
+    const overrides = {};
+
+    switch (sizeCode) {
+      case 1:
+        setTwoXSValue(num);
+        setFieldValue("TwoXS", num);
+        overrides.twoXS = num;
+        break;
+      case 2:
+        setXsValue(num);
+        setFieldValue("XS", num);
+        overrides.xs = num;
+        break;
+      case 3:
+        setSValue(num);
+        setFieldValue("S", num);
+        overrides.s = num;
+        break;
+      case 4:
+        setMValue(num);
+        setFieldValue("M", num);
+        overrides.m = num;
+        break;
+      case 5:
+        setLValue(num);
+        setFieldValue("L", num);
+        overrides.l = num;
+        break;
+      case 6:
+        setXLValue(num);
+        setFieldValue("XL", num);
+        overrides.xl = num;
+        break;
+      case 7:
+        setTwoXLValue(num);
+        setFieldValue("TwoXL", num);
+        overrides.twoXL = num;
+        break;
+      case 8:
+        setThreeXLValue(num);
+        setFieldValue("ThreeXL", num);
+        overrides.threeXL = num;
+        break;
+      case 9:
+        setFourXLValue(num);
+        setFieldValue("FourXL", num);
+        overrides.fourXL = num;
+        break;
+      case 10:
+        setFiveXLValue(num);
+        setFieldValue("FiveXL", num);
+        overrides.fiveXL = num;
+        break;
+      case 12:
+        setLength(num);
+        setFieldValue("Length", num);
+        overrides.length = num;
+        break;
+      case 13:
+        setWidth(num);
+        setFieldValue("Width", num);
+        overrides.width = num;
+        break;
+      default:
+        break;
+    }
+
+    syncNormalTotal(overrides, setFieldValue);
+  };
+
+  const onSpecialSizeChange = (raw, field, setFieldValue) => {
+    if (field === "quantity") {
+      if (!isWholeNumberInput(raw)) return;
+      setQuantity(raw);
+      setFieldValue("TotalQty", raw === "" ? "" : parseInt(raw, 10));
+      setFinalTotal(raw === "" ? 0 : parseInt(raw, 10) || 0);
+      return;
+    }
+
+    if (!isDecimalInput(raw)) return;
+
+    if (field === "width") {
+      setWidth(raw);
+      const parsed = parseDecimalInput(raw);
+      setFieldValue("Width", parsed.valid ? parsed.value : 0);
+    } else if (field === "length") {
+      setLength(raw);
+      const parsed = parseDecimalInput(raw);
+      setFieldValue("Length", parsed.valid ? parsed.value : 0);
+    }
+  };
+
+  const blockInvalidNumericKeys = (event) => {
+    if (["e", "E", "+", "-", "."].includes(event.key)) {
+      event.preventDefault();
+    }
+  };
+
+  const blockInvalidDecimalKeys = (event) => {
+    if (["e", "E", "+", "-"].includes(event.key)) {
+      event.preventDefault();
+    }
+  };
 
   const handleOpen = () => setOpen(true);
   const handleClose = () => {
@@ -126,9 +261,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
     setThreeXLValue(0);
     setFourXLValue(0);
     setFiveXLValue(0);
-    setLength(0);
-    setWidth(0);
-    setQuantity(0);
+    setLength("");
+    setWidth("");
+    setQuantity("");
   };
 
   const fetchSizeList = async () => {
@@ -161,21 +296,27 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
   };
 
   const handleSubmitNormal = (values) => {
+    const finalQty = parseInt(total, 10) || 0;
+    if (finalQty < 1) {
+      toast.error("Total quantity must be at least 1.");
+      return;
+    }
+
     const intValues = {
       ...values,
-      TwoXS: parseInt(twoXSValue) || 0,
-      XS: parseInt(xSValue) || 0,
-      S: parseInt(sValue) || 0,
-      M: parseInt(mValue) || 0,
-      L: parseInt(lValue) || 0,
-      XL: parseInt(xLValue) || 0,
-      TwoXL: parseInt(twoXLValue) || 0,
-      ThreeXL: parseInt(threeXLValue) || 0,
-      FourXL: parseInt(fourXLValue) || 0,
-      FiveXL: parseInt(fiveXLValue) || 0,
-      TotalQty: parseInt(total) || 0,
-      Length: parseInt(length) || 0,
-      Width: parseInt(width) || 0,
+      TwoXS: parseInt(twoXSValue, 10) || 0,
+      XS: parseInt(xSValue, 10) || 0,
+      S: parseInt(sValue, 10) || 0,
+      M: parseInt(mValue, 10) || 0,
+      L: parseInt(lValue, 10) || 0,
+      XL: parseInt(xLValue, 10) || 0,
+      TwoXL: parseInt(twoXLValue, 10) || 0,
+      ThreeXL: parseInt(threeXLValue, 10) || 0,
+      FourXL: parseInt(fourXLValue, 10) || 0,
+      FiveXL: parseInt(fiveXLValue, 10) || 0,
+      TotalQty: finalQty,
+      Length: parseInt(length, 10) || 0,
+      Width: parseInt(width, 10) || 0,
     };
     const token = localStorage.getItem("token");
     fetch(`${BASE_URL}/Inquiry/CreateInquirySize`, {
@@ -191,11 +332,7 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
         if (data.statusCode == 200) {
           toast.success(data.message);
           handleClose();
-          if(inquiry){
-            fetchItems(inquiry.inquiryId,inquiry.optionId,inquiry.windowType);
-          }else{
-            fetchItems();
-          }
+          refreshSizeList();
         } else {
           toast.error(data.message);
         }
@@ -206,6 +343,15 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
   };
 
   const handleSubmitSpecial = (values) => {
+    const parsedWidth = parseDecimalInput(width || values.Width).value ?? 0;
+    const parsedLength = parseDecimalInput(length || values.Length).value ?? 0;
+    const finalQty = parseInt(quantity || values.TotalQty, 10) || 0;
+
+    if (finalQty < 1) {
+      toast.error("Quantity must be at least 1.");
+      return;
+    }
+
     const intValues = {
       ...values,
       TwoXS: 0,
@@ -218,10 +364,10 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
       ThreeXL: 0,
       FourXL: 0,
       FiveXL: 0,
-      TotalQty: parseInt(quantity) || 0,
-      SizeID: values.SizeID ? parseInt(values.SizeID) : null,
-      Length: parseInt(length) || 0,
-      Width: parseInt(width) || 0,
+      TotalQty: finalQty,
+      SizeID: values.SizeID ? parseInt(values.SizeID, 10) : null,
+      Length: parsedLength,
+      Width: parsedWidth,
     };
     const token = localStorage.getItem("token");
     fetch(`${BASE_URL}/Inquiry/CreateInquirySize`, {
@@ -236,8 +382,8 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
       .then((data) => {
         if (data.statusCode == 200) {
           toast.success(data.message);
-          setOpen(false);
-          fetchItems();
+          handleClose();
+          refreshSizeList();
         } else {
           toast.error(data.message);
         }
@@ -254,120 +400,6 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
       setFieldValue("SizeName", selectedSize.name);
       setFieldValue("SizeID", selectedSize.id);
     }
-  };
-
-  const handleCalcTotal = (value, size) => {
-    let newTwoXSValue = twoXSValue;
-    let newXSValue = xSValue;
-    let newSValue = sValue;
-    let newMValue = mValue;
-    let newLValue = lValue;
-    let newXLValue = xLValue;
-    let newTwoXLValue = twoXLValue;
-    let newThreeXLValue = threeXLValue;
-    let newFourXLValue = fourXLValue;
-    let newFiveXLValue = fiveXLValue;
-    let newLength = length;
-    let newWidth = width;
-
-    switch (size) {
-      case 1:
-        setTwoXSValue(value);
-        newTwoXSValue = value;
-        break;
-      case 2:
-        setXsValue(value);
-        newXSValue = value;
-        break;
-      case 3:
-        setSValue(value);
-        newSValue = value;
-        break;
-      case 4:
-        setMValue(value);
-        newMValue = value;
-        break;
-      case 5:
-        setLValue(value);
-        newLValue = value;
-        break;
-      case 6:
-        setXLValue(value);
-        newXLValue = value;
-        break;
-      case 7:
-        setTwoXLValue(value);
-        newTwoXLValue = value;
-        break;
-      case 8:
-        setThreeXLValue(value);
-        newThreeXLValue = value;
-        break;
-      case 9:
-        setFourXLValue(value);
-        newFourXLValue = value;
-        break;
-      case 10:
-        setFiveXLValue(value);
-        newFiveXLValue = value;
-        break;
-      case 11:
-        setTotal(value);
-        return;
-      case 12:
-        setLength(value);
-        newLength = value;
-        break;
-      case 13:
-        setWidth(value);
-        newWidth = value;
-        break;
-      default:
-        break;
-    }
-
-    const sum =
-      parseInt(newTwoXSValue) +
-      parseInt(newXSValue) +
-      parseInt(newSValue) +
-      parseInt(newMValue) +
-      parseInt(newLValue) +
-      parseInt(newXLValue) +
-      parseInt(newTwoXLValue) +
-      parseInt(newThreeXLValue) +
-      parseInt(newFourXLValue) +
-      parseInt(newFiveXLValue) +
-      parseInt(newLength) +
-      parseInt(newWidth);
-
-    setTotal(sum);
-    setFinalTotal(sum);
-  };
-
-  const handleCalcQuantity = (value, size) => {
-    let newLength = length;
-    let newWidth = width;
-
-    switch (size) {
-      case 12:
-        setLength(value);
-        newLength = value;
-        break;
-      case 13:
-        setWidth(value);
-        newWidth = value;
-        break;
-      case 14:
-        setQuantity(value);
-        return;
-      default:
-        break;
-    }
-
-    const sum = parseInt(newLength) + parseInt(newWidth);
-
-    setQuantity(sum);
-    setFinalTotal(sum);
   };
 
   return (
@@ -485,10 +517,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                             size="small"
                             error={touched.TwoXS && Boolean(errors.TwoXS)}
                             helperText={touched.TwoXS && errors.TwoXS}
-                            onChange={(e) => {
-                              handleCalcTotal(e.target.value, 1);
-                              setFieldValue("TotalQty", finalTotal);
-                            }}
+                            onChange={(e) => onNormalSizeChange(e.target.value, 1, setFieldValue)}
+                            onKeyDown={blockInvalidNumericKeys}
+                            inputProps={{ inputMode: "numeric" }}
                           />
                         </Grid>
                       ) : (
@@ -508,10 +539,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                             size="small"
                             error={touched.XS && Boolean(errors.XS)}
                             helperText={touched.XS && errors.XS}
-                            onChange={(e) => {
-                              handleCalcTotal(e.target.value, 2);
-                              setFieldValue("TotalQty", finalTotal);
-                            }}
+                            onChange={(e) => onNormalSizeChange(e.target.value, 2, setFieldValue)}
+                            onKeyDown={blockInvalidNumericKeys}
+                            inputProps={{ inputMode: "numeric" }}
                           />
                         </Grid>
                       ) : (
@@ -531,10 +561,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                             size="small"
                             error={touched.S && Boolean(errors.S)}
                             helperText={touched.S && errors.S}
-                            onChange={(e) => {
-                              handleCalcTotal(e.target.value, 3);
-                              setFieldValue("TotalQty", finalTotal);
-                            }}
+                            onChange={(e) => onNormalSizeChange(e.target.value, 3, setFieldValue)}
+                            onKeyDown={blockInvalidNumericKeys}
+                            inputProps={{ inputMode: "numeric" }}
                           />
                         </Grid>
                       ) : (
@@ -554,10 +583,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                             size="small"
                             error={touched.M && Boolean(errors.M)}
                             helperText={touched.M && errors.M}
-                            onChange={(e) => {
-                              handleCalcTotal(e.target.value, 4);
-                              setFieldValue("TotalQty", finalTotal);
-                            }}
+                            onChange={(e) => onNormalSizeChange(e.target.value, 4, setFieldValue)}
+                            onKeyDown={blockInvalidNumericKeys}
+                            inputProps={{ inputMode: "numeric" }}
                           />
                         </Grid>
                       ) : (
@@ -577,10 +605,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                             value={lValue}
                             error={touched.L && Boolean(errors.L)}
                             helperText={touched.L && errors.L}
-                            onChange={(e) => {
-                              handleCalcTotal(e.target.value, 5);
-                              setFieldValue("TotalQty", finalTotal);
-                            }}
+                            onChange={(e) => onNormalSizeChange(e.target.value, 5, setFieldValue)}
+                            onKeyDown={blockInvalidNumericKeys}
+                            inputProps={{ inputMode: "numeric" }}
                           />
                         </Grid>
                       ) : (
@@ -600,10 +627,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                             value={xLValue}
                             error={touched.XL && Boolean(errors.XL)}
                             helperText={touched.XL && errors.XL}
-                            onChange={(e) => {
-                              handleCalcTotal(e.target.value, 6);
-                              setFieldValue("TotalQty", finalTotal);
-                            }}
+                            onChange={(e) => onNormalSizeChange(e.target.value, 6, setFieldValue)}
+                            onKeyDown={blockInvalidNumericKeys}
+                            inputProps={{ inputMode: "numeric" }}
                           />
                         </Grid>
                       ) : (
@@ -623,10 +649,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                             value={twoXLValue}
                             error={touched.TwoXL && Boolean(errors.TwoXL)}
                             helperText={touched.TwoXL && errors.TwoXL}
-                            onChange={(e) => {
-                              handleCalcTotal(e.target.value, 7);
-                              setFieldValue("TotalQty", finalTotal);
-                            }}
+                            onChange={(e) => onNormalSizeChange(e.target.value, 7, setFieldValue)}
+                            onKeyDown={blockInvalidNumericKeys}
+                            inputProps={{ inputMode: "numeric" }}
                           />
                         </Grid>
                       ) : (
@@ -646,10 +671,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                             value={threeXLValue}
                             error={touched.ThreeXL && Boolean(errors.ThreeXL)}
                             helperText={touched.ThreeXL && errors.ThreeXL}
-                            onChange={(e) => {
-                              handleCalcTotal(e.target.value, 8);
-                              setFieldValue("TotalQty", finalTotal);
-                            }}
+                            onChange={(e) => onNormalSizeChange(e.target.value, 8, setFieldValue)}
+                            onKeyDown={blockInvalidNumericKeys}
+                            inputProps={{ inputMode: "numeric" }}
                           />
                         </Grid>
                       ) : (
@@ -669,10 +693,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                             value={fourXLValue}
                             error={touched.FourXL && Boolean(errors.FourXL)}
                             helperText={touched.FourXL && errors.FourXL}
-                            onChange={(e) => {
-                              handleCalcTotal(e.target.value, 9);
-                              setFieldValue("TotalQty", finalTotal);
-                            }}
+                            onChange={(e) => onNormalSizeChange(e.target.value, 9, setFieldValue)}
+                            onKeyDown={blockInvalidNumericKeys}
+                            inputProps={{ inputMode: "numeric" }}
                           />
                         </Grid>
                       ) : (
@@ -693,10 +716,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                             value={fiveXLValue}
                             error={touched.FiveXL && Boolean(errors.FiveXL)}
                             helperText={touched.FiveXL && errors.FiveXL}
-                            onChange={(e) => {
-                              handleCalcTotal(e.target.value, 10);
-                              setFieldValue("TotalQty", finalTotal);
-                            }}
+                            onChange={(e) => onNormalSizeChange(e.target.value, 10, setFieldValue)}
+                            onKeyDown={blockInvalidNumericKeys}
+                            inputProps={{ inputMode: "numeric" }}
                           />
                         </Grid>
                       ) : (
@@ -714,10 +736,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                             size="small"
                             error={touched.Width && Boolean(errors.Width)}
                             helperText={touched.Width && errors.Width}
-                            onChange={(e) => {
-                              handleCalcTotal(e.target.value, 13);
-                              setFieldValue("TotalQty", finalTotal);
-                            }}
+                            onChange={(e) => onNormalSizeChange(e.target.value, 13, setFieldValue)}
+                            onKeyDown={blockInvalidNumericKeys}
+                            inputProps={{ inputMode: "numeric" }}
                           />
                         </Grid>
                       ) : (
@@ -734,10 +755,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                             value={length}
                             error={touched.Length && Boolean(errors.Length)}
                             helperText={touched.Length && errors.Length}
-                            onChange={(e) => {
-                              handleCalcTotal(e.target.value, 12);
-                              setFieldValue("TotalQty", finalTotal);
-                            }}
+                            onChange={(e) => onNormalSizeChange(e.target.value, 12, setFieldValue)}
+                            onKeyDown={blockInvalidNumericKeys}
+                            inputProps={{ inputMode: "numeric" }}
                           />
                         </Grid>
                       ) : (
@@ -752,13 +772,17 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                           value={total}
                           label="Total"
                           size="small"
+                          helperText={
+                            touched.TotalQty && errors.TotalQty
+                              ? errors.TotalQty
+                              : "Enter total directly, or sum of all size quantities"
+                          }
                           error={touched.TotalQty && Boolean(errors.TotalQty)}
-                          helperText={touched.TotalQty && errors.TotalQty}
-                          onChange={(e) => {
-                            handleCalcTotal(e.target.value, 11);
-                            setFieldValue("TotalQty", e.target.value);
-                          }}
-                          
+                          onChange={(e) =>
+                            onTotalDirectChange(e.target.value, setFieldValue)
+                          }
+                          onKeyDown={blockInvalidNumericKeys}
+                          inputProps={{ inputMode: "numeric" }}
                         />
                       </Grid>
                       <Grid item p={1} xs={12}>
@@ -894,10 +918,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                           value={width}
                           error={touched.Width && Boolean(errors.Width)}
                           helperText={touched.Width && errors.Width}
-                          onChange={(e) => {
-                            handleCalcQuantity(e.target.value, 13);
-                            setFieldValue("TotalQty", finalTotal);
-                          }}
+                          onChange={(e) => onSpecialSizeChange(e.target.value, "width", setFieldValue)}
+                          onKeyDown={blockInvalidDecimalKeys}
+                          inputProps={{ inputMode: "decimal" }}
                         />
                       </Grid>
                       <Grid item lg={6} p={1} xs={12}>
@@ -910,10 +933,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                           size="small"
                           error={touched.Length && Boolean(errors.Length)}
                           helperText={touched.Length && errors.Length}
-                          onChange={(e) => {
-                            handleCalcQuantity(e.target.value, 12);
-                            setFieldValue("TotalQty", finalTotal);
-                          }}
+                          onChange={(e) => onSpecialSizeChange(e.target.value, "length", setFieldValue)}
+                          onKeyDown={blockInvalidDecimalKeys}
+                          inputProps={{ inputMode: "decimal" }}
                         />
                       </Grid>
                       <Grid item p={1} xs={12}>
@@ -926,10 +948,9 @@ export default function EditSizesToInquiry({ fetchItems,inquiry }) {
                           size="small"
                           error={touched.TotalQty && Boolean(errors.TotalQty)}
                           helperText={touched.TotalQty && errors.TotalQty}
-                          onChange={(e) => {
-                            handleCalcQuantity(e.target.value, 14);
-                            setFieldValue("TotalQty", e.target.value);
-                          }}
+                          onChange={(e) => onSpecialSizeChange(e.target.value, "quantity", setFieldValue)}
+                          onKeyDown={blockInvalidNumericKeys}
+                          inputProps={{ inputMode: "numeric" }}
                         />
                       </Grid>
                       <Grid item p={1} xs={12}>

@@ -15,12 +15,20 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Alert,
 } from "@mui/material";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import { useRouter } from "next/router";
 import BASE_URL from "Base/api";
 import CachedIcon from "@mui/icons-material/Cached";
 import { DashboardHeader } from "@/components/shared/dashboard-header";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+
+const SHORT_TYPES = [1, 2, 3, 4, 10];
+const LONG_TYPES = [5, 6, 7, 8, 10];
+const SHORT_SIZES = [1, 2, 3];
+const LONG_SIZES = [1, 2, 3, 4];
 
 export default function Sleeve() {
   const router = useRouter();
@@ -35,6 +43,7 @@ export default function Sleeve() {
   const [deleteId, setDeleteId] = useState();
   const [longSizeValue, setLongSizeValue] = useState(1);
   const [selectedButtonLong, setSelectedButtonLong] = useState();
+  const [validationError, setValidationError] = useState("");
   const neck = router.query.neck;
 
   const fetchInquiryById = async () => {
@@ -61,37 +70,67 @@ export default function Sleeve() {
   };
 
   useEffect(() => {
-    if (inqId, optId) {
+    if (inqId && optId) {
       fetchInquiryById();
     }
-  }, []);
+  }, [inqId, optId]);
+
+  const getSleeveValidationMessage = () => {
+    if (!isShortChecked && !isLongChecked) {
+      return "Please select at least Short or Long sleeve before proceeding.";
+    }
+    if (isShortChecked) {
+      if (!SHORT_TYPES.includes(Number(selectedButtonShort))) {
+        return "Please select a Short sleeve type.";
+      }
+      if (!SHORT_SIZES.includes(Number(shortSizeValue))) {
+        return "Please select a Short sleeve size.";
+      }
+    }
+    if (isLongChecked) {
+      if (!LONG_TYPES.includes(Number(selectedButtonLong))) {
+        return "Please select a Long sleeve type.";
+      }
+      if (!LONG_SIZES.includes(Number(longSizeValue))) {
+        return "Please select a Long sleeve size.";
+      }
+    }
+    return "";
+  };
 
   const handleShortButtonClick = (index) => {
     setSelectedButtonShort(index === selectedButtonShort ? null : index);
+    setValidationError("");
   };
   const handleShortChange = () => {
     setIsShortChecked(!isShortChecked);
+    setValidationError("");
     if (isLongChecked == true && isShortChecked == false) {
       setIsLongChecked(false);
     }
   };
   const handleLongButtonClick = (index) => {
     setSelectedButtonLong(index === selectedButtonLong ? null : index);
+    setValidationError("");
   };
   const handleLongChange = () => {
     setIsLongChecked(!isLongChecked);
+    setValidationError("");
     if (isShortChecked == true && isLongChecked == false) {
       setIsShortChecked(false);
     }
   };
   const handleWNChange = (event) => {
     setSelectedWN(event.target.value);
+    setValidationError("");
   };
   const handleShortSizeChange = (event) => {
     setShortSizeValue(event.target.value);
+    setValidationError("");
   };
   const handleLongSizeChange = (event) => {
     setLongSizeValue(event.target.value);
+    setValidationError("");
   };
 
   const generateLink = (neckValue) => {
@@ -143,6 +182,15 @@ export default function Sleeve() {
   };
 
   const handleSubmit = async () => {
+    const message = getSleeveValidationMessage();
+    if (message) {
+      setValidationError(message);
+      toast.error(message);
+      return;
+    }
+
+    setValidationError("");
+
     const response = await fetch(
       `${BASE_URL}/InquirySleeve/AddOrUpdateSleeve`,
       {
@@ -190,6 +238,7 @@ export default function Sleeve() {
 
   return (
     <>
+      <ToastContainer />
       <DashboardHeader
         customerName={inquiry ? inquiry.customerName : ""}
         optionName={inquiry ? inquiry.optionName : ""}
@@ -231,6 +280,11 @@ export default function Sleeve() {
           </Box>
         </Grid>
         <Grid item xs={12}>
+          {validationError && (
+            <Box p={1}>
+              <Alert severity="error">{validationError}</Alert>
+            </Box>
+          )}
           <RadioGroup name="wn" value={selectedWN} onChange={handleWNChange}>
             <Grid container>
               <Grid item xs={12} p={1} md={4} lg={3}>

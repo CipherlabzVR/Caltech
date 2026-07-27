@@ -7,13 +7,29 @@ import Typography from "@mui/material/Typography";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import PrintIcon from "@mui/icons-material/Print";
 import BASE_URL from "Base/api";
-import { ProjectNo } from "Base/catelogue";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import useLoggedUserCompanyLetterhead from "@/hooks/useLoggedUserCompanyLetterhead";
+import PrintCompanyLogo from "@/components/UIElements/Print/PrintCompanyLogo";
+import PrintPoweredByFooter from "@/components/UIElements/Print/PrintPoweredByFooter";
 
 const FIRST_PAGE_ROW_LIMIT = 8;
 const NEXT_PAGE_ROW_LIMIT = 14;
+
+// Customizable HTML template key (managed under Report Template > Sales > Sales Quotation Print Template).
+const REPORT_KEY = "SALESQUOTATION";
+
+const escapeHtml = (value) => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+};
 
 const formatDisplayDate = (value) => {
   if (!value) {
@@ -50,9 +66,57 @@ const formatQty = (value) => {
     : numericValue.toFixed(2);
 };
 
+// Builds one <tr> per sales quotation line for the customizable HTML template:
+// Product | Code | Qty | Selling Price | Line Total
+const buildLineItemsRows = (items) => {
+  if (!items || items.length === 0) {
+    return `<tr><td colspan="5" style="text-align:center;padding:16px;">No items available</td></tr>`;
+  }
+
+  return items
+    .map(
+      (item) => `<tr>
+        <td>${escapeHtml(item.productName || "-")}</td>
+        <td>${escapeHtml(item.productCode || "-")}</td>
+        <td class="num">${escapeHtml(formatQty(item.qty))}</td>
+        <td class="num">${escapeHtml(formatAmount(item.sellingPrice))}</td>
+        <td class="num">${escapeHtml(formatAmount(item.lineTotal))}</td>
+      </tr>`
+    )
+    .join("\n");
+};
+
+const applyTemplate = (templateHtml, tokenMap, rowsHtml) => {
+  if (!templateHtml) {
+    return "";
+  }
+
+  let output = templateHtml.replace(/\{\{\s*lineItemsRows\s*\}\}/gi, rowsHtml);
+  output = output.replace(/\{\{\s*companyLogo\s*\}\}/gi, tokenMap.companyLogo || "");
+
+  Object.entries(tokenMap).forEach(([key, value]) => {
+    if (key === "companyLogo") {
+      return;
+    }
+    const pattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "gi");
+    output = output.replace(pattern, escapeHtml(value));
+  });
+
+  const printStyle =
+    '<style>@page{size:A4;margin:0;}@media print{html,body{margin:0!important;}}</style>';
+  if (/<\/head>/i.test(output)) {
+    output = output.replace(/<\/head>/i, `${printStyle}</head>`);
+  } else {
+    output = `${printStyle}${output}`;
+  }
+
+  return output;
+};
+
 export default function SalesQuotationPrintPage() {
   const router = useRouter();
   const contentRef = useRef(null);
+  const iframeRef = useRef(null);
   const salesQuotationId = router.query.id;
   const documentNumber = router.query.documentNumber;
 
@@ -60,6 +124,9 @@ export default function SalesQuotationPrintPage() {
   const [warehouseData, setWarehouseData] = useState(null);
   const [loadingSalesQuotation, setLoadingSalesQuotation] = useState(true);
   const [sidebarLogo, setSidebarLogo] = useState("");
+  const [templateHtml, setTemplateHtml] = useState("");
+  const [isTemplateCustomized, setIsTemplateCustomized] = useState(false);
+  const [iframeHeight, setIframeHeight] = useState(1123);
 
   const { companyData } = useLoggedUserCompanyLetterhead();
 
@@ -181,6 +248,38 @@ export default function SalesQuotationPrintPage() {
     fetchSidebarLogo();
   }, [salesQuotationData?.warehouseId]);
 
+  // Load the customizable Sales Quotation HTML template. Only a saved (customized)
+  // template overrides the built-in layout; otherwise the default React layout is used.
+  useEffect(() => {
+    const fetchTemplate = async () => {
+      try {
+        const token =
+          typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+        const response = await fetch(
+          `${BASE_URL}/ReportTemplate/GetReportTemplateByKey?reportKey=${REPORT_KEY}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          }
+        );
+
+        const data = await response.json().catch(() => null);
+        if (response.ok && data && data.isCustomized && data.htmlContent) {
+          setTemplateHtml(data.htmlContent);
+          setIsTemplateCustomized(true);
+        }
+      } catch (error) {
+        console.error("Error fetching sales quotation report template:", error);
+      }
+    };
+
+    fetchTemplate();
+  }, []);
+
   const lineItems = salesQuotationData?.salesQuotationLines ?? [];
   const companyAddressLines = useMemo(
     () =>
@@ -212,9 +311,6 @@ export default function SalesQuotationPrintPage() {
     return lines;
   }, [companyData?.contactNumber, warehouseData]);
 
-  const companyLogoSrc =
-    sidebarLogo || (ProjectNo === 1 ? "/images/cbass.png" : "/images/db-logo.png");
-
   const quotationPages = useMemo(() => {
     if (lineItems.length === 0) {
       return [[]];
@@ -238,10 +334,201 @@ export default function SalesQuotationPrintPage() {
     [lineItems]
   );
 
-  const grossTotal = Number(salesQuotationData?.grossTotal ?? 0);
-  const netTotal = Number(salesQuotationData?.netTotal ?? 0);
+  const sumLineTotals = useMemo(
+    () =>
+      lineItems.reduce((sum, item) => sum + Number(item.lineTotal ?? item.LineTotal ?? 0), 0),
+    [lineItems]
+  );
+
+  const grossHeader = Number(salesQuotationData?.grossTotal ?? salesQuotationData?.GrossTotal ?? 0);
+  const rawLineDisc = salesQuotationData?.lineDiscountTotal ?? salesQuotationData?.LineDiscountTotal;
+  const lineDiscountFromHeader = Number(rawLineDisc);
+  const storedLineDisc =
+    Number.isFinite(lineDiscountFromHeader) && !Number.isNaN(lineDiscountFromHeader)
+      ? lineDiscountFromHeader
+      : 0;
+  const derivedLineDisc = Math.max(0, Number((grossHeader - sumLineTotals).toFixed(2)));
+  const lineDisc = Math.max(storedLineDisc, derivedLineDisc);
+  const merchandiseTotal = Number(sumLineTotals.toFixed(2));
+  const orderDiscountAmount = Number(
+    salesQuotationData?.orderDiscountAmount ?? salesQuotationData?.OrderDiscountAmount ?? 0
+  );
+  const orderDiscountPercent = Number(
+    salesQuotationData?.orderDiscountPercent ?? salesQuotationData?.OrderDiscountPercent ?? 0
+  );
+  const finalNetTotal = Number(
+    salesQuotationData?.netTotal ?? salesQuotationData?.NetTotal ?? 0
+  );
+
+  const showLineDiscountRow = lineDisc >= 0.01;
+  const showOrderDiscountRow = orderDiscountAmount >= 0.01;
+  const hasStoredLineDiscountColumn =
+    Number.isFinite(lineDiscountFromHeader) && !Number.isNaN(lineDiscountFromHeader);
+  /** Older quotations: no split columns; one combined discount between subtotal and net. */
+  const legacyCombinedDiscount =
+    !hasStoredLineDiscountColumn &&
+    !showOrderDiscountRow &&
+    !showLineDiscountRow &&
+    Math.max(0, grossHeader - finalNetTotal) >= 0.01;
+  const legacyDiscountAmount = Math.max(0, Number((grossHeader - finalNetTotal).toFixed(2)));
+  const showMerchandiseTotalRow =
+    showOrderDiscountRow || Math.abs(merchandiseTotal - finalNetTotal) >= 0.01;
+
+  const tokenMap = useMemo(
+    () => ({
+      companyLogo: sidebarLogo
+        ? `<img src="${escapeHtml(sidebarLogo)}" alt="Company Logo" />`
+        : "",
+      companyName: companyData?.name || warehouseData?.name || "Company",
+      companyAddress: companyAddressLines.join(", "),
+      companyContact: companyContactLines.join("  |  "),
+      documentNo: salesQuotationData?.documentNo || documentNumber || "-",
+      customerName: salesQuotationData?.customerName || "-",
+      quotationDate: formatDisplayDate(salesQuotationData?.documentDate),
+      warehouseName: salesQuotationData?.warehouseName || warehouseData?.name || "-",
+      salesPerson: salesQuotationData?.salesPersonName || "-",
+      remark: salesQuotationData?.remark || "-",
+      totalQty: formatQty(totalQty),
+      subTotal: formatAmount(grossHeader),
+      netTotal: formatAmount(finalNetTotal),
+    }),
+    [
+      sidebarLogo,
+      companyData?.name,
+      warehouseData?.name,
+      companyAddressLines,
+      companyContactLines,
+      salesQuotationData,
+      documentNumber,
+      totalQty,
+      grossHeader,
+      finalNetTotal,
+    ]
+  );
+
+  const finalHtml = useMemo(() => {
+    if (!isTemplateCustomized || !templateHtml || !salesQuotationData) {
+      return "";
+    }
+    return applyTemplate(templateHtml, tokenMap, buildLineItemsRows(lineItems));
+  }, [isTemplateCustomized, templateHtml, salesQuotationData, tokenMap, lineItems]);
+
+  const usingCustomTemplate = Boolean(finalHtml);
+
+  const resizeIframe = () => {
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    if (!doc || !doc.documentElement) {
+      return;
+    }
+    const height = Math.max(
+      doc.documentElement.scrollHeight,
+      doc.body ? doc.body.scrollHeight : 0
+    );
+    if (height > 0) {
+      setIframeHeight(height);
+    }
+  };
+
+  const handleIframeLoad = () => {
+    resizeIframe();
+    setTimeout(resizeIframe, 300);
+  };
+
+  const handleDownloadTemplatePDF = async () => {
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    if (!doc) {
+      toast.error("Nothing to export yet.");
+      return;
+    }
+
+    try {
+      const target = doc.querySelector(".page") || doc.body;
+
+      const images = target.querySelectorAll("img");
+      await Promise.all(
+        Array.from(images).map((img) => {
+          if (img.complete) {
+            return Promise.resolve();
+          }
+          return new Promise((resolve) => {
+            img.onload = resolve;
+            img.onerror = resolve;
+            setTimeout(resolve, 2000);
+          });
+        })
+      );
+
+      const html2canvas = (await import("html2canvas")).default;
+      const { jsPDF } = await import("jspdf");
+
+      const canvas = await html2canvas(target, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+      });
+
+      const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+      const pageWidthMm = 210;
+      const pageHeightMm = 297;
+      const pxPerMm = canvas.width / pageWidthMm;
+      const pageHeightPx = Math.floor(pageHeightMm * pxPerMm);
+
+      let renderedHeight = 0;
+      let pageIndex = 0;
+
+      while (renderedHeight < canvas.height) {
+        const sliceHeight = Math.min(pageHeightPx, canvas.height - renderedHeight);
+
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceHeight;
+
+        const ctx = pageCanvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        ctx.drawImage(
+          canvas,
+          0,
+          renderedHeight,
+          canvas.width,
+          sliceHeight,
+          0,
+          0,
+          canvas.width,
+          sliceHeight
+        );
+
+        const imgData = pageCanvas.toDataURL("image/jpeg", 0.98);
+        const sliceHeightMm = sliceHeight / pxPerMm;
+
+        if (pageIndex > 0) {
+          pdf.addPage();
+        }
+        pdf.addImage(imgData, "JPEG", 0, 0, pageWidthMm, sliceHeightMm);
+
+        renderedHeight += sliceHeight;
+        pageIndex += 1;
+      }
+
+      pdf.save(
+        `Sales_Quotation_${salesQuotationData?.documentNo || documentNumber || "document"}.pdf`
+      );
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast.error("Failed to download PDF. Please try again.");
+    }
+  };
 
   const handleDownloadPDF = async () => {
+    if (usingCustomTemplate) {
+      await handleDownloadTemplatePDF();
+      return;
+    }
+
     if (!contentRef.current) {
       return;
     }
@@ -306,6 +593,11 @@ export default function SalesQuotationPrintPage() {
   };
 
   const handlePrint = () => {
+    if (usingCustomTemplate && iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.focus();
+      iframeRef.current.contentWindow.print();
+      return;
+    }
     if (typeof window !== "undefined") {
       window.print();
     }
@@ -368,12 +660,52 @@ export default function SalesQuotationPrintPage() {
         <Box sx={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid #333", p: { xs: "8px 4px", sm: "10px 6px" } }}>
           <Box sx={{ width: { xs: "60%", sm: "35%" } }}>
             <Box display="flex" justifyContent="space-between" mb={0.5}>
-              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 700 }}>Gross Total</Typography>
-              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 700 }}>{formatAmount(grossTotal)}</Typography>
+              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 700 }}>Sub Total</Typography>
+              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 700 }}>
+                {formatAmount(grossHeader)}
+              </Typography>
             </Box>
+            {showLineDiscountRow && (
+              <Box display="flex" justifyContent="space-between" mb={0.5}>
+                <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 600 }}>Line Discount</Typography>
+                <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 600 }}>
+                  {formatAmount(lineDisc)}
+                </Typography>
+              </Box>
+            )}
+            {showMerchandiseTotalRow && (
+              <Box display="flex" justifyContent="space-between" mb={0.5}>
+                <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 600 }}>Total</Typography>
+                <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 600 }}>
+                  {formatAmount(merchandiseTotal)}
+                </Typography>
+              </Box>
+            )}
+            {showOrderDiscountRow && (
+              <>
+                <Box display="flex" justifyContent="space-between" mb={0.5}>
+                  <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 600 }}>
+                    Order Discount ({Number(orderDiscountPercent.toFixed(2))}%)
+                  </Typography>
+                  <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 600 }}>
+                    {formatAmount(orderDiscountAmount)}
+                  </Typography>
+                </Box>
+              </>
+            )}
+            {legacyCombinedDiscount && (
+              <Box display="flex" justifyContent="space-between" mb={0.5}>
+                <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 600 }}>Discount</Typography>
+                <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.8rem" }, fontWeight: 600 }}>
+                  {formatAmount(legacyDiscountAmount)}
+                </Typography>
+              </Box>
+            )}
             <Box display="flex" justifyContent="space-between" pt={0.5} borderTop="2px solid #333">
-              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.84rem" }, fontWeight: 700 }}>Net Total</Typography>
-              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.84rem" }, fontWeight: 700 }}>{formatAmount(netTotal)}</Typography>
+              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.84rem" }, fontWeight: 700 }}>Gross Total</Typography>
+              <Typography sx={{ fontSize: { xs: "0.56rem", sm: "0.84rem" }, fontWeight: 700 }}>
+                {formatAmount(finalNetTotal)}
+              </Typography>
             </Box>
           </Box>
         </Box>
@@ -394,13 +726,7 @@ export default function SalesQuotationPrintPage() {
           pb: 2,
         }}
       >
-        <Box sx={{ width: { xs: "135px", sm: "220px" }, flexShrink: 0 }}>
-          <img
-            src={companyLogoSrc}
-            alt="Company logo"
-            style={{ width: "100%", height: "auto", objectFit: "contain" }}
-          />
-        </Box>
+        <PrintCompanyLogo src={sidebarLogo} />
         <Box sx={{ flex: 1, textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
           <Typography sx={{ fontWeight: 700, fontSize: { xs: "1rem", sm: "1.25rem" }, lineHeight: 1.2 }}>
             {companyData?.name || warehouseData?.name || "Company"}
@@ -550,6 +876,28 @@ export default function SalesQuotationPrintPage() {
               </Typography>
             </Box>
           ) : salesQuotationData ? (
+            usingCustomTemplate ? (
+              <Box
+                component="iframe"
+                ref={iframeRef}
+                title="Sales Quotation Print Preview"
+                srcDoc={finalHtml}
+                onLoad={handleIframeLoad}
+                sx={{
+                  width: { xs: "100%", sm: "210mm" },
+                  maxWidth: "100%",
+                  height: `${iframeHeight}px`,
+                  margin: "0 auto",
+                  border: "none",
+                  backgroundColor: "#fff",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+                  "@media print": {
+                    boxShadow: "none",
+                    width: "100%",
+                  },
+                }}
+              />
+            ) : (
             quotationPages.map((items, pageIndex) => {
               const isLastPage = pageIndex === quotationPages.length - 1;
 
@@ -586,21 +934,11 @@ export default function SalesQuotationPrintPage() {
                   <Box sx={{ position: "relative", width: "100%", mx: "auto", boxSizing: "border-box", backgroundColor: "transparent", flex: 1 }}>
                     {renderPageContent(items, pageIndex, isLastPage)}
                   </Box>
-                  <Typography
-                    sx={{
-                      mt: 2,
-                      pt: 1,
-                      borderTop: "1px solid #d9d9d9",
-                      textAlign: "center",
-                      fontSize: { xs: "0.62rem", sm: "0.8rem" },
-                      fontWeight: 600,
-                    }}
-                  >
-                    Powered By : CBASS-AI
-                  </Typography>
+                  <PrintPoweredByFooter />
                 </Box>
               );
             })
+            )
           ) : (
             <Box
               sx={{

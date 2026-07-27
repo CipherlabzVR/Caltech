@@ -392,6 +392,20 @@ const handleDeleteRow = (index) => {
     }
   };
 
+  const applyCustomerAddress = (newValue) => {
+    if (newValue) {
+      setAddress1(newValue.addressLine1 || "");
+      setAddress2(newValue.addressLine2 || "");
+      setAddress3(newValue.addressLine3 || "");
+      setAddress4(newValue.addressLine4 || "");
+    } else {
+      setAddress1("");
+      setAddress2("");
+      setAddress3("");
+      setAddress4("");
+    }
+  };
+
   const fetchOutstandingAmount = async (customerId) => {
     if (!customerId) {
       toast.error("Customer ID is required.");
@@ -671,6 +685,7 @@ const handleDeleteRow = (index) => {
                       setInvoice("");
                       setSelectedInvoice(null);
                       setInvoicesForCustomer([]);
+                      applyCustomerAddress(newValue);
                       if (newValue) fetchOutstandingAmount(newValue.id);
                     }}
                     renderInput={(params) => (

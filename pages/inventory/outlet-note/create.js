@@ -11,6 +11,7 @@ import SearchItemByName from "@/components/utils/SearchItemByName";
 import BASE_URL from "Base/api";
 import { toast } from "react-toastify";
 import GetAllSuppliers from "@/components/utils/GetAllSuppliers";
+import LoadingButton from "@/components/UIElements/Buttons/LoadingButton";
 
 const style = {
   position: "absolute",
@@ -40,6 +41,8 @@ export default function AddOutlet({ fetchItems, isExpDateAvailable, isBatchAvail
   const [selectedItem, setSelectedItem] = useState({});
   const { data: supplierList } = GetAllSuppliers();
   const [supplierInfo, setSupplierInfo] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDisable, setIsDisable] = useState(false);
 
   useEffect(() => {
     if (supplierList) {
@@ -54,11 +57,18 @@ export default function AddOutlet({ fetchItems, isExpDateAvailable, isBatchAvail
   const handleClose = () => {
     setOpen(false);
     setSelectedItem(null);
+    setAddedQuantityValue(0);
+    setIsDisable(false);
+    setIsSubmitting(false);
   };
   const handleSecondClose = () => setOpenSecond(false);
   const searchRef = useRef(null);
 
   const handleOpen = async () => {
+    setSelectedItem(null);
+    setAddedQuantityValue(0);
+    setIsDisable(false);
+    setIsSubmitting(false);
     setOpen(true);
   };
   const handleAddItem = async (item) => {
@@ -102,7 +112,10 @@ export default function AddOutlet({ fetchItems, isExpDateAvailable, isBatchAvail
 
   }
 
-  const handleSubmit = (values) => {
+  const handleSubmit = async (values) => {
+    if (isSubmitting || isDisable) return;
+    setIsSubmitting(true);
+    const token = localStorage.getItem("token");
     const data = {
       StockBalanceId: selectedItem?.stockBalanceId,
       SequenceNumber: selectedItem?.sequenceNumber,
@@ -120,30 +133,31 @@ export default function AddOutlet({ fetchItems, isExpDateAvailable, isBatchAvail
       SupplierID: selectedItem?.supplierID,
       SupplierName: supplierInfo[selectedItem?.supplierID]?.name || "-",
     };
-    const token = localStorage.getItem("token");
-    fetch(`${BASE_URL}/Outlet/AddOutletStock`, {
-      method: "POST",
-      body: JSON.stringify(data),
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.statusCode == 200) {
-          toast.success(data.message);
-          setOpen(false);
-          setSelectedItem(null);
-          setAddedQuantityValue(0);
-          fetchItems();
-        } else {
-          toast.error(data.message);
-        }
-      })
-      .catch((error) => {
-        toast.error(error.message || "");
+    try {
+      const response = await fetch(`${BASE_URL}/Outlet/AddOutletStock`, {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       });
+      const json = await response.json();
+      if (json.statusCode == 200) {
+        toast.success(json.message);
+        setOpen(false);
+        setSelectedItem(null);
+        setAddedQuantityValue(0);
+        setIsDisable(false);
+        fetchItems();
+      } else {
+        toast.error(json.message);
+      }
+    } catch (error) {
+      toast.error(error.message || "Something went wrong");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -180,7 +194,7 @@ export default function AddOutlet({ fetchItems, isExpDateAvailable, isBatchAvail
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
-            {({ errors, touched, values, setFieldValue, resetForm }) => (
+            {({ errors, touched, values, setFieldValue, resetForm, submitForm }) => (
               <Form>
                 <Grid container>
                   <Grid item xs={12}>
@@ -321,9 +335,11 @@ export default function AddOutlet({ fetchItems, isExpDateAvailable, isBatchAvail
                       >
                         Cancel
                       </Button>
-                      <Button type="submit" variant="contained" size="small">
-                        Save
-                      </Button>
+                      <LoadingButton
+                        loading={isSubmitting}
+                        handleSubmit={() => submitForm()}
+                        disabled={isDisable || isSubmitting}
+                      />
                     </Grid>
                   </Grid>
                 </Grid>

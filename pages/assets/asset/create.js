@@ -37,6 +37,7 @@ const style = {
 
 export default function AddAsset({ fetchItems }) {
   const [open, setOpen] = useState(false);
+  const [attachments, setAttachments] = useState([]);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -48,7 +49,30 @@ export default function AddAsset({ fetchItems }) {
   }, [open]);
 
   const handleOpen = () => setOpen(true);
-  const handleClose = () => setOpen(false);
+  const handleClose = () => {
+    setAttachments([]);
+    setOpen(false);
+  };
+
+  const uploadAttachments = async (assetId) => {
+    if (!assetId || attachments.length === 0) return;
+
+    const formData = new FormData();
+    attachments.forEach((file) => formData.append("Files", file));
+
+    const response = await fetch(`${BASE_URL}/assets/${assetId}/attachments`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem("token")}`,
+      },
+      body: formData,
+    });
+
+    const data = await response.json();
+    if (!response.ok || !(data.statusCode === 200 || data.isSuccess || data.status === "SUCCESS")) {
+      throw new Error(data.message || "Asset created, but attachment upload failed");
+    }
+  };
 
   const handleSubmit = async (values, { setSubmitting, resetForm }) => {
     const payload = {
@@ -100,8 +124,11 @@ export default function AddAsset({ fetchItems }) {
         response.ok &&
         (data.statusCode === 200 || data.isSuccess || data.status === "SUCCESS" || (!data.statusCode && !data.isSuccess && !data.status))
       ) {
+        const createdAssetId = data.result?.id || data.result?.Id;
+        await uploadAttachments(createdAssetId);
         toast.success(data.message || "Asset created successfully");
         resetForm();
+        setAttachments([]);
         setOpen(false);
         fetchItems();
       } else {
@@ -201,6 +228,7 @@ export default function AddAsset({ fetchItems }) {
                       onChange={(id) => setFieldValue("CategoryId", id === "" ? "" : id)}
                       error={touched.CategoryId && Boolean(errors.CategoryId)}
                       helperText={touched.CategoryId && errors.CategoryId}
+                      activeOnly
                     />
                   </Grid>
                   <Grid item xs={12} md={6}>
@@ -210,6 +238,7 @@ export default function AddAsset({ fetchItems }) {
                       onChange={(id) => setFieldValue("LocationId", id === "" ? "" : id)}
                       error={touched.LocationId && Boolean(errors.LocationId)}
                       helperText={touched.LocationId && errors.LocationId}
+                      activeOnly
                     />
                   </Grid>
 
@@ -249,6 +278,7 @@ export default function AddAsset({ fetchItems }) {
                       onChange={(code) => setFieldValue("CurrencyCode", code)}
                       error={touched.CurrencyCode && Boolean(errors.CurrencyCode)}
                       helperText={touched.CurrencyCode && errors.CurrencyCode}
+                      activeOnly
                     />
                   </Grid>
 
@@ -400,6 +430,24 @@ export default function AddAsset({ fetchItems }) {
                       error={touched.Notes && Boolean(errors.Notes)}
                       helperText={touched.Notes && errors.Notes}
                     />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" color="primary" sx={{ mt: 1 }}>Attachments</Typography>
+                    <Button variant="outlined" component="label" sx={{ mt: 1 }}>
+                      Choose Files
+                      <input
+                        hidden
+                        multiple
+                        type="file"
+                        onChange={(event) => setAttachments(Array.from(event.target.files || []))}
+                      />
+                    </Button>
+                    {attachments.length > 0 && (
+                      <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                        {attachments.map((file) => file.name).join(", ")}
+                      </Typography>
+                    )}
                   </Grid>
 
                   {/* Buttons */}

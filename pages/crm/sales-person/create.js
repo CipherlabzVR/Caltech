@@ -85,44 +85,45 @@ export default function AddSalesPerson({ fetchItems }) {
     }
   };
 
-  const handleSubmit = (values) => {
+  const handleSubmit = async (values, { setSubmitting }) => {
     const token = localStorage.getItem("token");
     const formData = new FormData();
-    
+
     Object.keys(values).forEach((key) => {
       if (values[key] !== null && values[key] !== undefined) {
         formData.append(key, values[key]);
       }
     });
-    
+
     if (signatureImage) {
       formData.append("SignatureImage", signatureImage);
     } else {
       formData.append("SignatureImage", "");
     }
 
-    fetch(`${BASE_URL}/SalesPerson/CreateSalesPerson`, {
-      method: "POST",
-      body: formData,
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.statusCode == 200) {
-          toast.success(data.message);
-          setOpen(false);
-          setSignatureImage(null);
-          setSignaturePreview(null);
-          fetchItems();
-        } else {
-          toast.error(data.message);
-        }
-      })
-      .catch((error) => {
-        toast.error(error.message || "");
+    try {
+      const response = await fetch(`${BASE_URL}/SalesPerson/CreateSalesPerson`, {
+        method: "POST",
+        body: formData,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
+      const data = await response.json();
+      if (data.statusCode == 200) {
+        toast.success(data.message);
+        setOpen(false);
+        setSignatureImage(null);
+        setSignaturePreview(null);
+        fetchItems();
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      toast.error(error.message || "");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -152,7 +153,7 @@ export default function AddSalesPerson({ fetchItems }) {
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
-            {({ errors, touched, values, setFieldValue }) => (
+            {({ errors, touched, values, setFieldValue, isSubmitting }) => (
               <Form>
                 <Box>
                   <Grid spacing={1} container>
@@ -375,11 +376,12 @@ export default function AddSalesPerson({ fetchItems }) {
                     variant="contained"
                     color="error"
                     onClick={handleClose}
+                    disabled={isSubmitting}
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" variant="contained">
-                    Save
+                  <Button type="submit" variant="contained" disabled={isSubmitting}>
+                    {isSubmitting ? "Saving…" : "Save"}
                   </Button>
                 </Box>
               </Form>

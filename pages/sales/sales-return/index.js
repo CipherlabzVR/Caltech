@@ -9,7 +9,8 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
-import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Button } from "@mui/material";
+import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Button, Tooltip, IconButton, Box } from "@mui/material";
+import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import { toast, ToastContainer } from "react-toastify";
 import BASE_URL from "Base/api";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
@@ -79,6 +80,19 @@ export default function SalesReturn() {
         fetchSalesReturnList();
     }, []);
 
+    const openSalesReturnPrintPopup = (item) => {
+        const query = new URLSearchParams({
+            id: String(item.id ?? ""),
+            documentNumber: item.documentNo ?? "",
+        });
+
+        window.open(
+            `/sales/sales-return/print?${query.toString()}`,
+            `sales-return-print-${item.id}`,
+            "popup=yes,width=1200,height=900,scrollbars=yes,resizable=yes"
+        );
+    };
+
     const navigateToCreate = () => {
         if (shiftResult) {
             toast.warning(shiftMessage);
@@ -129,12 +143,13 @@ export default function SalesReturn() {
                                     <TableCell>Invoice No</TableCell>
                                     <TableCell>Payment Type</TableCell>
                                     <TableCell>Return Amount</TableCell>
+                                    <TableCell align="right">Action</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
                                 {salesReturnList.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={6} align="center">
+                                        <TableCell colSpan={7} align="center">
                                             <Typography color="error">No Sales Returns Available</Typography>
                                         </TableCell>
                                     </TableRow>
@@ -147,6 +162,21 @@ export default function SalesReturn() {
                                             <TableCell>{item.invoiceNo}</TableCell>
                                             <TableCell>{getPaymentMethods(item.paymentType)}</TableCell>
                                             <TableCell>{formatCurrency(item.returnAmount)}</TableCell>
+                                            <TableCell align="right">
+                                                {print ? (
+                                                    <Tooltip title="Print (Default)" placement="top">
+                                                        <IconButton
+                                                            aria-label="print default"
+                                                            size="small"
+                                                            onClick={() => openSalesReturnPrintPopup(item)}
+                                                        >
+                                                            <LocalPrintshopIcon color="action" fontSize="medium" />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                ) : (
+                                                    ""
+                                                )}
+                                            </TableCell>
                                         </TableRow>
                                     ))
                                 )}

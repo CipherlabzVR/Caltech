@@ -3,6 +3,7 @@ import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -14,6 +15,8 @@ import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import { useRouter } from "next/router";
 import BASE_URL from "Base/api";
 import { DashboardHeader } from "@/components/shared/dashboard-header";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function SelectColler() {
   const router = useRouter();
@@ -24,6 +27,7 @@ export default function SelectColler() {
   const [fullClrId, setFullClrId] = useState();
   const [isChineseCLRSelected, setIsChineseCLRSelected] = useState(false);
   const [chineseClrId, setChineseClrId] = useState();
+  const [validationError, setValidationError] = useState("");
 
   const fetchInquiryById = async () => {
     try {
@@ -48,10 +52,50 @@ export default function SelectColler() {
   };
 
   useEffect(() => {
-    if (inqId,optId) {
+    if (inqId && optId) {
       fetchInquiryById();
     }
-  }, []);
+  }, [inqId, optId]);
+
+  const getCollerValidationMessage = () => {
+    if (!isFullCLRSelected && !isChineseCLRSelected) {
+      return "Please select a coller option before proceeding.";
+    }
+    if (isFullCLRSelected && isChineseCLRSelected) {
+      return "Please select only one coller option.";
+    }
+    return "";
+  };
+
+  const deleteNeckTypeById = async (id) => {
+    if (!id) return;
+    const response = await fetch(
+      `${BASE_URL}/InquiryNeck/DeleteNeckTypes?id=${id}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    if (!response.ok) {
+      throw new Error("Failed to delete neck type");
+    }
+  };
+
+  const deselectOtherColler = async (selected) => {
+    if (selected === "full" && isChineseCLRSelected && chineseClrId) {
+      await deleteNeckTypeById(chineseClrId);
+      setIsChineseCLRSelected(false);
+      setChineseClrId(undefined);
+    }
+    if (selected === "chinese" && isFullCLRSelected && fullClrId) {
+      await deleteNeckTypeById(fullClrId);
+      setIsFullCLRSelected(false);
+      setFullClrId(undefined);
+    }
+  };
 
   const fetchFullColor = async (inquiryId, optionId, windowType) => {
     try {
@@ -115,6 +159,15 @@ export default function SelectColler() {
 
   const saveDefaultSleeveAndNext = async () => {
     if (!inquiry) return;
+
+    const message = getCollerValidationMessage();
+    if (message) {
+      setValidationError(message);
+      toast.error(message);
+      return;
+    }
+
+    setValidationError("");
     try {
       await fetch(
         `${BASE_URL}/InquirySleeve/AddOrUpdateSleeve`,
@@ -148,107 +201,114 @@ export default function SelectColler() {
   };
 
   const handleFullCLRChange = async (event, value) => {
-    setIsFullCLRSelected(event.target.checked);
     const isChecked = event.target.checked;
-    if (isChecked) {
-      const response = await fetch(
-        `${BASE_URL}/InquiryNeck/AddOrUpdateNeckType`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            InquiryID: inquiry.inquiryId,
-            InqCode: inquiry.inquiryCode,
-            OptionId: inquiry.optionId,
-            InqOptionName: inquiry.optionName,
-            WindowType: inquiry.windowType,
-            NecKTypes: 4,
-            NeckFirstRows: 10,
-            Neck2ndRowS: 9,
-            Neck3rdRowS: 6,
-            POLOlength: String(0),
-            POLOWidth: String(0),
-            POLOButton: String(0),
-          }),
-        }
-      );
+    setValidationError("");
 
-      if (!response.ok) {
-        throw new Error("Failed to delete fabric");
+    if (isChecked) {
+      try {
+        await deselectOtherColler("full");
+        const response = await fetch(
+          `${BASE_URL}/InquiryNeck/AddOrUpdateNeckType`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              InquiryID: inquiry.inquiryId,
+              InqCode: inquiry.inquiryCode,
+              OptionId: inquiry.optionId,
+              InqOptionName: inquiry.optionName,
+              WindowType: inquiry.windowType,
+              NecKTypes: 4,
+              NeckFirstRows: 10,
+              Neck2ndRowS: 9,
+              Neck3rdRowS: 6,
+              POLOlength: String(0),
+              POLOWidth: String(0),
+              POLOButton: String(0),
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to save coller");
+        }
+        setIsFullCLRSelected(true);
+        fetchFullColor(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
+      } catch (error) {
+        console.error(error);
+        setIsFullCLRSelected(false);
       }
     } else {
-      const response = await fetch(
-        `${BASE_URL}/InquiryNeck/DeleteNeckTypes?id=${value}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to delete fabric");
+      try {
+        await deleteNeckTypeById(value);
+        setIsFullCLRSelected(false);
+        setFullClrId(undefined);
+      } catch (error) {
+        console.error(error);
+        setIsFullCLRSelected(true);
       }
     }
   };
 
   const handleChineseCLRChange = async (event, value) => {
-    setIsChineseCLRSelected(event.target.checked);
     const isChecked = event.target.checked;
-    if (isChecked) {
-      const response = await fetch(
-        `${BASE_URL}/InquiryNeck/AddOrUpdateNeckType`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            InquiryID: inquiry.inquiryId,
-            InqCode: inquiry.inquiryCode,
-            OptionId: inquiry.optionId,
-            InqOptionName: inquiry.optionName,
-            WindowType: inquiry.windowType,
-            NecKTypes: 5,
-            NeckFirstRows: 10,
-            Neck2ndRowS: 9,
-            Neck3rdRowS: 6,
-            POLOlength: String(0),
-            POLOWidth: String(0),
-            POLOButton: String(0),
-          }),
-        }
-      );
+    setValidationError("");
 
-      if (!response.ok) {
-        throw new Error("Failed to delete fabric");
+    if (isChecked) {
+      try {
+        await deselectOtherColler("chinese");
+        const response = await fetch(
+          `${BASE_URL}/InquiryNeck/AddOrUpdateNeckType`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              InquiryID: inquiry.inquiryId,
+              InqCode: inquiry.inquiryCode,
+              OptionId: inquiry.optionId,
+              InqOptionName: inquiry.optionName,
+              WindowType: inquiry.windowType,
+              NecKTypes: 5,
+              NeckFirstRows: 10,
+              Neck2ndRowS: 9,
+              Neck3rdRowS: 6,
+              POLOlength: String(0),
+              POLOWidth: String(0),
+              POLOButton: String(0),
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to save coller");
+        }
+        setIsChineseCLRSelected(true);
+        fetchChineseColor(inquiry.inquiryId, inquiry.optionId, inquiry.windowType);
+      } catch (error) {
+        console.error(error);
+        setIsChineseCLRSelected(false);
       }
     } else {
-      const response = await fetch(
-        `${BASE_URL}/InquiryNeck/DeleteNeckTypes?id=${value}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to delete fabric");
+      try {
+        await deleteNeckTypeById(value);
+        setIsChineseCLRSelected(false);
+        setChineseClrId(undefined);
+      } catch (error) {
+        console.error(error);
+        setIsChineseCLRSelected(true);
       }
     }
   };
 
   return (
     <>
+      <ToastContainer />
       <DashboardHeader
         customerName={inquiry ? inquiry.customerName : ""}
         optionName={inquiry ? inquiry.optionName : ""}
@@ -281,6 +341,11 @@ export default function SelectColler() {
             </Button>
           </Box>
         </Grid>
+        {validationError && (
+          <Grid item xs={12} p={1}>
+            <Alert severity="error">{validationError}</Alert>
+          </Grid>
+        )}
         <Grid item xs={12}>
           <Grid container>
             <Grid item xs={12} p={1}>

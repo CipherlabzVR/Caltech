@@ -25,6 +25,7 @@ import { toast, ToastContainer } from "react-toastify";
 import { useRouter } from "next/router";
 import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
+import DescriptionIcon from "@mui/icons-material/Description";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
@@ -38,7 +39,7 @@ import { Report } from "Base/report";
 
 const GrnReturn = () => {
   const cId = sessionStorage.getItem("category");
-  const { navigate, create, print } = IsPermissionEnabled(cId);
+  const { navigate, create, print, customPrint, whatsAppShare } = IsPermissionEnabled(cId);
   const name = localStorage.getItem("name");
   const { data: IsSupplierSalesRef } =
     IsAppSettingEnabled("IsSupplierSalesRef");
@@ -54,6 +55,19 @@ const GrnReturn = () => {
     router.push({
       pathname: "/inventory/grn-return/create",
     });
+  };
+
+  const openReturnPrintPopup = (item) => {
+    const query = new URLSearchParams({
+      id: String(item.id ?? ""),
+      documentNumber: item.documentNo ?? "",
+    });
+
+    window.open(
+      `/inventory/grn-return/print?${query.toString()}`,
+      `grn-return-print-${item.id}`,
+      "popup=yes,width=1200,height=900,scrollbars=yes,resizable=yes"
+    );
   };
 
   const {
@@ -188,24 +202,45 @@ const GrnReturn = () => {
                         <TableCell>{item.remark}</TableCell>
                         <TableCell align="right">
                           <Box display="flex" justifyContent="end" gap={1}>
-                            <ShareReports
-                              url={whatsapp}
-                              mobile={item.supplierMobileNo}
-                            />
-                            {print ? (
-                              <Tooltip title="Print" placement="top">
+                            {whatsAppShare ? (
+                              <ShareReports
+                                url={whatsapp}
+                                mobile={item.supplierMobileNo}
+                              />
+                            ) : ""}
+                            {customPrint ? (
+                              <Tooltip title="Print (Custom)" placement="top">
                                 <a
                                   href={`${Report}` + reportLink}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                 >
-                                  <IconButton aria-label="print" size="small">
-                                    <LocalPrintshopIcon
-                                      color="primary"
+                                  <IconButton
+                                    aria-label="print custom"
+                                    size="small"
+                                  >
+                                    <DescriptionIcon
+                                      color="action"
                                       fontSize="medium"
                                     />
                                   </IconButton>
                                 </a>
+                              </Tooltip>
+                            ) : (
+                              ""
+                            )}
+                            {print ? (
+                              <Tooltip title="Print (Default)" placement="top">
+                                <IconButton
+                                  aria-label="print default"
+                                  size="small"
+                                  onClick={() => openReturnPrintPopup(item)}
+                                >
+                                  <LocalPrintshopIcon
+                                    color="primary"
+                                    fontSize="medium"
+                                  />
+                                </IconButton>
                               </Tooltip>
                             ) : (
                               ""

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
@@ -17,56 +17,100 @@ import DialogContent from "@mui/material/DialogContent";
 import TextField from "@mui/material/TextField";
 import DialogTitle from "@mui/material/DialogTitle";
 import Grid from "@mui/material/Grid";
-import { Field, Form, Formik, setFieldValue } from "formik";
+import { Field, FieldArray, Form, Formik } from "formik";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import * as Yup from "yup";
 import BASE_URL from "Base/api";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
+import {
+  getNicBirthYearErrorMessage,
+  getDateOfBirthYearErrorMessage,
+  normalizeNicInput,
+} from "@/components/utils/nicBirthYearValidation";
+import { isValidContactPhone } from "@/components/utils/contactPhoneValidation";
 
-const getValidationSchema = (isCustomerNICRequired, isCustomerCreditLimitRequired) => Yup.object().shape({
+const getValidationSchema = (
+  isCustomerNICRequired,
+  isCustomerCreditLimitRequired,
+  birthdateForValidation = "",
+  isSimpleCustomerForm = false
+) => {
+  const creditLimitSchema = isSimpleCustomerForm
+    ? Yup.number().nullable()
+    : isCustomerCreditLimitRequired
+      ? Yup.number()
+          .required("Credit Limit is required")
+          .moreThan(0, "Credit Limit must be greater than 0")
+      : Yup.number().min(0, "Credit Limit must be a positive number").nullable();
+
+  const nicSchema = isSimpleCustomerForm
+    ? Yup.string()
+    : Yup.string()
+        .test("nic-format", function (value) {
+          const digits = String(value ?? "").replace(/\D/g, "");
+          if (digits.length === 0) {
+            if (isCustomerNICRequired) {
+              return this.createError({ message: "NIC is required" });
+            }
+            return true;
+          }
+          if (!/^\d{9}(\d{3})?$/.test(digits)) {
+            return this.createError({ message: "Invalid NIC" });
+          }
+          return true;
+        })
+        .test("nic-birth-year", function (value) {
+          const digits = String(value ?? "").replace(/\D/g, "");
+          if (digits.length === 0 || !/^\d{9}(\d{3})?$/.test(digits)) {
+            return true;
+          }
+          const msg = getNicBirthYearErrorMessage(digits);
+          if (msg) return this.createError({ message: msg });
+          return true;
+        });
+
+  const dateOfBirthSchema = isSimpleCustomerForm
+    ? Yup.mixed().nullable()
+    : Yup.mixed()
+        .nullable()
+        .test("dob-year-plausible", function () {
+          const raw =
+            (birthdateForValidation && String(birthdateForValidation).trim()) ||
+            (this.parent.DateOfBirth && String(this.parent.DateOfBirth).trim()) ||
+            "";
+          if (!raw) return true;
+          const msg = getDateOfBirthYearErrorMessage(raw);
+          if (msg) return this.createError({ message: msg });
+          return true;
+        });
+
+  return Yup.object().shape({
   Title: Yup.string().required("Title is required"),
-  FirstName: Yup.string().required("First Name is required"),
-  LastName: Yup.string(),
-  AddressLine1: Yup.string().required("Address Line 1 is required"),
-  AddressLine2: Yup.string(),
-  AddressLine3: Yup.string(),
+  FirstName: Yup.string().required("First Name is required").max(200, "First Name must be 200 characters or less"),
+  LastName: Yup.string().max(200, "Last Name must be 200 characters or less"),
+  DisplayName: Yup.string().max(100, "Display Name must be 100 characters or less"),
+  AddressLine1: Yup.string().required("Address Line 1 is required").max(250, "Address Line 1 must be 250 characters or less"),
+  AddressLine2: Yup.string().max(250, "Address Line 2 must be 250 characters or less"),
+  AddressLine3: Yup.string().max(250, "Address Line 3 must be 250 characters or less"),
   Designation: Yup.string(),
   Company: Yup.string(),
-  CreditLimit: isCustomerCreditLimitRequired
-    ? Yup.number()
-        .required("Credit Limit is required")
-        .moreThan(0, "Credit Limit must be greater than 0")
-    : Yup.number().min(0, "Credit Limit must be a positive number").nullable(),
-  NIC: Yup.string().test(
-    "nic-format",
-    function (value) {
-      if (!value || value.trim() === "") {
-        // If NIC is required, show error; otherwise allow empty
-        if (isCustomerNICRequired) {
-          return this.createError({ message: "NIC is required" });
-        }
-        return true; // Allow empty NIC
-      }
-      // Validate format if value is provided
-      if (!/^\d{9}(\d{3})?$/.test(value)) {
-        return this.createError({ message: "NIC must be either 9 or 12 digits long" });
-      }
-      return true;
-    }
-  ),
-  DateOfBirth: Yup.date().nullable(),
+  CreditLimit: creditLimitSchema,
+  NIC: nicSchema,
+  DateOfBirth: dateOfBirthSchema,
   CustomerContactDetails: Yup.array().of(
     Yup.object().shape({
       ContactName: Yup.string().required("Contact Name is required"),
       EmailAddress: Yup.string().email("Invalid email address"),
-      // ContactNo: Yup.string().matches(
-      //   /^\d+$/,
-      //   "Contact No must contain only digits"
-      // ),
+      ContactNo: Yup.string().test(
+        "contact-phone",
+        "Invalid contact number",
+        (value) => isValidContactPhone(value)
+      ),
     })
   ),
 });
+};
 
 const formatDate = (dateString) => {
   if (!dateString) return "";
@@ -81,18 +125,35 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
   const [open, setOpen] = React.useState(false);
   const { data: isCustomerNICRequired } = IsAppSettingEnabled("IsCustomerNICRequired");
   const { data: isCustomerCreditLimit } = IsAppSettingEnabled("IsCustomerCreditLimit");
+  const { data: isSimpleCustomerForm } = IsAppSettingEnabled("IsSimpleCustomerFormEnable");
   const [scroll, setScroll] = React.useState("paper");
   const [titleList, setTitleList] = useState([]);
   const [currencyList, setCurrencyList] = useState([]);
-  const initialLength = item.customerContactDetails.length;
-  const initialContacts = Array.from({ length: initialLength }, (_, index) => ({
-    ContactName: item.customerContactDetails[index]?.contactName || "",
-    ContactNo: item.customerContactDetails[index]?.contactNo || "",
-    EmailAddress: item.customerContactDetails[index]?.emailAddress || "",
-  }));
-  const [contacts, setContacts] = useState(initialContacts);
+  const initialCustomerContactDetails = useMemo(() => {
+    const details = item.customerContactDetails;
+    if (!details?.length) {
+      return [{ ContactName: "", ContactNo: "", EmailAddress: "" }];
+    }
+    return details.map((contact) => ({
+      ContactName: contact.contactName || "",
+      ContactNo: contact.contactNo || "",
+      EmailAddress: contact.emailAddress || "",
+    }));
+  }, [item.id]);
   const [birthdate, setBirthdate] = useState(formatDate(item.dateofBirth));
+  const [formKey, setFormKey] = useState(0);
   const [distributorList, setDistributorList] = useState([]);
+
+  const customerValidationSchema = useMemo(
+    () =>
+      getValidationSchema(
+        isCustomerNICRequired,
+        isCustomerCreditLimit,
+        birthdate,
+        isSimpleCustomerForm
+      ),
+    [isCustomerNICRequired, isCustomerCreditLimit, birthdate, isSimpleCustomerForm]
+  );
 
   const fetchDistributorList = async () => {
     try {
@@ -178,21 +239,11 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
     fetchDistributorList();
   }, []);
 
-  const handleAddContact = () => {
-    const newContact = { ContactName: "", ContactNo: "", EmailAddress: "" };
-    setContacts([...contacts, newContact]);
-  };
-
-  const handleRemoveContact = () => {
-    if (contacts.length > 1) {
-      const updatedContacts = contacts.slice(0, -1);
-      setContacts(updatedContacts);
-    }
-  };
   const handleClickOpen = (scrollType) => () => {
     setOpen(true);
     setScroll(scrollType);
-    setContacts(initialContacts);
+    setBirthdate(formatDate(item.dateofBirth));
+    setFormKey((prev) => prev + 1);
     fetchTitleList();
     fetchCurrencyList();
     fetchDistributorList();
@@ -214,16 +265,14 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
   }, [open]);
 
   const handleSubmit = (values) => {
-    values.NIC = values.NIC || "";
-    values.DateOfBirth = birthdate || null;
+    if (isSimpleCustomerForm) {
+      values.DateOfBirth = values.DateOfBirth || null;
+    } else {
+      values.NIC = normalizeNicInput(values.NIC || "");
+      values.DateOfBirth = birthdate || null;
+    }
     values.LastName = values.LastName ? values.LastName : "-";
 
-    if (values.CustomerContactDetails.length > contacts.length) {
-      values.CustomerContactDetails = values.CustomerContactDetails.slice(
-        0,
-        contacts.length
-      );
-    }
     const token = localStorage.getItem("token");
     fetch(`${BASE_URL}/Customer/UpdateCustomer`, {
       method: "POST",
@@ -242,7 +291,12 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
             fetchItems();
           }
         } else {
-          toast.error(data.message);
+          let msg = data.message || "Customer update failed.";
+          if (/inner exception|saving the entity changes/i.test(msg)) {
+            msg =
+              "Save failed: date of birth is not always inferred from the NIC. Enter the correct date of birth manually, verify the NIC, and try again.";
+          }
+          toast.error(msg);
         }
       })
       .catch((error) => {
@@ -251,50 +305,76 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
         );
       });
   };
-  const calculateBirthdateFromNIC = (value) => {
+  const calculateBirthdateFromNIC = (value, setFieldValue) => {
+    const norm = normalizeNicInput(String(value ?? ""));
+    const digits = norm.replace(/\D/g, "");
+
+    if (!norm || digits.length === 0) {
+      setBirthdate("");
+      if (setFieldValue) setFieldValue("DateOfBirth", "");
+      return;
+    }
+
+    if (digits.length !== 9 && digits.length !== 12) {
+      return;
+    }
+
     let year, number;
-    if (value.length === 9 || value.length === 12) {
-      if (value.length === 9) {
-        year = parseInt(value.slice(0, 2), 10);
-        number = parseInt(value.slice(2, 5), 10);
-        let currentYear = new Date().getFullYear();
-        let prefix = Math.floor(currentYear / 100) * 100;
-        let threshold = 50;
+    if (digits.length === 9) {
+      year = parseInt(digits.slice(0, 2), 10);
+      number = parseInt(digits.slice(2, 5), 10);
+      let currentYear = new Date().getFullYear();
+      let prefix = Math.floor(currentYear / 100) * 100;
+      let threshold = 50;
 
-        if (year <= threshold) {
-          year = prefix + year;
-        } else {
-          year = prefix - 100 + year;
-        }
-      } else if (value.length === 12) {
-        year = parseInt(value.slice(0, 4), 10);
-        number = parseInt(value.slice(4, 7), 10);
+      if (year <= threshold) {
+        year = prefix + year;
+      } else {
+        year = prefix - 100 + year;
       }
+    } else {
+      year = parseInt(digits.slice(0, 4), 10);
+      number = parseInt(digits.slice(4, 7), 10);
+    }
 
-      if (number > 500) {
-        number -= 500;
+    if (getNicBirthYearErrorMessage(norm)) {
+      setBirthdate("");
+      if (setFieldValue) setFieldValue("DateOfBirth", "");
+      return;
+    }
+
+    if (number > 500) {
+      number -= 500;
+      if (!isLeapYear(year)) {
+        number -= 1;
+      }
+    } else {
+      if (number > 59) {
         if (!isLeapYear(year)) {
           number -= 1;
         }
       }
-
-      const date = new Date(year, 0);
-      date.setDate(number);
-      const month = date.getMonth() + 1;
-      const day = date.getDate();
-      const formattedDate = `${year}-${month.toString().padStart(2, "0")}-${day
-        .toString()
-        .padStart(2, "0")}`;
-      setBirthdate(formattedDate);
-      return formattedDate;
     }
+
+    const date = new Date(year, 0);
+    date.setDate(number);
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const formattedDate = `${year}-${month.toString().padStart(2, "0")}-${day
+      .toString()
+      .padStart(2, "0")}`;
+    setBirthdate(formattedDate);
+    if (setFieldValue) setFieldValue("DateOfBirth", formattedDate);
+    return formattedDate;
   };
 
   const isLeapYear = (year) => {
     return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
   };
-  const handleChange = (event) => {
-    setBirthdate(event.target.value);
+  const handleChange = (event, setFieldValue) => {
+    const v = event.target.value;
+    setBirthdate(v);
+    if (setFieldValue) setFieldValue("DateOfBirth", v);
   };
 
 
@@ -321,6 +401,7 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
           <DialogTitle id="scroll-dialog-title">Edit Customer</DialogTitle>
           <DialogContent>
             <Formik
+              key={formKey}
               initialValues={{
                 Id: item.id || "",
                 Title: item.title || "",
@@ -337,17 +418,13 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
                 CurrencyId: item.currencyId || null,
                 CreditLimit: item.creditLimit || 0,
                 DateOfBirth: formatDate(item.dateofBirth) || "",
-                CustomerContactDetails: contacts.map((contact) => ({
-                  ContactName: contact.ContactName,
-                  EmailAddress: contact.EmailAddress,
-                  ContactNo: contact.ContactNo,
-                })),
+                CustomerContactDetails: initialCustomerContactDetails,
                 DistributorIds: item.customerDistributors?.map(d => d.distributorId) || [],
               }}
-              validationSchema={getValidationSchema(isCustomerNICRequired, isCustomerCreditLimit)}
+              validationSchema={customerValidationSchema}
               onSubmit={handleSubmit}
             >
-              {({ errors, touched, values, setFieldValue }) => (
+              {({ errors, touched, values, setFieldValue, validateField }) => (
                 <Form>
                   <Grid container spacing={2}>
                     <Grid item xs={12}></Grid>
@@ -514,6 +591,7 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
                         helperText={touched.AddressLine3 && errors.AddressLine3}
                       />
                     </Grid>
+                    {!isSimpleCustomerForm && (
                     <Grid lg={6} item xs={12}>
                       <Typography
                         component="label"
@@ -532,12 +610,20 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
                         name="NIC"
                         error={touched.NIC && Boolean(errors.NIC)}
                         helperText={touched.NIC && errors.NIC}
-                        onChange={(e) => {
-                          setFieldValue("NIC", e.target.value);
-                          calculateBirthdateFromNIC(e.target.value);
+                        onChange={async (e) => {
+                          const nicValue = normalizeNicInput(
+                            e.target.value ?? ""
+                          );
+                          await setFieldValue("NIC", nicValue, true);
+                          calculateBirthdateFromNIC(nicValue, setFieldValue);
+                          await Promise.resolve();
+                          await validateField("NIC");
+                          await validateField("DateOfBirth");
                         }}
                       />
                     </Grid>
+                    )}
+                    {!isSimpleCustomerForm && (
                     <Grid lg={6} item xs={12}>
                       <Typography
                         component="label"
@@ -560,9 +646,11 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
                         }
                         helperText={touched.DateOfBirth && errors.DateOfBirth}
                         value={birthdate}
-                        onChange={handleChange}
+                        onChange={(e) => handleChange(e, setFieldValue)}
                       />
                     </Grid>
+                    )}
+                    {!isSimpleCustomerForm && (
                     <Grid lg={6} item xs={12}>
                       <Typography
                         component="label"
@@ -599,6 +687,8 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
                         </Field>
                       </FormControl>
                     </Grid>
+                    )}
+                    {!isSimpleCustomerForm && (
                     <Grid lg={6} item xs={12}>
                       <Typography
                         component="label"
@@ -635,6 +725,8 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
                         </Field>
                       </FormControl>
                     </Grid>
+                    )}
+                    {!isSimpleCustomerForm && (
                     <Grid item lg={6} xs={12}>
                       <Typography
                         component="label"
@@ -657,6 +749,8 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
                         helperText={touched.Designation && errors.Designation}
                       />
                     </Grid>
+                    )}
+                    {!isSimpleCustomerForm && (
                     <Grid item lg={6} xs={12}>
                       <Typography
                         component="label"
@@ -681,7 +775,9 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
                         helperText={touched.CreditLimit && errors.CreditLimit}
                       />
                     </Grid>
+                    )}
 
+                    {!isSimpleCustomerForm && (
                     <Grid item xs={12}>
                       <Typography
                         component="label"
@@ -702,6 +798,8 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
                         helperText={touched.Company && errors.Company}
                       />
                     </Grid>
+                    )}
+                    {!isSimpleCustomerForm && (
                     <Grid item xs={12}>
                       <Typography
                         component="label"
@@ -739,7 +837,11 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
                         </Select>
                       </FormControl>
                     </Grid>
-                    {contacts.map((contact, index) => (
+                    )}
+                    <FieldArray name="CustomerContactDetails">
+                      {(arrayHelpers) => (
+                        <>
+                    {values.CustomerContactDetails.map((contact, index) => (
                       <React.Fragment key={index}>
                         <Grid item xs={12} md={6} lg={4}>
                           <Typography
@@ -844,13 +946,35 @@ export default function EditCustomerDialog({ fetchItems, item, chartOfAccounts }
                       justifyContent="space-between"
                       xs={12}
                     >
-                      <Button onClick={handleAddContact}>+ add new</Button>
-                      {contacts.length > 1 && (
-                        <Button color="error" onClick={handleRemoveContact}>
+                      <Button
+                        type="button"
+                        onClick={() =>
+                          arrayHelpers.push({
+                            ContactName: "",
+                            ContactNo: "",
+                            EmailAddress: "",
+                          })
+                        }
+                      >
+                        + add new
+                      </Button>
+                      {values.CustomerContactDetails.length > 1 && (
+                        <Button
+                          type="button"
+                          color="error"
+                          onClick={() =>
+                            arrayHelpers.remove(
+                              values.CustomerContactDetails.length - 1
+                            )
+                          }
+                        >
                           - Remove
                         </Button>
                       )}
                     </Grid>
+                        </>
+                      )}
+                    </FieldArray>
 
                     <Grid item xs={12}>
                       <Button

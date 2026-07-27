@@ -17,13 +17,14 @@ import {
   IconButton,
   Modal,
   Checkbox,
+  Alert,
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CachedIcon from "@mui/icons-material/Cached";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import AddGSM from "@/components/UIElements/Modal/AddGSM";
 import { useRouter } from "next/router";
-import { ToastContainer } from "react-toastify";
+import { ToastContainer, toast } from "react-toastify";
 import AddComposition from "@/components/UIElements/Modal/AddComposition";
 import AddSupplier from "pages/master/supplier/AddSupplier";
 import AddColor from "@/components/UIElements/Modal/AddColor";
@@ -72,6 +73,46 @@ export default function EditColorCode() {
 
   const [selectedFabricIndex, setSelectedFabricIndex] = useState(null);
   const [fabList, setFabList] = useState([]);
+  const [validationError, setValidationError] = useState("");
+
+  const isFieldSelected = (value) =>
+    Boolean(value && String(value).trim() && String(value).trim().toLowerCase() !== "not selected");
+
+  const getColorCodeValidationMessage = () => {
+    if (fabList.length === 0) {
+      return "Fabric is not selected.";
+    }
+
+    for (const fab of fabList) {
+      const missingFields = [];
+      if (!isFieldSelected(fab.gsmName)) missingFields.push("GSM");
+      if (!isFieldSelected(fab.compositionName)) missingFields.push("Composition");
+      if (!isFieldSelected(fab.supplierName)) missingFields.push("Supplier");
+      if (!isFieldSelected(fab.colorCodeName)) missingFields.push("Color Code");
+
+      if (missingFields.length > 0) {
+        return `Please select ${missingFields.join(", ")} for fabric "${fab.fabricName}" before proceeding.`;
+      }
+    }
+
+    return "";
+  };
+
+  const handleNext = () => {
+    if (!inquiry) return;
+
+    const message = getColorCodeValidationMessage();
+    if (message) {
+      setValidationError(message);
+      toast.error(message);
+      return;
+    }
+
+    setValidationError("");
+    router.push(
+      `/inquiry/edit-inquiry/sizes/?id=${inquiry.inquiryId}&option=${inquiry.optionId}`
+    );
+  };
 
   // Parse comma-separated names string into set of trimmed names
   const parseNames = (str) => {
@@ -526,19 +567,23 @@ export default function EditColorCode() {
                 previous
               </Button>
             </Link>            
-            <Link href={`/inquiry/edit-inquiry/sizes/?id=${inquiry ? inquiry.inquiryId : ""}&option=${inquiry ? inquiry.optionId : ""}`}>
-              <Button
-                variant="outlined"
-                color="primary"
-                endIcon={<NavigateNextIcon />}
-              >
-                next
-              </Button>
-            </Link>
+            <Button
+              variant="outlined"
+              color="primary"
+              endIcon={<NavigateNextIcon />}
+              onClick={handleNext}
+            >
+              next
+            </Button>
           </Box>
         </Grid>
         <Grid item xs={12}>
           <Grid container>
+            {validationError && (
+              <Grid item xs={12} p={1}>
+                <Alert severity="error">{validationError}</Alert>
+              </Grid>
+            )}
             <Grid item xs={12} p={1}>
               <TableContainer component={Paper}>
                 <Table aria-label="simple table" className="dark-table">

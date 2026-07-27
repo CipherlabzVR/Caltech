@@ -21,9 +21,11 @@ import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
+import ShareIcon from "@mui/icons-material/Share";
 import { Box, FormControl, InputLabel, MenuItem, Pagination, Select } from "@mui/material";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import CreateWorkTrackModal from "./create";
+import WorkTrackShareDialog from "@/components/work-track/WorkTrackShareDialog";
 import { ToastContainer } from "react-toastify";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import BASE_URL from "Base/api";
@@ -58,6 +60,8 @@ export default function WorkTrackList() {
   const [selectedWorkTrack, setSelectedWorkTrack] = React.useState(null);
   const [deleteLoading, setDeleteLoading] = React.useState(false);
   const [createModalOpen, setCreateModalOpen] = React.useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = React.useState(false);
+  const [shareWorkTrack, setShareWorkTrack] = React.useState(null);
 
   const handleDeleteClick = (workTrack) => {
     setSelectedWorkTrack(workTrack);
@@ -132,6 +136,11 @@ export default function WorkTrackList() {
     router.push(`/work-track/edit/${workTrack.id}`);
   };
 
+  const handleShareClick = (workTrack) => {
+    setShareWorkTrack(workTrack);
+    setShareDialogOpen(true);
+  };
+
   if (!navigate) {
     return <AccessDenied />;
   }
@@ -197,6 +206,16 @@ export default function WorkTrackList() {
                         {formatDate(workTrack.createdOn)}
                       </TableCell>
                       <TableCell align="right">
+                        <Tooltip title="Share (view only)">
+                          <IconButton
+                            size="small"
+                            color="secondary"
+                            aria-label="share work track"
+                            onClick={() => handleShareClick(workTrack)}
+                          >
+                            <ShareIcon fontSize="inherit" />
+                          </IconButton>
+                        </Tooltip>
                         {update && (
                           <Tooltip title="Edit">
                             <IconButton
@@ -272,6 +291,17 @@ export default function WorkTrackList() {
           fetchItems={handleWorkTrackCreated}
         />
       )}
+
+      <WorkTrackShareDialog
+        open={shareDialogOpen}
+        onClose={() => {
+          setShareDialogOpen(false);
+          setShareWorkTrack(null);
+        }}
+        workTrackId={shareWorkTrack?.id}
+        customerName={shareWorkTrack?.customerName}
+        projectName={shareWorkTrack?.projectName}
+      />
     </>
   );
 }

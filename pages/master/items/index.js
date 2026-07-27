@@ -25,6 +25,15 @@ import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import useApi from "@/components/utils/useApi";
 
+const OUTBOUND_METHOD_LABELS = {
+  1: "FIFO",
+  2: "LIFO",
+  3: "FEFO",
+  4: "LEFO",
+  5: "BIFO",
+  6: "BILO",
+};
+
 export default function Items() {
   const cId = sessionStorage.getItem("category")
   const { navigate, create, update, remove, print, approve1 } = IsPermissionEnabled(cId);
@@ -35,18 +44,31 @@ export default function Items() {
   const { data: isGarmentSystem } = IsAppSettingEnabled(`IsGarmentSystem`);
   const { data: isBarcodeEnabled } = IsAppSettingEnabled(`IsBarcodeEnabled`);
   const { data: IsEcommerceWebSiteAvailable } = IsAppSettingEnabled(`IsEcommerceWebSiteAvailable`);
+  const { data: isSubCategoryNotRequired } = IsAppSettingEnabled("IsSubCategoryNotRequired");
+  const { data: isUOMNotRequired } = IsAppSettingEnabled("IsUOMNotRequired");
+  const { data: showItemWebDetailFields } = IsAppSettingEnabled("ShowEcomItemWebDetailFieldsInMaster");
   const [searchTerm, setSearchTerm] = useState("");
-  const { data: supplierList } = GetAllSuppliers();
-  const { categories, subCategories, uoms } = GetAllItemDetails();
+  const { data: supplierList, refetch: refetchSuppliers } = GetAllSuppliers();
+  const { categories, subCategories, uoms, refetch: refetchItemDetails } = GetAllItemDetails();
   const [chartOfAccInfo, setChartOfAccInfo] = useState({});
   const [supplierInfo, setSupplierInfo] = useState({});
   const [uomInfo, setUOMInfo] = useState({});
   const [catInfo, setCatInfo] = useState({});
   const [subCatInfo, setSubCatInfo] = useState({});
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(() => {
+    if (typeof window === "undefined") return 1;
+    const saved = parseInt(sessionStorage.getItem("itemsPage"), 10);
+    return Number.isNaN(saved) || saved < 1 ? 1 : saved;
+  });
+  const [pageSize, setPageSize] = useState(() => {
+    if (typeof window === "undefined") return 10;
+    const saved = parseInt(sessionStorage.getItem("itemsPageSize"), 10);
+    return Number.isNaN(saved) || saved < 1 ? 10 : saved;
+  });
   const [totalCount, setTotalCount] = useState(0);
   const [duplicateRequestSeq, setDuplicateRequestSeq] = useState(0);
+  const [sortField, setSortField] = useState(null);
+  const [sortDir, setSortDir] = useState("asc");
   const handleDuplicateItemRequest = useCallback(() => {
     setDuplicateRequestSeq((n) => n + 1);
   }, []);
@@ -90,7 +112,11 @@ export default function Items() {
       setChartOfAccInfo(accMap);
       setChartOfAccounts(accountList);
     }
-  }, [uoms, supplierList, accountList]);
+  }, [uoms, categories, subCategories, supplierList, accountList]);
+
+  const refreshItemTableLookups = async () => {
+    await Promise.all([refetchItemDetails(), refetchSuppliers()]);
+  };
 
   const handleSearchChange = (event) => {
     const value = event.target.value;
@@ -111,8 +137,31 @@ export default function Items() {
     fetchItemsList(1, searchTerm, newSize);
   };
 
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const sortedItemsList = React.useMemo(() => {
+    if (sortField !== "stockMethod") return itemsList;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...itemsList].sort((a, b) => {
+      const aVal = a.stockMethod ?? 1;
+      const bVal = b.stockMethod ?? 1;
+      return (aVal - bVal) * dir;
+    });
+  }, [itemsList, sortField, sortDir]);
+
   const fetchItemsList = async (page = 1, search = "", size = pageSize) => {
     setPage(page);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("itemsPage", page);
+      sessionStorage.setItem("itemsPageSize", size);
+    }
     try {
       const token = localStorage.getItem("token");
       const skip = (page - 1) * size;
@@ -137,7 +186,7 @@ export default function Items() {
   };
 
   useEffect(() => {
-    fetchItemsList();
+    fetchItemsList(page, searchTerm, pageSize);
   }, []);
 
   if (!navigate) {
@@ -167,10 +216,11 @@ export default function Items() {
           </Search>
         </Grid>
         <Grid item xs={12} lg={8} mb={1} display="flex" justifyContent="end" alignItems="center" gap={1} order={{ xs: 1, lg: 2 }}>
-          {create ? <ProductUpload fetchItems={fetchItemsList} /> : ""}
+          {create ? <ProductUpload fetchItems={fetchItemsList} isSubCategoryNotRequired={isSubCategoryNotRequired} isUOMNotRequired={isUOMNotRequired} /> : ""}
           {create ? (
             <AddItems
               fetchItems={fetchItemsList}
+              onMasterLookupRefresh={refreshItemTableLookups}
               isPOSSystem={isPOSSystem}
               uoms={uoms}
               isGarmentSystem={isGarmentSystem}
@@ -179,6 +229,9 @@ export default function Items() {
               IsEcommerceWebSiteAvailable={IsEcommerceWebSiteAvailable}
               subCategories={subCategories}
               duplicateRequestSeq={duplicateRequestSeq}
+              isSubCategoryNotRequired={isSubCategoryNotRequired}
+              isUOMNotRequired={isUOMNotRequired}
+              showItemWebDetailFields={showItemWebDetailFields}
             />
           ) : (
             ""
@@ -200,6 +253,12 @@ export default function Items() {
                     <TableCell>Shipment Target</TableCell>
                   </>}
                   <TableCell>UOM</TableCell>
+                  <TableCell
+                    onClick={() => handleSort("stockMethod")}
+                    sx={{ cursor: "pointer", userSelect: "none" }}
+                  >
+                    Outbound Method{sortField === "stockMethod" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                  </TableCell>
                   <TableCell>Cost Acc</TableCell>
                   <TableCell>Income Acc</TableCell>
                   <TableCell>Assets Acc</TableCell>
@@ -219,7 +278,7 @@ export default function Items() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  itemsList.map((item, index) => (
+                  sortedItemsList.map((item, index) => (
                     <TableRow key={index}>
                       <TableCell>{item.name}</TableCell>
                       <TableCell>{item.code}</TableCell>
@@ -232,6 +291,7 @@ export default function Items() {
                         <TableCell>{item.shipmentTarget}</TableCell>
                       </>}
                       <TableCell>{uomInfo[item.uom]?.name || "-"}</TableCell>
+                      <TableCell>{OUTBOUND_METHOD_LABELS[item.stockMethod] ?? "FIFO"}</TableCell>
                       <TableCell>{chartOfAccInfo[item.costAccount]?.code || "-"} - {chartOfAccInfo[item.costAccount]?.description || "-"}</TableCell>
                       <TableCell>{chartOfAccInfo[item.incomeAccount]?.code || "-"} - {chartOfAccInfo[item.incomeAccount]?.description || "-"}</TableCell>
                       <TableCell>{chartOfAccInfo[item.assetsAccount]?.code || "-"} - {chartOfAccInfo[item.assetsAccount]?.description || "-"}</TableCell>
@@ -270,7 +330,7 @@ export default function Items() {
                       <TableCell align="right">
                         {update ? (
                           <EditItems
-                            fetchItems={fetchItemsList}
+                            fetchItems={() => fetchItemsList(page, searchTerm, pageSize)}
                             item={item}
                             isPOSSystem={isPOSSystem}
                             uoms={uoms}
@@ -279,7 +339,11 @@ export default function Items() {
                             barcodeEnabled={isBarcodeEnabled}
                             IsEcommerceWebSiteAvailable={IsEcommerceWebSiteAvailable}
                             onDuplicateRequest={handleDuplicateItemRequest}
+                            canDuplicate={create}
                             approve1={approve1}
+                            isSubCategoryNotRequired={isSubCategoryNotRequired}
+                            isUOMNotRequired={isUOMNotRequired}
+                            showItemWebDetailFields={showItemWebDetailFields}
                           />
                         ) : (
                           ""

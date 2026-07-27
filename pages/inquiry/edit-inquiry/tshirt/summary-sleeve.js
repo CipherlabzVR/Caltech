@@ -12,9 +12,39 @@ import {
 } from "@mui/material";
 import BASE_URL from "Base/api";
 
+const isFlag = (value) => value === 1 || value === "1";
+
+const getSleevePatternName = (list) => {
+  if (!list) return "Not Selected";
+  if (isFlag(list.wrangler)) return "Ranglan";
+  if (isFlag(list.normal)) return "Normal";
+  return "Not Selected";
+};
+
+const getSleeveFinishName = (type) => {
+  switch (Number(type)) {
+    case 1:
+    case 5:
+      return "HEM";
+    case 2:
+    case 6:
+      return "D / HEM";
+    case 3:
+    case 7:
+      return "Knittde Cuff";
+    case 4:
+    case 8:
+      return "Fabric Cuff";
+    case 10:
+      return "Tiffin Knitted Cuff";
+    default:
+      return "Not Selected";
+  }
+};
+
 export default function SummarySleeve({ inquiry }) {
   const [sleeve, setSleeve] = useState({});
-  const [sleeveName, setSleeveName] = useState("");
+  const [sleeveName, setSleeveName] = useState("Not Selected");
 
   const fetchSleeve = async (inquiryId, optionId, windowType) => {
     try {
@@ -28,18 +58,23 @@ export default function SummarySleeve({ inquiry }) {
           },
         }
       );
-      const data = await response.json();
-      const list = data.result[0];
-      if (list.normal === "1" && list.wrangler === "0") {
-        setSleeveName(1);
-      } else if (list.normal === "0" && list.wrangler === "1") {
-        setSleeveName(2);
-      } else {
-        setSleeveName(3);
+      if (!response.ok) {
+        throw new Error("Failed to fetch sleeve details");
       }
-      setSleeve(data.result[0]);
+
+      const data = await response.json();
+      const list = data.result?.[0];
+      if (!list) {
+        setSleeve({});
+        setSleeveName("Not Selected");
+        return;
+      }
+
+      setSleeveName(getSleevePatternName(list));
+      setSleeve(list);
     } catch (error) {
-      //console.error("Error fetching Sleeve Details:", error);
+      setSleeve({});
+      setSleeveName("Not Selected");
     }
   };
 
@@ -63,54 +98,24 @@ export default function SummarySleeve({ inquiry }) {
             >
               <TableHead>
                 <TableRow>
-                  <TableCell>Sleeve</TableCell>
-                  {sleeve.short === 1 ? <TableCell>Short</TableCell> : ""}
-                  {sleeve.long === 1 ? <TableCell>Long</TableCell> : ""}
+                  <TableCell>Sleeve Pattern</TableCell>
+                  {isFlag(sleeve.short) ? <TableCell>Short Sleeve</TableCell> : ""}
+                  {isFlag(sleeve.long) ? <TableCell>Long Sleeve</TableCell> : ""}
                   {/* {sleeve.short === 1 ? <TableCell>Short Size</TableCell> : ""}
                   {sleeve.long === 1 ? <TableCell>Long Size</TableCell> : ""} */}
                 </TableRow>
               </TableHead>
               <TableBody>
                 <TableRow>
-                  <TableCell>
-                    {sleeveName === 1
-                      ? "Normal"
-                      : sleeveName === 2
-                        ? "Ranglan"
-                        : "Not Selected"}
-                  </TableCell>
+                  <TableCell>{sleeveName}</TableCell>
 
-                  {sleeve.short === 1 ? (
-                    <TableCell>
-                      {sleeve.shortType === 1
-                        ? "HEM"
-                        : sleeve.shortType === 2
-                          ? "D / HEM"
-                          : sleeve.shortType === 3
-                            ? "Knittde Cuff"
-                            : sleeve.shortType === 4
-                              ? "Fabric Cuff"
-                              : sleeve.shortType === 10
-                                ? "Tiffin Fabric Cuff"
-                                : "Not Selected"}
-                    </TableCell>
+                  {isFlag(sleeve.short) ? (
+                    <TableCell>{getSleeveFinishName(sleeve.shortType)}</TableCell>
                   ) : (
                     ""
                   )}
-                  {sleeve.long === 1 ? (
-                    <TableCell>
-                      {sleeve.longType === 1
-                        ? "HEM"
-                        : sleeve.longType === 2
-                          ? "D / HEM"
-                          : sleeve.longType === 3
-                            ? "Knittde Cuff"
-                            : sleeve.longType === 4
-                              ? "Fabric Cuff"
-                              : sleeve.shortType === 10
-                                ? "Tiffin Fabric Cuff"
-                                : "Not Selected"}
-                    </TableCell>
+                  {isFlag(sleeve.long) ? (
+                    <TableCell>{getSleeveFinishName(sleeve.longType)}</TableCell>
                   ) : (
                     ""
                   )}
