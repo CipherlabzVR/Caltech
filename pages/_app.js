@@ -118,6 +118,7 @@ import "../styles/globals.css";
 import "../styles/rtl.css";
 import "../styles/dark.css";
 import "../styles/calendar.css";
+import "../styles/ai-assistant.css";
 import "react-toastify/dist/ReactToastify.css";
 import theme from "../styles/theme";
 import SignIn from "./authentication/sign-in";

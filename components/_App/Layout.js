@@ -7,6 +7,7 @@ import Footer from "@/components/_App/Footer";
 import ScrollToTop from "./ScrollToTop";
 import ControlPanelModal from "./ControlPanelModal";
 import HidableButtons from "../Dashboard/eCommerce/HidableButtons";
+import ChatWidget from "./AiAssistant/ChatWidget";
 import AccessDenied from "../UIElements/Permission/AccessDenied";
 import { TopbarContext } from "./TopbarContext";
 import { CurrencyProvider, useCurrency } from "@/components/HR/CurrencyContext";
@@ -730,6 +731,7 @@ const LayoutContent = ({ children }) => {
           router.pathname === "/restaurant/dashboard"
         ) && <ControlPanelModal />}
         <HidableButtons />
+        <ChatWidget />
       </>
     </TopbarContext.Provider>
   );
