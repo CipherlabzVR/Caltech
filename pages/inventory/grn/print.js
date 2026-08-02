@@ -78,11 +78,64 @@ const escapeHtml = (value) => {
     .replace(/'/g, "&#39;");
 };
 
+// Per-unit freight duty: prefer persisted AdditionalCost, else derive from line math.
+const getFreightDutyCost = (item) => {
+  const stored = Number(item?.additionalCost);
+  if (Number.isFinite(stored) && Math.abs(stored) > 0.0001) {
+    return stored;
+  }
+
+  const qty = Number(item?.qty) || 0;
+  const free = Number(item?.free) || 0;
+  const unitPrice = Number(item?.unitPrice) || 0;
+  const lineTotal = Number(item?.lineTotal) || 0;
+  const discountRate = Number(item?.discountRate) || 0;
+  const lineDiscountAmount = (unitPrice * qty * discountRate) / 100;
+  const qtyPlusFree = qty + free;
+
+  if (qty > 0 && free === 0) {
+    return (lineTotal - unitPrice * qty + lineDiscountAmount) / qty;
+  }
+
+  const costPrice = Number(item?.costPrice) || 0;
+  if (costPrice > 0 && qtyPlusFree > 0) {
+    return costPrice - (unitPrice * qty - lineDiscountAmount) / qtyPlusFree;
+  }
+
+  return Number.isFinite(stored) ? stored : 0;
+};
+
+// Ensures older DB templates (without this column) still show a Freight Duty header.
+const ensureFreightDutyColumnHeader = (html) => {
+  if (!html || /<th[^>]*>\s*Freight\s*Duty/i.test(html)) {
+    return html;
+  }
+  return html.replace(
+    /(<th[^>]*>\s*Unit\s*Price\s*<\/th>)/i,
+    `$1\n          <th class="num">Freight Duty</th>`
+  );
+};
+
+// Ensures older DB templates still show Freight Duty Total in the footer.
+const ensureFreightDutyTotalRow = (html) => {
+  if (
+    !html ||
+    /\{\{\s*freightDutyTotal\s*\}\}/i.test(html) ||
+    /Freight\s*Duty\s*Total/i.test(html)
+  ) {
+    return html;
+  }
+  return html.replace(
+    /(<div class=["']totals["']>\s*)(<div class=["']row["']>\s*<span>\s*Total\s*<\/span>)/i,
+    `$1<div class="row"><span>Freight Duty Total</span><span>{{freightDutyTotal}}</span></div>\n      $2`
+  );
+};
+
 // Builds one <tr> per GRN line, matching the template table columns:
-// Item | Batch | Exp. Date | Qty | Free | Unit Price | Dis% | Selling | Line Total
+// Item | Batch | Exp. Date | Qty | Free | Unit Price | Freight Duty | Dis% | Selling | Line Total
 const buildLineItemsRows = (items) => {
   if (!items || items.length === 0) {
-    return `<tr><td colspan="9" style="text-align:center;padding:16px;">No items available</td></tr>`;
+    return `<tr><td colspan="10" style="text-align:center;padding:16px;">No items available</td></tr>`;
   }
 
   return items
@@ -98,6 +151,7 @@ const buildLineItemsRows = (items) => {
         <td class="num">${escapeHtml(formatQty(item.qty))}</td>
         <td class="num">${escapeHtml(formatQty(item.free))}</td>
         <td class="num">${escapeHtml(formatAmount(item.unitPrice))}</td>
+        <td class="num">${escapeHtml(formatAmount(getFreightDutyCost(item)))}</td>
         <td class="num">${escapeHtml(formatAmount(item.discountRate))}</td>
         <td class="num">${escapeHtml(formatAmount(item.sellingPrice))}</td>
         <td class="num">${escapeHtml(formatAmount(item.lineTotal))}</td>
@@ -113,7 +167,9 @@ const applyTemplate = (templateHtml, tokenMap, rowsHtml) => {
     return "";
   }
 
-  let output = templateHtml.replace(/\{\{\s*lineItemsRows\s*\}\}/gi, rowsHtml);
+  let output = ensureFreightDutyColumnHeader(templateHtml);
+  output = ensureFreightDutyTotalRow(output);
+  output = output.replace(/\{\{\s*lineItemsRows\s*\}\}/gi, rowsHtml);
   output = output.replace(/\{\{\s*companyLogo\s*\}\}/gi, tokenMap.companyLogo || "");
 
   Object.entries(tokenMap).forEach(([key, value]) => {
@@ -382,7 +438,17 @@ export default function GRNPrintPage() {
     () => lineItems.reduce((sum, item) => sum + Number(item.qty ?? 0), 0),
     [lineItems]
   );
-  const subtotal = useMemo(
+  // Freight-inclusive sum of line totals (used for discounts / gross).
+  const sumLineTotals = useMemo(
+    () =>
+      lineItems.reduce(
+        (sum, item) => sum + Number(item.lineTotal ?? 0),
+        0
+      ),
+    [lineItems]
+  );
+  // Footer "Total" excludes freight: Σ (qty × unitPrice)
+  const merchandiseTotal = useMemo(
     () =>
       lineItems.reduce(
         (sum, item) =>
@@ -391,12 +457,15 @@ export default function GRNPrintPage() {
       ),
     [lineItems]
   );
-  const sumLineTotals = useMemo(
+  // Matches create screen: Σ freightDuty × (qty + free)
+  const freightDutyTotal = useMemo(
     () =>
-      lineItems.reduce(
-        (sum, item) => sum + Number(item.lineTotal ?? 0),
-        0
-      ),
+      lineItems.reduce((sum, item) => {
+        const freight = getFreightDutyCost(item);
+        const qtyPlusFree =
+          (Number(item.qty) || 0) + (Number(item.free) || 0);
+        return sum + freight * qtyPlusFree;
+      }, 0),
     [lineItems]
   );
 
@@ -478,7 +547,8 @@ export default function GRNPrintPage() {
       createdDate: formatDisplayDateTime(grnData?.createdOn),
       referenceNo: grnData?.referanceNo || "-",
       salesPerson: salesPersonMap[grnData?.salesPerson]?.name || "-",
-      subtotal: formatAmount(subtotal),
+      freightDutyTotal: formatAmount(freightDutyTotal),
+      subtotal: formatAmount(merchandiseTotal),
       orderDiscountPercent: formatAmount(orderDiscountPercent),
       totalDiscount: formatAmount(orderDiscountAmount),
       grossTotal: formatAmount(grossTotal),
@@ -494,7 +564,8 @@ export default function GRNPrintPage() {
       totalQty,
       userMap,
       salesPersonMap,
-      subtotal,
+      freightDutyTotal,
+      merchandiseTotal,
       orderDiscountPercent,
       orderDiscountAmount,
       grossTotal,

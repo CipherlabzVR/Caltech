@@ -1,21 +1,21 @@
 import React, { useState } from "react";
 import {
   Button,
-  Checkbox,
-  FormControlLabel,
   Grid,
   IconButton,
+  Stack,
   Tooltip,
   Typography,
 } from "@mui/material";
 import Box from "@mui/material/Box";
 import Modal from "@mui/material/Modal";
 import "react-toastify/dist/ReactToastify.css";
-import { Visibility } from "@mui/icons-material";
+import DescriptionIcon from "@mui/icons-material/Description";
+import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
 import { Report } from "Base/report";
 import { Catelogue } from "Base/catelogue";
-import ReportSearchField from "@/components/utils/ReportSearchField";
+import ReportFilterSelect from "@/components/utils/ReportFilterSelect";
 
 const style = {
   position: "absolute",
@@ -32,45 +32,138 @@ const style = {
   p: { xs: 2, sm: 3 },
 };
 
-export default function StockBalance({ docName, reportName }) {
-  const warehouseId = localStorage.getItem("warehouse");
-  const name = localStorage.getItem("name");
-  const [open, setOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState({});
-  const [supplierId, setSupplierId] = useState(0);
-  const [itemId, setItemId] = useState(0);
-  const { data: StockBalanceReport } = GetReportSettingValueByName(reportName);
-  const [categoryId, setCategoryId] = useState(0);
-  const [subCategoryId, setSubCategoryId] = useState(0);
+const ALL_LABELS = {
+  supplier: "All Suppliers",
+  category: "All Categories",
+  subCategory: "All Sub Categories",
+  product: "All Items",
+};
 
-  const handleOpen = () => setOpen(true);
-  const handleClose = () => {
-    setOpen(false);
+const REPORT_MODE = {
+  CUSTOM: "custom",
+  DEFAULT: "default",
+};
+
+const printActionSx = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 0.25,
+  minWidth: 52,
+  borderRadius: 1,
+  px: 0.5,
+  py: 0.25,
+};
+
+export default function StockBalance({ docName, reportName } = {}) {
+  const warehouseId = typeof window !== "undefined" ? localStorage.getItem("warehouse") : "";
+  const name = typeof window !== "undefined" ? localStorage.getItem("name") : "";
+  const { data: StockBalanceReport } = GetReportSettingValueByName(reportName);
+
+  const [open, setOpen] = useState(false);
+  const [reportMode, setReportMode] = useState(REPORT_MODE.DEFAULT);
+  const [supplierId, setSupplierId] = useState(0);
+  const [supplierName, setSupplierName] = useState(ALL_LABELS.supplier);
+  const [itemId, setItemId] = useState(0);
+  const [itemName, setItemName] = useState(ALL_LABELS.product);
+  const [categoryId, setCategoryId] = useState(0);
+  const [categoryName, setCategoryName] = useState(ALL_LABELS.category);
+  const [subCategoryId, setSubCategoryId] = useState(0);
+  const [subCategoryName, setSubCategoryName] = useState(ALL_LABELS.subCategory);
+
+  const resetFilters = () => {
     setItemId(0);
+    setItemName(ALL_LABELS.product);
     setSupplierId(0);
+    setSupplierName(ALL_LABELS.supplier);
+    setCategoryId(0);
+    setCategoryName(ALL_LABELS.category);
+    setSubCategoryId(0);
+    setSubCategoryName(ALL_LABELS.subCategory);
   };
 
-  const buildReportUrl = () => {
+  const handleOpen = (mode) => {
+    setReportMode(mode);
+    setOpen(true);
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+    resetFilters();
+  };
+
+  const buildCrystalReportUrl = () => {
     const params = new URLSearchParams({
       InitialCatalog: Catelogue,
       reportName: StockBalanceReport || "",
-      supplierId: String(supplierId),
-      categoryId: String(categoryId),
-      subCategoryid: String(subCategoryId),
-      productId: String(itemId),
+      supplierId: String(supplierId || 0),
+      categoryId: String(categoryId || 0),
+      subCategoryid: String(subCategoryId || 0),
+      productId: String(itemId || 0),
       warehouseId: warehouseId || "",
       currentUser: name || "",
     });
     return `${Report}/${docName}?${params.toString()}`;
   };
 
+  const openHtmlStatement = () => {
+    const params = new URLSearchParams({
+      supplierId: String(supplierId || 0),
+      categoryId: String(categoryId || 0),
+      subCategoryId: String(subCategoryId || 0),
+      productId: String(itemId || 0),
+      supplierName: supplierName || ALL_LABELS.supplier,
+      categoryName: categoryName || ALL_LABELS.category,
+      subCategoryName: subCategoryName || ALL_LABELS.subCategory,
+      productName: itemName || ALL_LABELS.product,
+    });
+    window.open(`/reports/stock-balance/print?${params.toString()}`, "_blank");
+  };
+
+  const handleSubmit = () => {
+    if (reportMode === REPORT_MODE.CUSTOM) {
+      window.open(buildCrystalReportUrl(), "_blank");
+    } else {
+      openHtmlStatement();
+    }
+  };
+
+  const modalTitle =
+    reportMode === REPORT_MODE.CUSTOM
+      ? "Stock Balance Report (Custom)"
+      : "Stock Balance Report (Default)";
+
   return (
     <>
-      <Tooltip title="View" placement="top">
-        <IconButton onClick={handleOpen} aria-label="View" size="small">
-          <Visibility color="primary" fontSize="inherit" />
-        </IconButton>
-      </Tooltip>
+      <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
+        <Tooltip title="Print (Custom)" placement="top">
+          <IconButton
+            onClick={() => handleOpen(REPORT_MODE.CUSTOM)}
+            aria-label="Custom print"
+            size="small"
+            sx={printActionSx}
+          >
+            <DescriptionIcon color="action" fontSize="medium" />
+            <Typography variant="caption" sx={{ lineHeight: 1.1, color: "text.secondary" }}>
+              Custom
+            </Typography>
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Print (Default)" placement="top">
+          <IconButton
+            onClick={() => handleOpen(REPORT_MODE.DEFAULT)}
+            aria-label="Default print"
+            size="small"
+            sx={printActionSx}
+          >
+            <LocalPrintshopIcon color="primary" fontSize="medium" />
+            <Typography variant="caption" sx={{ lineHeight: 1.1, color: "primary.main" }}>
+              Default
+            </Typography>
+          </IconButton>
+        </Tooltip>
+      </Stack>
 
       <Modal
         open={open}
@@ -83,72 +176,82 @@ export default function StockBalance({ docName, reportName }) {
             <Grid container spacing={2.5}>
               <Grid item xs={12} my={2} display="flex" justifyContent="space-between">
                 <Typography variant="h5" fontWeight="bold">
-                  Stock Balance Report
+                  {modalTitle}
                 </Typography>
               </Grid>
               <Grid item xs={12}>
-                <ReportSearchField
+                <ReportFilterSelect
                   filterType="supplier"
-                  extraParams={{}}
                   value={supplierId}
-                  onChange={(id) => {
+                  selectedLabel={supplierId ? supplierName : "All"}
+                  onChange={(id, label) => {
                     setSupplierId(id ?? 0);
+                    setSupplierName(id ? label || ALL_LABELS.supplier : ALL_LABELS.supplier);
                     setItemId(0);
+                    setItemName(ALL_LABELS.product);
                   }}
-                  allowAll={true}
+                  allowAll
                   label="Select Supplier"
-                  placeholder="Type to search..."
                 />
               </Grid>
               <Grid item xs={12} lg={6}>
-                <ReportSearchField
+                <ReportFilterSelect
                   filterType="category"
-                  extraParams={{}}
                   value={categoryId}
-                  onChange={(id) => {
+                  selectedLabel={categoryId ? categoryName : "All"}
+                  onChange={(id, label) => {
                     setCategoryId(id ?? 0);
+                    setCategoryName(id ? label || ALL_LABELS.category : ALL_LABELS.category);
                     setSubCategoryId(0);
+                    setSubCategoryName(ALL_LABELS.subCategory);
                     setItemId(0);
+                    setItemName(ALL_LABELS.product);
                   }}
-                  allowAll={true}
+                  allowAll
                   label="Select Category"
-                  placeholder="Type to search..."
                 />
               </Grid>
               <Grid item xs={12} lg={6}>
-                <ReportSearchField
+                <ReportFilterSelect
                   filterType="subCategory"
                   extraParams={{ categoryId: categoryId || undefined }}
                   value={subCategoryId}
-                  onChange={(id) => {
+                  selectedLabel={subCategoryId ? subCategoryName : "All"}
+                  onChange={(id, label) => {
                     setSubCategoryId(id ?? 0);
+                    setSubCategoryName(id ? label || ALL_LABELS.subCategory : ALL_LABELS.subCategory);
                     setItemId(0);
+                    setItemName(ALL_LABELS.product);
                   }}
-                  allowAll={true}
+                  allowAll
                   label="Select Sub Category"
-                  placeholder="Type to search..."
                 />
               </Grid>
               <Grid item xs={12}>
-                <ReportSearchField
+                <ReportFilterSelect
                   filterType="item"
-                  extraParams={{ supplierId: supplierId || undefined, categoryId: categoryId || undefined, subCategoryId: subCategoryId || undefined }}
+                  extraParams={{
+                    supplierId: supplierId || undefined,
+                    categoryId: categoryId || undefined,
+                    subCategoryId: subCategoryId || undefined,
+                  }}
                   value={itemId}
-                  onChange={(id) => setItemId(id ?? 0)}
-                  allowAll={true}
+                  selectedLabel={itemId ? itemName : "All"}
+                  onChange={(id, label) => {
+                    setItemId(id ?? 0);
+                    setItemName(id ? label || ALL_LABELS.product : ALL_LABELS.product);
+                  }}
+                  allowAll
                   label="Select Item"
-                  placeholder="Type to search..."
                 />
               </Grid>
               <Grid item xs={12} display="flex" justifyContent="space-between" sx={{ mt: 2 }}>
                 <Button onClick={handleClose} variant="contained" color="error">
                   Close
                 </Button>
-                <a href={buildReportUrl()} target="_blank">
-                  <Button variant="contained" aria-label="print" size="small">
-                    Submit
-                  </Button>
-                </a>
+                <Button variant="contained" aria-label="print" size="small" onClick={handleSubmit}>
+                  Submit
+                </Button>
               </Grid>
             </Grid>
           </Box>

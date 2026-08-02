@@ -47,7 +47,7 @@ export default function ReportSearchField({
       setShowDropdown(false);
       setResults([]);
       if (allowAll) {
-        onChange(0);
+        onChange(0, "All");
       }
       return;
     }
@@ -59,10 +59,11 @@ export default function ReportSearchField({
 
   const handleItemSelect = (option) => {
     const id = option?.id ?? (allowAll ? 0 : null);
-    setSearchValue(option?.label ?? "");
+    const label = option?.label ?? "";
+    setSearchValue(label);
     setShowDropdown(false);
     setResults([]);
-    onChange(id);
+    onChange(id, label);
   };
 
   const handleKeyDown = (e) => {

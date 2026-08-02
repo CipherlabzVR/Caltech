@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Button,
   Grid,
   IconButton,
-  MenuItem,
-  Select,
+  Stack,
   TextField,
   Tooltip,
   Typography,
@@ -12,249 +11,291 @@ import {
 import Box from "@mui/material/Box";
 import Modal from "@mui/material/Modal";
 import "react-toastify/dist/ReactToastify.css";
-import { Visibility } from "@mui/icons-material";
+import DescriptionIcon from "@mui/icons-material/Description";
+import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
 import { Report } from "Base/report";
 import { Catelogue } from "Base/catelogue";
-import useApi from "@/components/utils/useApi";
-import BASE_URL from "Base/api";
+import ReportFilterSelect from "@/components/utils/ReportFilterSelect";
 
 const style = {
   position: "absolute",
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: { xs: "94vw", sm: "86vw", md: 600 },
+  width: { xs: "94vw", sm: "80vw", md: 520, lg: 600 },
   maxWidth: 720,
   maxHeight: "90vh",
   overflowY: "auto",
-  overflowX: "hidden",
   bgcolor: "background.paper",
   boxShadow: 24,
   borderRadius: 2,
   p: { xs: 2, sm: 3 },
-  outline: "none",
 };
 
-export default function GoodsReceivedNotesSummaryReport({ docName, reportName }) {
-  const warehouseId = localStorage.getItem("warehouse");
+const ALL_LABELS = {
+  supplier: "All Suppliers",
+  category: "All Categories",
+  subCategory: "All Sub Categories",
+  product: "All Items",
+};
+
+const REPORT_MODE = {
+  CUSTOM: "custom",
+  DEFAULT: "default",
+};
+
+const printActionSx = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: 0.25,
+  minWidth: 52,
+  borderRadius: 1,
+  px: 0.5,
+  py: 0.25,
+};
+
+export default function GoodsReceivedNotesSummaryReport({ docName, reportName } = {}) {
+  const warehouseId = typeof window !== "undefined" ? localStorage.getItem("warehouse") : "";
+  const name = typeof window !== "undefined" ? localStorage.getItem("name") : "";
+  const { data: goodsReceivedNotesSummaryReport } = GetReportSettingValueByName(reportName);
+
   const [open, setOpen] = useState(false);
+  const [reportMode, setReportMode] = useState(REPORT_MODE.DEFAULT);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const { data: goodsReceivedNotesSummaryReport } = GetReportSettingValueByName(reportName);
-  const name = localStorage.getItem("name");
-  const [items, setItems] = useState([]);
-  const [itemId, setItemId] = useState(0);
-  const [categories, setCategories] = useState([]);
-  const [categoryId, setCategoryId] = useState(0);
-  const [subCategories, setSubCategories] = useState([]);
-  const [subCategoryId, setSubCategoryId] = useState(0);
-  const [suppliers, setSuppliers] = useState([]);
   const [supplierId, setSupplierId] = useState(0);
+  const [supplierName, setSupplierName] = useState(ALL_LABELS.supplier);
+  const [itemId, setItemId] = useState(0);
+  const [itemName, setItemName] = useState(ALL_LABELS.product);
+  const [categoryId, setCategoryId] = useState(0);
+  const [categoryName, setCategoryName] = useState(ALL_LABELS.category);
+  const [subCategoryId, setSubCategoryId] = useState(0);
+  const [subCategoryName, setSubCategoryName] = useState(ALL_LABELS.subCategory);
 
-  const handleOpen = () => setOpen(true);
-  const handleClose = () => setOpen(false);
-
-  const { data: itemList } = useApi("/Items/GetAllItems");
-  const { data: supplierList } = useApi("/Supplier/GetAllSupplier");
-  const { data: categoryList } = useApi("/Category/GetAllCategory");
-
-  useEffect(() => {
-    if (itemList) {
-      setItems(itemList);
-    }
-    if (supplierList) {
-      setSuppliers(supplierList);
-    }
-    if (categoryList) {
-      setCategories(categoryList);
-    }
-  }, [ itemList, supplierList, categoryList]);
-
-  const isFormValid = fromDate && toDate;
-
-  const handleGetSupplierItems = async (id) => {
+  const resetFilters = () => {
+    setFromDate("");
+    setToDate("");
     setItemId(0);
-    handleGetFilteredItems(id, categoryId, subCategoryId);
-  }
-
-  const handleGetSubCategories = async (id) => {
-    setItemId(0);
+    setItemName(ALL_LABELS.product);
+    setSupplierId(0);
+    setSupplierName(ALL_LABELS.supplier);
+    setCategoryId(0);
+    setCategoryName(ALL_LABELS.category);
     setSubCategoryId(0);
-    handleGetFilteredItems(supplierId, id, subCategoryId);
-    try {
-      const token = localStorage.getItem("token");
-      const query = `${BASE_URL}/SubCategory/GetAllSubCategoriesByCategoryId?categoryId=${id}`;
-      const response = await fetch(query, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
+    setSubCategoryName(ALL_LABELS.subCategory);
+  };
 
-      if (!response.ok) throw new Error("Failed to fetch items");
+  const handleOpen = (mode) => {
+    setReportMode(mode);
+    setOpen(true);
+  };
 
-      const data = await response.json();
-      setSubCategories(data.result);
-    } catch (error) {
-      console.error("Error:", error);
+  const handleClose = () => {
+    setOpen(false);
+    resetFilters();
+  };
+
+  const buildCrystalReportUrl = () => {
+    const params = new URLSearchParams({
+      InitialCatalog: Catelogue,
+      reportName: goodsReceivedNotesSummaryReport || "",
+      fromDate: fromDate || "",
+      toDate: toDate || "",
+      warehouseId: warehouseId || "",
+      currentUser: name || "",
+      item: String(itemId || 0),
+      supplier: String(supplierId || 0),
+      category: String(categoryId || 0),
+      subcategory: String(subCategoryId || 0),
+    });
+    return `${Report}/${docName}?${params.toString()}`;
+  };
+
+  const openHtmlReport = () => {
+    const params = new URLSearchParams({
+      fromDate: fromDate || "",
+      toDate: toDate || "",
+      supplierId: String(supplierId || 0),
+      categoryId: String(categoryId || 0),
+      subCategoryId: String(subCategoryId || 0),
+      productId: String(itemId || 0),
+      supplierName: supplierName || ALL_LABELS.supplier,
+      categoryName: categoryName || ALL_LABELS.category,
+      subCategoryName: subCategoryName || ALL_LABELS.subCategory,
+      productName: itemName || ALL_LABELS.product,
+    });
+    window.open(`/reports/goods-received-notes-summary/print?${params.toString()}`, "_blank");
+  };
+
+  const handleSubmit = () => {
+    if (!fromDate || !toDate) return;
+    if (reportMode === REPORT_MODE.CUSTOM) {
+      window.open(buildCrystalReportUrl(), "_blank");
+    } else {
+      openHtmlReport();
     }
-  }
+  };
 
-  const handleGetFilteredItems = async (supplier, category, subCategory) => {
-    setItemId(0);
-    try {
-      const token = localStorage.getItem("token");
-      const query = `${BASE_URL}/Items/GetFilteredItems?supplier=${supplier}&category=${category}&subCategory=${subCategory}`;
-      const response = await fetch(query, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
+  const modalTitle =
+    reportMode === REPORT_MODE.CUSTOM
+      ? "Goods Received Notes Summary Report (Custom)"
+      : "Goods Received Notes Summary Report (Default)";
 
-      if (!response.ok) throw new Error("Failed to fetch items");
+  const canSubmit = Boolean(fromDate && toDate);
 
-      const data = await response.json();
-      setItems(data.result);
-    } catch (error) {
-      console.error("Error:", error);
-    }
-  }
   return (
     <>
-      <Tooltip title="View" placement="top">
-        <IconButton onClick={handleOpen} aria-label="View" size="small">
-          <Visibility color="primary" fontSize="inherit" />
-        </IconButton>
-      </Tooltip>
+      <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
+        <Tooltip title="Print (Custom)" placement="top">
+          <IconButton
+            onClick={() => handleOpen(REPORT_MODE.CUSTOM)}
+            aria-label="Custom print"
+            size="small"
+            sx={printActionSx}
+          >
+            <DescriptionIcon color="action" fontSize="medium" />
+            <Typography variant="caption" sx={{ lineHeight: 1.1, color: "text.secondary" }}>
+              Custom
+            </Typography>
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Print (Default)" placement="top">
+          <IconButton
+            onClick={() => handleOpen(REPORT_MODE.DEFAULT)}
+            aria-label="Default print"
+            size="small"
+            sx={printActionSx}
+          >
+            <LocalPrintshopIcon color="primary" fontSize="medium" />
+            <Typography variant="caption" sx={{ lineHeight: 1.1, color: "primary.main" }}>
+              Default
+            </Typography>
+          </IconButton>
+        </Tooltip>
+      </Stack>
 
       <Modal
         open={open}
         onClose={handleClose}
-        aria-labelledby="modal-modal-title"
-        aria-describedby="modal-modal-description"
+        aria-labelledby="grn-notes-summary-report-title"
+        aria-describedby="grn-notes-summary-report-description"
       >
         <Box sx={style} className="bg-black">
           <Box>
             <Grid container spacing={1}>
               <Grid item xs={12} my={2} display="flex" justifyContent="space-between">
                 <Typography variant="h5" fontWeight="bold">
-                  Goods Received Notes Summary Report
+                  {modalTitle}
                 </Typography>
               </Grid>
               <Grid item xs={12} lg={6}>
-                <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
                   From
                 </Typography>
                 <TextField
                   type="date"
-                  fullWidth
                   size="small"
+                  fullWidth
                   value={fromDate}
                   onChange={(e) => setFromDate(e.target.value)}
+                  required
                 />
               </Grid>
               <Grid item xs={12} lg={6}>
-                <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
+                <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
                   To
                 </Typography>
                 <TextField
                   type="date"
-                  fullWidth
                   size="small"
+                  fullWidth
                   value={toDate}
                   onChange={(e) => setToDate(e.target.value)}
+                  required
                 />
               </Grid>
               <Grid item xs={12}>
-                <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                  Select Supplier
-                </Typography>
-                <Select
-                  fullWidth
-                  size="small"
+                <ReportFilterSelect
+                  filterType="supplier"
                   value={supplierId}
-                  onChange={(e) => {
-                    setSupplierId(e.target.value);
-                    handleGetSupplierItems(e.target.value);
+                  selectedLabel={supplierId ? supplierName : "All"}
+                  onChange={(id, label) => {
+                    setSupplierId(id ?? 0);
+                    setSupplierName(id ? label || ALL_LABELS.supplier : ALL_LABELS.supplier);
+                    setItemId(0);
+                    setItemName(ALL_LABELS.product);
                   }}
-                >
-                  <MenuItem value={0}>All</MenuItem>
-                  {suppliers.length === 0 ? <MenuItem disabled value="">No Suppliers Available</MenuItem>
-                    : (suppliers.map((supplier) => (
-                      <MenuItem key={supplier.id} value={supplier.id}>{supplier.name}</MenuItem>
-                    )))}
-                </Select>
+                  allowAll
+                  label="Select Supplier"
+                />
               </Grid>
               <Grid item xs={12} lg={6}>
-                <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                  Select Category
-                </Typography>
-                <Select
-                  fullWidth
-                  size="small"
+                <ReportFilterSelect
+                  filterType="category"
                   value={categoryId}
-                  onChange={(e) => {
-                    setCategoryId(e.target.value);
-                    handleGetSubCategories(e.target.value);
+                  selectedLabel={categoryId ? categoryName : "All"}
+                  onChange={(id, label) => {
+                    setCategoryId(id ?? 0);
+                    setCategoryName(id ? label || ALL_LABELS.category : ALL_LABELS.category);
+                    setSubCategoryId(0);
+                    setSubCategoryName(ALL_LABELS.subCategory);
+                    setItemId(0);
+                    setItemName(ALL_LABELS.product);
                   }}
-                >
-                  <MenuItem value={0}>All</MenuItem>
-                  {categories.length === 0 ? <MenuItem disabled value="">No Categories Available</MenuItem>
-                    : (categories.map((category) => (
-                      <MenuItem key={category.id} value={category.id}>{category.name}</MenuItem>
-                    )))}
-                </Select>
+                  allowAll
+                  label="Select Category"
+                />
               </Grid>
               <Grid item xs={12} lg={6}>
-                <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                  Select Sub Category
-                </Typography>
-                <Select
-                  fullWidth
-                  size="small"
+                <ReportFilterSelect
+                  filterType="subCategory"
+                  extraParams={{ categoryId: categoryId || undefined }}
                   value={subCategoryId}
-                  onChange={(e) => {
-                    setSubCategoryId(e.target.value);
-                    handleGetFilteredItems(supplierId, categoryId, e.target.value);
+                  selectedLabel={subCategoryId ? subCategoryName : "All"}
+                  onChange={(id, label) => {
+                    setSubCategoryId(id ?? 0);
+                    setSubCategoryName(id ? label || ALL_LABELS.subCategory : ALL_LABELS.subCategory);
+                    setItemId(0);
+                    setItemName(ALL_LABELS.product);
                   }}
-                >
-                  <MenuItem value={0}>All</MenuItem>
-                  {subCategories.length === 0 ? <MenuItem disabled value="">No Sub Categories Available</MenuItem>
-                    : (subCategories.map((category) => (
-                      <MenuItem key={category.id} value={category.id}>{category.name}</MenuItem>
-                    )))}
-                </Select>
+                  allowAll
+                  label="Select Sub Category"
+                />
               </Grid>
               <Grid item xs={12}>
-                <Typography as="h5" sx={{ fontWeight: "500", fontSize: "14px", mb: "12px" }}>
-                  Select Item
-                </Typography>
-                <Select
-                  fullWidth
-                  size="small"
+                <ReportFilterSelect
+                  filterType="item"
+                  extraParams={{
+                    supplierId: supplierId || undefined,
+                    categoryId: categoryId || undefined,
+                    subCategoryId: subCategoryId || undefined,
+                  }}
                   value={itemId}
-                  onChange={(e) => setItemId(e.target.value)}
-                >
-                  <MenuItem value={0}>All</MenuItem>
-                  {items.length === 0 ? <MenuItem value="">No Items Available</MenuItem>
-                    : (items.map((item) => (
-                      <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
-                    )))}
-                </Select>
+                  selectedLabel={itemId ? itemName : "All"}
+                  onChange={(id, label) => {
+                    setItemId(id ?? 0);
+                    setItemName(id ? label || ALL_LABELS.product : ALL_LABELS.product);
+                  }}
+                  allowAll
+                  label="Select Item"
+                />
               </Grid>
               <Grid item xs={12} display="flex" justifyContent="space-between" mt={2}>
                 <Button onClick={handleClose} variant="contained" color="error">
                   Close
                 </Button>
-                <a href={`${Report}/${docName}?InitialCatalog=${Catelogue}&reportName=${goodsReceivedNotesSummaryReport}&fromDate=${fromDate}&toDate=${toDate}&warehouseId=${warehouseId}&currentUser=${name}&item=${itemId}&supplier=${supplierId}&category=${categoryId}&subCategory=${subCategoryId}`} target="_blank">
-                   <Button variant="contained" disabled={!isFormValid} aria-label="print" size="small">
-                    Submit
-                  </Button>
-                </a>
+                <Button
+                  variant="contained"
+                  aria-label="print"
+                  size="small"
+                  onClick={handleSubmit}
+                  disabled={!canSubmit}
+                >
+                  Submit
+                </Button>
               </Grid>
             </Grid>
           </Box>

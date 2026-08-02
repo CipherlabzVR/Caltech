@@ -368,6 +368,26 @@ const fmtMoney = (n) => {
   return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 };
 
+/** Normalise selected entry-fee lines from a custom-plan stop payload. */
+function getStopEntryFeeLines(stop) {
+  if (!stop) return [];
+  const rawFees = stop.entryFees ?? stop.EntryFees;
+  if (!Array.isArray(rawFees) || rawFees.length === 0) return [];
+  return rawFees
+    .filter((f) => f && (f.location || f.Location || Number(f.perPersonFee ?? f.PerPersonFee) > 0))
+    .map((f) => {
+      const perPersonFee = Number(f.perPersonFee ?? f.PerPersonFee) || 0;
+      const personCount = Math.max(1, Math.round(Number(f.personCount ?? f.PersonCount) || 1));
+      const subtotal =
+        Number(f.subtotal ?? f.Subtotal) > 0
+          ? Number(f.subtotal ?? f.Subtotal)
+          : perPersonFee * personCount;
+      const location = String(f.location ?? f.Location ?? "Entry fee").trim() || "Entry fee";
+      return { location, perPersonFee, personCount, subtotal };
+    })
+    .filter((f) => f.perPersonFee > 0 || f.subtotal > 0);
+}
+
 function safeParseCustomPlan(raw) {
   if (!raw) return null;
   if (typeof raw === "object") return raw;
@@ -914,6 +934,7 @@ function KV({ k, v, mono = false, highlight = false }) {
 function CustomPlanSummaryCard({ inquiry }) {
   const plan = safeParseCustomPlan(inquiry.customPlanJson);
   const stops = Array.isArray(plan?.stops) ? plan.stops : [];
+  const dayRoutes = Array.isArray(plan?.dayRoutes) ? plan.dayRoutes : [];
   const totals = plan?.totals || {};
   const vehicle = plan?.vehicle || null;
   const experienceTags = splitCsv(inquiry.plannerExperiences);
@@ -944,6 +965,18 @@ function CustomPlanSummaryCard({ inquiry }) {
             color="#1976d2"
             label="Trip Days"
             value={inquiry.tripDays || plan?.days || "—"}
+          />
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <PlannerStat
+            icon={<CalendarMonthIcon />}
+            color="#5e35b1"
+            label="Start date"
+            value={
+              inquiry.preferredTravelDate
+                ? new Date(inquiry.preferredTravelDate).toLocaleDateString()
+                : plan?.tripStartDate || "—"
+            }
           />
         </Grid>
         <Grid item xs={6} sm={3}>
@@ -1007,6 +1040,29 @@ function CustomPlanSummaryCard({ inquiry }) {
           <MapSnapshot inquiry={inquiry} />
         </Grid>
 
+        {dayRoutes.length > 0 && (
+          <Grid item xs={12}>
+            <Box sx={{ p: 2, borderRadius: 2, background: "#fff", border: "1px solid #c5cae9" }}>
+              <Box display="flex" alignItems="center" gap={1} mb={1}>
+                <RouteIcon sx={{ color: "#3949ab" }} />
+                <Typography variant="caption" sx={{ color: "#1a237e", textTransform: "uppercase", letterSpacing: 0.6, fontWeight: 700 }}>
+                  Day-by-day destinations
+                </Typography>
+              </Box>
+              <Stack divider={<Divider flexItem />} spacing={1}>
+                {dayRoutes.map((r, i) => (
+                  <Box key={i} display="flex" flexWrap="wrap" gap={1} alignItems="center">
+                    <Chip size="small" label={`Day ${r.day ?? i + 1}`} sx={{ fontWeight: 600 }} />
+                    <Typography variant="body2" sx={{ color: "#1a237e" }}>
+                      {(r.fromDestinationName || "—").trim()} → {(r.toDestinationName || "—").trim()}
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
+          </Grid>
+        )}
+
         <Grid item xs={12}>
           <Box sx={{ p: 2, borderRadius: 2, background: "#fff", border: "1px solid #c5cae9" }}>
             <Box display="flex" alignItems="center" gap={1} mb={1}>
@@ -1021,7 +1077,14 @@ function CustomPlanSummaryCard({ inquiry }) {
               </Typography>
             ) : (
               <Stack divider={<Divider flexItem />} spacing={1}>
-                {stops.map((s, i) => (
+                {stops.map((s, i) => {
+                  const entryLines = getStopEntryFeeLines(s);
+                  const entryTotal = entryLines.length > 0
+                    ? entryLines.reduce((sum, line) => sum + line.subtotal, 0)
+                    : Number(s.entryFee) > 0
+                    ? Number(s.entryFee)
+                    : 0;
+                  return (
                   <Box key={i} display="flex" justifyContent="space-between" alignItems="flex-start" gap={2} flexWrap="wrap">
                     <Box minWidth={0} flex={1}>
                       <Typography fontWeight={600} sx={{ color: "#1a237e" }}>
@@ -1057,6 +1120,30 @@ function CustomPlanSummaryCard({ inquiry }) {
                             .join(" · ")}
                         </Typography>
                       )}
+                      {entryLines.length > 0 ? (
+                        <Box sx={{ mt: 0.75 }}>
+                          <Typography
+                            variant="caption"
+                            sx={{ display: "block", color: "#6d4c41", fontWeight: 700, mb: 0.25 }}
+                          >
+                            Entry tickets (selected)
+                          </Typography>
+                          {entryLines.map((line, idx) => (
+                            <Typography
+                              key={`${line.location}-${idx}`}
+                              variant="caption"
+                              sx={{ display: "block", color: "text.secondary" }}
+                            >
+                              {line.location}: {line.personCount} person{line.personCount === 1 ? "" : "s"} ×{" "}
+                              {fmtMoney(line.perPersonFee)} = {fmtMoney(line.subtotal)}
+                            </Typography>
+                          ))}
+                        </Box>
+                      ) : entryTotal > 0 ? (
+                        <Typography variant="caption" sx={{ display: "block", color: "text.secondary", mt: 0.75 }}>
+                          Entry fee total: {fmtMoney(entryTotal)}
+                        </Typography>
+                      ) : null}
                     </Box>
                     <Box textAlign="right">
                       <Typography variant="body2">
@@ -1075,14 +1162,15 @@ function CustomPlanSummaryCard({ inquiry }) {
                           )}
                         </b>
                       </Typography>
-                      {Number(s.entryFee) > 0 && (
-                        <Typography variant="caption" color="text.secondary">
-                          Entry fee: {fmtMoney(s.entryFee)}/person
+                      {entryTotal > 0 && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+                          Entry: <b>{fmtMoney(entryTotal)}</b>
                         </Typography>
                       )}
                     </Box>
                   </Box>
-                ))}
+                  );
+                })}
               </Stack>
             )}
           </Box>

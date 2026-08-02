@@ -11,11 +11,14 @@ import {
   RadioGroup,
   Select,
   MenuItem,
+  Checkbox,
 } from "@mui/material";
 import { Field, Form, Formik } from "formik";
 import BASE_URL from "Base/api";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import useApi from "@/components/utils/useApi";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 
 const style = {
   position: "absolute",
@@ -35,6 +38,8 @@ export default function CashInOut({ fetchItems, shiftId }) {
   const [open, setOpen] = useState(false);
   const [cashFlowTypes, setCashFlowTypes] = useState([]);
   const inputRef = useRef(null);
+  const { data: isSafeAccountEnable } = IsAppSettingEnabled("isSafeaccountenable");
+  const { data: bankList } = useApi("/Bank/GetAllBanks");
 
   useEffect(() => {
     if (open) {
@@ -75,13 +80,22 @@ export default function CashInOut({ fetchItems, shiftId }) {
   };
 
   const handleSubmit = (values) => {
+    const bankInvolved = isSafeAccountEnable && values.IsBankInvolved;
+
+    if (bankInvolved && !values.BankId) {
+      toast.error("Please select a bank account");
+      return;
+    }
+
     const data = {
       ShiftId: shiftId,
       Description: values.Description,
       Amount: values.Amount,
       CashType: parseInt(values.CashType),
       CashFlowType: parseInt(values.CashFlowType),
-      Date: null
+      Date: null,
+      IsBankInvolved: bankInvolved,
+      BankId: bankInvolved ? parseInt(values.BankId) : null,
     };
 
     fetch(`${BASE_URL}/Shift/CreateCashInOut`, {
@@ -114,7 +128,14 @@ export default function CashInOut({ fetchItems, shiftId }) {
       <Modal open={open} onClose={handleClose}>
         <Box sx={style}>
           <Formik
-            initialValues={{ Description: "", Amount: "", CashType: 1, CashFlowType: null }}
+            initialValues={{
+              Description: "",
+              Amount: "",
+              CashType: 1,
+              CashFlowType: null,
+              IsBankInvolved: false,
+              BankId: "",
+            }}
             onSubmit={handleSubmit}
           >
             {({ setFieldValue, values, handleSubmit }) => (
@@ -152,6 +173,51 @@ export default function CashInOut({ fetchItems, shiftId }) {
                       />
                     </RadioGroup>
                   </Grid>
+                  {isSafeAccountEnable && (
+                    <>
+                      <Grid item xs={12} mt={2}>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={values.IsBankInvolved}
+                              onChange={(e) => {
+                                setFieldValue("IsBankInvolved", e.target.checked);
+                                if (!e.target.checked) {
+                                  setFieldValue("BankId", "");
+                                }
+                              }}
+                            />
+                          }
+                          label="Is Bank Involved"
+                        />
+                      </Grid>
+                      {values.IsBankInvolved && (
+                        <Grid item xs={12} mt={2}>
+                          <Typography>Bank Account</Typography>
+                          <Select
+                            name="BankId"
+                            required
+                            value={values.BankId}
+                            fullWidth
+                            size="small"
+                            displayEmpty
+                            onChange={(e) => setFieldValue("BankId", e.target.value)}
+                          >
+                            <MenuItem value="" disabled>
+                              Select Bank Account
+                            </MenuItem>
+                            {(bankList || [])
+                              .filter((bank) => bank.isActive)
+                              .map((bank) => (
+                                <MenuItem key={bank.id} value={bank.id}>
+                                  {bank.name} - {bank.accountNo}
+                                </MenuItem>
+                              ))}
+                          </Select>
+                        </Grid>
+                      )}
+                    </>
+                  )}
                   <Grid item xs={12} mt={2}>
                     <Typography>Cash Flow Type</Typography>
                     <Field

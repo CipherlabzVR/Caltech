@@ -19,6 +19,7 @@ import * as Yup from "yup";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import BASE_URL from "Base/api";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 
 const style = {
   position: "absolute",
@@ -39,6 +40,7 @@ const validationSchema = Yup.object().shape({
 });
 
 export default function EditBank({ item, fetchItems }) {
+  const { data: isSafeAccountEnable } = IsAppSettingEnabled("isSafeaccountenable");
   const [open, setOpen] = useState(false);
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
@@ -103,6 +105,7 @@ export default function EditBank({ item, fetchItems }) {
               BankAccountType: item.bankAccountType || "",
               IsActive: item.isActive || true,
               IsProfitAccount: item.isProfitAccount || false,
+              IsVirtual: item.isVirtual || false,
               WarehouseId: null,
             }}
             validationSchema={validationSchema}
@@ -243,6 +246,23 @@ export default function EditBank({ item, fetchItems }) {
                         label="Profit Account"
                       />
                     </Grid>
+                    {isSafeAccountEnable && (
+                      <Grid item xs={12} mt={1}>
+                        <FormControlLabel
+                          control={
+                            <Field
+                              as={Checkbox}
+                              name="IsVirtual"
+                              checked={values.IsVirtual}
+                              onChange={() =>
+                                setFieldValue("IsVirtual", !values.IsVirtual)
+                              }
+                            />
+                          }
+                          label="Virtual"
+                        />
+                      </Grid>
+                    )}
                   </Grid>
                 </Box>
                 <Box display="flex" mt={2} justifyContent="space-between">

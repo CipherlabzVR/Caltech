@@ -8,8 +8,10 @@ import BASE_URL from "Base/api";
 import SalesAnalytics from "./SalesAnalytics";
 import AudienceOverview from "./AudienceOverview";
 import OutstandingCustomers from "./OutstandingCustomers";
+import VirtualBankAccounts from "./VirtualBankAccounts";
 import ShippingTargetData from "./ShippingTargetData";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
+import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import useDashboardWidgetPermissions from "@/components/utils/useDashboardWidgetPermissions";
 import { formatCurrency, formatDateWithTime } from "@/components/utils/formatHelper";
 
@@ -19,7 +21,9 @@ export default function Dashboard() {
   const [features, setFeatures] = useState({});
   const [outstandingCustomers, setOutstandingCustomers] = useState([]);
   const [activeShifts, setActiveShifts] = useState([]);
+  const [virtualBankBalances, setVirtualBankBalances] = useState([]);
   const { approve1: hasApprovalLevel1 } = IsPermissionEnabled(MAIN_DASHBOARD_CATEGORY_ID);
+  const { data: isSafeAccountEnable } = IsAppSettingEnabled("isSafeaccountenable");
   const widgets = useDashboardWidgetPermissions();
 
   const authHeaders = {
@@ -95,6 +99,25 @@ export default function Dashboard() {
     }
   };
 
+  const fetchVirtualBankBalances = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/Bank/GetVirtualBankBalances`, {
+        method: "GET",
+        headers: authHeaders,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch");
+      }
+
+      const data = await response.json();
+      setVirtualBankBalances(data.result || []);
+    } catch (error) {
+      console.error("Error fetching virtual bank balances:", error);
+      setVirtualBankBalances([]);
+    }
+  };
+
   useEffect(() => {
     fetchIncomeDetails();
   }, []);
@@ -106,6 +129,12 @@ export default function Dashboard() {
   useEffect(() => {
     fetchOutstandingCustomers();
   }, []);
+
+  useEffect(() => {
+    if (isSafeAccountEnable) {
+      fetchVirtualBankBalances();
+    }
+  }, [isSafeAccountEnable]);
 
   return (
     <>
@@ -181,6 +210,10 @@ export default function Dashboard() {
           {widgets.stockBalance && <SalesAnalytics />}
         </Grid>
       </Grid>
+
+      {isSafeAccountEnable && virtualBankBalances.length > 0 && (
+        <VirtualBankAccounts virtualBanks={virtualBankBalances} />
+      )}
     </>
   );
 }

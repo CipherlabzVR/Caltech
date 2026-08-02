@@ -9,13 +9,31 @@ const getAuthHeaders = () => ({
 
 function parseResult(res) {
   if (Array.isArray(res)) return res;
-  if (res?.result != null) return Array.isArray(res.result) ? res.result : [res.result];
+  if (res?.result != null) {
+    if (Array.isArray(res.result)) return res.result;
+    if (Array.isArray(res.result?.items)) return res.result.items;
+    return [res.result];
+  }
   if (res?.data != null) return Array.isArray(res.data) ? res.data : [res.data];
   return [];
 }
 
-export async function fetchReportFilterOptions(filterType, keyword, extra = {}) {
+function normalizeSearchKeyword(keyword) {
   const q = (keyword || "").trim();
+  if (!q || q.toLowerCase() === "all") return "";
+  return q;
+}
+
+function filterByKeyword(list, q, fields = ["name"]) {
+  if (!q) return list;
+  const lower = q.toLowerCase();
+  return list.filter((row) =>
+    fields.some((field) => String(row?.[field] ?? "").toLowerCase().includes(lower))
+  );
+}
+
+export async function fetchReportFilterOptions(filterType, keyword, extra = {}) {
+  const q = normalizeSearchKeyword(keyword);
   const token = getToken();
   if (!token) return [];
 
@@ -33,19 +51,24 @@ export async function fetchReportFilterOptions(filterType, keyword, extra = {}) 
         }));
       }
       case "supplier": {
-        const url = `${BASE_URL}/Supplier/GetSuppliersByName?keyword=${encodeURIComponent(q)}`;
+        // Load all system suppliers, then filter locally when user types.
+        const url = `${BASE_URL}/Supplier/GetAllSupplier`;
         const r = await fetch(url, { method: "GET", headers: getAuthHeaders() });
         if (!r.ok) return [];
         const data = await r.json();
-        const list = parseResult(data);
-        return list.map((s) => ({ id: s.id, label: s.name || String(s.id) }));
+        const list = filterByKeyword(parseResult(data), q, ["name", "firstName", "lastName"]);
+        return list.map((s) => ({
+          id: s.id,
+          label: s.name || `${s.firstName || ""} ${s.lastName || ""}`.trim() || String(s.id),
+        }));
       }
       case "category": {
-        const url = `${BASE_URL}/Category/GetCategoriesByName?keyword=${encodeURIComponent(q)}`;
-        const r = await fetch(url, { method: "POST", headers: getAuthHeaders() });
+        // Load all system categories, then filter locally when user types.
+        const url = `${BASE_URL}/Category/GetAllCategory`;
+        const r = await fetch(url, { method: "GET", headers: getAuthHeaders() });
         if (!r.ok) return [];
         const data = await r.json();
-        const list = parseResult(data);
+        const list = filterByKeyword(parseResult(data), q, ["name"]);
         return list.map((c) => ({ id: c.id, label: c.name || String(c.id) }));
       }
       case "subCategory": {
@@ -57,43 +80,33 @@ export async function fetchReportFilterOptions(filterType, keyword, extra = {}) 
           if (!r.ok) return [];
           const data = await r.json();
           list = parseResult(data);
-          if (q) {
-            const lower = q.toLowerCase();
-            list = list.filter((sc) => (sc.name || "").toLowerCase().includes(lower));
-          }
         } else {
-          const url = `${BASE_URL}/SubCategory/GetSubCategoriesbyName?keyword=${encodeURIComponent(q)}`;
-          const r = await fetch(url, { method: "POST", headers: getAuthHeaders() });
+          // Load all system sub categories when no parent category is selected.
+          const url = `${BASE_URL}/SubCategory/GetAllSubCategory`;
+          const r = await fetch(url, { method: "GET", headers: getAuthHeaders() });
           if (!r.ok) return [];
           const data = await r.json();
           list = parseResult(data);
         }
+        list = filterByKeyword(list, q, ["name"]);
         return list.map((c) => ({ id: c.id, label: c.name || String(c.id) }));
       }
       case "item": {
-        const { supplierId } = extra;
-        let url;
-        if (supplierId) {
-          url = `${BASE_URL}/Items/GetAllItemsBySupplierIdAndName?supplierId=${supplierId}&keyword=${encodeURIComponent(q)}`;
-        } else {
-          url = `${BASE_URL}/Items/GetAllItemsByName?keyword=${encodeURIComponent(q)}`;
-        }
-        if (!q) {
-          if (supplierId || extra.categoryId || extra.subCategoryId) {
-            url = `${BASE_URL}/Items/GetFilteredItems?supplier=${supplierId || 0}&category=${extra.categoryId || 0}&subCategory=${extra.subCategoryId || 0}`;
-          } else {
-            return [];
-          }
-        }
+        const supplierId = extra.supplierId || 0;
+        const categoryId = extra.categoryId || 0;
+        const subCategoryId = extra.subCategoryId || 0;
+
+        // Load items created in the system (optionally scoped by selected filters).
+        const url = `${BASE_URL}/Items/GetFilteredItems?supplier=${supplierId}&category=${categoryId}&subCategory=${subCategoryId}`;
         const r = await fetch(url, { method: "GET", headers: getAuthHeaders() });
         if (!r.ok) return [];
         const data = await r.json();
         let list = parseResult(data);
-        if (q && (extra.categoryId || extra.subCategoryId)) {
-          if (extra.categoryId) list = list.filter((i) => (i.categoryId || i.CategoryId) === extra.categoryId);
-          if (extra.subCategoryId) list = list.filter((i) => (i.subCategoryId || i.SubCategoryId) === extra.subCategoryId);
-        }
-        return list.map((i) => ({ id: i.id, label: i.name || String(i.id) }));
+        list = filterByKeyword(list, q, ["name", "code"]);
+        return list.map((i) => ({
+          id: i.id,
+          label: i.code ? `${i.code} - ${i.name || ""}`.trim() : i.name || String(i.id),
+        }));
       }
       case "doctor": {
         const url = `${BASE_URL}/Doctors/GetAllDoctors?SkipCount=0&MaxResultCount=50&Search=${encodeURIComponent(q)}`;

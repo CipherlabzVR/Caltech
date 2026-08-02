@@ -44,6 +44,7 @@ const SAMPLE_DATA = {
   createdDate: "26-Jun-2026 10:30:00AM",
   referenceNo: "PO-000045",
   salesPerson: "Nimal Silva",
+  freightDutyTotal: "2,850.00",
   subtotal: "150,000.00",
   orderDiscountPercent: "5.00",
   totalDiscount: "7,500.00",
@@ -51,9 +52,9 @@ const SAMPLE_DATA = {
 };
 
 const SAMPLE_ROWS = [
-  { productName: "A4 Copy Paper 80gsm", productCode: "ITM-1001", batch: "B-2207", expDate: "-", qty: "50", free: "2", unitPrice: "850.00", discountRate: "0.00", sellingPrice: "1,100.00", lineTotal: "42,500.00" },
-  { productName: "Blue Ball Pen", productCode: "ITM-1002", batch: "B-3310", expDate: "-", qty: "40", free: "0", unitPrice: "45.00", discountRate: "5.00", sellingPrice: "75.00", lineTotal: "1,710.00" },
-  { productName: "Stapler Heavy Duty", productCode: "ITM-1003", batch: "B-9921", expDate: "-", qty: "30", free: "1", unitPrice: "1,250.00", discountRate: "0.00", sellingPrice: "1,650.00", lineTotal: "37,500.00" },
+  { productName: "A4 Copy Paper 80gsm", productCode: "ITM-1001", batch: "B-2207", expDate: "-", qty: "50", free: "2", unitPrice: "850.00", freightDuty: "25.00", discountRate: "0.00", sellingPrice: "1,100.00", lineTotal: "42,500.00" },
+  { productName: "Blue Ball Pen", productCode: "ITM-1002", batch: "B-3310", expDate: "-", qty: "40", free: "0", unitPrice: "45.00", freightDuty: "5.00", discountRate: "5.00", sellingPrice: "75.00", lineTotal: "1,710.00" },
+  { productName: "Stapler Heavy Duty", productCode: "ITM-1003", batch: "B-9921", expDate: "-", qty: "30", free: "1", unitPrice: "1,250.00", freightDuty: "50.00", discountRate: "0.00", sellingPrice: "1,650.00", lineTotal: "37,500.00" },
 ];
 
 const buildSampleRows = () =>
@@ -65,16 +66,41 @@ const buildSampleRows = () =>
       <td class="num">${r.qty}</td>
       <td class="num">${r.free}</td>
       <td class="num">${r.unitPrice}</td>
+      <td class="num">${r.freightDuty}</td>
       <td class="num">${r.discountRate}</td>
       <td class="num">${r.sellingPrice}</td>
       <td class="num">${r.lineTotal}</td>
     </tr>`
   ).join("\n");
 
+const ensureFreightDutyColumnHeader = (html) => {
+  if (!html || /<th[^>]*>\s*Freight\s*Duty/i.test(html)) return html;
+  return html.replace(
+    /(<th[^>]*>\s*Unit\s*Price\s*<\/th>)/i,
+    `$1\n          <th class="num">Freight Duty</th>`
+  );
+};
+
+const ensureFreightDutyTotalRow = (html) => {
+  if (
+    !html ||
+    /\{\{\s*freightDutyTotal\s*\}\}/i.test(html) ||
+    /Freight\s*Duty\s*Total/i.test(html)
+  ) {
+    return html;
+  }
+  return html.replace(
+    /(<div class=["']totals["']>\s*)(<div class=["']row["']>\s*<span>\s*Total\s*<\/span>)/i,
+    `$1<div class="row"><span>Freight Duty Total</span><span>{{freightDutyTotal}}</span></div>\n      $2`
+  );
+};
+
 /** Replace {{token}} placeholders with sample values so the preview looks like a real document. */
 const renderPreview = (html) => {
   if (!html) return "";
-  let output = html.replace(/\{\{\s*lineItemsRows\s*\}\}/gi, buildSampleRows());
+  let output = ensureFreightDutyColumnHeader(html);
+  output = ensureFreightDutyTotalRow(output);
+  output = output.replace(/\{\{\s*lineItemsRows\s*\}\}/gi, buildSampleRows());
   Object.entries(SAMPLE_DATA).forEach(([token, value]) => {
     const pattern = new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, "gi");
     output = output.replace(pattern, value ?? "");

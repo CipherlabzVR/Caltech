@@ -46,10 +46,10 @@ export default function Modules({ handleClose,item }) {
             const data = await response.json();
 
             setCheckedModules(
-                data.map((item) => ({
-                    CompanyId: item.id,
-                    ModuleId: item.moduleId ?? item.ModuleId,
-                    isActive: item.isActive,
+                data.map((row) => ({
+                    CompanyId: item,
+                    ModuleId: row.moduleId ?? row.ModuleId,
+                    isActive: row.isActive,
                 }))
             );
         } catch (error) {

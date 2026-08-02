@@ -62,7 +62,7 @@ const EMPTY_FORM = {
 };
 
 /** New (unsaved) row in the Rooms sub-grid. */
-const newRoomRow = () => ({ id: null, travelRoomTypeId: "", pricePerNight: 0, isActive: true });
+const newRoomRow = () => ({ id: null, travelRoomTypeId: "", pricePerNight: 0, isActive: true, seasonPrices: [] });
 
 export default function TravelHotels() {
   const cId = typeof window !== "undefined" ? sessionStorage.getItem("category") : null;
@@ -157,6 +157,17 @@ export default function TravelHotels() {
         travelRoomTypeId: r.travelRoomTypeId,
         pricePerNight: r.pricePerNight,
         isActive: r.isActive !== false,
+        seasonPrices: (r.seasonPrices || []).map((s) => ({
+          id: s.id,
+          startMonth: s.startMonth ?? 1,
+          startDay: s.startDay ?? 1,
+          endMonth: s.endMonth ?? 12,
+          endDay: s.endDay ?? 31,
+          pricePerNight: s.pricePerNight ?? 0,
+          label: s.label || "",
+          priority: s.priority ?? 0,
+          isActive: s.isActive !== false,
+        })),
       })),
     });
     setDialogOpen(true);
@@ -172,6 +183,41 @@ export default function TravelHotels() {
 
   const addRoom = () => setForm((prev) => ({ ...prev, rooms: [...prev.rooms, newRoomRow()] }));
   const removeRoom = (idx) => setForm((prev) => ({ ...prev, rooms: prev.rooms.filter((_, i) => i !== idx) }));
+
+  const addSeason = (roomIdx) => {
+    setForm((prev) => {
+      const rooms = [...prev.rooms];
+      const row = rooms[roomIdx];
+      if (!row) return prev;
+      rooms[roomIdx] = { ...row, seasonPrices: [...(row.seasonPrices || []), newSeasonRow()] };
+      return { ...prev, rooms };
+    });
+  };
+
+  const updateSeason = (roomIdx, seasonIdx, patch) => {
+    setForm((prev) => {
+      const rooms = [...prev.rooms];
+      const row = rooms[roomIdx];
+      if (!row) return prev;
+      const seasonPrices = [...(row.seasonPrices || [])];
+      seasonPrices[seasonIdx] = { ...seasonPrices[seasonIdx], ...patch };
+      rooms[roomIdx] = { ...row, seasonPrices };
+      return { ...prev, rooms };
+    });
+  };
+
+  const removeSeason = (roomIdx, seasonIdx) => {
+    setForm((prev) => {
+      const rooms = [...prev.rooms];
+      const row = rooms[roomIdx];
+      if (!row) return prev;
+      rooms[roomIdx] = {
+        ...row,
+        seasonPrices: (row.seasonPrices || []).filter((_, i) => i !== seasonIdx),
+      };
+      return { ...prev, rooms };
+    });
+  };
 
   const handleSave = async () => {
     if (!form.name?.trim()) return toast.error("Hotel name is required.");
@@ -209,6 +255,17 @@ export default function TravelHotels() {
             travelRoomTypeId: Number(r.travelRoomTypeId),
             pricePerNight: Number(r.pricePerNight) || 0,
             isActive: !!r.isActive,
+            seasonPrices: (r.seasonPrices || []).map((s) => ({
+              ...(s.id ? { id: Number(s.id) } : {}),
+              startMonth: Number(s.startMonth) || 1,
+              startDay: Number(s.startDay) || 1,
+              endMonth: Number(s.endMonth) || 12,
+              endDay: Number(s.endDay) || 31,
+              pricePerNight: Number(s.pricePerNight) || 0,
+              label: (s.label || "").trim() || null,
+              priority: Number(s.priority) || 0,
+              isActive: s.isActive !== false,
+            })),
           })),
       };
       const url = editingId
@@ -383,7 +440,11 @@ export default function TravelHotels() {
                                 key={rm.id}
                                 size="small"
                                 variant="outlined"
-                                label={`${rm.roomTypeLabel}: ${Number(rm.pricePerNight).toLocaleString()}`}
+                                label={`${rm.roomTypeLabel}: ${Number(rm.pricePerNight).toLocaleString()}${
+                                  (rm.seasonPrices || []).length
+                                    ? ` (+${rm.seasonPrices.length} season${rm.seasonPrices.length === 1 ? "" : "s"})`
+                                    : ""
+                                }`}
                               />
                             ))}
                           </Stack>
@@ -424,7 +485,7 @@ export default function TravelHotels() {
       </Grid>
 
       {/* ── Add / Edit dialog ─────────────────────────────────────────── */}
-      <Dialog open={dialogOpen} onClose={() => !saving && setDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={dialogOpen} onClose={() => !saving && setDialogOpen(false)} maxWidth="lg" fullWidth>
         <DialogTitle>{editingId ? "Edit Hotel" : "Add Hotel"}</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2} sx={{ pt: 1 }}>
@@ -486,50 +547,177 @@ export default function TravelHotels() {
                   No room layouts yet. Add at least one (Single / Double / Triple) so guests can pick this hotel.
                 </Typography>
               ) : (
-                <Stack spacing={1.5}>
+                <Stack spacing={2}>
                   {form.rooms.map((rm, idx) => (
-                    <Stack
-                      key={`${rm.id ?? "new"}-${idx}`}
-                      direction={{ xs: "column", sm: "row" }}
-                      spacing={1.5}
-                      alignItems={{ xs: "stretch", sm: "center" }}
-                    >
-                      <FormControl sx={{ minWidth: 200 }} size="small">
-                        <InputLabel>Room Type *</InputLabel>
-                        <Select
-                          label="Room Type *"
-                          value={rm.travelRoomTypeId}
-                          onChange={(e) => updateRoom(idx, { travelRoomTypeId: e.target.value })}
-                        >
-                          {roomTypes.map((t) => (
-                            <MenuItem key={t.id} value={t.id}>
-                              {t.label} (max {t.maxOccupancy})
-                            </MenuItem>
+                    <Paper key={`${rm.id ?? "new"}-${idx}`} variant="outlined" sx={{ p: 2 }}>
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        spacing={1.5}
+                        alignItems={{ xs: "stretch", sm: "center" }}
+                        flexWrap="wrap"
+                      >
+                        <FormControl sx={{ minWidth: 200 }} size="small">
+                          <InputLabel>Room Type *</InputLabel>
+                          <Select
+                            label="Room Type *"
+                            value={rm.travelRoomTypeId}
+                            onChange={(e) => updateRoom(idx, { travelRoomTypeId: e.target.value })}
+                          >
+                            {roomTypes.map((t) => (
+                              <MenuItem key={t.id} value={t.id}>
+                                {t.label} (max {t.maxOccupancy})
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                        <TextField
+                          label="Default price / night *"
+                          type="number"
+                          value={rm.pricePerNight}
+                          onChange={(e) => updateRoom(idx, { pricePerNight: e.target.value })}
+                          size="small"
+                          inputProps={{ min: 0, step: 0.01 }}
+                          sx={{ maxWidth: 200 }}
+                        />
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={rm.isActive}
+                              onChange={(e) => updateRoom(idx, { isActive: e.target.checked })}
+                            />
+                          }
+                          label="Active"
+                        />
+                        <IconButton color="error" onClick={() => removeRoom(idx)} aria-label="Remove room">
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+
+                      <Divider sx={{ my: 1.5 }} />
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                          Seasonal prices (from month → to month)
+                        </Typography>
+                        <Button size="small" startIcon={<AddIcon />} onClick={() => addSeason(idx)}>
+                          Add season
+                        </Button>
+                      </Stack>
+                      {(rm.seasonPrices || []).length === 0 ? (
+                        <Typography variant="caption" color="text.secondary">
+                          No seasonal bands — only the default price above is used all year.
+                        </Typography>
+                      ) : (
+                        <Stack spacing={1.5}>
+                          {rm.seasonPrices.map((sp, si) => (
+                            <Stack
+                              key={`${sp.id ?? "new"}-${si}`}
+                              direction={{ xs: "column", md: "row" }}
+                              spacing={1}
+                              alignItems={{ xs: "stretch", md: "center" }}
+                              flexWrap="wrap"
+                              useFlexGap
+                              sx={{
+                                p: 1,
+                                borderRadius: 1,
+                                border: "1px solid",
+                                borderColor: "divider",
+                                bgcolor: "action.hover",
+                              }}
+                            >
+                              <FormControl size="small" sx={{ minWidth: 130 }}>
+                                <InputLabel>From month</InputLabel>
+                                <Select
+                                  label="From month"
+                                  value={sp.startMonth}
+                                  onChange={(e) => updateSeason(idx, si, { startMonth: Number(e.target.value) })}
+                                >
+                                  {HOTEL_SEASON_MONTHS.map((m) => (
+                                    <MenuItem key={`sm-${m.value}`} value={m.value}>{m.label}</MenuItem>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                              <TextField
+                                label="Day"
+                                type="number"
+                                size="small"
+                                value={sp.startDay}
+                                onChange={(e) => updateSeason(idx, si, { startDay: e.target.value })}
+                                inputProps={{ min: 1, max: 31 }}
+                                sx={{ width: 80 }}
+                              />
+                              <Typography variant="body2" color="text.secondary" sx={{ px: 0.5 }}>
+                                to
+                              </Typography>
+                              <FormControl size="small" sx={{ minWidth: 130 }}>
+                                <InputLabel>To month</InputLabel>
+                                <Select
+                                  label="To month"
+                                  value={sp.endMonth}
+                                  onChange={(e) => updateSeason(idx, si, { endMonth: Number(e.target.value) })}
+                                >
+                                  {HOTEL_SEASON_MONTHS.map((m) => (
+                                    <MenuItem key={`em-${m.value}`} value={m.value}>{m.label}</MenuItem>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                              <TextField
+                                label="Day"
+                                type="number"
+                                size="small"
+                                value={sp.endDay}
+                                onChange={(e) => updateSeason(idx, si, { endDay: e.target.value })}
+                                inputProps={{ min: 1, max: 31 }}
+                                sx={{ width: 80 }}
+                              />
+                              <TextField
+                                label="Price / night"
+                                type="number"
+                                size="small"
+                                value={sp.pricePerNight}
+                                onChange={(e) => updateSeason(idx, si, { pricePerNight: e.target.value })}
+                                inputProps={{ min: 0, step: 0.01 }}
+                                sx={{ width: 120 }}
+                              />
+                              <TextField
+                                label="Label"
+                                size="small"
+                                placeholder="e.g. Peak"
+                                value={sp.label}
+                                onChange={(e) => updateSeason(idx, si, { label: e.target.value })}
+                                sx={{ minWidth: 100, flex: 1 }}
+                              />
+                              <TextField
+                                label="Priority"
+                                type="number"
+                                size="small"
+                                value={sp.priority}
+                                onChange={(e) => updateSeason(idx, si, { priority: e.target.value })}
+                                inputProps={{ min: 0 }}
+                                sx={{ width: 90 }}
+                              />
+                              <FormControlLabel
+                                control={
+                                  <Switch
+                                    size="small"
+                                    checked={sp.isActive}
+                                    onChange={(e) => updateSeason(idx, si, { isActive: e.target.checked })}
+                                  />
+                                }
+                                label="On"
+                              />
+                              <IconButton
+                                color="error"
+                                size="small"
+                                onClick={() => removeSeason(idx, si)}
+                                aria-label="Remove season"
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Stack>
                           ))}
-                        </Select>
-                      </FormControl>
-                      <TextField
-                        label="Price per Night *"
-                        type="number"
-                        value={rm.pricePerNight}
-                        onChange={(e) => updateRoom(idx, { pricePerNight: e.target.value })}
-                        size="small"
-                        inputProps={{ min: 0, step: 0.01 }}
-                        sx={{ maxWidth: 200 }}
-                      />
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={rm.isActive}
-                            onChange={(e) => updateRoom(idx, { isActive: e.target.checked })}
-                          />
-                        }
-                        label="Active"
-                      />
-                      <IconButton color="error" onClick={() => removeRoom(idx)} aria-label="Remove room">
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Stack>
+                        </Stack>
+                      )}
+                    </Paper>
                   ))}
                 </Stack>
               )}
@@ -584,3 +772,33 @@ export default function TravelHotels() {
     </>
   );
 }
+
+/** Seasonal price helpers (hotel room year-less month/day bands). */
+function newSeasonRow() {
+  return {
+    id: null,
+    startMonth: 1,
+    startDay: 1,
+    endMonth: 3,
+    endDay: 31,
+    pricePerNight: 0,
+    label: "",
+    priority: 0,
+    isActive: true,
+  };
+}
+
+const HOTEL_SEASON_MONTHS = [
+  { value: 1, label: "January" },
+  { value: 2, label: "February" },
+  { value: 3, label: "March" },
+  { value: 4, label: "April" },
+  { value: 5, label: "May" },
+  { value: 6, label: "June" },
+  { value: 7, label: "July" },
+  { value: 8, label: "August" },
+  { value: 9, label: "September" },
+  { value: 10, label: "October" },
+  { value: 11, label: "November" },
+  { value: 12, label: "December" },
+];

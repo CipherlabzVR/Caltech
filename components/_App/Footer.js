@@ -46,9 +46,11 @@ const Footer = () => {
 
     if (!chosenVersionNumber) return null;
 
+    const buildDateValue =
+      latestVersion?.buildDate || latestVersion?.createdOn || null;
     const dateText =
-      apiVersionNumber && latestVersion?.createdOn
-        ? new Date(latestVersion.createdOn).toLocaleDateString()
+      apiVersionNumber && buildDateValue
+        ? new Date(buildDateValue).toLocaleDateString()
         : null;
 
     return dateText

@@ -451,6 +451,20 @@ function MyApp({ Component, pageProps }) {
     "/inventory/stock-dispatch/print",
     "/inventory/stock-adjustment/print",
     "/inventory/stock-details/print",
+    "/reports/stock-balance/print",
+    "/reports/stock-movement/print",
+    "/reports/purchase-order-notes-summary/print",
+    "/reports/goods-received-notes-summary/print",
+    "/reports/shipment-summary/print",
+    "/reports/sales-summary/print",
+    "/reports/customer-payment-summary/print",
+    "/reports/outstanding-report/print",
+    "/reports/shift-summary/print",
+    "/reports/bank-history/print",
+    "/reports/cash-book-summary/print",
+    "/reports/cash-flow-summary/print",
+    "/reports/profitability-report/print",
+    "/reports/company-wise-profit/print",
     "/inventory/shipment/view",
     "/work-track/share/[token]",
     "/work-track/share/[token]/form/[detailId]",
@@ -476,9 +490,19 @@ function MyApp({ Component, pageProps }) {
     "/finance/payments/print"
   ];
 
-  const publicPath = (router.asPath || "").split("?")[0].split("#")[0];
+  // trailingSlash: true can leave a trailing "/" on asPath; normalize so print pages
+  // always skip the ERP shell (sidebar/header) and show report-only.
+  const stripTrailingSlash = (path = "") => {
+    if (!path || path === "/") return "/";
+    return path.replace(/\/+$/, "");
+  };
+  const publicPath = stripTrailingSlash((router.asPath || "").split("?")[0].split("#")[0]);
+  const currentPathname = stripTrailingSlash(router.pathname || "");
   const isPublicStandaloneRoute =
-    noLayoutRoutes.includes(router.pathname) || publicPath.startsWith("/work-track/share/");
+    noLayoutRoutes.some((route) => {
+      const normalized = stripTrailingSlash(route);
+      return normalized === currentPathname || normalized === publicPath;
+    }) || publicPath.startsWith("/work-track/share");
 
   const shouldUseLayout = !isPublicStandaloneRoute;
   const shouldCheckToken = !isPublicStandaloneRoute;

@@ -74,6 +74,7 @@ import LocationOnIcon from "@mui/icons-material/LocationOn";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import ListAltIcon from "@mui/icons-material/ListAlt";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import ShareIcon from "@mui/icons-material/Share";
 import FreeBreakfastIcon from "@mui/icons-material/FreeBreakfast";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
 import CoffeeIcon from "@mui/icons-material/Coffee";
@@ -82,6 +83,7 @@ import { formatDate } from "@/components/utils/formatHelper";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import SignatureCanvas from "react-signature-canvas";
 import CameraCaptureModal from "@/components/work-track/CameraCaptureModal";
+import WorkTrackShareDialog from "@/components/work-track/WorkTrackShareDialog";
 
 /** Extract checklist array from ApiResponse / alternate shapes */
 function extractChecklistArrayFromResponse(result) {
@@ -135,6 +137,7 @@ export default function WorkTrackDetailView() {
 
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState(null);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [checklists, setChecklists] = useState([]);
   const [expandedChecklists, setExpandedChecklists] = useState({});
 
@@ -2770,7 +2773,17 @@ export default function WorkTrackDetailView() {
               </IconButton>
               <Typography variant="h6">Summary</Typography>
             </Box>
-            <Box display="flex" alignItems="center" gap={1}>
+            <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+              <Button
+                variant="outlined"
+                size="small"
+                color="secondary"
+                startIcon={<ShareIcon />}
+                onClick={() => setShareDialogOpen(true)}
+                disabled={!detail?.workTrackId}
+              >
+                Share
+              </Button>
               <Chip
                 label={detail.submissionStatus || "Draft"}
                 size="small"
@@ -3971,6 +3984,17 @@ export default function WorkTrackDetailView() {
           <Button onClick={() => setHistoryModalOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      <WorkTrackShareDialog
+        open={shareDialogOpen}
+        onClose={() => setShareDialogOpen(false)}
+        workTrackId={detail?.workTrackId}
+        customerName={detail?.workTrackCustomerName || detail?.customerName}
+        projectName={detail?.workTrackProjectName || detail?.projectName}
+        detailId={detail?.id ?? id}
+        trackId={detail?.trackId}
+        equipmentDescription={detail?.equipmentDescription}
+      />
     </>
   );
 }

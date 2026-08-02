@@ -104,6 +104,7 @@ export default function EditWorkTrack() {
   const [technicians, setTechnicians] = useState([]);
   const fileInputRef = useRef(null);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareDetail, setShareDetail] = useState(null);
 
   // Server-side paginated forms (Skip/Take)
   const [pagedForms, setPagedForms] = useState([]);
@@ -884,10 +885,13 @@ export default function EditWorkTrack() {
               <Button
                 variant="outlined"
                 startIcon={<ShareIcon />}
-                onClick={() => setShareDialogOpen(true)}
+                onClick={() => {
+                  setShareDetail(null);
+                  setShareDialogOpen(true);
+                }}
                 color="secondary"
               >
-                Share
+                Share Project
               </Button>
               <Button
                 variant="outlined"
@@ -1335,7 +1339,18 @@ export default function EditWorkTrack() {
                   <TableCell>Assignee</TableCell>
                   <TableCell>Task Complete %</TableCell>
                   <TableCell>Created Date</TableCell>
-                  <TableCell align="right">Actions</TableCell>
+                  <TableCell
+                    align="right"
+                    sx={{
+                      position: "sticky",
+                      right: 0,
+                      bgcolor: "#f5f5f5",
+                      zIndex: 2,
+                      minWidth: 120,
+                    }}
+                  >
+                    Actions
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -1378,7 +1393,31 @@ export default function EditWorkTrack() {
                       <TableCell>{detail.assignee || "-"}</TableCell>
                       <TableCell>{detail.taskCompletePercentage != null ? `${detail.taskCompletePercentage}%` : "-"}</TableCell>
                       <TableCell>{formatDate(detail.createdOn)}</TableCell>
-                      <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                      <TableCell
+                        align="right"
+                        onClick={(e) => e.stopPropagation()}
+                        sx={{
+                          position: "sticky",
+                          right: 0,
+                          bgcolor: "background.paper",
+                          zIndex: 1,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <Tooltip title="Share (view only)">
+                          <IconButton
+                            size="small"
+                            color="secondary"
+                            aria-label="share form"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShareDetail(detail);
+                              setShareDialogOpen(true);
+                            }}
+                          >
+                            <ShareIcon fontSize="inherit" />
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title="Edit">
                           <IconButton
                             size="small"
@@ -2084,10 +2123,16 @@ export default function EditWorkTrack() {
 
       <WorkTrackShareDialog
         open={shareDialogOpen}
-        onClose={() => setShareDialogOpen(false)}
+        onClose={() => {
+          setShareDialogOpen(false);
+          setShareDetail(null);
+        }}
         workTrackId={id}
         customerName={workTrackData?.customerName}
         projectName={workTrackData?.projectName}
+        detailId={shareDetail?.id ?? null}
+        trackId={shareDetail?.trackId ?? null}
+        equipmentDescription={shareDetail?.equipmentDescription ?? null}
       />
     </>
   );

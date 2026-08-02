@@ -60,6 +60,20 @@ const FIELD_LIMITS = {
   shortDescription: 500,
   overviewQuote: 500,
   highlight: 200,
+  entryFeeLocation: 200,
+};
+
+const emptyEntryFee = () => ({ location: "", perPersonFee: "" });
+
+/** Allow digits and at most one decimal point (max 2 decimal places). */
+const sanitizeDecimalInput = (raw) => {
+  let text = String(raw ?? "").replace(/,/g, ".");
+  text = text.replace(/[^\d.]/g, "");
+  const dot = text.indexOf(".");
+  if (dot === -1) return text;
+  const intPart = text.slice(0, dot);
+  const decPart = text.slice(dot + 1).replace(/\./g, "").slice(0, 2);
+  return `${intPart}.${decPart}`;
 };
 
 const roundTo = (value, precision) => {
@@ -77,6 +91,19 @@ const parseOptionalNumber = (raw) => {
   return { value: num };
 };
 
+const hydrateEntryFees = (row) => {
+  if (Array.isArray(row?.entryFees) && row.entryFees.length > 0) {
+    return row.entryFees.map((f) => ({
+      location: f.location || "",
+      perPersonFee: f.perPersonFee != null && f.perPersonFee !== "" ? String(f.perPersonFee) : "",
+    }));
+  }
+  if (row?.entryFee != null && row.entryFee !== "" && Number(row.entryFee) > 0) {
+    return [{ location: "Entry fee", perPersonFee: String(row.entryFee) }];
+  }
+  return [];
+};
+
 const parseOptionalMoney = (raw) => {
   const parsed = parseOptionalNumber(raw);
   if (parsed.error) return { error: "Entry fee must be a valid number." };
@@ -84,6 +111,30 @@ const parseOptionalMoney = (raw) => {
   const rounded = roundTo(parsed.value, 2);
   if (rounded < 0) return { error: "Entry fee cannot be negative." };
   return { value: rounded };
+};
+
+const normalizeEntryFeesForSave = (entryFees) => {
+  const rows = [];
+  for (let i = 0; i < (entryFees || []).length; i += 1) {
+    const row = entryFees[i];
+    const location = (row.location || "").trim();
+    const feeParsed = parseOptionalMoney(row.perPersonFee);
+    if (feeParsed.error) return { error: feeParsed.error };
+    if (!location && (feeParsed.value == null || feeParsed.value === 0)) continue;
+    if (!location) return { error: "Each entry fee must have a location." };
+    if (feeParsed.value == null || feeParsed.value === 0) {
+      return { error: "Per person fee is required when a location is entered." };
+    }
+    if (location.length > FIELD_LIMITS.entryFeeLocation) {
+      return { error: `Entry fee location must be ${FIELD_LIMITS.entryFeeLocation} characters or fewer.` };
+    }
+    rows.push({
+      location,
+      perPersonFee: feeParsed.value ?? 0,
+      displayOrder: i,
+    });
+  }
+  return { value: rows };
 };
 
 const emptyForm = {
@@ -96,7 +147,7 @@ const emptyForm = {
   highlights: [],
   displayOrder: 0,
   isActive: true,
-  entryFee: "",
+  entryFees: [],
 };
 
 const isOk = (res) => {
@@ -225,7 +276,7 @@ export default function TravelDestinations() {
       highlights: Array.isArray(row.highlights) ? [...row.highlights] : [],
       displayOrder: row.displayOrder ?? 0,
       isActive: row.isActive ?? true,
-      entryFee: row.entryFee != null && row.entryFee !== "" ? String(row.entryFee) : "",
+      entryFees: hydrateEntryFees(row),
     });
     setImages(Array.isArray(row.images) ? [...row.images].sort((a, b) => a.displayOrder - b.displayOrder) : []);
     setHighlightInput("");
@@ -287,8 +338,8 @@ export default function TravelDestinations() {
     if (form.overviewQuote.trim().length > FIELD_LIMITS.overviewQuote)
       return `Overview quote must be ${FIELD_LIMITS.overviewQuote} characters or fewer.`;
 
-    const entryFeeParsed = parseOptionalMoney(form.entryFee);
-    if (entryFeeParsed.error) return entryFeeParsed.error;
+    const entryFeesResult = normalizeEntryFeesForSave(form.entryFees);
+    if (entryFeesResult.error) return entryFeesResult.error;
 
     return null;
   };
@@ -301,7 +352,11 @@ export default function TravelDestinations() {
     }
     setSaving(true);
     try {
-      const entryFeeParsed = parseOptionalMoney(form.entryFee);
+      const entryFeesResult = normalizeEntryFeesForSave(form.entryFees);
+      if (entryFeesResult.error) {
+        toast.error(entryFeesResult.error);
+        return;
+      }
       const existing = editingId ? destinations.find((d) => d.id === editingId) : null;
 
       const url = editingId
@@ -319,7 +374,7 @@ export default function TravelDestinations() {
         coverImageUrl: existing?.coverImageUrl?.trim() || null,
         displayOrder: Number(form.displayOrder) || 0,
         isActive: form.isActive,
-        entryFee: entryFeeParsed.value,
+        entryFees: entryFeesResult.value,
         latitude: existing?.latitude ?? null,
         longitude: existing?.longitude ?? null,
       };
@@ -862,18 +917,76 @@ export default function TravelDestinations() {
                   </Box>
                 </Grid>
 
-                {/* Custom plan calculator: per-person entry fee */}
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    label="Entry / Ticket Fee (per person)"
-                    type="text"
-                    inputMode="decimal"
-                    value={form.entryFee}
-                    onChange={(e) => setForm((f) => ({ ...f, entryFee: e.target.value }))}
-                    fullWidth
-                    size="small"
-                    helperText="Added to the custom plan total. Leave empty if no fee."
-                  />
+                {/* Custom plan calculator: per-person entry fees */}
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Entry / Ticket Fees (per person)
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                    Add one row per site or location. If you enter a location, the per person fee is required.
+                  </Typography>
+                  <Stack spacing={1}>
+                    {form.entryFees.map((f, i) => (
+                      <Stack key={i} direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+                        <TextField
+                          label="Location / Site"
+                          size="small"
+                          fullWidth
+                          value={f.location}
+                          onChange={(e) => {
+                            const arr = [...form.entryFees];
+                            arr[i] = { ...arr[i], location: e.target.value };
+                            setForm((prev) => ({ ...prev, entryFees: arr }));
+                          }}
+                          inputProps={{ maxLength: FIELD_LIMITS.entryFeeLocation }}
+                        />
+                        <TextField
+                          label="Per person"
+                          type="text"
+                          inputMode="decimal"
+                          size="small"
+                          required={!!(f.location || "").trim()}
+                          sx={{ width: { xs: "100%", sm: 160 } }}
+                          value={f.perPersonFee}
+                          onChange={(e) => {
+                            const arr = [...form.entryFees];
+                            arr[i] = { ...arr[i], perPersonFee: sanitizeDecimalInput(e.target.value) };
+                            setForm((prev) => ({ ...prev, entryFees: arr }));
+                          }}
+                          onKeyDown={(e) => {
+                            if (
+                              e.key.length === 1 &&
+                              !/[0-9.,]/.test(e.key) &&
+                              !e.ctrlKey &&
+                              !e.metaKey
+                            ) {
+                              e.preventDefault();
+                            }
+                          }}
+                          inputProps={{ inputMode: "decimal", pattern: "[0-9]*\\.?[0-9]*" }}
+                        />
+                        <IconButton
+                          color="error"
+                          onClick={() =>
+                            setForm((prev) => ({
+                              ...prev,
+                              entryFees: prev.entryFees.filter((_, j) => j !== i),
+                            }))
+                          }
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    ))}
+                    <Button
+                      startIcon={<AddIcon />}
+                      onClick={() => setForm((prev) => ({ ...prev, entryFees: [...prev.entryFees, emptyEntryFee()] }))}
+                      variant="outlined"
+                      sx={{ alignSelf: "flex-start" }}
+                    >
+                      Add Entry Fee
+                    </Button>
+                  </Stack>
                 </Grid>
 
                 <Grid item xs={12}>
@@ -1273,6 +1386,33 @@ export default function TravelDestinations() {
                   <Typography sx={{ whiteSpace: "pre-wrap" }}>
                     {viewing.details || "-"}
                   </Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="overline" color="textSecondary">
+                    Entry Fees (per person)
+                  </Typography>
+                  {(viewing.entryFees || []).length > 0 ? (
+                    <Stack spacing={0.5} mt={0.5}>
+                      {viewing.entryFees.map((f, i) => (
+                        <Typography key={i} variant="body2">
+                          {f.location}: {Number(f.perPersonFee).toFixed(2)}
+                        </Typography>
+                      ))}
+                      {viewing.entryFee != null && (
+                        <Typography variant="body2" sx={{ fontWeight: 600, mt: 0.5 }}>
+                          Total: {Number(viewing.entryFee).toFixed(2)}
+                        </Typography>
+                      )}
+                    </Stack>
+                  ) : viewing.entryFee != null && Number(viewing.entryFee) > 0 ? (
+                    <Typography variant="body2" mt={0.5}>
+                      {Number(viewing.entryFee).toFixed(2)}
+                    </Typography>
+                  ) : (
+                    <Typography variant="body2" color="textSecondary" mt={0.5}>
+                      -
+                    </Typography>
+                  )}
                 </Grid>
                 <Grid item xs={12}>
                   <Typography variant="overline" color="textSecondary">

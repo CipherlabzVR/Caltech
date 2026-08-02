@@ -19,6 +19,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import BASE_URL from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
 import SharedChecklistsReadOnly from "@/components/work-track/SharedChecklistsReadOnly";
+import SharedChecklistDashboard from "@/components/work-track/SharedChecklistDashboard";
 import { extractApiResult, isApiSuccess, pick } from "@/components/work-track/sharedViewHelpers";
 
 function SummaryField({ label, value, fullWidth = false }) {
@@ -102,6 +103,7 @@ export default function SharedWorkTrackFormDetail() {
   const tech = pick(payload, "technician", "Technician") || {};
   const checklists = pick(payload, "checklists", "Checklists") || [];
   const summary = pick(payload, "summary", "Summary") || {};
+  const dashboard = pick(payload, "dashboard", "Dashboard") || summary;
 
   const merged = { ...form, ...summary };
   const taskPct = pick(merged, "taskCompletePercentage", "TaskCompletePercentage") ?? 0;
@@ -113,7 +115,7 @@ export default function SharedWorkTrackFormDetail() {
   const assignee = pick(tech, "assignee", "Assignee") || pick(merged, "assignee", "Assignee");
 
   return (
-    <Box sx={{ maxWidth: 1000, mx: "auto", p: { xs: 2, md: 3 } }}>
+    <Box sx={{ maxWidth: 1100, mx: "auto", p: { xs: 2, md: 3 } }}>
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={2} flexWrap="wrap" gap={1}>
         <Button startIcon={<ArrowBackIcon />} onClick={() => router.push(`/work-track/share/${token}`)}>
           Back to dashboard
@@ -127,6 +129,12 @@ export default function SharedWorkTrackFormDetail() {
       <Typography variant="h5" fontWeight="bold" mb={3}>
         {pick(form, "trackId", "TrackId") || pick(form, "equipmentDescription", "EquipmentDescription") || `Form #${detailId}`}
       </Typography>
+
+      <SharedChecklistDashboard
+        dashboard={dashboard}
+        checklists={checklists}
+        submissionStatus={submissionStatus}
+      />
 
       <Card sx={{ mb: 3 }}>
         <CardContent>

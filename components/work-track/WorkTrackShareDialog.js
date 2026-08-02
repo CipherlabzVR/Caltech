@@ -23,16 +23,31 @@ function extractResult(json) {
 }
 
 /**
- * Share dialog for a work track / project — generates a view-only public link.
+ * Share dialog for a work track / project — or a single form (detail).
+ * Generates a view-only public link. Form links deep-link to that form's
+ * assignee, summary, and checklists (with images/docs).
  */
-export default function WorkTrackShareDialog({ open, onClose, workTrackId, customerName, projectName }) {
+export default function WorkTrackShareDialog({
+  open,
+  onClose,
+  workTrackId,
+  customerName,
+  projectName,
+  detailId = null,
+  trackId = null,
+  equipmentDescription = null,
+}) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(null);
 
+  const isFormShare = detailId != null && detailId !== "";
+
   const shareUrl =
     typeof window !== "undefined" && status?.shareToken
-      ? `${window.location.origin}/work-track/share/${status.shareToken}`
+      ? isFormShare
+        ? `${window.location.origin}/work-track/share/${status.shareToken}/form/${detailId}`
+        : `${window.location.origin}/work-track/share/${status.shareToken}`
       : "";
 
   const authHeaders = () => ({
@@ -117,20 +132,31 @@ export default function WorkTrackShareDialog({ open, onClose, workTrackId, custo
     }
   };
 
+  const formLabel = trackId || equipmentDescription || (isFormShare ? `Form #${detailId}` : null);
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
         <ShareIcon color="primary" />
-        Share Work Track
+        {isFormShare ? "Share Work Track Form" : "Share Work Track"}
       </DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" mb={2}>
-          Share a <strong>view-only</strong> link for this project. Recipients can see the dashboard
-          summary and saved forms. Opening a form shows technician assignment, checklists, and
-          summary only — no editing.
+          {isFormShare ? (
+            <>
+              Share a <strong>view-only</strong> link for this form. Recipients can see assignee,
+              summary, and all tasks (including attached photos/docs) — no editing.
+            </>
+          ) : (
+            <>
+              Share a <strong>view-only</strong> link for this project. Recipients can see the dashboard
+              summary and saved forms. Opening a form shows technician assignment, checklists, and
+              summary only — no editing.
+            </>
+          )}
         </Typography>
 
-        {(customerName || projectName) && (
+        {(customerName || projectName || formLabel) && (
           <Box sx={{ p: 1.5, mb: 2, bgcolor: "#f5f5f5", borderRadius: 1 }}>
             {customerName && (
               <Typography variant="body2">
@@ -140,6 +166,11 @@ export default function WorkTrackShareDialog({ open, onClose, workTrackId, custo
             {projectName && (
               <Typography variant="body2">
                 <strong>Project:</strong> {projectName}
+              </Typography>
+            )}
+            {formLabel && (
+              <Typography variant="body2">
+                <strong>{isFormShare ? "Track ID / Form:" : "Track:"}</strong> {formLabel}
               </Typography>
             )}
           </Box>
@@ -168,7 +199,8 @@ export default function WorkTrackShareDialog({ open, onClose, workTrackId, custo
           </Box>
         ) : (
           <Typography variant="body2" color="text.secondary">
-            Sharing is currently off. Enable a link to share this work track.
+            Sharing is currently off. Enable a link to share{" "}
+            {isFormShare ? "this form" : "this work track"}.
           </Typography>
         )}
       </DialogContent>

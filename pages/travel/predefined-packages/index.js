@@ -32,6 +32,7 @@ import {
   Stack,
   Divider,
   Avatar,
+  CircularProgress,
 } from "@mui/material";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import { masterCategoryContainedButtonSx } from "@/styles/masterCategoryButtons";
@@ -46,6 +47,8 @@ import AddIcon from "@mui/icons-material/Add";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 
 /* ------------------------------------------------------------------ */
 /*  Predefined Packages — Admin CRUD                                  */
@@ -83,7 +86,17 @@ const parseUploadUrl = (text) => {
     // not JSON — fall through
   }
   if (raw.startsWith("http")) return raw;
+  const unquoted = raw.replace(/^["']|["']$/g, "").trim();
+  if (unquoted.startsWith("http")) return unquoted;
   throw new Error("Upload did not return a URL");
+};
+
+const isImageFile = (file) => {
+  if (!file) return false;
+  const type = String(file.type || "").toLowerCase();
+  if (type.startsWith("image/")) return true;
+  const name = String(file.name || "").toLowerCase();
+  return /\.(jpe?g|png|gif|webp|bmp|svg|heic|heif|avif)$/i.test(name);
 };
 
 const slugify = (s = "") =>
@@ -95,6 +108,14 @@ const slugify = (s = "") =>
     .slice(0, 80);
 
 const MAX_DAY_IMAGES = 2;
+const MAX_HOTEL_IMAGES = 20;
+const hotelPendingKey = (starIdx, hotelIdx) => `${starIdx}-${hotelIdx}`;
+
+const revokeHotelPendingUrls = (items) => {
+  (items || []).forEach((p) => {
+    if (p?.url?.startsWith("blob:")) URL.revokeObjectURL(p.url);
+  });
+};
 const emptyDay = () => ({ dayNumber: 1, title: "", description: "", images: [] });
 
 const emptyHotelRoomRow = () => ({
@@ -107,9 +128,11 @@ const emptyHotelRoomRow = () => ({
 const emptyCustomHotelRow = () => ({
   location: "",
   hotel: "",
+  description: "",
   categoryLabel: "",
   mealPlan: "HB",
   imageUrl: "",
+  images: [],
   rooms: [],
 });
 
@@ -141,8 +164,105 @@ const mapHotelRoomForSave = (r, idx) => ({
   isActive: r.isActive !== false,
 });
 
+const hotelImagesFromRow = (h) => {
+  const rawList = h?.images ?? h?.Images;
+  const fromList = Array.isArray(rawList)
+    ? rawList.map((u) => String(u || "").trim()).filter(Boolean)
+    : [];
+  const legacy = String(h?.imageUrl || h?.ImageUrl || "").trim();
+  if (legacy && !fromList.some((u) => u.toLowerCase() === legacy.toLowerCase())) {
+    return [legacy, ...fromList];
+  }
+  return fromList.length ? fromList : legacy ? [legacy] : [];
+};
+
+const includedHotelsForPackageView = (row) => {
+  const fromApi = row?.includedHotels ?? row?.IncludedHotels;
+  if (Array.isArray(fromApi) && fromApi.length) {
+    return fromApi.map((h) => ({
+      location: h.location || "",
+      hotel: h.hotel || "",
+      description: h.description || "",
+      images: hotelImagesFromRow(h),
+    }));
+  }
+  return (row?.starOptions || []).flatMap((o) =>
+    (o.hotels || []).map((h) => ({
+      location: h.location || "",
+      hotel: h.hotel || "",
+      description: h.description || "",
+      images: hotelImagesFromRow(h),
+    }))
+  );
+};
+
+function ViewHotelPhotoSlider({ images, alt }) {
+  const slides = (images || []).filter(Boolean);
+  const [idx, setIdx] = React.useState(0);
+  if (!slides.length) return null;
+  const multi = slides.length > 1;
+  const go = (delta) => setIdx((i) => (i + delta + slides.length) % slides.length);
+  return (
+    <Box sx={{ position: "relative", width: "100%", height: 200, borderRadius: 1, overflow: "hidden", bgcolor: "action.hover" }}>
+      <Box component="img" src={slides[idx]} alt={alt} sx={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      {multi ? (
+        <>
+          <IconButton
+            size="small"
+            aria-label="Previous photo"
+            onClick={() => go(-1)}
+            sx={{
+              position: "absolute",
+              left: 4,
+              top: "50%",
+              transform: "translateY(-50%)",
+              bgcolor: "rgba(0,0,0,0.45)",
+              color: "white",
+              "&:hover": { bgcolor: "rgba(0,0,0,0.6)" },
+            }}
+          >
+            <ChevronLeftIcon fontSize="small" />
+          </IconButton>
+          <IconButton
+            size="small"
+            aria-label="Next photo"
+            onClick={() => go(1)}
+            sx={{
+              position: "absolute",
+              right: 4,
+              top: "50%",
+              transform: "translateY(-50%)",
+              bgcolor: "rgba(0,0,0,0.45)",
+              color: "white",
+              "&:hover": { bgcolor: "rgba(0,0,0,0.6)" },
+            }}
+          >
+            <ChevronRightIcon fontSize="small" />
+          </IconButton>
+          <Typography
+            variant="caption"
+            sx={{
+              position: "absolute",
+              bottom: 6,
+              right: 8,
+              color: "white",
+              bgcolor: "rgba(0,0,0,0.45)",
+              px: 0.75,
+              borderRadius: 0.5,
+            }}
+          >
+            {idx + 1} / {slides.length}
+          </Typography>
+        </>
+      ) : null}
+    </Box>
+  );
+};
+
 const normalizeHotelForSave = (h) => {
-  const image = String(h.imageUrl || h.ImageUrl || "").trim() || null;
+  const images = hotelImagesFromRow(h).slice(0, MAX_HOTEL_IMAGES);
+  const image = images[0] || null;
+  const description = String(h.description || "").trim() || null;
   return {
     travelHotelId: null,
     source: "custom",
@@ -152,8 +272,10 @@ const normalizeHotelForSave = (h) => {
     travelHotelCategoryId: null,
     categoryLabel: String(h.categoryLabel || "").trim(),
     mealPlan: h.mealPlan || "HB",
+    description,
     imageUrl: image,
     ImageUrl: image,
+    images,
     rooms: (h.rooms || [])
       .filter((r) => String(r.roomTypeLabel || "").trim())
       .map((r, idx) => mapHotelRoomForSave(r, idx)),
@@ -163,17 +285,22 @@ const normalizeHotelForSave = (h) => {
 const isHotelRowEmpty = (h) =>
   !String(h?.hotel || "").trim() &&
   !String(h?.location || "").trim() &&
-  !String(h?.imageUrl || h?.ImageUrl || "").trim() &&
+  !String(h?.description || "").trim() &&
+  hotelImagesFromRow(h).length === 0 &&
   !String(h?.categoryLabel || "").trim() &&
   !(h?.rooms || []).some((r) => String(r?.roomTypeLabel || "").trim());
 
-const hydrateHotelRow = (h) => ({
+const hydrateHotelRow = (h) => {
+  const images = hotelImagesFromRow(h).slice(0, MAX_HOTEL_IMAGES);
+  return {
   ...emptyCustomHotelRow(),
   location: h?.location || "",
   hotel: h?.hotel || "",
+  description: h?.description || "",
   categoryLabel: h?.categoryLabel || "",
   mealPlan: h?.mealPlan || "HB",
-  imageUrl: h?.imageUrl || h?.ImageUrl || "",
+  imageUrl: images[0] || "",
+  images,
   rooms:
     Array.isArray(h?.rooms) && h.rooms.length
       ? h.rooms.map((r, idx) => ({
@@ -184,7 +311,8 @@ const hydrateHotelRow = (h) => ({
           isActive: r.isActive !== false,
         }))
       : [],
-});
+  };
+};
 
 const emptyEntryFee = () => ({ site: "", perPersonUsd: 0 });
 
@@ -239,6 +367,15 @@ export default function PredefinedPackagesAdmin() {
 
   const [viewOpen, setViewOpen] = useState(false);
   const [viewing, setViewing] = useState(null);
+  /** Local blob previews while hotel images upload: key -> [{ id, url, name }] */
+  const [hotelPendingPreviews, setHotelPendingPreviews] = useState({});
+
+  const clearHotelPendingPreviews = () => {
+    setHotelPendingPreviews((prev) => {
+      revokeHotelPendingUrls(Object.values(prev).flat());
+      return {};
+    });
+  };
 
   /* ───── Fetch ───── */
   const fetchAll = async () => {
@@ -270,11 +407,18 @@ export default function PredefinedPackagesAdmin() {
     }));
   }, [dialogOpen]);
 
+  useEffect(() => {
+    if (dialogOpen) return;
+    clearHotelPendingPreviews();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen]);
+
   /* ───── Helpers ───── */
   const openCreate = () => {
     setEditingId(null);
     setForm(emptyForm);
     setCoverFile(null);
+    clearHotelPendingPreviews();
     setTab(0);
     setDialogOpen(true);
   };
@@ -309,6 +453,7 @@ export default function PredefinedPackagesAdmin() {
       entryFees: Array.isArray(row.entryFees) ? row.entryFees : [],
     });
     setCoverFile(null);
+    clearHotelPendingPreviews();
     setTab(0);
     setDialogOpen(true);
   };
@@ -467,27 +612,100 @@ export default function PredefinedPackagesAdmin() {
     }
   };
 
-  const uploadHotelImage = async (starIdx, hotelIdx, file) => {
-    if (!file) return;
-    try {
-      const fd = new FormData();
-      const ext = (file.name?.split(".").pop() || "jpg").toLowerCase();
-      fd.append("File", file);
-      fd.append("FileName", `predefined-package-hotel-${Date.now()}.${ext}`);
-      fd.append("storePath", "Travel/PredefinedPackages/Hotels");
-      const r = await fetch(`${BASE_URL}/AWS/DocumentUploadCommon`, {
-        method: "POST",
-        headers: authMultipartHeaders(),
-        body: fd,
-      });
-      const text = await r.text();
-      if (!r.ok) throw new Error(text || "Upload failed");
-      const url = parseUploadUrl(text);
-      updateStarHotel(starIdx, hotelIdx, { imageUrl: url });
-      toast.success("Hotel image uploaded");
-    } catch (err) {
-      toast.error(err.message || "Hotel image upload failed");
+  const uploadHotelFile = async (file) => {
+    const fd = new FormData();
+    const ext = (file.name?.split(".").pop() || "jpg").toLowerCase();
+    fd.append("File", file);
+    fd.append("FileName", `predefined-package-hotel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`);
+    fd.append("storePath", "Travel/PredefinedPackages/Hotels");
+    const r = await fetch(`${BASE_URL}/AWS/DocumentUploadCommon`, {
+      method: "POST",
+      headers: authMultipartHeaders(),
+      body: fd,
+    });
+    const text = await r.text();
+    if (!r.ok) throw new Error(text || "Upload failed");
+    return parseUploadUrl(text);
+  };
+
+  const removeHotelPendingPreview = (starIdx, hotelIdx, previewId) => {
+    const key = hotelPendingKey(starIdx, hotelIdx);
+    setHotelPendingPreviews((prev) => {
+      const list = prev[key] || [];
+      const item = list.find((p) => p.id === previewId);
+      revokeHotelPendingUrls(item ? [item] : []);
+      const nextList = list.filter((p) => p.id !== previewId);
+      if (!nextList.length) {
+        const { [key]: _removed, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [key]: nextList };
+    });
+  };
+
+  const handleHotelPhotoPick = (starIdx, hotelIdx, rawFiles) => {
+    const files = (Array.isArray(rawFiles) ? rawFiles : Array.from(rawFiles || [])).filter(isImageFile);
+    if (!files.length) {
+      toast.warn("Please choose image files (JPG, PNG, etc.)");
+      return;
     }
+
+    const key = hotelPendingKey(starIdx, hotelIdx);
+    const h = form.starOptions?.[starIdx]?.hotels?.[hotelIdx];
+    const pendingCount = (hotelPendingPreviews[key] || []).length;
+    const slots = MAX_HOTEL_IMAGES - hotelImagesFromRow(h).length - pendingCount;
+    if (slots <= 0) {
+      toast.warn(`Max ${MAX_HOTEL_IMAGES} images per hotel`);
+      return;
+    }
+
+    const toUpload = files.slice(0, slots);
+    if (files.length > toUpload.length) {
+      toast.warn(`Only ${toUpload.length} image(s) added (max ${MAX_HOTEL_IMAGES} per hotel)`);
+    }
+
+    const batchTag = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const pendingItems = toUpload.map((file, idx) => ({
+      id: `${batchTag}-${idx}`,
+      url: URL.createObjectURL(file),
+      name: file.name || `Image ${idx + 1}`,
+    }));
+
+    setHotelPendingPreviews((prev) => ({
+      ...prev,
+      [key]: [...(prev[key] || []), ...pendingItems],
+    }));
+
+    void (async () => {
+      const uploaded = [];
+      try {
+        for (let fi = 0; fi < toUpload.length; fi += 1) {
+          const url = await uploadHotelFile(toUpload[fi]);
+          uploaded.push(url);
+          removeHotelPendingPreview(starIdx, hotelIdx, pendingItems[fi].id);
+          setForm((f) => {
+            const arr = [...f.starOptions];
+            const hotels = [...(arr[starIdx].hotels || [])];
+            const row = hotels[hotelIdx] || emptyCustomHotelRow();
+            const next = [...hotelImagesFromRow(row), url].slice(0, MAX_HOTEL_IMAGES);
+            hotels[hotelIdx] = { ...row, images: next, imageUrl: next[0] || "" };
+            arr[starIdx] = { ...arr[starIdx], hotels };
+            return { ...f, starOptions: arr };
+          });
+        }
+        toast.success(uploaded.length === 1 ? "Hotel image uploaded" : `${uploaded.length} hotel images uploaded`);
+      } catch (err) {
+        pendingItems.slice(uploaded.length).forEach((p) => {
+          removeHotelPendingPreview(starIdx, hotelIdx, p.id);
+        });
+        toast.error(err.message || "Hotel image upload failed");
+      }
+    })();
+  };
+
+  const setHotelImages = (starIdx, hotelIdx, images) => {
+    const next = (images || []).slice(0, MAX_HOTEL_IMAGES);
+    updateStarHotel(starIdx, hotelIdx, { images: next, imageUrl: next[0] || "" });
   };
 
   const updateStar = (idx, patch) =>
@@ -890,14 +1108,18 @@ export default function PredefinedPackagesAdmin() {
             <Stack spacing={2}>
                 <Paper sx={{ p: 2 }} variant="outlined">
                   <Typography variant="caption" color="text.secondary">
-                    Add included hotels with name, location, and a photo for the public package page
+                    Add included hotels with name, location, description, and photos for the public package page
                   </Typography>
                   {(opt.hotels || []).length === 0 ? (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                       No hotels added yet.
                     </Typography>
                   ) : null}
-                  {(opt.hotels || []).map((h, hi) => (
+                  {(opt.hotels || []).map((h, hi) => {
+                    const hotelImageUrls = hotelImagesFromRow(h);
+                    const pendingPreviews = hotelPendingPreviews[hotelPendingKey(i, hi)] || [];
+                    const totalImageCount = hotelImageUrls.length + pendingPreviews.length;
+                    return (
                       <Paper key={hi} variant="outlined" sx={{ p: 1.5, mt: 1 }}>
                         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
                           <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -913,73 +1135,200 @@ export default function PredefinedPackagesAdmin() {
                         </Stack>
 
                         <Stack spacing={1.5}>
+                          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                            <TextField
+                              label="Hotel Name"
+                              size="small"
+                              fullWidth
+                              sx={{ flex: 1 }}
+                              value={h.hotel}
+                              onChange={(e) => updateStarHotel(i, hi, { hotel: e.target.value })}
+                            />
+                            <TextField
+                              label="Location"
+                              size="small"
+                              fullWidth
+                              sx={{ flex: 1 }}
+                              value={h.location || ""}
+                              onChange={(e) => updateStarHotel(i, hi, { location: e.target.value })}
+                              placeholder="e.g. Colombo"
+                            />
+                          </Stack>
                           <TextField
-                            label="Hotel Name"
+                            label="Description"
                             size="small"
                             fullWidth
-                            value={h.hotel}
-                            onChange={(e) => updateStarHotel(i, hi, { hotel: e.target.value })}
-                          />
-                          <TextField
-                            label="Location"
-                            size="small"
-                            fullWidth
-                            value={h.location || ""}
-                            onChange={(e) => updateStarHotel(i, hi, { location: e.target.value })}
-                            placeholder="e.g. Colombo"
+                            multiline
+                            rows={4}
+                            value={h.description || ""}
+                            onChange={(e) => updateStarHotel(i, hi, { description: e.target.value })}
+                            placeholder="Short description shown on the public package page"
                           />
                           <Divider />
                           <Typography variant="caption" color="text.secondary">
-                            Hotel photo
+                            Hotel photos (max {MAX_HOTEL_IMAGES}) — select multiple files at once or upload again to add more
                           </Typography>
-                          <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
-                            {(h.imageUrl || h.ImageUrl) ? (
+                          {pendingPreviews.length > 0 ? (
+                            <Typography variant="caption" display="block" color="primary" sx={{ mt: 0.5 }}>
+                              Selected — uploading {pendingPreviews.length} image{pendingPreviews.length === 1 ? "" : "s"}…
+                            </Typography>
+                          ) : null}
+                          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1, alignItems: "flex-start" }}>
+                            {totalImageCount < MAX_HOTEL_IMAGES && (
+                              <Button
+                                component="label"
+                                variant="outlined"
+                                startIcon={<CloudUploadIcon />}
+                                sx={{ width: 130, height: 90, flexShrink: 0 }}
+                              >
+                                Upload
+                                <input
+                                  hidden
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  onChange={(e) => {
+                                    const picked = Array.from(e.target.files || []);
+                                    e.target.value = "";
+                                    handleHotelPhotoPick(i, hi, picked);
+                                  }}
+                                />
+                              </Button>
+                            )}
+                            {hotelImageUrls.map((url, ii) => (
                               <Box
+                                key={`${url}-${ii}`}
                                 sx={{
                                   position: "relative",
-                                  width: 160,
-                                  height: 100,
+                                  width: 130,
+                                  height: 90,
+                                  border: "1px solid rgba(0,0,0,0.12)",
                                   borderRadius: 1,
                                   overflow: "hidden",
-                                  border: "1px solid rgba(0,0,0,0.12)",
-                                  backgroundImage: `url(${h.imageUrl || h.ImageUrl})`,
-                                  backgroundSize: "cover",
-                                  backgroundPosition: "center",
                                   flexShrink: 0,
+                                  bgcolor: "grey.100",
                                 }}
                               >
+                                <Box
+                                  component="img"
+                                  src={url}
+                                  alt={h.hotel || h.location || `Hotel photo ${ii + 1}`}
+                                  sx={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                    display: "block",
+                                  }}
+                                />
                                 <IconButton
                                   size="small"
-                                  onClick={() => updateStarHotel(i, hi, { imageUrl: "" })}
+                                  aria-label="Remove photo"
+                                  onClick={() =>
+                                    setHotelImages(
+                                      i,
+                                      hi,
+                                      hotelImageUrls.filter((_, j) => j !== ii)
+                                    )
+                                  }
                                   sx={{
                                     position: "absolute",
-                                    top: 4,
-                                    right: 4,
+                                    top: 2,
+                                    right: 2,
                                     bgcolor: "rgba(255,255,255,0.9)",
+                                    boxShadow: 1,
                                     "&:hover": { bgcolor: "rgba(255,255,255,1)" },
                                   }}
                                 >
                                   <DeleteIcon fontSize="small" color="error" />
                                 </IconButton>
                               </Box>
-                            ) : null}
-                            <Button component="label" variant="outlined" startIcon={<CloudUploadIcon />} size="small">
-                              {h.imageUrl || h.ImageUrl ? "Replace photo" : "Upload photo"}
-                              <input
-                                hidden
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => {
-                                  const f = e.target.files?.[0];
-                                  e.target.value = "";
-                                  uploadHotelImage(i, hi, f);
+                            ))}
+                            {pendingPreviews.map((p) => (
+                              <Box
+                                key={p.id}
+                                sx={{
+                                  position: "relative",
+                                  width: 130,
+                                  height: 90,
+                                  border: "1px dashed",
+                                  borderColor: "primary.main",
+                                  borderRadius: 1,
+                                  overflow: "hidden",
+                                  flexShrink: 0,
+                                  bgcolor: "grey.200",
                                 }}
-                              />
-                            </Button>
+                              >
+                                <Box
+                                  component="img"
+                                  src={p.url}
+                                  alt={p.name}
+                                  sx={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                    display: "block",
+                                    opacity: 0.85,
+                                  }}
+                                />
+                                <Box
+                                  sx={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    bgcolor: "rgba(255,255,255,0.35)",
+                                  }}
+                                >
+                                  <CircularProgress size={28} />
+                                </Box>
+                                <Typography
+                                  variant="caption"
+                                  noWrap
+                                  title={p.name}
+                                  sx={{
+                                    position: "absolute",
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    px: 0.5,
+                                    py: 0.25,
+                                    fontSize: "0.65rem",
+                                    bgcolor: "rgba(0,0,0,0.55)",
+                                    color: "#fff",
+                                  }}
+                                >
+                                  {p.name}
+                                </Typography>
+                              </Box>
+                            ))}
+                          </Stack>
+                          <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                            <TextField
+                              size="small"
+                              placeholder="…or paste image URL"
+                              fullWidth
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  const v = e.target.value.trim();
+                                  if (!v) return;
+                                  const current = hotelImageUrls;
+                                  if (current.length + pendingPreviews.length >= MAX_HOTEL_IMAGES) {
+                                    toast.warn(`Max ${MAX_HOTEL_IMAGES} images per hotel`);
+                                    return;
+                                  }
+                                  setHotelImages(i, hi, [...current, v]);
+                                  e.target.value = "";
+                                }
+                              }}
+                              helperText="Press Enter to add. Cloudinary or absolute URL."
+                            />
                           </Stack>
                         </Stack>
                       </Paper>
-                  ))}
+                    );
+                  })}
                   <Button size="small" startIcon={<AddIcon />} onClick={() => addStarHotel(i)} variant="outlined" sx={{ mt: 1 }}>
                     Add hotel
                   </Button>
@@ -1065,23 +1414,21 @@ export default function PredefinedPackagesAdmin() {
               ))}
               <Divider />
               <Typography variant="subtitle2">Included Hotels</Typography>
-              {(viewing.starOptions || []).flatMap((o) => o.hotels || []).map((h, i) => (
+              {includedHotelsForPackageView(viewing).map((h, i) => (
                 <Paper key={i} variant="outlined" sx={{ p: 1.5 }}>
-                  <Stack direction="row" spacing={2} alignItems="center">
-                    {h.imageUrl || h.ImageUrl ? (
-                      <Box
-                        component="img"
-                        src={h.imageUrl || h.ImageUrl}
-                        alt={h.hotel || h.location || "Hotel"}
-                        sx={{ width: 120, height: 80, objectFit: "cover", borderRadius: 1, flexShrink: 0 }}
-                      />
-                    ) : null}
-                    <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {h.location ? `${h.location}: ` : ""}{h.hotel}
-                        {h.categoryLabel ? ` (${h.categoryLabel})` : ""}
+                  <Stack spacing={1}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {h.location ? `${h.location}: ` : ""}{h.hotel}
+                    </Typography>
+                    {h.description ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "pre-wrap" }}>
+                        {h.description}
                       </Typography>
-                    </Box>
+                    ) : null}
+                    <ViewHotelPhotoSlider
+                      images={h.images}
+                      alt={h.hotel || h.location || "Hotel"}
+                    />
                   </Stack>
                 </Paper>
               ))}

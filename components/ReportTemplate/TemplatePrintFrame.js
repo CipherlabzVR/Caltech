@@ -24,6 +24,7 @@ export default function TemplatePrintFrame({
   loadingText = "Loading...",
   errorText = "Failed to load document",
   downloadName = "document",
+  showDownloadPdf = true,
 }) {
   const iframeRef = useRef(null);
   const [iframeHeight, setIframeHeight] = useState(1123);
@@ -202,15 +203,17 @@ export default function TemplatePrintFrame({
           >
             Print
           </Button>
-          <Button
-            variant="outlined"
-            startIcon={<PictureAsPdfIcon />}
-            onClick={handleDownloadPDF}
-            disabled={loading || !finalHtml}
-            sx={{ textTransform: "none" }}
-          >
-            Download PDF
-          </Button>
+          {showDownloadPdf ? (
+            <Button
+              variant="outlined"
+              startIcon={<PictureAsPdfIcon />}
+              onClick={handleDownloadPDF}
+              disabled={loading || !finalHtml}
+              sx={{ textTransform: "none" }}
+            >
+              Download PDF
+            </Button>
+          ) : null}
         </Box>
 
         {loading

@@ -491,7 +491,6 @@ export default function EditCompany({ item, fetchItems }) {
                           name="Name"
                           size="small"
                           inputRef={inputRef}
-                          disabled
                         />
                       </Grid>
                       <Grid item xs={12}>
@@ -501,7 +500,6 @@ export default function EditCompany({ item, fetchItems }) {
                           fullWidth
                           name="Code"
                           size="small"
-                          disabled
                         />
                       </Grid>
                       <Grid item xs={12}>

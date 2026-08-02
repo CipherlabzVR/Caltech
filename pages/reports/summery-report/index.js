@@ -28,29 +28,39 @@ import CompanyWiseProfit from "@/components/UIElements/Modal/Reports/Summery/Com
 import ProfitabilityReport from "@/components/UIElements/Modal/Reports/Summery/ProfitabilityReport";
 import OutstandingReport from "@/components/UIElements/Modal/Reports/Summery/OutstandingReport";
 import StockBalance from "@/components/UIElements/Modal/Reports/Summery/StockBalance";
+import StockMovement from "@/components/UIElements/Modal/Reports/Summery/StockMovement";
+import PurchaseOrderNotesSummaryReport from "@/components/UIElements/Modal/Reports/Summery/PurchaseOrderNotesSummaryReport";
+import GoodsReceivedNotesSummaryReport from "@/components/UIElements/Modal/Reports/Summery/GoodsReceivedNotesSummaryReport";
+import ShipmentSummaryReport from "@/components/UIElements/Modal/Reports/Summery/ShipmentSummaryReport";
+import SalesSummaryReport from "@/components/UIElements/Modal/Reports/Summery/SalesSummaryReport";
+import CustomerPaymentSummaryReport from "@/components/UIElements/Modal/Reports/Summery/CustomerPaymentSummaryReport";
 import ReservationSalesReport from "@/components/UIElements/Modal/Reports/Summery/ReservationSalesReport";
+import CashFlowSummaryReport from "@/components/UIElements/Modal/Reports/Summery/CashFlowSummaryReport";
+import CashBookSummaryReport from "@/components/UIElements/Modal/Reports/Summery/CashBookSummaryReport";
+import BankHistoryReport from "@/components/UIElements/Modal/Reports/Summery/BankHistoryReport";
+import ShiftSummaryReport from "@/components/UIElements/Modal/Reports/Summery/ShiftSummaryReport";
 
 const componentMap = {
   CompanyWiseProfit,
   StockBalance,
+  StockMovementReport: StockMovement,
   ProfitabilityReport,
   OutstandingReport,
-  SalesSummaryReport: UnifiedSummaryReportModal,
+  SalesSummaryReport,
   ReservationAppointmentTypeReport: UnifiedSummaryReportModal,
   ReservationTypeReport: UnifiedSummaryReportModal,
   ReservationSalesReport,
   FiscalPeriodReport: UnifiedSummaryReportModal,
-  CashFlowSummaryReport: UnifiedSummaryReportModal,
-  CustomerPaymentSummaryReport: UnifiedSummaryReportModal,
+  CashFlowSummaryReport,
+  CustomerPaymentSummaryReport,
   DoctorWiseSalesSummaryReport: UnifiedSummaryReportModal,
-  CashBookSummaryReport: UnifiedSummaryReportModal,
-  ShipmentSummaryReport: UnifiedSummaryReportModal,
-  GoodsReceivedNotesSummaryReport: UnifiedSummaryReportModal,
-  PurchaseOrderNotesSummaryReport: UnifiedSummaryReportModal,
+  CashBookSummaryReport,
+  ShipmentSummaryReport,
+  GoodsReceivedNotesSummaryReport,
+  PurchaseOrderNotesSummaryReport,
   DailyDepositSummary: UnifiedSummaryReportModal,
-  BankHistoryReport: UnifiedSummaryReportModal,
-  ShiftSummaryReport: UnifiedSummaryReportModal,
-  StockMovementReport: UnifiedSummaryReportModal,
+  BankHistoryReport,
+  ShiftSummaryReport,
   MatrimonialProfileQualityReport: MatrimonialSummaryReportModal,
   MatrimonialSubscriptionSummaryReport: MatrimonialSummaryReportModal,
   MatrimonialEngagementSummaryReport: MatrimonialSummaryReportModal,

@@ -95,6 +95,7 @@ export default function Version() {
                 <TableRow>
                   <TableCell>#</TableCell>
                   <TableCell>Version Number</TableCell>
+                  <TableCell>Build Date</TableCell>
                   <TableCell>Description</TableCell>
                   <TableCell>Version Document Link</TableCell>
                 </TableRow>
@@ -104,7 +105,7 @@ export default function Version() {
                   <TableRow
                     sx={{ "&:last-child td, &:last-child th": { border: 0 } }}
                   >
-                    <TableCell component="th" scope="row" colSpan={4}>
+                    <TableCell component="th" scope="row" colSpan={5}>
                       <Typography color="error">No Versions Available</Typography>
                     </TableCell>
                   </TableRow>
@@ -118,6 +119,13 @@ export default function Version() {
                         {(page - 1) * pageSize + index + 1}
                       </TableCell>
                       <TableCell>{version.versionNumber}</TableCell>
+                      <TableCell>
+                        {version.buildDate
+                          ? new Date(version.buildDate).toLocaleDateString()
+                          : version.createdOn
+                          ? new Date(version.createdOn).toLocaleDateString()
+                          : "-"}
+                      </TableCell>
                       <TableCell>{version.description || "-"}</TableCell>
                       <TableCell>
                         {version.versionDocumentLink ? (
