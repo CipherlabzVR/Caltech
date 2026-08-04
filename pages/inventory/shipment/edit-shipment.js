@@ -38,6 +38,7 @@ const ShipmentEdit = () => {
   const [currencyId, setCurrencyId] = useState("");
   const [exchangeRateInput, setExchangeRateInput] = useState("");
   const [localTransport, setLocalTransport] = useState("");
+  const [freightDuty, setFreightDuty] = useState("");
   const [currencies, setCurrencies] = useState([]);
   const router = useRouter();
   const { data: isSupplierInvolvedToShipment } = IsAppSettingEnabled(
@@ -116,6 +117,7 @@ const ShipmentEdit = () => {
     lines,
     overseasTransportVal,
     localTransportVal,
+    freightDutyVal,
     exchangeRate
   ) => {
     const totalOrderedQty = lines.reduce(
@@ -129,6 +131,7 @@ const ShipmentEdit = () => {
           ...row,
           additionalCost: 0,
           localTransportCost: 0,
+          freightDutyCost: 0,
         })
       );
     }
@@ -136,14 +139,17 @@ const ShipmentEdit = () => {
     const overseasTotal =
       (parseFloat(overseasTransportVal) || 0) * (parseFloat(exchangeRate) || 0);
     const localTotal = parseFloat(localTransportVal) || 0;
+    const freightTotal = parseFloat(freightDutyVal) || 0;
     const overseasUnitCost = round2(overseasTotal / totalOrderedQty);
     const localUnitCost = round2(localTotal / totalOrderedQty);
+    const freightUnitCost = round2(freightTotal / totalOrderedQty);
 
     return lines
       .map((row) => ({
         ...row,
         additionalCost: overseasUnitCost,
         localTransportCost: localUnitCost,
+        freightDutyCost: freightUnitCost,
       }))
       .map((row) => applyLineTotals(row));
   };
@@ -235,6 +241,15 @@ const ShipmentEdit = () => {
           ? String(result.localTransport)
           : ""
       );
+      const loadedFreightDutyTotal = shipmentDetailsWithLineTotal.reduce(
+        (sum, row) =>
+          sum +
+          (parseFloat(row.freightDutyCost) || 0) * (parseFloat(row.qty) || 0),
+        0
+      );
+      setFreightDuty(
+        loadedFreightDutyTotal > 0 ? String(round2(loadedFreightDutyTotal)) : ""
+      );
       setExchangeRateInput(
         result.exchangeRate != null && result.exchangeRate !== ""
           ? String(result.exchangeRate)
@@ -265,6 +280,7 @@ const ShipmentEdit = () => {
           prev,
           order.overseasTransport,
           localTransport,
+          freightDuty,
           effectiveExchangeRate
         );
       }
@@ -275,6 +291,7 @@ const ShipmentEdit = () => {
     currencyId,
     effectiveExchangeRate,
     localTransport,
+    freightDuty,
     order.overseasTransport,
   ]);
 
@@ -382,26 +399,32 @@ const ShipmentEdit = () => {
     const overseasTransportVal = parseFloat(order.overseasTransport) || 0;
     const exchangeRate = effectiveExchangeRate || 0;
     const localTransportVal = parseFloat(localTransport) || 0;
+    const freightDutyVal = parseFloat(freightDuty) || 0;
     const overseasTotal = round2(overseasTransportVal * exchangeRate);
     const overseasUnitCost =
       totalOrderedQty > 0 ? round2(overseasTotal / totalOrderedQty) : null;
     const localTransportUnitCost =
       totalOrderedQty > 0 ? round2(localTransportVal / totalOrderedQty) : null;
+    const freightDutyUnitCost =
+      totalOrderedQty > 0 ? round2(freightDutyVal / totalOrderedQty) : null;
 
     return {
       totalOrderedQty,
       overseasTransportVal,
       exchangeRate,
       localTransportVal,
+      freightDutyVal,
       overseasTotal,
       overseasUnitCost,
       localTransportUnitCost,
+      freightDutyUnitCost,
     };
   }, [
     shipmentLineDetails,
     order.overseasTransport,
     effectiveExchangeRate,
     localTransport,
+    freightDuty,
   ]);
 
   const columnHeaderFormulaSx = {
@@ -508,6 +531,19 @@ const ShipmentEdit = () => {
       if (Math.abs(localActual - localExpected) > 0.01) {
         toast.error(
           "Local Transport Cost lines do not reconcile with Local Transport value. Shipment cannot be saved."
+        );
+        return;
+      }
+
+      const freightExpected = parseFloat(freightDuty) || 0;
+      const freightActual = sumQtyWeightedCost(
+        shipmentLineDetails,
+        "freightDutyCost"
+      );
+
+      if (Math.abs(freightActual - freightExpected) > 0.01) {
+        toast.error(
+          "Freight Duty Cost lines do not reconcile with Freight Duty value. Shipment cannot be saved."
         );
         return;
       }
@@ -910,6 +946,39 @@ const ShipmentEdit = () => {
               </Grid>
             ) : null}
 
+            {showSupplierFields ? (
+              <Grid
+                item
+                xs={12}
+                lg={6}
+                display="flex"
+                justifyContent="space-between"
+                mt={1}
+              >
+                <Typography
+                  component="label"
+                  sx={{
+                    fontWeight: "500",
+                    p: 1,
+                    fontSize: "14px",
+                    display: "block",
+                    width: "35%",
+                  }}
+                >
+                  Freight Duty Cost
+                </Typography>
+                <TextField
+                  type="number"
+                  value={freightDuty}
+                  onChange={(e) => setFreightDuty(e.target.value)}
+                  sx={{ width: "60%" }}
+                  size="small"
+                  inputProps={{ min: 0, step: "0.01" }}
+                  placeholder="0.00"
+                />
+              </Grid>
+            ) : null}
+
             <Grid item xs={12} mt={2}>
               <TableContainer component={Paper}>
                 <Table
@@ -965,12 +1034,28 @@ const ShipmentEdit = () => {
                       ) : null}
                       <TableCell sx={{ color: "#fff" }}>
                         Freight Duty Cost
-                        <Typography component="span" sx={columnHeaderFormulaSx}>
-                          Unit = Entered per line
-                        </Typography>
-                        <Typography component="span" sx={columnHeaderFormulaSx}>
-                          Line = Unit × Received Qty
-                        </Typography>
+                        {showSupplierFields ? (
+                          <>
+                            <Typography component="span" sx={columnHeaderFormulaSx}>
+                              Unit = Freight Duty ÷ Total Ordered Qty
+                              {distributionFormulas.freightDutyUnitCost != null
+                                ? ` (${formatCurrency(distributionFormulas.freightDutyUnitCost)})`
+                                : ""}
+                            </Typography>
+                            <Typography component="span" sx={columnHeaderFormulaSx}>
+                              Total = Σ(Unit × Ordered Qty)
+                            </Typography>
+                          </>
+                        ) : (
+                          <>
+                            <Typography component="span" sx={columnHeaderFormulaSx}>
+                              Unit = Entered per line
+                            </Typography>
+                            <Typography component="span" sx={columnHeaderFormulaSx}>
+                              Line = Unit × Received Qty
+                            </Typography>
+                          </>
+                        )}
                       </TableCell>
                       <TableCell sx={{ color: "#fff" }}>Remark</TableCell>
                       <TableCell sx={{ color: "#fff" }} align="right">

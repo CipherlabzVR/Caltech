@@ -90,8 +90,12 @@ export default function TechnicianWorkTrackList() {
 
         if (response.ok) {
           const result = await response.json();
-          const data = result?.result?.result || result?.result || result?.data || [];
-          const canNavigate = data.some(item => item.permissionType === 1);
+          const raw = result?.result?.result ?? result?.result ?? result?.data ?? [];
+          const data = Array.isArray(raw) ? raw : [];
+          const canNavigate = data.some((item) => {
+            const type = item.permissionType ?? item.PermissionType;
+            return Number(type) === 1;
+          });
           setHasPermission(canNavigate);
         }
       } catch (error) {

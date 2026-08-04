@@ -78,12 +78,15 @@ import ShareIcon from "@mui/icons-material/Share";
 import FreeBreakfastIcon from "@mui/icons-material/FreeBreakfast";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
 import CoffeeIcon from "@mui/icons-material/Coffee";
+import ReplayIcon from "@mui/icons-material/Replay";
 import BASE_URL from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import SignatureCanvas from "react-signature-canvas";
 import CameraCaptureModal from "@/components/work-track/CameraCaptureModal";
 import WorkTrackShareDialog from "@/components/work-track/WorkTrackShareDialog";
+import ChecklistItemHistory from "@/components/work-track/ChecklistItemHistory";
+import RequestRedoDialog from "@/components/work-track/RequestRedoDialog";
 
 /** Extract checklist array from ApiResponse / alternate shapes */
 function extractChecklistArrayFromResponse(result) {
@@ -166,6 +169,11 @@ export default function WorkTrackDetailView() {
   const imageInputRef = useRef(null);
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [cameraItemId, setCameraItemId] = useState(null);
+
+  // Request Redo (manager)
+  const [redoDialogOpen, setRedoDialogOpen] = useState(false);
+  const [redoItem, setRedoItem] = useState(null);
+  const [submittingRedo, setSubmittingRedo] = useState(false);
 
   // Delete confirmation
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -1169,6 +1177,17 @@ export default function WorkTrackDetailView() {
               : Array.isArray(item.OptionsList)
                 ? item.OptionsList
                 : [],
+            needsRedo: Boolean(item.needsRedo ?? item.NeedsRedo),
+            redoReason: item.redoReason ?? item.RedoReason ?? null,
+            redoRequestedByUserId: item.redoRequestedByUserId ?? item.RedoRequestedByUserId ?? null,
+            redoRequestedByName: item.redoRequestedByName ?? item.RedoRequestedByName ?? "",
+            redoRequestedOn: item.redoRequestedOn ?? item.RedoRequestedOn ?? null,
+            attemptCount: item.attemptCount ?? item.AttemptCount ?? 0,
+            responses: Array.isArray(item.responses)
+              ? item.responses
+              : Array.isArray(item.Responses)
+                ? item.Responses
+                : [],
           })),
         };
       });
@@ -1621,6 +1640,59 @@ export default function WorkTrackDetailView() {
     }
   };
 
+  const openRequestRedoDialog = (item) => {
+    setRedoItem(item);
+    setRedoDialogOpen(true);
+  };
+
+  const handleRequestRedo = async (reason) => {
+    if (!redoItem?.id) return;
+    setSubmittingRedo(true);
+    try {
+      const response = await fetch(`${BASE_URL}/WorkTrackChecklist/RequestChecklistItemRedo`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: redoItem.id,
+          reason,
+          workTrackDetailId: detail?.id != null ? Number(detail.id) : Number(id),
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      const status = result?.statusCode ?? result?.StatusCode;
+      const success = response.ok && (status === 200 || status === "SUCCESS" || status === "Success");
+      if (success) {
+        toast(result?.message || result?.Message || "Redo requested. Previous answer kept in history.", {
+          type: "success",
+        });
+        setRedoDialogOpen(false);
+        setRedoItem(null);
+        await refreshChecklists();
+        try {
+          const detailRes = await fetch(
+            `${BASE_URL}/WorkTrackDetail/GetWorkTrackDetailById?id=${detail?.id ?? id}`,
+            { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }
+          );
+          const detailJson = await detailRes.json();
+          const d = detailJson?.result || detailJson?.data || detailJson?.Result || detailJson?.Data;
+          if (d) setDetail(d);
+        } catch {
+          /* ignore */
+        }
+      } else {
+        toast(result?.message || result?.Message || "Failed to request redo", { type: "error" });
+      }
+    } catch (error) {
+      console.error("Error requesting redo:", error);
+      toast("Failed to request redo", { type: "error" });
+    } finally {
+      setSubmittingRedo(false);
+    }
+  };
+
   const handleToggleItem = async (itemId, isCompleted) => {
     if (isReadOnly) return;
     
@@ -1693,23 +1765,26 @@ export default function WorkTrackDetailView() {
   };
 
   // Calculate checklist progress
+  const isItemEffectivelyCompleted = (item) =>
+    Boolean(item?.isCompleted) && !Boolean(item?.needsRedo);
+
   const getChecklistProgress = (checklist) => {
     if (!checklist.items || checklist.items.length === 0) return 0;
-    const completed = checklist.items.filter(item => item.isCompleted).length;
+    const completed = checklist.items.filter(isItemEffectivelyCompleted).length;
     return Math.round((completed / checklist.items.length) * 100);
   };
 
   // Calculate overall completion
   const getAllItemsCompleted = () => {
-    const allItems = checklists.flatMap(cl => cl.items || []);
-    if (allItems.length === 0) return false;
-    return allItems.every(item => item.isCompleted);
+    const items = checklists.flatMap(cl => cl.items || []);
+    if (items.length === 0) return false;
+    return items.every(isItemEffectivelyCompleted);
   };
 
   // Dashboard Statistics
   const allItems = checklists.flatMap(cl => cl.items || []);
   const totalChecklistItems = allItems.length;
-  const completedChecklistItems = allItems.filter(item => item.isCompleted).length;
+  const completedChecklistItems = allItems.filter(isItemEffectivelyCompleted).length;
   const pendingChecklistItems = totalChecklistItems - completedChecklistItems;
   const checklistCompletionPercentage = totalChecklistItems > 0 
     ? Math.round((completedChecklistItems / totalChecklistItems) * 100) 
@@ -1717,7 +1792,7 @@ export default function WorkTrackDetailView() {
   const totalChecklists = checklists.length;
   const completedChecklists = checklists.filter(cl => {
     const items = cl.items || [];
-    return items.length > 0 && items.every(item => item.isCompleted);
+    return items.length > 0 && items.every(isItemEffectivelyCompleted);
   }).length;
 
   if (loading) {
@@ -3177,27 +3252,45 @@ export default function WorkTrackDetailView() {
                                 </Box>
                               </Box>
                               
-                              {!isReadOnly && (
-                                <Box>
-                                  <Tooltip title="Edit Item">
+                              <Box>
+                                {(item.isCompleted ||
+                                  item.selectedValue ||
+                                  item.imageUrl ||
+                                  item.needsRedo ||
+                                  (item.responses && item.responses.length > 0)) && (
+                                  <Tooltip title="Request Redo">
                                     <IconButton
                                       size="small"
-                                      onClick={() => handleOpenItemModal(checklist.id, item)}
+                                      color="warning"
+                                      onClick={() => openRequestRedoDialog(item)}
+                                      disabled={item.needsRedo}
                                     >
-                                      <EditIcon fontSize="inherit" />
+                                      <ReplayIcon fontSize="inherit" />
                                     </IconButton>
                                   </Tooltip>
-                                  <Tooltip title="Delete Item">
-                                    <IconButton
-                                      size="small"
-                                      color="error"
-                                      onClick={() => handleDeleteClick("item", item.id)}
-                                    >
-                                      <DeleteOutlineIcon fontSize="inherit" />
-                                    </IconButton>
-                                  </Tooltip>
-                                </Box>
-                              )}
+                                )}
+                                {!isReadOnly && (
+                                  <>
+                                    <Tooltip title="Edit Item">
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => handleOpenItemModal(checklist.id, item)}
+                                      >
+                                        <EditIcon fontSize="inherit" />
+                                      </IconButton>
+                                    </Tooltip>
+                                    <Tooltip title="Delete Item">
+                                      <IconButton
+                                        size="small"
+                                        color="error"
+                                        onClick={() => handleDeleteClick("item", item.id)}
+                                      >
+                                        <DeleteOutlineIcon fontSize="inherit" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </>
+                                )}
+                              </Box>
                             </Box>
 
                             {/* Radio Buttons */}
@@ -3302,6 +3395,8 @@ export default function WorkTrackDetailView() {
                                 )}
                               </Box>
                             )}
+
+                            <ChecklistItemHistory item={item} />
                           </Box>
                         ))
                       )}
@@ -3868,6 +3963,19 @@ export default function WorkTrackDetailView() {
         }}
         onCapture={handleCameraCapture}
         title="Capture Work Photo"
+      />
+
+      <RequestRedoDialog
+        open={redoDialogOpen}
+        onClose={() => {
+          if (!submittingRedo) {
+            setRedoDialogOpen(false);
+            setRedoItem(null);
+          }
+        }}
+        onConfirm={handleRequestRedo}
+        itemTitle={redoItem?.title || ""}
+        submitting={submittingRedo}
       />
 
       {/* Session History Modal */}

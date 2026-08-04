@@ -56,6 +56,7 @@ import RestaurantIcon from "@mui/icons-material/Restaurant";
 import FreeBreakfastIcon from "@mui/icons-material/FreeBreakfast";
 import ClockInOutModal from "@/components/work-track/ClockInOutModal";
 import CameraCaptureModal from "@/components/work-track/CameraCaptureModal";
+import ChecklistItemHistory from "@/components/work-track/ChecklistItemHistory";
 import BASE_URL from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
@@ -400,14 +401,33 @@ export default function TechnicianWorkTrackDetailView() {
         const items = Array.isArray(rawItems) ? rawItems : [];
         return {
           ...cl,
-          items: items.map((item) => ({
-            ...item,
-            optionsList: Array.isArray(item.optionsList)
-              ? item.optionsList
-              : Array.isArray(item.OptionsList)
-                ? item.OptionsList
-                : [],
-          })),
+          items: items.map((item) => {
+            const rawType = item.itemType ?? item.ItemType ?? "Checkbox";
+            const itemType =
+              typeof rawType === "string" && rawType.trim()
+                ? rawType.trim()
+                : "Checkbox";
+            return {
+              ...item,
+              itemType,
+              optionsList: Array.isArray(item.optionsList)
+                ? item.optionsList
+                : Array.isArray(item.OptionsList)
+                  ? item.OptionsList
+                  : [],
+              needsRedo: Boolean(item.needsRedo ?? item.NeedsRedo),
+              redoReason: item.redoReason ?? item.RedoReason ?? null,
+              redoRequestedByUserId: item.redoRequestedByUserId ?? item.RedoRequestedByUserId ?? null,
+              redoRequestedByName: item.redoRequestedByName ?? item.RedoRequestedByName ?? "",
+              redoRequestedOn: item.redoRequestedOn ?? item.RedoRequestedOn ?? null,
+              attemptCount: item.attemptCount ?? item.AttemptCount ?? 0,
+              responses: Array.isArray(item.responses)
+                ? item.responses
+                : Array.isArray(item.Responses)
+                  ? item.Responses
+                  : [],
+            };
+          }),
         };
       });
 
@@ -825,13 +845,16 @@ export default function TechnicianWorkTrackDetailView() {
   const handleClockInOutSuccess = async () => {
     if (clockInOutType === "clockin") {
       setClockedIn(true);
+      // Clear completed-work banner so Start Work / checklist controls are visible again (e.g. after redo)
+      setWorkCompletedSummary(null);
     } else {
       setClockedIn(false);
     }
     // Notify other pages of session update
     localStorage.setItem(`workTrackSessionUpdate_${id}`, Date.now().toString());
+    await fetchData();
+    await checkClockInStatus();
     await fetchWorkSummary();
-    // Re-fetch checklists to ensure they remain visible after clock out
     await fetchChecklists();
   };
 
@@ -929,11 +952,24 @@ export default function TechnicianWorkTrackDetailView() {
     }
   };
 
-  const handleToggleItem = async (itemId, isCompleted) => {
-    if (!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")) {
-      toast("Please clock in and start work before ticking checklist items", { type: "warning" });
-      return;
+  /** Checklist tasks (including redo) stay blocked until work is Started. */
+  const canEditChecklistItem = () => {
+    if (isTimeTrackingHidden) return true;
+    return Boolean(clockedIn && workSummary?.currentStatus === "Started");
+  };
+
+  const assertCanEditChecklistItem = (actionLabel = "update checklist items") => {
+    if (canEditChecklistItem()) return true;
+    if (!clockedIn) {
+      toast("Please clock in and start work before updating checklist items", { type: "warning" });
+      return false;
     }
+    toast(`Please start work before you can ${actionLabel}`, { type: "warning" });
+    return false;
+  };
+
+  const handleToggleItem = async (itemId, isCompleted) => {
+    if (!assertCanEditChecklistItem("tick checklist items")) return;
 
     try {
       const response = await fetch(`${BASE_URL}/WorkTrackChecklist/ToggleChecklistItem`, {
@@ -954,10 +990,7 @@ export default function TechnicianWorkTrackDetailView() {
   };
 
   const handleUpdateItemValue = async (itemId, selectedValue) => {
-    if (!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")) {
-      toast("Please clock in and start work before updating items", { type: "warning" });
-      return;
-    }
+    if (!assertCanEditChecklistItem("update items")) return;
 
     try {
       const response = await fetch(`${BASE_URL}/WorkTrackChecklist/UpdateChecklistItemValue`, {
@@ -978,10 +1011,7 @@ export default function TechnicianWorkTrackDetailView() {
   };
 
   const openCameraModal = (itemId) => {
-    if (!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")) {
-      toast("Please clock in and start work before capturing images", { type: "warning" });
-      return;
-    }
+    if (!assertCanEditChecklistItem("capture images")) return;
     setCameraItemId(itemId);
     setCameraModalOpen(true);
   };
@@ -1019,16 +1049,23 @@ export default function TechnicianWorkTrackDetailView() {
     }));
   };
 
+  const isItemEffectivelyCompleted = (item) =>
+    Boolean(item?.isCompleted) && !Boolean(item?.needsRedo);
+
+  const hasPendingRedoItems = checklists.some((cl) =>
+    (cl.items || []).some((item) => item.needsRedo)
+  );
+
   const getChecklistProgress = (checklist) => {
     if (!checklist.items || checklist.items.length === 0) return 0;
-    const completed = checklist.items.filter((item) => item.isCompleted).length;
+    const completed = checklist.items.filter(isItemEffectivelyCompleted).length;
     return Math.round((completed / checklist.items.length) * 100);
   };
 
   const getAllItemsCompleted = () => {
     return checklists.every((checklist) => {
       if (!checklist.items || checklist.items.length === 0) return true;
-      return checklist.items.every((item) => item.isCompleted);
+      return checklist.items.every(isItemEffectivelyCompleted);
     });
   };
 
@@ -1623,6 +1660,16 @@ export default function TechnicianWorkTrackDetailView() {
             Same checklists as other equipment lines on this work track.
           </Alert>
 
+          {hasPendingRedoItems && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              {isTimeTrackingHidden
+                ? "Some items were sent back for redo. Complete them below — previous answers stay in history."
+                : canEditChecklistItem()
+                  ? "Some items were sent back for redo. Complete them below — previous answers stay in history."
+                  : "Some items were sent back for redo. Clock in and start work, then re-submit those items."}
+            </Alert>
+          )}
+
           {checklists.length === 0 ? (
             <Alert severity="info">No checklists available for this work assignment.</Alert>
           ) : (
@@ -1695,34 +1742,34 @@ export default function TechnicianWorkTrackDetailView() {
                         }}
                       >
                         <Box display="flex" alignItems="flex-start" gap={1}>
-                          {item.itemType === "Checkbox" && (
+                          {(!item.itemType || item.itemType === "Checkbox") && (
                             <Checkbox
-                              checked={item.isCompleted || false}
+                              checked={isItemEffectivelyCompleted(item)}
                               onChange={(e) => handleToggleItem(item.id, e.target.checked)}
                               icon={<RadioButtonUncheckedIcon />}
                               checkedIcon={<CheckCircleIcon color="success" />}
-                              disabled={!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")}
+                              disabled={!canEditChecklistItem()}
                               sx={{ flexShrink: 0, mt: 0.5 }}
                             />
                           )}
 
                           {item.itemType === "Radio" && (
                             <RadioButtonCheckedIcon
-                              color={item.isCompleted ? "success" : "action"}
+                              color={isItemEffectivelyCompleted(item) ? "success" : "action"}
                               sx={{ mr: 1, mt: 0.5, flexShrink: 0 }}
                             />
                           )}
 
                           {item.itemType === "Dropdown" && (
                             <ArrowDropDownCircleIcon
-                              color={item.isCompleted ? "success" : "action"}
+                              color={isItemEffectivelyCompleted(item) ? "success" : "action"}
                               sx={{ mr: 1, mt: 0.5, flexShrink: 0 }}
                             />
                           )}
 
                           {item.itemType === "Image" && (
                             <CameraAltIcon
-                              color={item.isCompleted ? "success" : "action"}
+                              color={isItemEffectivelyCompleted(item) ? "success" : "action"}
                               sx={{ mr: 1, mt: 0.5, flexShrink: 0 }}
                             />
                           )}
@@ -1731,7 +1778,7 @@ export default function TechnicianWorkTrackDetailView() {
                             <Typography
                               variant={isMobile ? "body2" : "body1"}
                               sx={{
-                                textDecoration: item.isCompleted ? "line-through" : "none",
+                                textDecoration: isItemEffectivelyCompleted(item) ? "line-through" : "none",
                                 wordBreak: "break-word",
                               }}
                             >
@@ -1765,7 +1812,7 @@ export default function TechnicianWorkTrackDetailView() {
                                   value={option}
                                   control={<Radio size="small" />}
                                   label={<Typography variant={isMobile ? "body2" : "body1"}>{option}</Typography>}
-                                  disabled={!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")}
+                                  disabled={!canEditChecklistItem()}
                                   sx={{ mb: 0.5 }}
                                 />
                               ))}
@@ -1782,7 +1829,7 @@ export default function TechnicianWorkTrackDetailView() {
                                 value={item.selectedValue || ""}
                                 label="Select an option"
                                 onChange={(e) => handleUpdateItemValue(item.id, e.target.value)}
-                                disabled={!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")}
+                                disabled={!canEditChecklistItem()}
                               >
                                 <MenuItem value="">
                                   <em>None</em>
@@ -1813,7 +1860,7 @@ export default function TechnicianWorkTrackDetailView() {
                                     display: "block",
                                   }}
                                 />
-                                {(isTimeTrackingHidden || (clockedIn && workSummary?.currentStatus === "Started")) && (
+                                {canEditChecklistItem() && (
                                   <Box mt={1}>
                                     <Button
                                       variant="outlined"
@@ -1837,11 +1884,13 @@ export default function TechnicianWorkTrackDetailView() {
                               >
                                 <CameraAltIcon sx={{ fontSize: 40, color: "#aaa", mb: 1 }} />
                                 <Typography variant="body2" color="textSecondary" gutterBottom>
-                                  {!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")
-                                    ? "No photo captured"
-                                    : "Tap to capture photo"}
+                                  {!canEditChecklistItem()
+                                    ? "No photo captured — start work to continue"
+                                    : item.needsRedo
+                                      ? "Tap to capture a new photo for redo"
+                                      : "Tap to capture photo"}
                                 </Typography>
-                                {(isTimeTrackingHidden || (clockedIn && workSummary?.currentStatus === "Started")) && (
+                                {canEditChecklistItem() && (
                                   <Button
                                     variant="contained"
                                     startIcon={<CameraAltIcon />}
@@ -1855,6 +1904,8 @@ export default function TechnicianWorkTrackDetailView() {
                             )}
                           </Box>
                         )}
+
+                        <ChecklistItemHistory item={item} readOnly />
                       </Box>
                     ))
                   )}

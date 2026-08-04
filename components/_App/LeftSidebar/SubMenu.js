@@ -14,22 +14,44 @@ const SidebarLabel = styled("span")(({ theme }) => ({
 
 const normalizePath = (path) => path.replace(/\/+$/, "");
 
-/** First leaf in subNav whose path matches the current route (supports nested subNav). */
+/** True when currentPath is this menu path or a nested route under it (segment-safe). */
+function pathMatchesLeaf(menuPath, currentPath) {
+  const np = normalizePath(menuPath || "");
+  if (!np) return false;
+  return currentPath === np || currentPath.startsWith(`${np}/`);
+}
+
+/**
+ * Best leaf in subNav for the current route (supports nested subNav).
+ * Prefers exact match, then the longest path — so /work-track/technician/
+ * maps to Technician (154), not the parent Work Track (153).
+ */
 function findMatchingLeafInSubNav(subNav, currentPath) {
+  let best = null;
+  let bestLen = -1;
+
   for (const subItem of subNav || []) {
     if (subItem.subNav?.length) {
       const nested = findMatchingLeafInSubNav(subItem.subNav, currentPath);
-      if (nested) return nested;
+      if (nested) {
+        const nestedLen = normalizePath(nested.path || "").length;
+        if (nestedLen > bestLen) {
+          best = nested;
+          bestLen = nestedLen;
+        }
+      }
       continue;
     }
     const p = subItem.path;
     if (!p || p === "#") continue;
-    const np = normalizePath(p);
-    if (np === currentPath || currentPath.startsWith(np)) {
-      return subItem;
+    if (!pathMatchesLeaf(p, currentPath)) continue;
+    const len = normalizePath(p).length;
+    if (len > bestLen) {
+      best = subItem;
+      bestLen = len;
     }
   }
-  return null;
+  return best;
 }
 
 const SubMenu = ({ item, allItems, onCheckPermission, hoverMode = false }) => {
@@ -76,14 +98,26 @@ const SubMenu = ({ item, allItems, onCheckPermission, hoverMode = false }) => {
   useEffect(() => {
     const currentPath = normalizePath(router.asPath.split("?")[0].split("#")[0]);
 
-    allItems.forEach((menuItem) => {
+    let bestMenu = null;
+    let bestSub = null;
+    let bestLen = -1;
+
+    (allItems || []).forEach((menuItem) => {
       const matchedSub = findMatchingLeafInSubNav(menuItem.subNav, currentPath);
-      if (matchedSub) {
-        sessionStorage.setItem("moduleid", menuItem.ModuleId);
-        sessionStorage.setItem("category", matchedSub.categoryId);
-        setCat(matchedSub.categoryId);
+      if (!matchedSub) return;
+      const len = normalizePath(matchedSub.path || "").length;
+      if (len > bestLen) {
+        bestLen = len;
+        bestMenu = menuItem;
+        bestSub = matchedSub;
       }
     });
+
+    if (bestMenu && bestSub) {
+      sessionStorage.setItem("moduleid", bestMenu.ModuleId);
+      sessionStorage.setItem("category", bestSub.categoryId);
+      setCat(bestSub.categoryId);
+    }
   }, [router.asPath, allItems]);
 
   useEffect(() => {
