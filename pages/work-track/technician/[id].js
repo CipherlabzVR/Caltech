@@ -54,9 +54,13 @@ import ListAltIcon from "@mui/icons-material/ListAlt";
 import CoffeeIcon from "@mui/icons-material/Coffee";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
 import FreeBreakfastIcon from "@mui/icons-material/FreeBreakfast";
+import SendIcon from "@mui/icons-material/Send";
+import DrawIcon from "@mui/icons-material/Draw";
+import CloseIcon from "@mui/icons-material/Close";
 import ClockInOutModal from "@/components/work-track/ClockInOutModal";
 import CameraCaptureModal from "@/components/work-track/CameraCaptureModal";
 import ChecklistItemHistory from "@/components/work-track/ChecklistItemHistory";
+import SignatureCanvas from "react-signature-canvas";
 import BASE_URL from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
@@ -124,6 +128,13 @@ export default function TechnicianWorkTrackDetailView() {
   // Camera capture modal
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [cameraItemId, setCameraItemId] = useState(null);
+
+  // Signature and submit to admin
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [savingSignature, setSavingSignature] = useState(false);
+  const technicianSigRef = useRef(null);
+  const [submitModalOpen, setSubmitModalOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // App setting: when enabled, removes time tracking (start/end work, breaks, timers, sessions UI)
   const { data: removeTimeTrackSetting } = IsAppSettingEnabled("RemoveTimeTrackFromWorkTrackDetail");
@@ -952,8 +963,20 @@ export default function TechnicianWorkTrackDetailView() {
     }
   };
 
-  /** Checklist tasks (including redo) stay blocked until work is Started. */
+  /** Checklist tasks (including redo) stay blocked until work is Started.
+   *  Also blocked when task is submitted (PendingApproval/Completed) unless there are redo items.
+   */
   const canEditChecklistItem = () => {
+    // Block if task is submitted and there are no redo items
+    const submissionStatus = detail?.submissionStatus;
+    if ((submissionStatus === "PendingApproval" || submissionStatus === "Completed")) {
+      // Only allow editing if there are redo items
+      const hasRedo = checklists.some((checklist) => 
+        checklist.items?.some(item => item.needsRedo)
+      );
+      if (!hasRedo) return false;
+    }
+    
     if (isTimeTrackingHidden) return true;
     return Boolean(clockedIn && workSummary?.currentStatus === "Started");
   };
@@ -1067,6 +1090,114 @@ export default function TechnicianWorkTrackDetailView() {
       if (!checklist.items || checklist.items.length === 0) return true;
       return checklist.items.every(isItemEffectivelyCompleted);
     });
+  };
+
+  // Check if any item needs redo
+  const hasRedoItems = () => {
+    return checklists.some((checklist) => {
+      if (!checklist.items) return false;
+      return checklist.items.some(item => item.needsRedo);
+    });
+  };
+
+  // Check if task is pending approval or completed (submitted)
+  const isSubmittedOrPending = detail?.submissionStatus === "PendingApproval" || detail?.submissionStatus === "Completed";
+
+  // Should show submit button: 100% complete, not already submitted, and has technician signature
+  const canShowSubmitButton = getAllItemsCompleted() && 
+                              checklists.length > 0 && 
+                              detail?.submissionStatus === "Draft" &&
+                              detail?.technicianSignature;
+
+  // Should show signature section: 100% complete and not already submitted
+  const shouldShowSignatureSection = getAllItemsCompleted() && 
+                                     checklists.length > 0 && 
+                                     detail?.submissionStatus === "Draft";
+
+  // Handle opening signature modal
+  const handleOpenSignatureModal = () => {
+    setSignatureModalOpen(true);
+  };
+
+  // Handle saving technician signature
+  const handleSaveSignature = async () => {
+    if (!technicianSigRef.current || technicianSigRef.current.isEmpty()) {
+      toast("Please draw your signature", { type: "warning" });
+      return;
+    }
+
+    try {
+      setSavingSignature(true);
+      const signatureData = technicianSigRef.current.toDataURL("image/png");
+      
+      const response = await fetch(`${BASE_URL}/WorkTrackDetail/AddSignature`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workTrackDetailId: parseInt(id),
+          signature: signatureData,
+          signatureType: "Technician",
+        }),
+      });
+      const result = await response.json();
+      
+      if (result?.statusCode === 200) {
+        toast("Signature added successfully!", { type: "success" });
+        setSignatureModalOpen(false);
+        await fetchData();
+      } else {
+        toast(result?.message || "Failed to save signature", { type: "error" });
+      }
+    } catch (error) {
+      console.error("Error saving signature:", error);
+      toast("Failed to save signature", { type: "error" });
+    } finally {
+      setSavingSignature(false);
+    }
+  };
+
+  // Handle opening submit modal
+  const handleOpenSubmitModal = () => {
+    if (!detail?.technicianSignature) {
+      toast("Please add your signature before submitting", { type: "warning" });
+      return;
+    }
+    setSubmitModalOpen(true);
+  };
+
+  // Handle submit to admin
+  const handleSubmitToAdmin = async () => {
+    try {
+      setSubmitting(true);
+      const response = await fetch(`${BASE_URL}/WorkTrackDetail/SubmitToAdmin`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          workTrackDetailId: parseInt(id),
+        }),
+      });
+      const result = await response.json();
+      
+      if (result?.statusCode === 200) {
+        toast("Submitted to Manager on Duty successfully! Email notification sent.", { type: "success" });
+        setSubmitModalOpen(false);
+        await fetchData();
+        await fetchChecklists();
+      } else {
+        toast(result?.message || "Failed to submit", { type: "error" });
+      }
+    } catch (error) {
+      console.error("Error submitting to admin:", error);
+      toast("Failed to submit", { type: "error" });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -1184,8 +1315,8 @@ export default function TechnicianWorkTrackDetailView() {
         </Card>
       )}
 
-      {/* Clock In/Out Status */}
-      {!isTimeTrackingHidden && (
+      {/* Clock In/Out Status - Hide when 100% complete and submitted (no redo) */}
+      {!isTimeTrackingHidden && !(isSubmittedOrPending && !hasRedoItems()) && (
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Box 
@@ -1237,8 +1368,8 @@ export default function TechnicianWorkTrackDetailView() {
       </Card>
       )}
 
-      {/* Work Session Card */}
-      {!isTimeTrackingHidden && (
+      {/* Work Session Card - Hide when 100% complete and submitted (no redo) */}
+      {!isTimeTrackingHidden && !(isSubmittedOrPending && !hasRedoItems()) && (
       <Card sx={{ mb: 3, border: isWorkActive ? "2px solid" : "none", borderColor: "success.main" }}>
         <CardContent>
           <Box 
@@ -1649,6 +1780,88 @@ export default function TechnicianWorkTrackDetailView() {
         </CardContent>
       </Card>
 
+      {/* Signature & Submit Section - Show when 100% complete */}
+      {shouldShowSignatureSection && (
+        <Card sx={{ mb: 3, border: '2px solid #3b82f6', bgcolor: '#eff6ff' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              <DrawIcon sx={{ mr: 1, verticalAlign: "middle" }} />
+              Submit Work for Approval
+            </Typography>
+            
+            <Alert severity="info" sx={{ mb: 2 }}>
+              All tasks are 100% complete. Please add your signature and submit for Manager on Duty approval.
+            </Alert>
+            
+            {/* Technician Signature */}
+            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', mb: 2 }}>
+              <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                Your Signature
+              </Typography>
+              {detail.technicianSignature ? (
+                <Box>
+                  <img 
+                    src={detail.technicianSignature} 
+                    alt="Your Signature" 
+                    style={{ maxWidth: '100%', maxHeight: 150, border: '1px solid #ddd' }} 
+                  />
+                  <Typography variant="caption" display="block" mt={1} color="success.main">
+                    Signature captured ✓
+                  </Typography>
+                </Box>
+              ) : (
+                <Box>
+                  <Typography color="textSecondary" sx={{ mb: 2 }}>Not signed yet</Typography>
+                  <Button 
+                    variant="contained" 
+                    startIcon={<DrawIcon />}
+                    onClick={handleOpenSignatureModal}
+                    color="primary"
+                  >
+                    Add Your Signature
+                  </Button>
+                </Box>
+              )}
+            </Paper>
+
+            {/* Submit Button */}
+            {detail.technicianSignature && (
+              <Box textAlign="center">
+                <Button
+                  variant="contained"
+                  color="success"
+                  size="large"
+                  startIcon={<SendIcon />}
+                  onClick={handleOpenSubmitModal}
+                  sx={{ px: 4, py: 1.5 }}
+                >
+                  Submit to Manager on Duty
+                </Button>
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pending Approval Banner */}
+      {isSubmittedOrPending && !hasRedoItems() && (
+        <Alert 
+          severity={detail.submissionStatus === "Completed" ? "success" : "warning"} 
+          sx={{ mb: 3 }}
+        >
+          <Typography variant="h6">
+            {detail.submissionStatus === "Completed" 
+              ? "Work Completed & Approved" 
+              : "Submitted - Awaiting Manager on Duty Approval"}
+          </Typography>
+          <Typography variant="body2">
+            {detail.submissionStatus === "Completed"
+              ? "This work has been completed and approved."
+              : "Your work has been submitted and is awaiting approval. Tasks are locked until a redo request is made."}
+          </Typography>
+        </Alert>
+      )}
+
       {/* Checklists Section */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
@@ -2049,6 +2262,109 @@ export default function TechnicianWorkTrackDetailView() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setHistoryModalOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Signature Modal */}
+      <Dialog open={signatureModalOpen} onClose={() => setSignatureModalOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="h6">Your Signature</Typography>
+            <IconButton onClick={() => setSignatureModalOpen(false)}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+            Please draw your signature in the box below:
+          </Typography>
+          <Box
+            sx={{
+              border: '2px solid #e0e0e0',
+              borderRadius: 1,
+              bgcolor: 'white',
+              mb: 2,
+            }}
+          >
+            <SignatureCanvas
+              ref={technicianSigRef}
+              canvasProps={{
+                width: 500,
+                height: 200,
+                className: 'signature-canvas',
+                style: { width: '100%', height: 200 }
+              }}
+              backgroundColor="white"
+            />
+          </Box>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => technicianSigRef.current?.clear()}
+          >
+            Clear
+          </Button>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSignatureModalOpen(false)} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveSignature}
+            variant="contained"
+            color="primary"
+            disabled={savingSignature}
+            startIcon={<DrawIcon />}
+          >
+            {savingSignature ? "Saving..." : "Save Signature"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Submit Confirmation Modal */}
+      <Dialog open={submitModalOpen} onClose={() => setSubmitModalOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="h6">Submit to Manager on Duty</Typography>
+            <IconButton onClick={() => setSubmitModalOpen(false)}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            You are about to submit this work for Manager on Duty approval.
+          </Alert>
+          
+          <Typography variant="body1" gutterBottom>
+            <strong>Track ID:</strong> {detail?.trackId || "-"}
+          </Typography>
+          <Typography variant="body1" gutterBottom>
+            <strong>Task Completion:</strong> {detail?.taskCompletePercentage || 0}%
+          </Typography>
+          <Typography variant="body1" gutterBottom>
+            <strong>Your Signature:</strong> {detail?.technicianSignature ? "✓ Captured" : "Not signed"}
+          </Typography>
+          
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            After submitting, all tasks will be locked until a Manager on Duty reviews your work. 
+            An email notification will be sent to all administrators.
+          </Alert>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSubmitModalOpen(false)} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmitToAdmin}
+            variant="contained"
+            color="success"
+            disabled={submitting}
+            startIcon={<SendIcon />}
+          >
+            {submitting ? "Submitting..." : "Confirm & Submit"}
+          </Button>
         </DialogActions>
       </Dialog>
     </>
