@@ -13,6 +13,11 @@ const nextConfig = {
     unoptimized: true
   },
   optimizeFonts: false,
+  // Cap build parallelism so Vercel (8GB) does not OOM on large page graphs.
+  experimental: {
+    cpus: 1,
+    workerThreads: false,
+  },
   i18n: {
     locales: ['en', 'ar'],
     defaultLocale: 'en',
