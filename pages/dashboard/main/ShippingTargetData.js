@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Box, Button, FormControl, InputLabel, MenuItem, Select, Typography } from "@mui/material";
+import React, { useEffect, useMemo, useState } from "react";
+import { Box, Button, FormControl, FormControlLabel, InputLabel, MenuItem, Select, Switch, Typography } from "@mui/material";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import Card from "@mui/material/Card";
 import Table from "@mui/material/Table";
@@ -65,12 +65,84 @@ const redCellSx = {
   padding: "9px 10px",
 };
 
+const toNumber = (value) => Number(value) || 0;
+
+const roundNumber = (value) => Math.round(toNumber(value) * 100) / 100;
+
+const toTimestamp = (value) => {
+  if (!value) return 0;
+  const ts = new Date(value).getTime();
+  return Number.isNaN(ts) ? 0 : ts;
+};
+
+const sortShippingRows = (rows) =>
+  [...rows].sort(
+    (a, b) =>
+      toNumber(a.displayOrder) - toNumber(b.displayOrder) ||
+      toTimestamp(b.updatedOn ?? b.createdOn) - toTimestamp(a.updatedOn ?? a.createdOn) ||
+      (a.productName || "").localeCompare(b.productName || "", undefined, {
+        sensitivity: "base",
+      }) ||
+      (a.subCategoryId ?? 0) - (b.subCategoryId ?? 0)
+  );
+
+const groupShippingRows = (rows) => {
+  const groups = new Map();
+
+  rows.forEach((row) => {
+    const key = [
+      row.categoryId ?? 0,
+      row.subCategoryId ?? 0,
+      (row.productName || "").trim().toLowerCase(),
+    ].join("|");
+
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(row);
+  });
+
+  return Array.from(groups.values()).map((groupRows) => {
+    const count = groupRows.length;
+    const stockTarget = groupRows.reduce((sum, row) => sum + toNumber(row.stockTarget), 0) / count;
+    const stock = groupRows.reduce((sum, row) => sum + toNumber(row.stock), 0);
+    const shippingTarget = groupRows.reduce((sum, row) => sum + toNumber(row.shippingTarget), 0) / count;
+    const orderSum = groupRows.reduce((sum, row) => sum + toNumber(row.orderSum), 0);
+    const displayOrder = Math.min(...groupRows.map((row) => toNumber(row.displayOrder)));
+    const updatedOn = groupRows.reduce((latest, row) => {
+      const ts = toTimestamp(row.updatedOn ?? row.createdOn);
+      return ts > latest ? ts : latest;
+    }, 0);
+    const stockDeficit = stock - stockTarget;
+    const shippingDeficit = orderSum - shippingTarget;
+
+    return {
+      ...groupRows[0],
+      stockTarget: roundNumber(stockTarget),
+      stock: roundNumber(stock),
+      shippingTarget: roundNumber(shippingTarget),
+      orderSum: roundNumber(orderSum),
+      displayOrder,
+      updatedOn: updatedOn ? new Date(updatedOn).toISOString() : null,
+      stockDeficit: roundNumber(stockDeficit),
+      shippingDeficit: roundNumber(shippingDeficit),
+      totalDeficit: roundNumber(stockDeficit + shippingDeficit),
+    };
+  });
+};
+
 const ShippingTargetData = () => {
   const [data, setData] = useState([]);
   const [select, setSelect] = useState(0);
   const [supplier, setSupplier] = useState(0);
+  const [groupItems, setGroupItems] = useState(false);
   const [categoryList, setCategoryList] = useState([]);
   const { data: supplierList } = GetAllSuppliers();
+
+  const displayData = useMemo(() => {
+    const rows = groupItems ? groupShippingRows(data) : data;
+    return sortShippingRows(rows);
+  }, [data, groupItems]);
 
   const handleChange = (event) => {
     const categoryId = event.target.value;
@@ -124,10 +196,11 @@ const ShippingTargetData = () => {
   };
 
   const handleExportExcel = () => {
-    if (!data.length) return;
+    if (!displayData.length) return;
     const aoa = [
       [
         "Item",
+        "Sub Category",
         "Stock Target",
         "Stock",
         "Stock Deficit",
@@ -136,8 +209,9 @@ const ShippingTargetData = () => {
         "Shipping Deficit",
         "Total Deficit",
       ],
-      ...data.map((row) => [
+      ...displayData.map((row) => [
         row.productName,
+        row.subCategoryName || "",
         row.stockTarget,
         row.stock,
         row.stockDeficit,
@@ -176,7 +250,7 @@ const ShippingTargetData = () => {
             color="success"
             startIcon={<FileDownloadIcon />}
             onClick={handleExportExcel}
-            disabled={!data.length}
+            disabled={!displayData.length}
             sx={{ textTransform: "none", fontSize: "13px" }}
           >
             Excel
@@ -201,6 +275,24 @@ const ShippingTargetData = () => {
               ))}
             </Select>
           </FormControl>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={groupItems}
+                onChange={(event) => setGroupItems(event.target.checked)}
+                size="small"
+              />
+            }
+            label="Group Items"
+            sx={{
+              ml: 0,
+              mr: 0,
+              "& .MuiFormControlLabel-label": {
+                fontSize: "13px",
+                whiteSpace: "nowrap",
+              },
+            }}
+          />
           <FormControl sx={{ minWidth: 120 }} size="small">
             <InputLabel id="category-label" sx={{ fontSize: "14px" }}>
               Sub Category
@@ -242,6 +334,7 @@ const ShippingTargetData = () => {
           <TableHead>
             <TableRow>
               <TableCell sx={headerCellSx}>Item</TableCell>
+              <TableCell sx={headerCellSx}>Sub Category</TableCell>
               <TableCell sx={targetHeaderCellSx}>Stock Target</TableCell>
               <TableCell sx={greenHeaderCellSx}>Stock</TableCell>
               <TableCell sx={redHeaderCellSx}>Stock Deficit</TableCell>
@@ -253,10 +346,13 @@ const ShippingTargetData = () => {
           </TableHead>
 
           <TableBody>
-            {data.map((row) => (
-              <TableRow key={row.task}>
+            {displayData.map((row, index) => (
+              <TableRow key={`${row.categoryId ?? 0}-${row.subCategoryId ?? 0}-${row.productName}-${index}`}>
                 <TableCell sx={{ fontWeight: "500", fontSize: "13px", borderBottom: "1px solid #F7FAFF", color: "#260944", padding: "9px 10px" }}>
                   {row.productName}
+                </TableCell>
+                <TableCell sx={{ fontWeight: "500", fontSize: "13px", borderBottom: "1px solid #F7FAFF", color: "#260944", padding: "9px 10px" }}>
+                  {row.subCategoryName || ""}
                 </TableCell>
                 <TableCell sx={targetCellSx}>
                   {row.stockTarget}

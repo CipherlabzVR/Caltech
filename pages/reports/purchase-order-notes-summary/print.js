@@ -47,37 +47,45 @@ const statusLabelFromCode = (status) => {
   return "All Statuses";
 };
 
+const EMPTY_LINE_ITEMS_HTML = `<tr><td colspan="9" style="text-align:center;padding:16px;">No purchase orders found for the selected filters.</td></tr>`;
+
+const mapPoNotesLine = (row) => {
+  const poDate = row.poDate ?? row.PoDate;
+  return {
+    poDate: poDate ? formatDate(poDate) : "—",
+    purchaseOrderNo: row.purchaseOrderNo ?? row.PurchaseOrderNo ?? "—",
+    grnNo: (row.documentNo ?? row.DocumentNo) || "—",
+    supplierName: row.supplierName ?? row.SupplierName ?? "—",
+    referenceNo: (row.referanceNo ?? row.ReferanceNo) || "—",
+    status: row.status ?? row.Status ?? "—",
+    qty: formatQty(row.totalQty ?? row.TotalQty ?? 0),
+    amount: formatAmount(row.totalAmount ?? row.TotalAmount ?? 0),
+    remark: (row.remark ?? row.Remark) || "—",
+  };
+};
+
 const buildLineItemsRows = (rows) => {
-  if (!rows || rows.length === 0) {
-    return `<tr><td colspan="9" style="text-align:center;padding:16px;">No purchase orders found for the selected filters.</td></tr>`;
-  }
+  if (!rows || rows.length === 0) return EMPTY_LINE_ITEMS_HTML;
 
   return rows
     .map((row) => {
-      const poDate = row.poDate ?? row.PoDate;
-      const purchaseOrderNo = row.purchaseOrderNo ?? row.PurchaseOrderNo ?? "—";
-      const documentNo = row.documentNo ?? row.DocumentNo;
-      const supplierName = row.supplierName ?? row.SupplierName ?? "—";
-      const referanceNo = row.referanceNo ?? row.ReferanceNo;
-      const status = row.status ?? row.Status ?? "—";
-      const totalQty = row.totalQty ?? row.TotalQty ?? 0;
-      const totalAmount = row.totalAmount ?? row.TotalAmount ?? 0;
-      const remark = row.remark ?? row.Remark;
-
+      const t = mapPoNotesLine(row);
       return `<tr>
-        <td>${escapeHtml(poDate ? formatDate(poDate) : "—")}</td>
-        <td>${escapeHtml(purchaseOrderNo || "—")}</td>
-        <td>${escapeHtml(documentNo || "—")}</td>
-        <td>${escapeHtml(supplierName || "—")}</td>
-        <td>${escapeHtml(referanceNo || "—")}</td>
-        <td>${escapeHtml(status || "—")}</td>
-        <td class="num">${escapeHtml(formatQty(totalQty))}</td>
-        <td class="num">${escapeHtml(formatAmount(totalAmount))}</td>
-        <td>${escapeHtml(remark || "—")}</td>
+        <td>${escapeHtml(t.poDate)}</td>
+        <td>${escapeHtml(t.purchaseOrderNo)}</td>
+        <td>${escapeHtml(t.grnNo)}</td>
+        <td>${escapeHtml(t.supplierName)}</td>
+        <td>${escapeHtml(t.referenceNo)}</td>
+        <td>${escapeHtml(t.status)}</td>
+        <td class="num">${escapeHtml(t.qty)}</td>
+        <td class="num">${escapeHtml(t.amount)}</td>
+        <td>${escapeHtml(t.remark)}</td>
       </tr>`;
     })
     .join("\n");
 };
+
+const buildLineTokenMaps = (rows) => (rows || []).map(mapPoNotesLine);
 
 export default function PurchaseOrderNotesSummaryPrintPage() {
   const router = useRouter();
@@ -202,8 +210,11 @@ export default function PurchaseOrderNotesSummaryPrintPage() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || loadingData) return "";
-    return applyTemplate(templateHtml, tokenMap, lineItemsRows);
-  }, [templateHtml, loadingData, tokenMap, lineItemsRows]);
+    return applyTemplate(templateHtml, tokenMap, lineItemsRows, {
+      lineTokenMaps: buildLineTokenMaps(rows),
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
+  }, [templateHtml, loadingData, tokenMap, lineItemsRows, rows]);
 
   const isLoading = loadingData || loadingTemplate;
   const downloadName = `PurchaseOrderNotesSummary_${new Date().toISOString().slice(0, 10)}`;

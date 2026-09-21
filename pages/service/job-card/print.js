@@ -78,11 +78,14 @@ const authHeaders = () => {
   };
 };
 
-const buildAccessoryRows = (jobCard) => {
-  const list = (jobCard?.accessoriesReceived || "")
+const parseAccessories = (jobCard) =>
+  (jobCard?.accessoriesReceived || "")
     .split(/[,;\n]/)
     .map((s) => s.trim())
     .filter(Boolean);
+
+const buildAccessoryRows = (jobCard) => {
+  const list = parseAccessories(jobCard);
   if (list.length === 0) {
     return `<tr><td colspan="2" style="text-align:center;padding:12px;">-</td></tr>`;
   }
@@ -90,6 +93,12 @@ const buildAccessoryRows = (jobCard) => {
     .map((a, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(a)}</td></tr>`)
     .join("\n");
 };
+
+const buildAccessoryTokenMaps = (jobCard) =>
+  parseAccessories(jobCard).map((item, i) => ({
+    rowNum: String(i + 1),
+    item,
+  }));
 
 const buildBillRows = (rows) => {
   if (!rows || rows.length === 0) {
@@ -111,6 +120,16 @@ const buildBillRows = (rows) => {
     })
     .join("\n");
 };
+
+const buildBillTokenMaps = (rows) =>
+  (rows || []).map((l, i) => ({
+    rowNum: String(i + 1),
+    lineType: LINE_TYPE_LABEL[l.lineType] || "-",
+    item: l.productName || l.description || "-",
+    qty: String(l.qty ?? ""),
+    unitPrice: Number(l.unitPrice || 0).toFixed(2),
+    amount: l._covered ? "FREE" : l._total.toFixed(2),
+  }));
 
 export default function JobCardPrintPage() {
   const router = useRouter();
@@ -235,8 +254,19 @@ export default function JobCardPrintPage() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || !jobCard) return "";
-    const rows = isCustomerBill ? buildBillRows(billComputed) : buildAccessoryRows(jobCard);
-    return applyTemplate(templateHtml, tokenMap, rows);
+    const rows = isCustomerBill
+      ? buildBillRows(billComputed)
+      : buildAccessoryRows(jobCard);
+    const lineTokenMaps = isCustomerBill
+      ? buildBillTokenMaps(billComputed)
+      : buildAccessoryTokenMaps(jobCard);
+    const emptyLineItemsHtml = isCustomerBill
+      ? `<tr><td colspan="6" style="text-align:center;padding:12px;">No priced lines yet.</td></tr>`
+      : `<tr><td colspan="2" style="text-align:center;padding:12px;">-</td></tr>`;
+    return applyTemplate(templateHtml, tokenMap, rows, {
+      lineTokenMaps,
+      emptyLineItemsHtml,
+    });
   }, [templateHtml, jobCard, isCustomerBill, billComputed, tokenMap]);
 
   const isLoading = loadingJob || loadingTemplate;

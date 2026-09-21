@@ -21,8 +21,7 @@ import {
   FormControlLabel,
   Checkbox,
   Tooltip,
-  IconButton,
-} from "@mui/material";
+  IconButton } from "@mui/material";
 import { toast, ToastContainer } from "react-toastify";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
@@ -68,26 +67,17 @@ export default function PurchaseInvoiceList() {
     setSearch,
     setIsCurrentDate,
     fetchData: fetchInvoiceList,
-  } = usePaginatedFetch("PurchaseInvoice/GetAll");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("PurchaseInvoice/GetAll");
 
-  const handleSearchChange = (event) => {
-    const searchValue = event.target.value;
-    setSearch(searchValue);
-    setPage(1);
-    fetchInvoiceList(1, searchValue, pageSize, isCurrentDate);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchInvoiceList(value, search, pageSize, isCurrentDate);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchInvoiceList(1, search, size, isCurrentDate);
-  };
+
+
+
 
   const handleToggleCurrentDate = (event) => {
     const checked = event.target.checked;
@@ -106,8 +96,7 @@ export default function PurchaseInvoiceList() {
   const openPurchaseInvoicePrintPopup = (item) => {
     const query = new URLSearchParams({
       id: String(item.id ?? ""),
-      documentNumber: item.documentNo ?? "",
-    });
+      documentNumber: item.documentNo ?? "" });
 
     window.open(
       `/service/purchase-invoice/print?${query.toString()}`,

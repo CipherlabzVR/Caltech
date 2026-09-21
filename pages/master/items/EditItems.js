@@ -827,8 +827,19 @@ function mapApiItemToEditFormValues(src) {
       pick("wholesaleMinimumQuantity", "WholesaleMinimumQuantity") ?? null,
     CategoryId: toSelectValue(pick("categoryId", "CategoryId")),
     SubCategoryId: toSelectValue(pick("subCategoryId", "SubCategoryId")),
-    ShipmentTarget: pick("shipmentTarget", "ShipmentTarget") || null,
+    ShipmentTarget: (() => {
+      const v = pick("shipmentTarget", "ShipmentTarget");
+      if (v == null || v === "") return null;
+      const n = Number(v);
+      return Number.isNaN(n) ? null : n;
+    })(),
     ReorderLevel: reorderLevel,
+    DisplayOrder: (() => {
+      const v = pick("displayOrder", "DisplayOrder");
+      if (v == null || v === "") return null;
+      const n = Number(v);
+      return Number.isNaN(n) ? null : Math.max(0, n);
+    })(),
     Supplier: toSelectValue(pick("supplier", "Supplier")),
     UOM: toSelectValue(pick("uom", "UOM")),
     Barcode: pick("barcode", "Barcode") || null,
@@ -868,7 +879,12 @@ function getItemsApiErrorMessage(response, data) {
   );
 }
 
-function buildItemsValidationSchema(isSubCategoryNotRequired, isUOMNotRequired, excludeItemId) {
+function buildItemsValidationSchema(
+  isSubCategoryNotRequired,
+  isUOMNotRequired,
+  excludeItemId,
+  originalCode
+) {
   const subCatField = isSubCategoryNotRequired
     ? Yup.mixed().nullable().transform((_, orig) =>
         orig === "" || orig === null || orig === undefined ? null : Number(orig))
@@ -893,7 +909,13 @@ function buildItemsValidationSchema(isSubCategoryNotRequired, isUOMNotRequired, 
           if (!value || !String(value).trim()) {
             return true;
           }
-          const result = await isItemCodeAvailable(value, excludeItemId);
+          const currentId = this.parent?.Id ?? excludeItemId;
+          const nextCode = String(value).trim().toUpperCase();
+          const currentCode = String(originalCode || "").trim().toUpperCase();
+          if (currentId && currentCode && nextCode === currentCode) {
+            return true;
+          }
+          const result = await isItemCodeAvailable(value, currentId);
           return result.available;
         }
       ),
@@ -916,6 +938,10 @@ function buildItemsValidationSchema(isSubCategoryNotRequired, isUOMNotRequired, 
           return n >= 0;
         }
       ),
+    DisplayOrder: Yup.number()
+      .transform((_, orig) => transformEmptyToUndefinedNumber(orig))
+      .min(0, "Display Order cannot be negative")
+      .required("Display Order is required"),
   });
 }
 
@@ -937,8 +963,14 @@ export default function EditItems({
   upcomingMode = false,
 }) {
   const validationSchema = useMemo(
-    () => buildItemsValidationSchema(!!isSubCategoryNotRequired, !!isUOMNotRequired, item.id),
-    [isSubCategoryNotRequired, isUOMNotRequired, item.id]
+    () =>
+      buildItemsValidationSchema(
+        !!isSubCategoryNotRequired,
+        !!isUOMNotRequired,
+        item.id ?? item.Id,
+        item.code ?? item.Code
+      ),
+    [isSubCategoryNotRequired, isUOMNotRequired, item.id, item.Id, item.code, item.Code]
   );
   const router = useRouter();
   const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
@@ -970,6 +1002,8 @@ export default function EditItems({
         dayOfMonth: s?.dayOfMonth ?? "",
         month: s?.scheduleMonth ?? "",
         day: s?.scheduleDay ?? "",
+        startDay: s?.startDayOfWeek ?? "",
+        endDay: s?.endDayOfWeek ?? "",
       });
     } catch {
       setStockCountSchedule(getDefaultStockCountSchedule());
@@ -1364,11 +1398,19 @@ export default function EditItems({
       }
     }
 
-    const editItemId = values.Id || item.id;
-    const codeCheck = await isItemCodeAvailable(values.Code, editItemId);
-    if (!codeCheck.available) {
-      toast.error("This item code is already assigned to another item.");
+    const editItemId = Number(values.Id || item.id || item.Id);
+    if (!Number.isFinite(editItemId) || editItemId <= 0) {
+      toast.error("Unable to update item: missing item id.");
       return;
+    }
+    const originalCode = String(item.code ?? item.Code ?? "").trim().toUpperCase();
+    const nextCode = String(values.Code || "").trim().toUpperCase();
+    if (nextCode !== originalCode) {
+      const codeCheck = await isItemCodeAvailable(values.Code, editItemId);
+      if (!codeCheck.available) {
+        toast.error("This item code is already assigned to another item.");
+        return;
+      }
     }
 
     const wp =
@@ -1394,7 +1436,7 @@ export default function EditItems({
 
     const formData = new FormData();
 
-    formData.append("Id", editItemId);
+    formData.append("Id", String(editItemId));
     formData.append("Name", values.Name);
     formData.append("Code", values.Code);
     formData.append("AveragePrice", values.AveragePrice);
@@ -1416,6 +1458,14 @@ export default function EditItems({
         rl != null && rl !== "" ? Math.max(0, Number(rl)) : null;
       if (rlNum != null && !Number.isNaN(rlNum)) {
         formData.append("ReorderLevel", String(rlNum));
+      }
+    }
+    {
+      const d = values.DisplayOrder;
+      const dNum =
+        d != null && d !== "" ? Math.max(0, Number(d)) : null;
+      if (dNum != null && !Number.isNaN(dNum)) {
+        formData.append("DisplayOrder", String(dNum));
       }
     }
     formData.append("CategoryId", values.CategoryId);
@@ -1463,6 +1513,11 @@ export default function EditItems({
         }
         if (stockCountSchedule.day) {
           formData.append("StockCountDay", stockCountSchedule.day);
+        }
+      }
+      if (stockCountSchedule.frequency === STOCK_COUNT_FREQUENCY.WEEKLY) {
+        if (stockCountSchedule.startDay) {
+          formData.append("StockCountStartDayOfWeek", stockCountSchedule.startDay);
         }
       }
     }
@@ -2170,6 +2225,38 @@ export default function EditItems({
                             )}
                           </Field>
                         </FormControl>
+                      </Grid>
+                      <Grid item xs={12} lg={6} mt={1} p={1}>
+                        <Typography
+                          sx={{
+                            fontWeight: "500",
+                            fontSize: "14px",
+                            mb: "5px",
+                          }}
+                        >
+                          Display Order
+                        </Typography>
+                        <Field
+                          as={TextField}
+                          fullWidth
+                          name="DisplayOrder"
+                          size="small"
+                          type="number"
+                          inputProps={{ min: 0, step: 1 }}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === "") {
+                              setFieldValue("DisplayOrder", null);
+                              return;
+                            }
+                            const n = Number(value);
+                            if (!Number.isNaN(n)) {
+                              setFieldValue("DisplayOrder", Math.max(0, n));
+                            }
+                          }}
+                          error={touched.DisplayOrder && Boolean(errors.DisplayOrder)}
+                          helperText={touched.DisplayOrder && errors.DisplayOrder}
+                        />
                       </Grid>
                       {barcodeEnabled && (
                         <Grid item xs={12} lg={6} mt={1} p={1}>

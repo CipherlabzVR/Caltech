@@ -33,8 +33,7 @@ import { formatDate } from "@/components/utils/formatHelper";
 
 const BILL_TYPE_LABELS = {
   1: "BOM",
-  2: "BOQ",
-};
+  2: "BOQ" };
 
 export default function ProjectsList() {
   const cId = sessionStorage.getItem("category");
@@ -50,7 +49,11 @@ export default function ProjectsList() {
     setPageSize,
     setSearch,
     fetchData: fetchProjects,
-  } = usePaginatedFetch("Project/GetAllManufactureProjects", "", 10, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Project/GetAllManufactureProjects", "", 10, false);
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedProject, setSelectedProject] = React.useState(null);
@@ -64,9 +67,7 @@ export default function ProjectsList() {
           method: "GET",
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        });
+            "Content-Type": "application/json" } });
 
         if (response.ok) {
           const data = await response.json();
@@ -103,9 +104,7 @@ export default function ProjectsList() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
@@ -123,24 +122,11 @@ export default function ProjectsList() {
     }
   };
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchProjects(1, value, pageSize, false);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchProjects(value, search, pageSize, false);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchProjects(1, search, size, false);
-  };
+
+
+
 
   const handleProjectCreated = () => {
     setPage(1);

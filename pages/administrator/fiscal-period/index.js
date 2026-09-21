@@ -15,8 +15,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow,
-} from "@mui/material";
+  TableRow } from "@mui/material";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import BASE_URL from "Base/api";
 import { ToastContainer } from "react-toastify";
@@ -44,7 +43,11 @@ export default function FiscalPeriod() {
     setPageSize,
     setSearch,
     fetchData: fetchFiscalPeriods,
-  } = usePaginatedFetch("Fiscal/GetAllFiscalPeriodsPage", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Fiscal/GetAllFiscalPeriodsPage", "", 10, false, false);
 
   const controller = "Fiscal/DeleteFiscalPeriod";
   const { data: companyList } = GetAllCompanies();
@@ -69,23 +72,11 @@ export default function FiscalPeriod() {
     }
   }, [companyList, warehouseList]);
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchFiscalPeriods(1, event.target.value, pageSize);
-    setPage(1);
-  };
 
-  const handleChangePage = (event, value) => {
-    setPage(value);
-    fetchFiscalPeriods(value, search, pageSize);
-  };
 
-  const handleChangeRowsPerPage = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchFiscalPeriods(1, search, size);
-  };
+
+
+
 
 
 

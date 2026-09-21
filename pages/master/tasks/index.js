@@ -1,4 +1,4 @@
-import React, { } from "react";
+import React from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -32,29 +32,13 @@ export default function Tasks() {
     setPageSize,
     setSearch,
     fetchData: fetchTasksList,
-  } = usePaginatedFetch("Tasks/GetAllTasks");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Tasks/GetAllTasks");
 
-  const controller = "Tasks/DeleteTask";
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchTasksList(1, event.target.value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchTasksList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchTasksList(1, search, size);
-  };
-
-  if (!navigate) {
+  const controller = "Tasks/DeleteTask";  if (!navigate) {
     return <AccessDenied />;
   }
 

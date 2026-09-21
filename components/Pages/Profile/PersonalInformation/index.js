@@ -1362,7 +1362,6 @@ const PersonalInformation = () => {
         : "A one-time code will be sent to your registered email address during sign-in.",
       icon: <EmailOutlinedIcon sx={{ fontSize: 22, color: "#0D6EFD" }} />,
       iconBg: "#E7F1FF",
-      comingSoon: true,
     },
     {
       key: "isTwoFactorWhatsAppEnabled",

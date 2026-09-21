@@ -31,6 +31,8 @@ import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import TrackChangesIcon from '@mui/icons-material/TrackChanges';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 import ArticleOutlinedIcon from '@mui/icons-material/ArticleOutlined';
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 
 
 export const getSidebarData = (IsGarmentSystem) => {
@@ -156,7 +158,15 @@ export const getSidebarData = (IsGarmentSystem) => {
             IsAvailable: true,
             subNav: [
                 { title: "Chart Of Account", path: "/finance/chart-of-account/", categoryId: 41, isAvailable: true },
+                { title: "Fiscal Years", path: "/finance/fiscal-years/", categoryId: 238, isAvailable: true },
+                { title: "Double Entry", path: "/finance/double-entry/", categoryId: 239, isAvailable: true },
+                { title: "Journal Entry", path: "/finance/journal-entry/", categoryId: 227, isAvailable: true },
+                { title: "General Ledger", path: "/finance/general-ledger/", categoryId: 228, isAvailable: true },
+                { title: "Trial Balance", path: "/finance/trial-balance/", categoryId: 229, isAvailable: true },
+                { title: "Posting Rules", path: "/finance/posting-rules/", categoryId: 230, isAvailable: true },
+                { title: "Recurring Journals", path: "/finance/recurring-journals/", categoryId: 231, isAvailable: true },
                 { title: "Payments", path: "/finance/payments/", categoryId: 42, isAvailable: true },
+                { title: "Petty Cash", path: "/finance/petty-cash/", categoryId: 237, isAvailable: true },
                 { title: "Tax", path: "/finance/tax/", categoryId: 58, isAvailable: true },
                 { title: "Bank History", path: "/finance/bank-history/", categoryId: 97, isAvailable: true },
                 { title: "Cheque Payments", path: "/finance/cheque-payments/", categoryId: 98, isAvailable: true },
@@ -164,7 +174,7 @@ export const getSidebarData = (IsGarmentSystem) => {
             ],
         },
         {
-            title: "HR",
+            title: "HR", 
             path: "/hr/hr/",
             icon: <WorkIcon />,
             iconClosed: <ArrowRight />,
@@ -533,7 +543,9 @@ export const getSidebarData = (IsGarmentSystem) => {
                 { title: "Registered Accounts", path: "/matrimonial/matrimonial/", categoryId: 172, isAvailable: true },
                 { title: "Bank Transfer Approvals", path: "/matrimonial/bank-transfers/", categoryId: 173, isAvailable: true },
                 { title: "Success Stories", path: "/matrimonial/success-stories/", categoryId: 174, isAvailable: true },
-                //{ title: "Packages", path: "/matrimonial/packages/", categoryId: 176, isAvailable: true },
+                { title: "Packages", path: "/matrimonial/packages/", categoryId: 176, isAvailable: true },
+                { title: "Contact Form", path: "/matrimonial/contact-forms/", categoryId: 225, isAvailable: true },
+                { title: "Email Center", path: "/matrimonial/email-center/", categoryId: 226, isAvailable: true },
             ],
         },
         {
@@ -555,7 +567,82 @@ export const getSidebarData = (IsGarmentSystem) => {
                 { title: "Newsletter", path: "/travel/newsletter/", categoryId: 189, isAvailable: true },
                 { title: "Settings", path: "/travel/settings/", categoryId: 195, isAvailable: true },
             ],
-        }, {
+        },
+        {
+            title: "Photography",
+            path: "/photography/dashboard/",
+            icon: <PhotoCameraIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 31,
+            IsAvailable: true,
+            subNav: [
+                {
+                    title: "📊 Overview",
+                    isAvailable: true,
+                    subNav: [
+                        { title: "📊 Dashboard", path: "/photography/dashboard/", categoryId: 337, isAvailable: true },
+                        { title: "📋 Board", path: "/photography/board/", categoryId: 344, isAvailable: true },
+                        { title: "📷 Photographers / Videographers", path: "/photography/photographers/", categoryId: 234, isAvailable: true },
+                    ],
+                },
+                {
+                    title: "📝 Client Reservations",
+                    isAvailable: true,
+                    subNav: [
+                        { title: "📋 Board", path: "/photography/board/", categoryId: 344, isAvailable: true },
+                        { title: "📅 Availability", path: "/photography/availability/", categoryId: 236, isAvailable: true },
+                        { title: "📝 Reservation", path: "/photography/reservations/", categoryId: 232, isAvailable: true },
+                        { title: "👤 Client", path: "/photography/clients/", categoryId: 232, isAvailable: true },
+                        { title: "💵 Quotation", path: "/photography/quotations/", categoryId: 341, isAvailable: true },
+                        { title: "✅ Payment Approval", path: "/photography/payment-approval/", categoryId: 342, isAvailable: true },
+                        { title: "📄 Agreement", path: "/photography/document-templates/", categoryId: 345, isAvailable: true },
+                    ],
+                },
+                {
+                    title: "📋 Post Wedding",
+                    isAvailable: true,
+                    subNav: [
+                        { title: "📋 Board", path: "/photography/board/", categoryId: 344, isAvailable: true },
+                        { title: "📋 Post Wedding Task", path: "/photography/tasks/", categoryId: 347, isAvailable: true },
+                        { title: "📋 Task Board", path: "/photography/task-board/", categoryId: 349, isAvailable: true },
+                    ],
+                },
+                {
+                    title: "⚙️ Operation",
+                    isAvailable: true,
+                    subNav: [
+                        { title: "👥 Team", path: "/photography/teams/", categoryId: 233, isAvailable: true },
+                        { title: "🏷️ Status", path: "/photography/statuses/", categoryId: 235, isAvailable: true },
+                        { title: "🤝 Agents", path: "/photography/agents/", categoryId: 346, isAvailable: true },
+                        { title: "🏢 Technicians", path: "/photography/technicians/", categoryId: 348, isAvailable: true },
+                        { title: "🎉 Event Type", path: "/photography/event-types/", categoryId: 343, isAvailable: true },
+                        { title: "📦 Package Categories", path: "/photography/package-categories/", categoryId: 338, isAvailable: true },
+                        { title: "📦 Packages", path: "/photography/packages/", categoryId: 339, isAvailable: true },
+                        { title: "🧩 Add-ons", path: "/photography/add-ons/", categoryId: 340, isAvailable: true },
+                        { title: "📅 Calendar", path: "/photography/google-calendar/", categoryId: 236, isAvailable: true },
+                        { title: "💬 WhatsApp Integration", path: "/whatsapp/integration/", categoryId: 250, permissionModuleId: 32, isAvailable: true },
+                        { title: "💬 WhatsApp Templates", path: "/whatsapp/templates/", categoryId: 251, permissionModuleId: 32, isAvailable: true },
+                        { title: "💬 Send WhatsApp", path: "/whatsapp/send-message/", categoryId: 252, permissionModuleId: 32, isAvailable: true },
+                    ],
+                },
+            ],
+        },
+        {
+            title: "WhatsApp",
+            path: "/whatsapp/integration/",
+            icon: <WhatsAppIcon />,
+            iconClosed: <ArrowRight />,
+            iconOpened: <ArrowDown />,
+            ModuleId: 32,
+            IsAvailable: true,
+            subNav: [
+                { title: "Integration", path: "/whatsapp/integration/", categoryId: 250, isAvailable: true },
+                { title: "Templates", path: "/whatsapp/templates/", categoryId: 251, isAvailable: true },
+                { title: "Send Message", path: "/whatsapp/send-message/", categoryId: 252, isAvailable: true },
+            ],
+        },
+        {
             title: "Administrator",
             path: "/administrator/administrator/",
             icon: <AdminIcon />,

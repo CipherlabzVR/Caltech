@@ -40,35 +40,43 @@ const toFilterLabel = (value, allLabel) => {
   return text;
 };
 
+const EMPTY_LINE_ITEMS_HTML = `<tr><td colspan="8" style="text-align:center;padding:16px;">No goods received notes found for the selected filters.</td></tr>`;
+
+const mapGrnNotesLine = (row) => {
+  const grnDate = row.grnDate ?? row.GrnDate;
+  return {
+    grnDate: grnDate ? formatDate(grnDate) : "—",
+    documentNo: row.documentNo ?? row.DocumentNo ?? "—",
+    purchaseOrderNo: (row.purchaseOrderNo ?? row.PurchaseOrderNo) || "—",
+    referenceNo: (row.referanceNo ?? row.ReferanceNo) || "—",
+    supplierName: row.supplierName ?? row.SupplierName ?? "—",
+    qty: formatQty(row.totalQty ?? row.TotalQty ?? 0),
+    amount: formatAmount(row.totalAmount ?? row.TotalAmount ?? 0),
+    remark: (row.remark ?? row.Remark) || "—",
+  };
+};
+
 const buildLineItemsRows = (rows) => {
-  if (!rows || rows.length === 0) {
-    return `<tr><td colspan="8" style="text-align:center;padding:16px;">No goods received notes found for the selected filters.</td></tr>`;
-  }
+  if (!rows || rows.length === 0) return EMPTY_LINE_ITEMS_HTML;
 
   return rows
     .map((row) => {
-      const grnDate = row.grnDate ?? row.GrnDate;
-      const documentNo = row.documentNo ?? row.DocumentNo ?? "—";
-      const purchaseOrderNo = row.purchaseOrderNo ?? row.PurchaseOrderNo;
-      const referanceNo = row.referanceNo ?? row.ReferanceNo;
-      const supplierName = row.supplierName ?? row.SupplierName ?? "—";
-      const totalQty = row.totalQty ?? row.TotalQty ?? 0;
-      const totalAmount = row.totalAmount ?? row.TotalAmount ?? 0;
-      const remark = row.remark ?? row.Remark;
-
+      const t = mapGrnNotesLine(row);
       return `<tr>
-        <td>${escapeHtml(grnDate ? formatDate(grnDate) : "—")}</td>
-        <td>${escapeHtml(documentNo || "—")}</td>
-        <td>${escapeHtml(purchaseOrderNo || "—")}</td>
-        <td>${escapeHtml(referanceNo || "—")}</td>
-        <td>${escapeHtml(supplierName || "—")}</td>
-        <td class="num">${escapeHtml(formatQty(totalQty))}</td>
-        <td class="num">${escapeHtml(formatAmount(totalAmount))}</td>
-        <td>${escapeHtml(remark || "—")}</td>
+        <td>${escapeHtml(t.grnDate)}</td>
+        <td>${escapeHtml(t.documentNo)}</td>
+        <td>${escapeHtml(t.purchaseOrderNo)}</td>
+        <td>${escapeHtml(t.referenceNo)}</td>
+        <td>${escapeHtml(t.supplierName)}</td>
+        <td class="num">${escapeHtml(t.qty)}</td>
+        <td class="num">${escapeHtml(t.amount)}</td>
+        <td>${escapeHtml(t.remark)}</td>
       </tr>`;
     })
     .join("\n");
 };
+
+const buildLineTokenMaps = (rows) => (rows || []).map(mapGrnNotesLine);
 
 export default function GoodsReceivedNotesSummaryPrintPage() {
   const router = useRouter();
@@ -188,8 +196,11 @@ export default function GoodsReceivedNotesSummaryPrintPage() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || loadingData) return "";
-    return applyTemplate(templateHtml, tokenMap, lineItemsRows);
-  }, [templateHtml, loadingData, tokenMap, lineItemsRows]);
+    return applyTemplate(templateHtml, tokenMap, lineItemsRows, {
+      lineTokenMaps: buildLineTokenMaps(rows),
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
+  }, [templateHtml, loadingData, tokenMap, lineItemsRows, rows]);
 
   const isLoading = loadingData || loadingTemplate;
   const downloadName = `GoodsReceivedNotesSummary_${new Date().toISOString().slice(0, 10)}`;

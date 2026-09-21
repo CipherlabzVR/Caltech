@@ -102,10 +102,6 @@ const ChatWidget = () => {
           <Box className="ai-assistant-float-icon">
             <AssistantIcon size={56} />
           </Box>
-          <Box className="ai-assistant-speech">
-            Ask me anything
-            <span className="ai-assistant-speech-tail" />
-          </Box>
         </Box>
       </Zoom>
 

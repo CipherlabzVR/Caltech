@@ -26,11 +26,14 @@ const serviceTypeLabel = (jc) => {
 };
 const PRIORITY_LABEL = { 1: "Normal", 2: "Urgent", 3: "Critical" };
 
-const buildAccessoryRows = (jobCard) => {
-  const list = (jobCard?.accessoriesReceived || "")
+const parseAccessories = (jobCard) =>
+  (jobCard?.accessoriesReceived || "")
     .split(/[,;\n]/)
     .map((s) => s.trim())
     .filter(Boolean);
+
+const buildAccessoryRows = (jobCard) => {
+  const list = parseAccessories(jobCard);
   if (list.length === 0) {
     return `<tr><td colspan="2" style="text-align:center;padding:12px;">-</td></tr>`;
   }
@@ -38,6 +41,12 @@ const buildAccessoryRows = (jobCard) => {
     .map((a, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(a)}</td></tr>`)
     .join("\n");
 };
+
+const buildAccessoryTokenMaps = (jobCard) =>
+  parseAccessories(jobCard).map((item, i) => ({
+    rowNum: String(i + 1),
+    item,
+  }));
 
 export default function JobCardReceipt() {
   const router = useRouter();
@@ -95,7 +104,10 @@ export default function JobCardReceipt() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || !jobCard) return "";
-    return applyTemplate(templateHtml, tokenMap, buildAccessoryRows(jobCard));
+    return applyTemplate(templateHtml, tokenMap, buildAccessoryRows(jobCard), {
+      lineTokenMaps: buildAccessoryTokenMaps(jobCard),
+      emptyLineItemsHtml: `<tr><td colspan="2" style="text-align:center;padding:12px;">-</td></tr>`,
+    });
   }, [templateHtml, jobCard, tokenMap]);
 
   const isLoading = loadingJob || loadingTemplate;

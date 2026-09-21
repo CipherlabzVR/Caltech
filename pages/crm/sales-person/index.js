@@ -34,7 +34,11 @@ export default function SalesPerson() {
     setPageSize,
     setSearch,
     fetchData: fetchSalesPersonList,
-  } = usePaginatedFetch("SalesPerson/GetAllCRMSalesPerson");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("SalesPerson/GetAllCRMSalesPerson");
 
 
   useEffect(() => {
@@ -44,23 +48,11 @@ export default function SalesPerson() {
 
   const controller = "SalesPerson/DeleteSalesPerson";
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchSalesPersonList(1, event.target.value, pageSize); 
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchSalesPersonList(value, search, pageSize); 
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchSalesPersonList(1, search, size); 
-  };
+
+
+
 
 
   if (!navigate) {

@@ -18,8 +18,7 @@ import {
   Typography,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import CreateShiftMasterModal from "./create";
@@ -40,31 +39,14 @@ const Index = () => {
     setPageSize,
     setSearch,
     fetchData: fetchShiftList,
-  } = usePaginatedFetch("ShiftMaster/GetAllShifts");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("ShiftMaster/GetAllShifts");
 
  
-  const controller = "ShiftMaster/DeleteShift";
-
-  const handleSearchChange = (event) => {
-    const newSearch = event.target.value;
-    setSearch(newSearch);
-    setPage(1);
-    fetchShiftList(1, newSearch, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchShiftList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchShiftList(1, search, size);
-  };
-
-  if (!navigate) {
+  const controller = "ShiftMaster/DeleteShift";  if (!navigate) {
     return <AccessDenied />;
   }
 

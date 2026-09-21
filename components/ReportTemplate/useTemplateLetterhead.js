@@ -30,7 +30,9 @@ export default function useTemplateLetterhead(warehouseId) {
     fetch(`${BASE_URL}/Warehouse/GetWarehouseById?Id=${id}`, { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
-        if (j?.statusCode === 200) setWarehouseData(j.result);
+        const ok = j?.statusCode === 200 || j?.StatusCode === 200;
+        const data = j?.result ?? j?.Result;
+        if (ok && data) setWarehouseData(data);
       })
       .catch(() => {});
 

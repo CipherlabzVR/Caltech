@@ -53,8 +53,7 @@ const formatCurrency = (value) => {
 
   return numberValue.toLocaleString(undefined, {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+    maximumFractionDigits: 2 });
 };
 
 const formatDateValue = (value) => {
@@ -110,7 +109,11 @@ export default function QuotesList() {
     setPageSize,
     setSearch,
     fetchData: fetchQuotes,
-  } = usePaginatedFetch("CRMQuotes/GetAllCRMQuotes", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("CRMQuotes/GetAllCRMQuotes", "", 10, false, false);
 
   const { accounts } = useAccounts();
   const { contacts } = useContacts();
@@ -153,24 +156,11 @@ export default function QuotesList() {
     [fetchQuotes, page, pageSize, search]
   );
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchQuotes(1, value, pageSize, false);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchQuotes(value, search, pageSize, false);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = Number(event.target.value);
-    setPageSize(size);
-    setPage(1);
-    fetchQuotes(1, search, size, false);
-  };
+
+
+
 
   const handleDeleteClick = (quote) => {
     setSelectedQuote(quote);
@@ -195,9 +185,7 @@ export default function QuotesList() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
+          ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
 
       const data = await response.json().catch(() => null);
 
@@ -243,9 +231,7 @@ export default function QuotesList() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-        }
+            ...(token ? { Authorization: `Bearer ${token}` } : {}) } }
       );
 
       const data = await response.json().catch(() => null);
@@ -362,8 +348,7 @@ export default function QuotesList() {
                                 disabled={!canEdit}
                                 sx={{
                                   opacity: canEdit ? 1 : 0.5,
-                                  cursor: canEdit ? "pointer" : "not-allowed",
-                                }}
+                                  cursor: canEdit ? "pointer" : "not-allowed" }}
                               >
                                 <EditOutlinedIcon color={canEdit ? "primary" : "disabled"} fontSize="medium" />
                               </IconButton>

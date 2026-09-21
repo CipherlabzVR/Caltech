@@ -27,12 +27,12 @@ import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { Catelogue } from "Base/catelogue";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 
 export default function Shift() {
   const cId = sessionStorage.getItem("category")
   const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
   const [shifts, setShifts] = useState([]);
-  const [searchTerm] = useState("");
   const [page, setPage] = useState(1);
   const [activeShiftId, setActiveShiftId] = useState(null);
   const [pageSize, setPageSize] = useState(10);
@@ -42,18 +42,6 @@ export default function Shift() {
   const { data: showCashInvoiceTotalsInShiftAndDayend } = IsAppSettingEnabled("ShowCashInvoiceTotalsInShiftAndDayend");
   const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
 
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchShifts(value, searchTerm, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchShifts(1, searchTerm, newSize);
-  };
 
   const fetchShifts = async (page = 1, search = "", size = pageSize) => {
     try {
@@ -80,6 +68,19 @@ export default function Shift() {
       console.error("Error:", error);
     }
   };
+
+  const {
+    handlePageChange,
+    handlePageSizeChange,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search: "",
+    setPage,
+    setPageSize,
+    onFetch: fetchShifts,
+  });
 
   useEffect(() => {
     fetchShifts();

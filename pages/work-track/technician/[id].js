@@ -54,13 +54,11 @@ import ListAltIcon from "@mui/icons-material/ListAlt";
 import CoffeeIcon from "@mui/icons-material/Coffee";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
 import FreeBreakfastIcon from "@mui/icons-material/FreeBreakfast";
-import SendIcon from "@mui/icons-material/Send";
-import DrawIcon from "@mui/icons-material/Draw";
-import CloseIcon from "@mui/icons-material/Close";
 import ClockInOutModal from "@/components/work-track/ClockInOutModal";
 import CameraCaptureModal from "@/components/work-track/CameraCaptureModal";
-import ChecklistItemHistory from "@/components/work-track/ChecklistItemHistory";
-import SignatureCanvas from "react-signature-canvas";
+import { parseChecklistImageUrls } from "@/components/work-track/sharedViewHelpers";
+import PhotoLibraryIcon from "@mui/icons-material/PhotoLibrary";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import BASE_URL from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
@@ -128,13 +126,6 @@ export default function TechnicianWorkTrackDetailView() {
   // Camera capture modal
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [cameraItemId, setCameraItemId] = useState(null);
-
-  // Signature and submit to admin
-  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
-  const [savingSignature, setSavingSignature] = useState(false);
-  const technicianSigRef = useRef(null);
-  const [submitModalOpen, setSubmitModalOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
 
   // App setting: when enabled, removes time tracking (start/end work, breaks, timers, sessions UI)
   const { data: removeTimeTrackSetting } = IsAppSettingEnabled("RemoveTimeTrackFromWorkTrackDetail");
@@ -412,33 +403,14 @@ export default function TechnicianWorkTrackDetailView() {
         const items = Array.isArray(rawItems) ? rawItems : [];
         return {
           ...cl,
-          items: items.map((item) => {
-            const rawType = item.itemType ?? item.ItemType ?? "Checkbox";
-            const itemType =
-              typeof rawType === "string" && rawType.trim()
-                ? rawType.trim()
-                : "Checkbox";
-            return {
-              ...item,
-              itemType,
-              optionsList: Array.isArray(item.optionsList)
-                ? item.optionsList
-                : Array.isArray(item.OptionsList)
-                  ? item.OptionsList
-                  : [],
-              needsRedo: Boolean(item.needsRedo ?? item.NeedsRedo),
-              redoReason: item.redoReason ?? item.RedoReason ?? null,
-              redoRequestedByUserId: item.redoRequestedByUserId ?? item.RedoRequestedByUserId ?? null,
-              redoRequestedByName: item.redoRequestedByName ?? item.RedoRequestedByName ?? "",
-              redoRequestedOn: item.redoRequestedOn ?? item.RedoRequestedOn ?? null,
-              attemptCount: item.attemptCount ?? item.AttemptCount ?? 0,
-              responses: Array.isArray(item.responses)
-                ? item.responses
-                : Array.isArray(item.Responses)
-                  ? item.Responses
-                  : [],
-            };
-          }),
+          items: items.map((item) => ({
+            ...item,
+            optionsList: Array.isArray(item.optionsList)
+              ? item.optionsList
+              : Array.isArray(item.OptionsList)
+                ? item.OptionsList
+                : [],
+          })),
         };
       });
 
@@ -856,16 +828,13 @@ export default function TechnicianWorkTrackDetailView() {
   const handleClockInOutSuccess = async () => {
     if (clockInOutType === "clockin") {
       setClockedIn(true);
-      // Clear completed-work banner so Start Work / checklist controls are visible again (e.g. after redo)
-      setWorkCompletedSummary(null);
     } else {
       setClockedIn(false);
     }
     // Notify other pages of session update
     localStorage.setItem(`workTrackSessionUpdate_${id}`, Date.now().toString());
-    await fetchData();
-    await checkClockInStatus();
     await fetchWorkSummary();
+    // Re-fetch checklists to ensure they remain visible after clock out
     await fetchChecklists();
   };
 
@@ -963,36 +932,11 @@ export default function TechnicianWorkTrackDetailView() {
     }
   };
 
-  /** Checklist tasks (including redo) stay blocked until work is Started.
-   *  Also blocked when task is submitted (PendingApproval/Completed) unless there are redo items.
-   */
-  const canEditChecklistItem = () => {
-    // Block if task is submitted and there are no redo items
-    const submissionStatus = detail?.submissionStatus;
-    if ((submissionStatus === "PendingApproval" || submissionStatus === "Completed")) {
-      // Only allow editing if there are redo items
-      const hasRedo = checklists.some((checklist) => 
-        checklist.items?.some(item => item.needsRedo)
-      );
-      if (!hasRedo) return false;
-    }
-    
-    if (isTimeTrackingHidden) return true;
-    return Boolean(clockedIn && workSummary?.currentStatus === "Started");
-  };
-
-  const assertCanEditChecklistItem = (actionLabel = "update checklist items") => {
-    if (canEditChecklistItem()) return true;
-    if (!clockedIn) {
-      toast("Please clock in and start work before updating checklist items", { type: "warning" });
-      return false;
-    }
-    toast(`Please start work before you can ${actionLabel}`, { type: "warning" });
-    return false;
-  };
-
   const handleToggleItem = async (itemId, isCompleted) => {
-    if (!assertCanEditChecklistItem("tick checklist items")) return;
+    if (!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")) {
+      toast("Please clock in and start work before ticking checklist items", { type: "warning" });
+      return;
+    }
 
     try {
       const response = await fetch(`${BASE_URL}/WorkTrackChecklist/ToggleChecklistItem`, {
@@ -1013,7 +957,10 @@ export default function TechnicianWorkTrackDetailView() {
   };
 
   const handleUpdateItemValue = async (itemId, selectedValue) => {
-    if (!assertCanEditChecklistItem("update items")) return;
+    if (!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")) {
+      toast("Please clock in and start work before updating items", { type: "warning" });
+      return;
+    }
 
     try {
       const response = await fetch(`${BASE_URL}/WorkTrackChecklist/UpdateChecklistItemValue`, {
@@ -1034,13 +981,18 @@ export default function TechnicianWorkTrackDetailView() {
   };
 
   const openCameraModal = (itemId) => {
-    if (!assertCanEditChecklistItem("capture images")) return;
+    if (!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")) {
+      toast("Please clock in and start work before capturing images", { type: "warning" });
+      return;
+    }
     setCameraItemId(itemId);
     setCameraModalOpen(true);
   };
 
   const handleCameraCapture = async (imageData) => {
     if (!cameraItemId) return;
+    const imageDatas = (Array.isArray(imageData) ? imageData : [imageData]).filter(Boolean);
+    if (imageDatas.length === 0) return;
 
     try {
       const response = await fetch(`${BASE_URL}/WorkTrackChecklist/UploadChecklistItemImage`, {
@@ -1049,19 +1001,54 @@ export default function TechnicianWorkTrackDetailView() {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ id: cameraItemId, imageData, workTrackDetailId: Number(id) }),
+        body: JSON.stringify({
+          id: cameraItemId,
+          imageData: imageDatas[0],
+          imageDatas,
+          workTrackDetailId: Number(id),
+        }),
       });
 
       const result = await response.json();
       if (result?.statusCode === 200 || response.ok) {
         await fetchChecklists();
-        toast("Photo captured and uploaded successfully!", { type: "success" });
+        toast(
+          imageDatas.length === 1 ? "Photo uploaded successfully!" : `${imageDatas.length} photos uploaded successfully!`,
+          { type: "success" }
+        );
       } else {
         toast(result?.message || "Failed to upload photo", { type: "error" });
       }
     } catch (error) {
       console.error("Error uploading photo:", error);
       toast("Failed to upload photo", { type: "error" });
+    }
+  };
+
+  const handleDeleteItemImage = async (itemId, imageUrl) => {
+    try {
+      const response = await fetch(`${BASE_URL}/WorkTrackChecklist/DeleteChecklistItemImage`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: itemId,
+          imageUrl,
+          workTrackDetailId: Number(id),
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (result?.statusCode === 200 || response.ok) {
+        await fetchChecklists();
+        toast("Photo deleted!", { type: "success" });
+      } else {
+        toast(result?.message || "Failed to delete photo", { type: "error" });
+      }
+    } catch (error) {
+      console.error("Error deleting photo:", error);
+      toast("Failed to delete photo", { type: "error" });
     }
   };
 
@@ -1072,132 +1059,17 @@ export default function TechnicianWorkTrackDetailView() {
     }));
   };
 
-  const isItemEffectivelyCompleted = (item) =>
-    Boolean(item?.isCompleted) && !Boolean(item?.needsRedo);
-
-  const hasPendingRedoItems = checklists.some((cl) =>
-    (cl.items || []).some((item) => item.needsRedo)
-  );
-
   const getChecklistProgress = (checklist) => {
     if (!checklist.items || checklist.items.length === 0) return 0;
-    const completed = checklist.items.filter(isItemEffectivelyCompleted).length;
+    const completed = checklist.items.filter((item) => item.isCompleted).length;
     return Math.round((completed / checklist.items.length) * 100);
   };
 
   const getAllItemsCompleted = () => {
     return checklists.every((checklist) => {
       if (!checklist.items || checklist.items.length === 0) return true;
-      return checklist.items.every(isItemEffectivelyCompleted);
+      return checklist.items.every((item) => item.isCompleted);
     });
-  };
-
-  // Check if any item needs redo
-  const hasRedoItems = () => {
-    return checklists.some((checklist) => {
-      if (!checklist.items) return false;
-      return checklist.items.some(item => item.needsRedo);
-    });
-  };
-
-  // Check if task is pending approval or completed (submitted)
-  const isSubmittedOrPending = detail?.submissionStatus === "PendingApproval" || detail?.submissionStatus === "Completed";
-
-  // Should show submit button: 100% complete, not already submitted, and has technician signature
-  const canShowSubmitButton = getAllItemsCompleted() && 
-                              checklists.length > 0 && 
-                              detail?.submissionStatus === "Draft" &&
-                              detail?.technicianSignature;
-
-  // Should show signature section: 100% complete and not already submitted
-  const shouldShowSignatureSection = getAllItemsCompleted() && 
-                                     checklists.length > 0 && 
-                                     detail?.submissionStatus === "Draft";
-
-  // Handle opening signature modal
-  const handleOpenSignatureModal = () => {
-    setSignatureModalOpen(true);
-  };
-
-  // Handle saving technician signature
-  const handleSaveSignature = async () => {
-    if (!technicianSigRef.current || technicianSigRef.current.isEmpty()) {
-      toast("Please draw your signature", { type: "warning" });
-      return;
-    }
-
-    try {
-      setSavingSignature(true);
-      const signatureData = technicianSigRef.current.toDataURL("image/png");
-      
-      const response = await fetch(`${BASE_URL}/WorkTrackDetail/AddSignature`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          workTrackDetailId: parseInt(id),
-          signature: signatureData,
-          signatureType: "Technician",
-        }),
-      });
-      const result = await response.json();
-      
-      if (result?.statusCode === 200) {
-        toast("Signature added successfully!", { type: "success" });
-        setSignatureModalOpen(false);
-        await fetchData();
-      } else {
-        toast(result?.message || "Failed to save signature", { type: "error" });
-      }
-    } catch (error) {
-      console.error("Error saving signature:", error);
-      toast("Failed to save signature", { type: "error" });
-    } finally {
-      setSavingSignature(false);
-    }
-  };
-
-  // Handle opening submit modal
-  const handleOpenSubmitModal = () => {
-    if (!detail?.technicianSignature) {
-      toast("Please add your signature before submitting", { type: "warning" });
-      return;
-    }
-    setSubmitModalOpen(true);
-  };
-
-  // Handle submit to admin
-  const handleSubmitToAdmin = async () => {
-    try {
-      setSubmitting(true);
-      const response = await fetch(`${BASE_URL}/WorkTrackDetail/SubmitToAdmin`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          workTrackDetailId: parseInt(id),
-        }),
-      });
-      const result = await response.json();
-      
-      if (result?.statusCode === 200) {
-        toast("Submitted to Manager on Duty successfully! Email notification sent.", { type: "success" });
-        setSubmitModalOpen(false);
-        await fetchData();
-        await fetchChecklists();
-      } else {
-        toast(result?.message || "Failed to submit", { type: "error" });
-      }
-    } catch (error) {
-      console.error("Error submitting to admin:", error);
-      toast("Failed to submit", { type: "error" });
-    } finally {
-      setSubmitting(false);
-    }
   };
 
   if (loading) {
@@ -1315,8 +1187,8 @@ export default function TechnicianWorkTrackDetailView() {
         </Card>
       )}
 
-      {/* Clock In/Out Status - Hide when 100% complete and submitted (no redo) */}
-      {!isTimeTrackingHidden && !(isSubmittedOrPending && !hasRedoItems()) && (
+      {/* Clock In/Out Status */}
+      {!isTimeTrackingHidden && (
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Box 
@@ -1368,8 +1240,8 @@ export default function TechnicianWorkTrackDetailView() {
       </Card>
       )}
 
-      {/* Work Session Card - Hide when 100% complete and submitted (no redo) */}
-      {!isTimeTrackingHidden && !(isSubmittedOrPending && !hasRedoItems()) && (
+      {/* Work Session Card */}
+      {!isTimeTrackingHidden && (
       <Card sx={{ mb: 3, border: isWorkActive ? "2px solid" : "none", borderColor: "success.main" }}>
         <CardContent>
           <Box 
@@ -1780,88 +1652,6 @@ export default function TechnicianWorkTrackDetailView() {
         </CardContent>
       </Card>
 
-      {/* Signature & Submit Section - Show when 100% complete */}
-      {shouldShowSignatureSection && (
-        <Card sx={{ mb: 3, border: '2px solid #3b82f6', bgcolor: '#eff6ff' }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              <DrawIcon sx={{ mr: 1, verticalAlign: "middle" }} />
-              Submit Work for Approval
-            </Typography>
-            
-            <Alert severity="info" sx={{ mb: 2 }}>
-              All tasks are 100% complete. Please add your signature and submit for Manager on Duty approval.
-            </Alert>
-            
-            {/* Technician Signature */}
-            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', mb: 2 }}>
-              <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                Your Signature
-              </Typography>
-              {detail.technicianSignature ? (
-                <Box>
-                  <img 
-                    src={detail.technicianSignature} 
-                    alt="Your Signature" 
-                    style={{ maxWidth: '100%', maxHeight: 150, border: '1px solid #ddd' }} 
-                  />
-                  <Typography variant="caption" display="block" mt={1} color="success.main">
-                    Signature captured ✓
-                  </Typography>
-                </Box>
-              ) : (
-                <Box>
-                  <Typography color="textSecondary" sx={{ mb: 2 }}>Not signed yet</Typography>
-                  <Button 
-                    variant="contained" 
-                    startIcon={<DrawIcon />}
-                    onClick={handleOpenSignatureModal}
-                    color="primary"
-                  >
-                    Add Your Signature
-                  </Button>
-                </Box>
-              )}
-            </Paper>
-
-            {/* Submit Button */}
-            {detail.technicianSignature && (
-              <Box textAlign="center">
-                <Button
-                  variant="contained"
-                  color="success"
-                  size="large"
-                  startIcon={<SendIcon />}
-                  onClick={handleOpenSubmitModal}
-                  sx={{ px: 4, py: 1.5 }}
-                >
-                  Submit to Manager on Duty
-                </Button>
-              </Box>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Pending Approval Banner */}
-      {isSubmittedOrPending && !hasRedoItems() && (
-        <Alert 
-          severity={detail.submissionStatus === "Completed" ? "success" : "warning"} 
-          sx={{ mb: 3 }}
-        >
-          <Typography variant="h6">
-            {detail.submissionStatus === "Completed" 
-              ? "Work Completed & Approved" 
-              : "Submitted - Awaiting Manager on Duty Approval"}
-          </Typography>
-          <Typography variant="body2">
-            {detail.submissionStatus === "Completed"
-              ? "This work has been completed and approved."
-              : "Your work has been submitted and is awaiting approval. Tasks are locked until a redo request is made."}
-          </Typography>
-        </Alert>
-      )}
-
       {/* Checklists Section */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
@@ -1872,16 +1662,6 @@ export default function TechnicianWorkTrackDetailView() {
           <Alert severity="info" sx={{ mb: 2 }} variant="outlined">
             Same checklists as other equipment lines on this work track.
           </Alert>
-
-          {hasPendingRedoItems && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              {isTimeTrackingHidden
-                ? "Some items were sent back for redo. Complete them below — previous answers stay in history."
-                : canEditChecklistItem()
-                  ? "Some items were sent back for redo. Complete them below — previous answers stay in history."
-                  : "Some items were sent back for redo. Clock in and start work, then re-submit those items."}
-            </Alert>
-          )}
 
           {checklists.length === 0 ? (
             <Alert severity="info">No checklists available for this work assignment.</Alert>
@@ -1955,34 +1735,34 @@ export default function TechnicianWorkTrackDetailView() {
                         }}
                       >
                         <Box display="flex" alignItems="flex-start" gap={1}>
-                          {(!item.itemType || item.itemType === "Checkbox") && (
+                          {item.itemType === "Checkbox" && (
                             <Checkbox
-                              checked={isItemEffectivelyCompleted(item)}
+                              checked={item.isCompleted || false}
                               onChange={(e) => handleToggleItem(item.id, e.target.checked)}
                               icon={<RadioButtonUncheckedIcon />}
                               checkedIcon={<CheckCircleIcon color="success" />}
-                              disabled={!canEditChecklistItem()}
+                              disabled={!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")}
                               sx={{ flexShrink: 0, mt: 0.5 }}
                             />
                           )}
 
                           {item.itemType === "Radio" && (
                             <RadioButtonCheckedIcon
-                              color={isItemEffectivelyCompleted(item) ? "success" : "action"}
+                              color={item.isCompleted ? "success" : "action"}
                               sx={{ mr: 1, mt: 0.5, flexShrink: 0 }}
                             />
                           )}
 
                           {item.itemType === "Dropdown" && (
                             <ArrowDropDownCircleIcon
-                              color={isItemEffectivelyCompleted(item) ? "success" : "action"}
+                              color={item.isCompleted ? "success" : "action"}
                               sx={{ mr: 1, mt: 0.5, flexShrink: 0 }}
                             />
                           )}
 
                           {item.itemType === "Image" && (
                             <CameraAltIcon
-                              color={isItemEffectivelyCompleted(item) ? "success" : "action"}
+                              color={item.isCompleted ? "success" : "action"}
                               sx={{ mr: 1, mt: 0.5, flexShrink: 0 }}
                             />
                           )}
@@ -1991,7 +1771,7 @@ export default function TechnicianWorkTrackDetailView() {
                             <Typography
                               variant={isMobile ? "body2" : "body1"}
                               sx={{
-                                textDecoration: isItemEffectivelyCompleted(item) ? "line-through" : "none",
+                                textDecoration: item.isCompleted ? "line-through" : "none",
                                 wordBreak: "break-word",
                               }}
                             >
@@ -2025,7 +1805,7 @@ export default function TechnicianWorkTrackDetailView() {
                                   value={option}
                                   control={<Radio size="small" />}
                                   label={<Typography variant={isMobile ? "body2" : "body1"}>{option}</Typography>}
-                                  disabled={!canEditChecklistItem()}
+                                  disabled={!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")}
                                   sx={{ mb: 0.5 }}
                                 />
                               ))}
@@ -2042,7 +1822,7 @@ export default function TechnicianWorkTrackDetailView() {
                                 value={item.selectedValue || ""}
                                 label="Select an option"
                                 onChange={(e) => handleUpdateItemValue(item.id, e.target.value)}
-                                disabled={!canEditChecklistItem()}
+                                disabled={!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")}
                               >
                                 <MenuItem value="">
                                   <em>None</em>
@@ -2060,28 +1840,55 @@ export default function TechnicianWorkTrackDetailView() {
                         {/* Image Upload */}
                         {item.itemType === "Image" && (
                           <Box sx={{ ml: isMobile ? 4.5 : 4, mt: 1 }}>
-                            {item.imageUrl ? (
+                            {(() => {
+                              const imageUrls = parseChecklistImageUrls(item.imageUrl);
+                              const canEditImages = isTimeTrackingHidden || (clockedIn && workSummary?.currentStatus === "Started");
+                              return imageUrls.length > 0 ? (
                               <Box>
-                                <img
-                                  src={item.imageUrl}
-                                  alt={item.title}
-                                  style={{
-                                    maxWidth: "100%",
-                                    maxHeight: isMobile ? 150 : 200,
-                                    border: "1px solid #ddd",
-                                    borderRadius: 4,
-                                    display: "block",
-                                  }}
-                                />
-                                {canEditChecklistItem() && (
-                                  <Box mt={1}>
+                                <Box display="flex" gap={1} flexWrap="wrap">
+                                  {imageUrls.map((url) => (
+                                    <Box key={url} sx={{ position: "relative" }}>
+                                      <Box
+                                        component="img"
+                                        src={url}
+                                        alt={item.title}
+                                        onClick={() => window.open(url, "_blank")}
+                                        sx={{
+                                          width: isMobile ? 110 : 140,
+                                          height: isMobile ? 110 : 140,
+                                          objectFit: "cover",
+                                          border: "1px solid #ddd",
+                                          borderRadius: 1,
+                                          display: "block",
+                                          cursor: "pointer",
+                                        }}
+                                      />
+                                      {canEditImages && (
+                                        <IconButton
+                                          size="small"
+                                          onClick={() => handleDeleteItemImage(item.id, url)}
+                                          sx={{
+                                            position: "absolute",
+                                            top: 4,
+                                            right: 4,
+                                            bgcolor: "rgba(255,255,255,0.9)",
+                                          }}
+                                        >
+                                          <DeleteOutlineIcon fontSize="small" color="error" />
+                                        </IconButton>
+                                      )}
+                                    </Box>
+                                  ))}
+                                </Box>
+                                {canEditImages && (
+                                  <Box mt={1} display="flex" gap={1} flexWrap="wrap">
                                     <Button
                                       variant="outlined"
                                       size="small"
                                       startIcon={<CameraAltIcon />}
                                       onClick={() => openCameraModal(item.id)}
                                     >
-                                      Retake Photo
+                                      Add Photos
                                     </Button>
                                   </Box>
                                 )}
@@ -2097,28 +1904,25 @@ export default function TechnicianWorkTrackDetailView() {
                               >
                                 <CameraAltIcon sx={{ fontSize: 40, color: "#aaa", mb: 1 }} />
                                 <Typography variant="body2" color="textSecondary" gutterBottom>
-                                  {!canEditChecklistItem()
-                                    ? "No photo captured — start work to continue"
-                                    : item.needsRedo
-                                      ? "Tap to capture a new photo for redo"
-                                      : "Tap to capture photo"}
+                                  {!canEditImages
+                                    ? "No photo captured"
+                                    : "Take a photo or choose multiple from gallery"}
                                 </Typography>
-                                {canEditChecklistItem() && (
+                                {canEditImages && (
                                   <Button
                                     variant="contained"
-                                    startIcon={<CameraAltIcon />}
+                                    startIcon={<PhotoLibraryIcon />}
                                     sx={{ mt: 1 }}
                                     onClick={() => openCameraModal(item.id)}
                                   >
-                                    Take Photo
+                                    Add Photos
                                   </Button>
                                 )}
                               </Box>
-                            )}
+                            );
+                            })()}
                           </Box>
                         )}
-
-                        <ChecklistItemHistory item={item} readOnly />
                       </Box>
                     ))
                   )}
@@ -2146,7 +1950,7 @@ export default function TechnicianWorkTrackDetailView() {
           setCameraItemId(null);
         }}
         onCapture={handleCameraCapture}
-        title="Capture Work Photo"
+        title="Add Work Photos"
       />
 
       {/* Session History Modal */}
@@ -2262,109 +2066,6 @@ export default function TechnicianWorkTrackDetailView() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setHistoryModalOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Signature Modal */}
-      <Dialog open={signatureModalOpen} onClose={() => setSignatureModalOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Typography variant="h6">Your Signature</Typography>
-            <IconButton onClick={() => setSignatureModalOpen(false)}>
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent dividers>
-          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-            Please draw your signature in the box below:
-          </Typography>
-          <Box
-            sx={{
-              border: '2px solid #e0e0e0',
-              borderRadius: 1,
-              bgcolor: 'white',
-              mb: 2,
-            }}
-          >
-            <SignatureCanvas
-              ref={technicianSigRef}
-              canvasProps={{
-                width: 500,
-                height: 200,
-                className: 'signature-canvas',
-                style: { width: '100%', height: 200 }
-              }}
-              backgroundColor="white"
-            />
-          </Box>
-          <Button
-            variant="outlined"
-            size="small"
-            onClick={() => technicianSigRef.current?.clear()}
-          >
-            Clear
-          </Button>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSignatureModalOpen(false)} color="inherit">
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSaveSignature}
-            variant="contained"
-            color="primary"
-            disabled={savingSignature}
-            startIcon={<DrawIcon />}
-          >
-            {savingSignature ? "Saving..." : "Save Signature"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Submit Confirmation Modal */}
-      <Dialog open={submitModalOpen} onClose={() => setSubmitModalOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Typography variant="h6">Submit to Manager on Duty</Typography>
-            <IconButton onClick={() => setSubmitModalOpen(false)}>
-              <CloseIcon />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        <DialogContent dividers>
-          <Alert severity="info" sx={{ mb: 2 }}>
-            You are about to submit this work for Manager on Duty approval.
-          </Alert>
-          
-          <Typography variant="body1" gutterBottom>
-            <strong>Track ID:</strong> {detail?.trackId || "-"}
-          </Typography>
-          <Typography variant="body1" gutterBottom>
-            <strong>Task Completion:</strong> {detail?.taskCompletePercentage || 0}%
-          </Typography>
-          <Typography variant="body1" gutterBottom>
-            <strong>Your Signature:</strong> {detail?.technicianSignature ? "✓ Captured" : "Not signed"}
-          </Typography>
-          
-          <Alert severity="warning" sx={{ mt: 2 }}>
-            After submitting, all tasks will be locked until a Manager on Duty reviews your work. 
-            An email notification will be sent to all administrators.
-          </Alert>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSubmitModalOpen(false)} color="inherit">
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSubmitToAdmin}
-            variant="contained"
-            color="success"
-            disabled={submitting}
-            startIcon={<SendIcon />}
-          >
-            {submitting ? "Submitting..." : "Confirm & Submit"}
-          </Button>
         </DialogActions>
       </Dialog>
     </>

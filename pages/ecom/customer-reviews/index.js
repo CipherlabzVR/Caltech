@@ -20,8 +20,7 @@ import {
   Typography,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import { ToastContainer, toast } from "react-toastify";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
@@ -56,8 +55,7 @@ function ReviewImagesCell({ urls }) {
             border: "1px solid",
             borderColor: "divider",
             display: "block",
-            flexShrink: 0,
-          }}
+            flexShrink: 0 }}
         >
           <Box
             component="img"
@@ -96,7 +94,11 @@ export default function CustomerReviews() {
     setSearch,
     setFilter,
     fetchData,
-  } = usePaginatedFetch("ECommerce/GetAllCustomerReviews", "", 10, false, false, listFilter);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("ECommerce/GetAllCustomerReviews", "", 10, false, false, listFilter);
 
   const isItemTab = tab === TAB_ITEM;
 
@@ -108,23 +110,11 @@ export default function CustomerReviews() {
     fetchData(1, search, pageSize, false, nextFilter);
   };
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchData(1, event.target.value, pageSize, false, listFilter);
-    setPage(1);
-  };
 
-  const handlePageChange = (_event, value) => {
-    setPage(value);
-    fetchData(value, search, pageSize, false, listFilter);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchData(1, search, size, false, listFilter);
-  };
+
+
+
 
   const handleApprove = async (item) => {
     const id = item.id ?? item.Id;
@@ -143,8 +133,7 @@ export default function CustomerReviews() {
       productId: productIdRaw != null && Number(productIdRaw) > 0 ? Number(productIdRaw) : null,
       imageUrls: item.imageUrls ?? item.ImageUrls ?? [],
       isApproved: true,
-      displayOrder: Number(item.displayOrder ?? item.DisplayOrder ?? 0) || 0,
-    };
+      displayOrder: Number(item.displayOrder ?? item.DisplayOrder ?? 0) || 0 };
     try {
       setApprovingId(id);
       const token = localStorage.getItem("token");
@@ -152,10 +141,8 @@ export default function CustomerReviews() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
+          Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body) });
       const data = await response.json().catch(() => ({}));
       const ok = data.statusCode === 200 || data.statusCode === "200";
       if (ok) {
@@ -314,8 +301,7 @@ export default function CustomerReviews() {
                               alignItems: "center",
                               justifyContent: "flex-end",
                               gap: 0.5,
-                              flexWrap: "wrap",
-                            }}
+                              flexWrap: "wrap" }}
                           >
                             {!isItemTab && update && !approved ? (
                               <Button

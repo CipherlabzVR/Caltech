@@ -15,8 +15,7 @@ import {
   FormControl,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
@@ -42,27 +41,11 @@ export default function DiscountCategories() {
     setPageSize,
     setSearch,
     fetchData: fetchDiscountList,
-  } = usePaginatedFetch("DiscountCategory/GetPaged", "", 10, true, false);
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchDiscountList(1, event.target.value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchDiscountList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchDiscountList(1, search, size);
-  };
-
-  if (!navigate) {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("DiscountCategory/GetPaged", "", 10, true, false);  if (!navigate) {
     return <AccessDenied />;
   }
 

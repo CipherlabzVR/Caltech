@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -15,8 +15,7 @@ import {
   Typography,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import BASE_URL from "Base/api";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
@@ -44,26 +43,11 @@ export default function Bank() {
     setPageSize,
     setSearch,
     fetchData: fetchBanks,
-  } = usePaginatedFetch("Bank/GetAllBanksPaged", "", 10, false, false);
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchBanks(1, event.target.value, pageSize);
-    setPage(1);
-  };
-
-  const handleChangePage = (event, value) => {
-    setPage(value);
-    fetchBanks(value, search, pageSize);
-  };
-
-  const handleChangeRowsPerPage = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchBanks(1, search, size);
-  };
-  if (!navigate) {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Bank/GetAllBanksPaged", "", 10, false, false);  if (!navigate) {
     return <AccessDenied />;
   }
 

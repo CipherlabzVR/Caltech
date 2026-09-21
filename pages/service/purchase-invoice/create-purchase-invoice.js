@@ -394,18 +394,32 @@ const PurchaseInvoiceCreate = () => {
     if (!item) {
       item = stock[0];
     }
+    if (!item) {
+      toast.error("Please select an outlet stock line.");
+      return;
+    }
+    if (item.currentQuantityValue == null && item.CurrentQuantityValue == null) {
+      toast.error("Outlet stock details unavailable. Please search the outlet item again.");
+      return;
+    }
 
-    const baseCostPrice = parseFloat(item.costPrice || 0);
-    const uomValue = parseFloat(item.uomValue || 0);
-    const updatedCostPrice = (parseFloat(baseCostPrice) / uomValue);
+    const baseCostPrice = parseFloat(item.costPrice ?? item.CostPrice ?? 0);
+    const uomValue = parseFloat(item.uomValue ?? item.UOMValue ?? 0);
+    const updatedCostPrice = uomValue > 0 ? baseCostPrice / uomValue : baseCostPrice;
     const lineKey = `outlet-${item?.id ?? Date.now()}`;
     initLineDetails(lineKey);
     setActiveLineKey(lineKey);
     const newItem = {
       ...item,
       lineKey,
+      name: item.name ?? item.Name ?? item.productName,
+      productId: item.productId ?? item.ProductId,
+      productCode: item.productCode ?? item.ProductCode,
+      warehouseId: item.warehouseId ?? item.WarehouseId,
+      currentQuantityValue: item.currentQuantityValue ?? item.CurrentQuantityValue,
+      uomValue: uomValue || 1,
       costPrice: updatedCostPrice.toFixed(2),
-      prevCost: parseFloat(item.costPrice || 0),
+      prevCost: baseCostPrice,
     };
 
     setRows(prevRows => [...prevRows, newItem]);
@@ -436,7 +450,8 @@ const PurchaseInvoiceCreate = () => {
       return;
     }
     try {
-      const query = `${BASE_URL}/Items/GetAllItemsByNameWithStockDetails?itemId=${item.id}`;
+      const productId = item.id ?? item.Id;
+      const query = `${BASE_URL}/Items/GetAllItemsByNameWithStockDetails?itemId=${productId}`;
 
       const response = await fetch(query, {
         method: "GET",
@@ -449,10 +464,18 @@ const PurchaseInvoiceCreate = () => {
       if (!response.ok) throw new Error("Failed to fetch items");
 
       const data = await response.json();
-      setStock(data.result);
+      const outletStock = data.result ?? data.Result ?? [];
+      // Clear normal stock cache so it cannot overwrite outlet rows in the modal.
+      setStockBalance([]);
+      setStock(outletStock);
+      setSelectedItem(outletStock[0]);
       setOpen(true);
+      if (!outletStock.length) {
+        toast.warning("No outlet stock available for this item.");
+      }
     } catch (error) {
       console.error("Error:", error);
+      toast.error("Failed to load outlet stock.");
     }
   }
 
@@ -1183,12 +1206,19 @@ const PurchaseInvoiceCreate = () => {
     if (doctorsList) {
       setDoctors(doctorsList);
     }
+  }, [customerList, doctorsList]);
+
+  useEffect(() => {
     updateInvNo();
-    if (stockBalance) {
-      setStock(stockBalance);
-      setSelectedItem(stockBalance[0]);
-    }
-  }, [stockBalance, customerList, doctorsList]);
+  }, []);
+
+  // Do not overwrite outlet stock with leftover normal stockBalance.
+  useEffect(() => {
+    if (isOutlet) return;
+    if (!stockBalance || stockBalance.length === 0) return;
+    setStock(stockBalance);
+    setSelectedItem(stockBalance[0]);
+  }, [stockBalance, isOutlet]);
 
   useEffect(() => {
     const loadWarrantyTypes = async () => {
@@ -1667,7 +1697,19 @@ const PurchaseInvoiceCreate = () => {
                   </Button>
                 )}
                 {IsOutletAvailable && (
-                  <Button disabled={isSalesOrderSelected} variant={isOutlet ? "contained" : "outlined"} size="small" color={isOutlet ? "warning" : "secondary"} onClick={() => { setIsOutlet(prev => !prev); setStock([]); setSelectedItem(); }}>
+                  <Button
+                    disabled={isSalesOrderSelected}
+                    variant={isOutlet ? "contained" : "outlined"}
+                    size="small"
+                    color={isOutlet ? "warning" : "secondary"}
+                    onClick={() => {
+                      setIsOutlet((prev) => !prev);
+                      setStock([]);
+                      setStockBalance([]);
+                      setSelectedItem();
+                      setOpen(false);
+                    }}
+                  >
                     Outlet
                   </Button>
                 )}

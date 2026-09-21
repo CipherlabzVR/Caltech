@@ -17,6 +17,7 @@ import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import useApi from "@/components/utils/useApi";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import AddFabric from "./AddFabric";
 import EditFabric from "./EditFabric";
 
@@ -31,25 +32,6 @@ export default function Fabric() {
   const [totalCount, setTotalCount] = useState(0);
   const [suppliers, setSuppliers] = useState([]);
   const { data: supplierList } = useApi("/Supplier/GetAllSupplier");
-
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchFabricList(1, value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchFabricList(value, searchTerm, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchFabricList(1, searchTerm, newSize);
-  };
 
   const fetchFabricList = async (page = 1, search = "", size = pageSize) => {
     try {
@@ -74,6 +56,23 @@ export default function Fabric() {
       console.error("Error:", error);
     }
   };
+
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: fetchFabricList,
+  });
 
   useEffect(() => {
     fetchFabricList();

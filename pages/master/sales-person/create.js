@@ -15,6 +15,9 @@ import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import BASE_URL from "Base/api";
 
+/** Matches ApexflowERP.Domain.Enums.DocumentType.SalesPerson */
+const DOCUMENT_TYPE_SALES_PERSON = 71;
+
 const style = {
   position: "absolute",
   top: "50%",
@@ -27,17 +30,69 @@ const style = {
 };
 
 const validationSchema = Yup.object().shape({
-  Code: Yup.string().required("Code is required"),
   Name: Yup.string().required("Name is required"),
   MobileNumber: Yup.string().required("Mobile Number is required"),
 });
 
 export default function AddSalesPerson({ fetchItems, isSupplierSalesRef, suppliers, onCreated }) {
   const [open, setOpen] = useState(false);
+  const [formKey, setFormKey] = useState(0);
+  const [previewCode, setPreviewCode] = useState("");
+  const [codePreviewLoading, setCodePreviewLoading] = useState(false);
   const handleOpen = () => setOpen(true);
-  const handleClose = () => setOpen(false);
+  const handleClose = () => {
+    setOpen(false);
+    setFormKey((prev) => prev + 1);
+  };
 
   const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) {
+      setPreviewCode("");
+      setCodePreviewLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setCodePreviewLoading(true);
+
+    (async () => {
+      try {
+        const response = await fetch(
+          `${BASE_URL}/DocumentSequence/GetNextDocumentNumber?documentType=${DOCUMENT_TYPE_SALES_PERSON}`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch next code");
+        }
+
+        const result = await response.json();
+        if (!cancelled) {
+          setPreviewCode(result.result ?? "");
+        }
+      } catch {
+        if (!cancelled) {
+          setPreviewCode("");
+        }
+      } finally {
+        if (!cancelled) {
+          setCodePreviewLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (open) {
@@ -99,8 +154,9 @@ export default function AddSalesPerson({ fetchItems, isSupplierSalesRef, supplie
       >
         <Box sx={style} className="bg-black">
           <Formik
+            key={formKey}
             initialValues={{
-              Code: "",
+              Code: previewCode || "",
               Name: "",
               MobileNumber: "",
               SupplierId: null,
@@ -111,6 +167,7 @@ export default function AddSalesPerson({ fetchItems, isSupplierSalesRef, supplie
             }}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
+            enableReinitialize
           >
             {({ errors, touched, values, setFieldValue }) => (
               <Form>
@@ -140,11 +197,19 @@ export default function AddSalesPerson({ fetchItems, isSupplierSalesRef, supplie
                       <Field
                         as={TextField}
                         fullWidth
-                        inputRef={inputRef}
                         name="Code"
                         size="small"
-                        error={touched.Code && Boolean(errors.Code)}
-                        helperText={touched.Code && errors.Code}
+                        placeholder={
+                          codePreviewLoading
+                            ? "Loading code…"
+                            : "Assigned on save"
+                        }
+                        InputProps={{ readOnly: true }}
+                        sx={{
+                          "& .MuiOutlinedInput-root": {
+                            bgcolor: "action.hover",
+                          },
+                        }}
                       />
                     </Grid>
                     <Grid item xs={12} mt={1}>
@@ -160,6 +225,7 @@ export default function AddSalesPerson({ fetchItems, isSupplierSalesRef, supplie
                       <Field
                         as={TextField}
                         fullWidth
+                        inputRef={inputRef}
                         name="Name"
                         size="small"
                         error={touched.Name && Boolean(errors.Name)}

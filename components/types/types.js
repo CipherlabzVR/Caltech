@@ -79,6 +79,22 @@ export const ChartOfAccountType = (type) => {
       return "Credit Card";
     case 7:
       return "Equity";
+    case 8:
+      return "Accounts Receivable";
+    case 9:
+      return "Accounts Payable";
+    case 10:
+      return "Cost of Goods Sold";
+    case 11:
+      return "Other Income";
+    case 12:
+      return "Other Expense";
+    case 13:
+      return "Tax";
+    case 14:
+      return "Retained Earnings";
+    case 15:
+      return "Inventory";
     default:
       return "N/A";
   }

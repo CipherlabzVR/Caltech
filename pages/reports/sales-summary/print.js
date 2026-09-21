@@ -34,28 +34,45 @@ const toFilterLabel = (value, allLabel) => {
   return text;
 };
 
+const EMPTY_LINE_ITEMS_HTML = `<tr><td colspan="9" style="text-align:center;padding:16px;">No sales invoices found for the selected filters.</td></tr>`;
+
+const mapSalesSummaryLine = (row) => {
+  const documentDate = row.documentDate ?? row.DocumentDate;
+  return {
+    documentDate: documentDate ? formatDate(documentDate) : "—",
+    documentNo: row.documentNo ?? row.DocumentNo ?? "—",
+    customerName: row.customerName ?? row.CustomerName ?? "—",
+    paymentType: row.paymentType ?? row.PaymentType ?? "—",
+    grossTotal: formatAmount(row.grossTotal ?? row.GrossTotal),
+    netTotal: formatAmount(row.netTotal ?? row.NetTotal),
+    paymentAmount: formatAmount(row.paymentAmount ?? row.PaymentAmount),
+    balance: formatAmount(row.balance ?? row.Balance),
+    remark: (row.remark ?? row.Remark) || "—",
+  };
+};
+
 const buildLineItemsRows = (rows) => {
-  if (!rows || rows.length === 0) {
-    return `<tr><td colspan="9" style="text-align:center;padding:16px;">No sales invoices found for the selected filters.</td></tr>`;
-  }
+  if (!rows || rows.length === 0) return EMPTY_LINE_ITEMS_HTML;
 
   return rows
     .map((row) => {
-      const documentDate = row.documentDate ?? row.DocumentDate;
+      const t = mapSalesSummaryLine(row);
       return `<tr>
-        <td>${escapeHtml(documentDate ? formatDate(documentDate) : "—")}</td>
-        <td>${escapeHtml(row.documentNo ?? row.DocumentNo ?? "—")}</td>
-        <td>${escapeHtml(row.customerName ?? row.CustomerName ?? "—")}</td>
-        <td>${escapeHtml(row.paymentType ?? row.PaymentType ?? "—")}</td>
-        <td class="num">${escapeHtml(formatAmount(row.grossTotal ?? row.GrossTotal))}</td>
-        <td class="num">${escapeHtml(formatAmount(row.netTotal ?? row.NetTotal))}</td>
-        <td class="num">${escapeHtml(formatAmount(row.paymentAmount ?? row.PaymentAmount))}</td>
-        <td class="num">${escapeHtml(formatAmount(row.balance ?? row.Balance))}</td>
-        <td>${escapeHtml((row.remark ?? row.Remark) || "—")}</td>
+        <td>${escapeHtml(t.documentDate)}</td>
+        <td>${escapeHtml(t.documentNo)}</td>
+        <td>${escapeHtml(t.customerName)}</td>
+        <td>${escapeHtml(t.paymentType)}</td>
+        <td class="num">${escapeHtml(t.grossTotal)}</td>
+        <td class="num">${escapeHtml(t.netTotal)}</td>
+        <td class="num">${escapeHtml(t.paymentAmount)}</td>
+        <td class="num">${escapeHtml(t.balance)}</td>
+        <td>${escapeHtml(t.remark)}</td>
       </tr>`;
     })
     .join("\n");
 };
+
+const buildLineTokenMaps = (rows) => (rows || []).map(mapSalesSummaryLine);
 
 export default function SalesSummaryPrintPage() {
   const router = useRouter();
@@ -198,8 +215,11 @@ export default function SalesSummaryPrintPage() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || loadingData) return "";
-    return applyTemplate(templateHtml, tokenMap, lineItemsRows);
-  }, [templateHtml, loadingData, tokenMap, lineItemsRows]);
+    return applyTemplate(templateHtml, tokenMap, lineItemsRows, {
+      lineTokenMaps: buildLineTokenMaps(rows),
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
+  }, [templateHtml, loadingData, tokenMap, lineItemsRows, rows]);
 
   return (
     <>

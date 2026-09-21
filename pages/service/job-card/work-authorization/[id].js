@@ -46,6 +46,16 @@ const buildBillRows = (rows) => {
     .join("\n");
 };
 
+const buildBillTokenMaps = (rows) =>
+  (rows || []).map((l, i) => ({
+    rowNum: String(i + 1),
+    lineType: LINE_TYPE_LABEL[l.lineType] || "-",
+    item: l.productName || l.description || "-",
+    qty: String(l.qty ?? ""),
+    unitPrice: Number(l.unitPrice || 0).toFixed(2),
+    amount: l._covered ? "FREE" : l._total.toFixed(2),
+  }));
+
 export default function WorkAuthorizationReceipt() {
   const router = useRouter();
   const { id } = router.query;
@@ -122,7 +132,10 @@ export default function WorkAuthorizationReceipt() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || !jobCard) return "";
-    return applyTemplate(templateHtml, tokenMap, buildBillRows(computed));
+    return applyTemplate(templateHtml, tokenMap, buildBillRows(computed), {
+      lineTokenMaps: buildBillTokenMaps(computed),
+      emptyLineItemsHtml: `<tr><td colspan="6" style="text-align:center;padding:12px;">No approved lines.</td></tr>`,
+    });
   }, [templateHtml, jobCard, tokenMap, computed]);
 
   const isLoading = loadingJob || loadingTemplate;

@@ -15,8 +15,7 @@ import {
   InputLabel,
   MenuItem,
   Select,
-  Chip,
-} from "@mui/material";
+  Chip } from "@mui/material";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import { ToastContainer } from "react-toastify";
@@ -44,28 +43,11 @@ const ItemTypeMaster = () => {
     setPageSize,
     setSearch,
     fetchData: fetchItemTypeList,
-  } = usePaginatedFetch("ItemType/GetAllItemTypePage");
-
-  const handleSearchChange = (event) => {
-    const val = event.target.value;
-    setSearch(val);
-    setPage(1);
-    fetchItemTypeList(1, val, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchItemTypeList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchItemTypeList(1, search, size);
-  };
-
-  useEffect(() => {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("ItemType/GetAllItemTypePage");  useEffect(() => {
     fetchItemTypeList();
   }, []);
 

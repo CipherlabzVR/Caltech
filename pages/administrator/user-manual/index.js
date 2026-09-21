@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -29,24 +30,11 @@ export default function UserManualSettings() {
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchManualList(1, value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchManualList(value, searchTerm, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchManualList(1, searchTerm, newSize);
-  };
+
+
+
 
   const fetchManualList = async (pageNumber = 1, search = "", size = pageSize) => {
     try {
@@ -72,6 +60,23 @@ export default function UserManualSettings() {
       toast.error(error.message || "Failed to load user manuals");
     }
   };
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize: setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: fetchManualList,
+  });
+
 
   useEffect(() => {
     fetchManualList();

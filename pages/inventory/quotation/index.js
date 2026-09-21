@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Grid from "@mui/material/Grid";
 import {
   Button,
@@ -31,6 +31,7 @@ const Quotation = () => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState("");
   const router = useRouter();
+  const pageBeforeSearchRef = useRef(0);
 
   const navigateToCreate = () => {
     router.push({
@@ -50,23 +51,47 @@ const Quotation = () => {
     }
   }, [quotationList]);
 
+  const filteredData = useMemo(
+    () =>
+      quotations.filter(
+        (item) =>
+          item.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.documentNo.toLowerCase().includes(searchTerm.toLowerCase())
+      ),
+    [quotations, searchTerm]
+  );
+
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
   };
 
   const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
+    const size = parseInt(event.target.value, 10);
+    const maxPage = Math.max(0, Math.ceil(filteredData.length / size) - 1);
+    const newPage = Math.min(page, maxPage);
+    setRowsPerPage(size);
+    setPage(newPage);
   };
 
   const handleSearchChange = (event) => {
-    setSearchTerm(event.target.value);
-  };
+    const value = event.target.value;
+    const wasEmpty = !searchTerm.trim();
+    const isEmpty = !value.trim();
 
-  const filteredData = quotations.filter((item) =>
-    item.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.documentNo.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    if (wasEmpty && !isEmpty) {
+      pageBeforeSearchRef.current = page;
+    }
+
+    let targetPage = page;
+    if (!isEmpty) {
+      targetPage = 0;
+    } else if (!wasEmpty) {
+      targetPage = pageBeforeSearchRef.current;
+    }
+
+    setSearchTerm(value);
+    setPage(targetPage);
+  };
 
   const paginatedData = filteredData.slice(
     page * rowsPerPage,

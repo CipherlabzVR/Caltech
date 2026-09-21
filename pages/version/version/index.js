@@ -15,8 +15,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow,
-} from "@mui/material";
+  TableRow } from "@mui/material";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import { toast, ToastContainer } from "react-toastify";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
@@ -36,25 +35,17 @@ export default function Version() {
     setPageSize,
     setSearch,
     fetchData: fetchVersions,
-  } = usePaginatedFetch("Version/GetAllVersionsPage", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Version/GetAllVersionsPage", "", 10, false, false);
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchVersions(1, event.target.value, pageSize);
-    setPage(1);
-  };
 
-  const handleChangePage = (event, value) => {
-    setPage(value);
-    fetchVersions(value, search, pageSize);
-  };
 
-  const handleChangeRowsPerPage = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchVersions(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;
@@ -135,8 +126,7 @@ export default function Version() {
                             rel="noopener noreferrer"
                             style={{
                               color: "#1976d2",
-                              textDecoration: "underline",
-                            }}
+                              textDecoration: "underline" }}
                           >
                             View Document
                           </a>

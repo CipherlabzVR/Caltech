@@ -1,6 +1,7 @@
 
 import { useEffect, useState } from "react";
 import BASE_URL from "Base/api";
+import usePaginationHandlers from "./usePaginationHandlers";
 
 const usePaginatedFetch = (
   endpoint,
@@ -232,10 +233,35 @@ const usePaginatedFetch = (
 
   useEffect(() => {
     // Only fetch on client side to avoid SSR issues
-    if (typeof window !== 'undefined') {
-      fetchData(1, search, pageSize, initialIsCurrentDate, filter, extraQuery);
+    if (typeof window !== "undefined" && endpoint) {
+      // When endpoint becomes available after a delayed gate (e.g. agent type),
+      // use the latest initialFilter — filter state may still be the empty mount default.
+      const effectiveFilter = initialFilter || filter;
+      if (initialFilter && filter !== initialFilter) {
+        setFilter(initialFilter);
+      }
+      fetchData(1, search, pageSize, initialIsCurrentDate, effectiveFilter, extraQuery);
     }
   }, [endpoint]);
+
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+    pageBeforeSearchRef,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search,
+    setPage,
+    setPageSize,
+    setSearch,
+    onFetch: (targetPage, value, size) =>
+      fetchData(targetPage, value, size, isCurrentDate, filter, extraQuery),
+  });
 
   return {
     data,
@@ -255,6 +281,12 @@ const usePaginatedFetch = (
     setExtraQuery,
     setIsCurrentDate,
     fetchData,
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+    pageBeforeSearchRef,
   };
 };
 

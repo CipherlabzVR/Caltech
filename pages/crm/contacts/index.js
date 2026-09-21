@@ -39,7 +39,11 @@ export default function ContactsList() {
     setPageSize,
     setSearch,
     fetchData: fetchContacts,
-  } = usePaginatedFetch("CRMContacts/GetAllCRMContacts", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("CRMContacts/GetAllCRMContacts", "", 10, false, false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedContact, setSelectedContact] = React.useState(null);
   const [deleteLoading, setDeleteLoading] = React.useState(false);
@@ -51,24 +55,11 @@ export default function ContactsList() {
     [fetchContacts, page, pageSize, search]
   );
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchContacts(1, value, pageSize, false);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchContacts(value, search, pageSize, false);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = Number(event.target.value);
-    setPageSize(size);
-    setPage(1);
-    fetchContacts(1, search, size, false);
-  };
+
+
+
 
   const handleDeleteClick = (contact) => {
     setSelectedContact(contact);
@@ -92,9 +83,7 @@ export default function ContactsList() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
 
       const data = await response.json().catch(() => null);
 

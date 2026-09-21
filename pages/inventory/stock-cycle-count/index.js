@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Grid from "@mui/material/Grid";
 import {
   Button,
@@ -99,12 +99,28 @@ const StockCycleCount = () => {
     }
   };
 
+  const pageBeforeSearchRef = useRef(1);
+
   const handleSearchChange = (event) => {
     const value = event.target.value;
+    const wasEmpty = !search.trim();
+    const isEmpty = !value.trim();
+
+    if (wasEmpty && !isEmpty) {
+      pageBeforeSearchRef.current = page;
+    }
+
+    let targetPage = page;
+    if (!isEmpty) {
+      targetPage = 1;
+    } else if (!wasEmpty) {
+      targetPage = pageBeforeSearchRef.current;
+    }
+
     setSearch(value);
-    setPage(1);
+    setPage(targetPage);
     const statusVal = statusTabs[tabValue]?.value ?? null;
-    fetchCycleCountList(1, value, pageSize, statusVal);
+    fetchCycleCountList(targetPage, value, pageSize, statusVal);
   };
 
   const handlePageChange = (event, value) => {
@@ -115,10 +131,12 @@ const StockCycleCount = () => {
 
   const handlePageSizeChange = (event) => {
     const size = Number(event.target.value);
+    const maxPage = Math.max(1, Math.ceil(totalCount / size));
+    const newPage = Math.min(page, maxPage);
     setPageSize(size);
-    setPage(1);
+    setPage(newPage);
     const statusVal = statusTabs[tabValue]?.value ?? null;
-    fetchCycleCountList(1, search, size, statusVal);
+    fetchCycleCountList(newPage, search, size, statusVal);
   };
 
   const openPrintPopup = (item) => {

@@ -47,11 +47,10 @@ const CHANNEL_DESCRIPTION = {
   Authenticator: "Use the code from Google Authenticator",
 };
 
-// All channels we want to display in the picker. WhatsApp and Authenticator
-// are currently implemented; Email and SMS are surfaced as "Coming Soon" so
-// users know what's planned but can't pick them yet.
+// All channels we want to display in the picker. SMS is surfaced as "Coming Soon"
+// so users know it's planned but can't pick it yet.
 const ALL_CHANNELS = ["WhatsApp", "Authenticator", "Email", "Sms"];
-const COMING_SOON_CHANNELS = new Set(["Email", "Sms"]);
+const COMING_SOON_CHANNELS = new Set(["Sms"]);
 
 // How long the user has to wait between OTP resends. Matches the
 // forgot-password screen so the UX is consistent across all OTP flows.

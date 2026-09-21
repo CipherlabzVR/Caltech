@@ -15,8 +15,7 @@ import {
   Typography,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
@@ -42,7 +41,11 @@ export default function DeliveryFees() {
     setPageSize,
     setSearch,
     fetchData,
-  } = usePaginatedFetch(
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch(
     "ECommerce/GetAllDeliveryFees",
     "",
     10,
@@ -50,23 +53,11 @@ export default function DeliveryFees() {
     false,
   );
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchData(1, event.target.value, pageSize);
-    setPage(1);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchData(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchData(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;
@@ -139,8 +130,7 @@ export default function DeliveryFees() {
                     <TableRow
                       key={item.id}
                       sx={{
-                        "&:last-child td, &:last-child th": { border: 0 },
-                      }}
+                        "&:last-child td, &:last-child th": { border: 0 } }}
                     >
                       <TableCell component="th" scope="row">
                         {(page - 1) * pageSize + index + 1}
@@ -158,8 +148,7 @@ export default function DeliveryFees() {
                       <TableCell>
                         {Number(item.amount || 0).toLocaleString("en-LK", {
                           minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
+                          maximumFractionDigits: 2 })}
                       </TableCell>
                       <TableCell>
                         <span

@@ -88,6 +88,7 @@ const InvoiceCreate = () => {
   const [salesOrderList, setSalesOrderList] = useState([]);
   const [loadingSalesOrders, setLoadingSalesOrders] = useState(false);
   const [selectedSalesOrderId, setSelectedSalesOrderId] = useState(null);
+  const [orderDiscountPercent, setOrderDiscountPercent] = useState(0);
   const guidRef = useRef(uuidv4());
   const shiftRedirectedRef = useRef(false);
   const { result: shiftResult, message: shiftMessage } = useShiftCheck();
@@ -105,15 +106,46 @@ const InvoiceCreate = () => {
     "IsCostPriceVisible"
   );
   const { approve1: hasCostPricePermission } = IsPermissionEnabled(22);
+  const cId = sessionStorage.getItem("category");
+  const { approve2: hasDiscountPermission } = IsPermissionEnabled(cId);
   const isFromSalesOrder = Boolean(selectedSalesOrderId);
   const showCostPrice =
     IsCostPriceVisible && hasCostPricePermission && !isFromSalesOrder;
+
+  const computeLineDiscount = (row) => {
+    const gross = parseFloat(row.totalPrice) || 0;
+    const discountInput = parseFloat(row.discountInput) || 0;
+    const isPercentage = row.discountType === "percentage";
+    let discountAmount = isPercentage
+      ? (gross * discountInput) / 100
+      : discountInput;
+    discountAmount = Math.min(Math.max(discountAmount, 0), gross);
+    return { discountAmount, lineTot: gross - discountAmount };
+  };
+
+  const applyLineDiscountToRow = (row) => ({
+    ...row,
+    discountType: row.discountType || "value",
+    discountInput: row.discountInput ?? "",
+    ...computeLineDiscount({
+      totalPrice: row.totalPrice,
+      discountType: row.discountType || "value",
+      discountInput: row.discountInput ?? "",
+    }),
+  });
+
   const { data: IsExpireDateAvailable } = IsAppSettingEnabled(
     "IsExpireDateAvailable"
   );
   const { data: IsBatchNumberAvailable } = IsAppSettingEnabled(
     "IsBatchNumberAvailable"
   );
+  const tableFooterColSpan =
+    5 +
+    (IsBatchNumberAvailable ? 1 : 0) +
+    (IsExpireDateAvailable ? 1 : 0) +
+    (showCostPrice ? 1 : 0) +
+    (hasDiscountPermission ? 1 : 0);
   const { data: IsOutletAvailable } = IsAppSettingEnabled(
     "IsOutletAvailable"
   );
@@ -256,13 +288,20 @@ const InvoiceCreate = () => {
     const sum = (arr, key) =>
       arr.reduce((total, row) => total + (Number(row[key]) || 0), 0);
 
-    const gross = sum(selectedRows, 'totalPrice');
+    const gross = sum(selectedRows, "lineTot");
     const gross1 = sum(rows, 'sellingPrice');
     const gross2 = sum(rowsCC, 'totalAmount');
 
     const calc = gross + gross1 + gross2;
     setGrossTotal(calc.toFixed(2));
   }, [selectedRows, rows, rowsCC]);
+
+  const orderDiscountAmount = parseFloat(
+    ((parseFloat(grossTotal) * orderDiscountPercent) / 100).toFixed(2)
+  );
+  const netTotal = parseFloat(
+    (parseFloat(grossTotal) - orderDiscountAmount).toFixed(2)
+  );
 
 
   const navigateToBack = () => {
@@ -338,14 +377,29 @@ const InvoiceCreate = () => {
     if (!item) {
       item = stock[0];
     }
+    if (!item) {
+      toast.error("Please select an outlet stock line.");
+      return;
+    }
+    // Guard: normal stock rows (from a prior item pick) must not be added as outlet.
+    if (item.currentQuantityValue == null && item.CurrentQuantityValue == null) {
+      toast.error("Outlet stock details unavailable. Please search the outlet item again.");
+      return;
+    }
 
-    const baseCostPrice = parseFloat(item.costPrice || 0);
-    const uomValue = parseFloat(item.uomValue || 0);
-    const updatedCostPrice = (parseFloat(baseCostPrice) / uomValue);
+    const baseCostPrice = parseFloat(item.costPrice ?? item.CostPrice ?? 0);
+    const uomValue = parseFloat(item.uomValue ?? item.UOMValue ?? 0);
+    const updatedCostPrice = uomValue > 0 ? baseCostPrice / uomValue : baseCostPrice;
     const newItem = {
       ...item,
+      name: item.name ?? item.Name ?? item.productName,
+      productId: item.productId ?? item.ProductId,
+      productCode: item.productCode ?? item.ProductCode,
+      warehouseId: item.warehouseId ?? item.WarehouseId,
+      currentQuantityValue: item.currentQuantityValue ?? item.CurrentQuantityValue,
+      uomValue: uomValue || 1,
       costPrice: updatedCostPrice.toFixed(2),
-      prevCost: parseFloat(item.costPrice || 0),
+      prevCost: baseCostPrice,
     };
 
     setRows(prevRows => [...prevRows, newItem]);
@@ -369,7 +423,8 @@ const InvoiceCreate = () => {
       return;
     }
     try {
-      const query = `${BASE_URL}/Items/GetAllItemsByNameWithStockDetails?itemId=${item.id}`;
+      const productId = item.id ?? item.Id;
+      const query = `${BASE_URL}/Items/GetAllItemsByNameWithStockDetails?itemId=${productId}`;
 
       const response = await fetch(query, {
         method: "GET",
@@ -382,13 +437,20 @@ const InvoiceCreate = () => {
       if (!response.ok) throw new Error("Failed to fetch items");
 
       const data = await response.json();
-      const method = item.stockMethod ?? 1;
-      setSelectedStockMethod(method);
-      setStock(sortStockBatches(data.result, method));
+      const outletStock = data.result ?? data.Result ?? [];
+      // Clear normal stock cache so the stockBalance effect cannot overwrite outlet rows.
+      setStockBalance([]);
+      const sorted = sortStockBatches(outletStock, item.stockMethod ?? 1);
+      setStock(sorted);
+      setSelectedItem(sorted[0]);
       setSelectedIndex(0);
       setOpen(true);
+      if (!sorted.length) {
+        toast.warning("No outlet stock available for this item.");
+      }
     } catch (error) {
       console.error("Error:", error);
+      toast.error("Failed to load outlet stock.");
     }
   }
 
@@ -464,27 +526,32 @@ const InvoiceCreate = () => {
 
       const mappedRows = (salesOrder.salesOrderLineDetails || [])
         .filter((line) => !line.isDeleted)
-        .map((line, index) => ({
-          lineKey: `sales-order-line-${line.id || index}-${Date.now()}`,
-          id: line.stockBalanceId ?? 0,
-          productId: line.productId,
-          productName: line.productName || "",
-          productCode: line.productCode || "",
-          quantity: Number(line.qty || 0),
-          totalPrice: Number(line.lineTotal || 0),
-          sellingPrice: Number(line.unitPrice || 0),
-          costPrice: 0,
-          stockBalanceId: line.stockBalanceId ?? 0,
-          batchNumber: "",
-          packageName: line.productName || "",
-          isNonInventory: false,
-          bookBalanceQuantity: Number.MAX_SAFE_INTEGER,
-        }));
+        .map((line, index) =>
+          applyLineDiscountToRow({
+            lineKey: `sales-order-line-${line.id || index}-${Date.now()}`,
+            id: line.stockBalanceId ?? 0,
+            productId: line.productId,
+            productName: line.productName || "",
+            productCode: line.productCode || "",
+            quantity: Number(line.qty || 0),
+            totalPrice: Number(line.lineTotal || 0),
+            sellingPrice: Number(line.unitPrice || 0),
+            costPrice: 0,
+            stockBalanceId: line.stockBalanceId ?? 0,
+            batchNumber: "",
+            packageName: line.productName || "",
+            isNonInventory: false,
+            bookBalanceQuantity: Number.MAX_SAFE_INTEGER,
+            discountType: "value",
+            discountInput: "",
+          })
+        );
 
       setRows([]);
       setRowsCC([]);
       setSelectedRows(mappedRows);
       setSelectedSalesOrderId(salesOrder.id);
+      setOrderDiscountPercent(0);
       setSalesOrderModalOpen(false);
     } catch (error) {
       toast.error(error.message || "Failed to load sales order details");
@@ -503,6 +570,7 @@ const InvoiceCreate = () => {
     setRows([]);
     setRowsCC([]);
     setSelectedSalesOrderId(null);
+    setOrderDiscountPercent(0);
   };
 
   const handleSubmit = async () => {
@@ -531,7 +599,7 @@ const InvoiceCreate = () => {
       const outstandingAmount = customer.outstandingAmount || 0;
       const availableBalance = creditLimit - outstandingAmount;
       
-      if (parseFloat(grossTotal) > availableBalance) {
+      if (netTotal > availableBalance) {
         toast.error(`Credit Limit Exceeded. Available Balance: ${availableBalance.toLocaleString()}`);
         return;
       }
@@ -633,9 +701,12 @@ const InvoiceCreate = () => {
         UnitPrice: isBookingSystem ? row.rate : row.sellingPrice,
         CostPrice: isBookingSystem ? row.rate : row.costPrice,
         Qty: row.quantity,
-        DiscountAmount: 0.0,
-        DiscountPercentage: 0.0,
-        LineTotal: row.totalPrice,
+        DiscountAmount: row.discountAmount || 0,
+        DiscountPercentage:
+          row.discountType === "percentage"
+            ? parseFloat(row.discountInput) || 0
+            : 0,
+        LineTotal: row.lineTot ?? row.totalPrice,
         SequanceNo: i + 1,
         StockBalanceId: row.isNonInventory ? 0 : row.id,
         Machine: null,
@@ -686,11 +757,11 @@ const InvoiceCreate = () => {
       WarehouseId: 1,
       WarehouseCode: "WH001",
       WarehouseName: "Main Warehouse",
-      Discountamount: 0.0,
-      DiscountPercentage: 0.0,
+      Discountamount: orderDiscountAmount,
+      DiscountPercentage: orderDiscountPercent,
       IsPaid: false,
       GrossTotal: parseFloat(grossTotal),
-      NetTotal: parseFloat(grossTotal),
+      NetTotal: netTotal,
       SalesPerson: salesPerson?.name || "",
       FormSubmitId: guidRef.current,
       RegNo: regNo || "",
@@ -737,6 +808,7 @@ const InvoiceCreate = () => {
         setSelectedSalesOrderId(null);
         setRows([]);
         setRowsCC([]);
+        setOrderDiscountPercent(0);
 
         var printURL = `${Report}/PrintDocumentsLocal?InitialCatalog=${Catelogue}&documentNumber=${invNo}&reportName=${POSInvoiceReportName}&warehouseId=${warehouseId}&currentUser=${name}`;
 
@@ -781,7 +853,7 @@ const InvoiceCreate = () => {
       return;
     }
 
-    const newRow = {
+    const newRow = applyLineDiscountToRow({
       lineKey: `noninv-${item.id}-${Date.now()}`,
       id: 0,
       productId: item.id,
@@ -796,7 +868,9 @@ const InvoiceCreate = () => {
       packageName: item.name,
       isNonInventory: true,
       bookBalanceQuantity: Number.MAX_SAFE_INTEGER,
-    };
+      discountType: "value",
+      discountInput: "",
+    });
 
     setSelectedRows((prevRows) => [...prevRows, newRow]);
   };
@@ -832,7 +906,7 @@ const InvoiceCreate = () => {
       return;
     }
 
-    const newRow = {
+    const newRow = applyLineDiscountToRow({
       ...item,
       quantity: "",
       totalPrice: item.sellingPrice || 0,
@@ -841,7 +915,9 @@ const InvoiceCreate = () => {
       batchNumber: item.batchNumber || "",
       productName: item.productName || "",
       packageName: item.productName || "",
-    };
+      discountType: "value",
+      discountInput: "",
+    });
 
     setSelectedRows((prevRows) => {
       const updatedRows = [...prevRows, newRow];
@@ -863,11 +939,13 @@ const InvoiceCreate = () => {
       return;
     }
 
-    const newRow = {
+    const newRow = applyLineDiscountToRow({
       ...item,
       quantity: 1,
-      totalPrice: item.rate
-    };
+      totalPrice: item.rate,
+      discountType: "value",
+      discountInput: "",
+    });
 
     setSelectedRows((prevRows) => {
       const updatedRows = [...prevRows, newRow];
@@ -883,13 +961,16 @@ const InvoiceCreate = () => {
   const handleQuantityChange = (index, newQuantity) => {
     const updatedRows = [...selectedRows];
     const row = updatedRows[index];
-    const oldTotalPrice = row.totalPrice;
+    const oldLineTot = row.lineTot ?? row.totalPrice;
 
     row.quantity = newQuantity;
     row.totalPrice = isBookingSystem ? parseFloat(row.rate) * newQuantity : parseFloat(row.sellingPrice) * newQuantity;
+    const { discountAmount, lineTot } = computeLineDiscount(row);
+    row.discountAmount = discountAmount;
+    row.lineTot = lineTot;
 
     setSelectedRows(updatedRows);
-    setTotal((prevTotal) => prevTotal - oldTotalPrice + row.totalPrice);
+    setTotal((prevTotal) => prevTotal - oldLineTot + row.lineTot);
   };
 
 
@@ -924,7 +1005,7 @@ const InvoiceCreate = () => {
     if ((y > x) && isAllowProfitMessageDisplay) {
       toast.info("Profit exceeds 50% of the cost price.");
     }
-    const oldTotalPrice = row.totalPrice;
+    const oldLineTot = row.lineTot ?? row.totalPrice;
     if (isBookingSystem) {
       row.rate = newPrice;
     } else {
@@ -932,9 +1013,20 @@ const InvoiceCreate = () => {
     }
 
     row.totalPrice = parseFloat(row.quantity) * newPrice;
+    const { discountAmount, lineTot } = computeLineDiscount(row);
+    row.discountAmount = discountAmount;
+    row.lineTot = lineTot;
 
     setSelectedRows(updatedRows);
-    setTotal((prevTotal) => prevTotal - oldTotalPrice + row.totalPrice);
+    setTotal((prevTotal) => prevTotal - oldLineTot + row.lineTot);
+  };
+
+  const handleLineDiscountChange = (index, field, value) => {
+    const updatedRows = [...selectedRows];
+    const row = { ...updatedRows[index], [field]: value };
+    const { discountAmount, lineTot } = computeLineDiscount(row);
+    updatedRows[index] = { ...row, discountAmount, lineTot };
+    setSelectedRows(updatedRows);
   };
 
   const handleDeleteRow = (index) => {
@@ -974,14 +1066,23 @@ const InvoiceCreate = () => {
     if (doctorsList) {
       setDoctors(doctorsList);
     }
+  }, [customerList, doctorsList]);
+
+  useEffect(() => {
     updateInvNo();
-    if (stockBalance) {
-      const sorted = sortStockBatches(stockBalance, selectedStockMethod);
-      setStock(sorted);
-      setSelectedItem(sorted[0]);
-      setSelectedIndex(0);
-    }
-  }, [stockBalance, selectedStockMethod, customerList, doctorsList]);
+  }, []);
+
+  // Only sync normal stockBalance into the modal while NOT in outlet mode.
+  // Otherwise leftover stock from a prior normal item pick overwrites outlet stock
+  // (empty Available Value / outlet lines added with wrong data).
+  useEffect(() => {
+    if (isOutlet) return;
+    if (!stockBalance || stockBalance.length === 0) return;
+    const sorted = sortStockBatches(stockBalance, selectedStockMethod);
+    setStock(sorted);
+    setSelectedItem(sorted[0]);
+    setSelectedIndex(0);
+  }, [stockBalance, selectedStockMethod, isOutlet]);
 
   const isCashCustomer = customer && customer.firstName && customer.firstName.trim().toLowerCase() === "cash";
   const isCreditCustomer = customer && customer.firstName && customer.firstName.trim().toLowerCase() !== "cash";
@@ -1415,6 +1516,7 @@ const InvoiceCreate = () => {
                         onSelect={handleSearchItemSelect}
                       />
                     ) : <SearchItemByName
+                      key={isOutlet ? "outlet-search" : "item-search"}
                       ref={searchRef}
                       label="Search"
                       placeholder="Search Items by name"
@@ -1443,7 +1545,20 @@ const InvoiceCreate = () => {
                   </Button>
                 )}
                 {IsOutletAvailable && (
-                  <Button disabled={isSalesOrderSelected} variant={isOutlet ? "contained" : "outlined"} size="small" color={isOutlet ? "warning" : "secondary"} onClick={() => { setIsOutlet(prev => !prev); setStock([]); setSelectedItem(); }}>
+                  <Button
+                    disabled={isSalesOrderSelected}
+                    variant={isOutlet ? "contained" : "outlined"}
+                    size="small"
+                    color={isOutlet ? "warning" : "secondary"}
+                    onClick={() => {
+                      setIsOutlet((prev) => !prev);
+                      setStock([]);
+                      setStockBalance([]);
+                      setSelectedItem();
+                      setSelectedIndex(0);
+                      setOpen(false);
+                    }}
+                  >
                     Outlet
                   </Button>
                 )}
@@ -1485,6 +1600,9 @@ const InvoiceCreate = () => {
                       <TableCell sx={{ color: "#fff" }}>
                         Selling Price
                       </TableCell>
+                      {hasDiscountPermission && (
+                        <TableCell sx={{ color: "#fff" }}>Discount</TableCell>
+                      )}
                       <TableCell align="right" sx={{ color: "#fff" }}>
                         Total Price
                       </TableCell>
@@ -1623,24 +1741,122 @@ const InvoiceCreate = () => {
                             }}
                           />
                         </TableCell>
+                        {hasDiscountPermission && (
+                          <TableCell sx={{ p: 1 }}>
+                            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                              <Select
+                                size="small"
+                                value={row.discountType || "value"}
+                                onChange={(e) =>
+                                  handleLineDiscountChange(
+                                    index,
+                                    "discountType",
+                                    e.target.value
+                                  )
+                                }
+                                sx={{ width: "85px" }}
+                                disabled={isSalesOrderSelected}
+                              >
+                                <MenuItem value="value">Value</MenuItem>
+                                <MenuItem value="percentage">%</MenuItem>
+                              </Select>
+                              <TextField
+                                size="small"
+                                type="number"
+                                sx={{ width: "110px" }}
+                                value={
+                                  row.discountInput === "" ||
+                                  row.discountInput == null
+                                    ? ""
+                                    : row.discountInput
+                                }
+                                inputProps={{
+                                  min: 0,
+                                  max:
+                                    row.discountType === "percentage"
+                                      ? 100
+                                      : undefined,
+                                  step: "0.01",
+                                }}
+                                disabled={isSalesOrderSelected}
+                                onChange={(e) =>
+                                  handleLineDiscountChange(
+                                    index,
+                                    "discountInput",
+                                    e.target.value
+                                  )
+                                }
+                              />
+                            </Box>
+                          </TableCell>
+                        )}
                         <TableCell align="right" sx={{ p: 1 }}>
-                          {(Number(row.totalPrice) || 0).toFixed(2)}
+                          {(
+                            Number(row.lineTot) ||
+                            Number(row.totalPrice) ||
+                            0
+                          ).toFixed(2)}
                         </TableCell>
                       </TableRow>
                     ))}
 
                     <TableRow>
-                      <TableCell align="right" colSpan={
-                        5 +
-                        (IsBatchNumberAvailable ? 1 : 0) +
-                        (IsExpireDateAvailable ? 1 : 0)
-                      }>
-                        <Typography fontWeight="bold">Total</Typography>
+                      <TableCell align="right" colSpan={tableFooterColSpan}>
+                        <Typography fontWeight="bold">Gross Total</Typography>
                       </TableCell>
                       <TableCell align="right" sx={{ p: 1 }}>
                         {grossTotal}
                       </TableCell>
                     </TableRow>
+                    {hasDiscountPermission && (
+                      <TableRow>
+                        <TableCell align="right" colSpan={tableFooterColSpan}>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "flex-end",
+                              alignItems: "center",
+                              gap: 1,
+                            }}
+                          >
+                            <Typography fontWeight="bold">
+                              Order Discount (%)
+                            </Typography>
+                            <TextField
+                              size="small"
+                              type="number"
+                              sx={{ width: "80px" }}
+                              value={orderDiscountPercent}
+                              onChange={(e) => {
+                                const val = Math.min(
+                                  100,
+                                  Math.max(0, parseFloat(e.target.value) || 0)
+                                );
+                                setOrderDiscountPercent(val);
+                              }}
+                              inputProps={{ min: 0, max: 100, step: "0.01" }}
+                            />
+                          </Box>
+                        </TableCell>
+                        <TableCell
+                          align="right"
+                          sx={{ p: 1, color: "error.main" }}
+                        >
+                          - {orderDiscountAmount.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {(orderDiscountPercent > 0 ||
+                      selectedRows.some((r) => (r.discountAmount || 0) > 0)) && (
+                      <TableRow>
+                        <TableCell align="right" colSpan={tableFooterColSpan}>
+                          <Typography fontWeight="bold">Net Total</Typography>
+                        </TableCell>
+                        <TableCell align="right" sx={{ p: 1 }}>
+                          {netTotal.toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -1743,13 +1959,13 @@ const InvoiceCreate = () => {
             {isOutlet && stock.length > 0 ?
               <>
                 <Typography sx={{ fontWeight: "bold", my: 2, fontSize: "1.2rem" }}>
-                  {stock[0].name}
+                  {stock[0].name ?? stock[0].Name}
                 </Typography>
                 <Typography sx={{ fontWeight: "500", my: 1, fontSize: "1rem" }}>
-                  Cat. - {stock[0].category} / Sb. Cat. - {stock[0].subCategory}
+                  Cat. - {stock[0].category ?? stock[0].Category ?? "-"} / Sb. Cat. - {stock[0].subCategory ?? stock[0].SubCategory ?? "-"}
                 </Typography>
                 <Typography sx={{ fontWeight: "500", my: 1, mb: 2, fontSize: "1rem" }}>
-                  UOM - {stock[0].uom} / UOM Val. {stock[0].uomValue}
+                  UOM - {stock[0].uom ?? stock[0].UOM ?? "-"} / UOM Val. {stock[0].uomValue ?? stock[0].UOMValue ?? "-"}
                 </Typography>
               </> :
               <Typography sx={{ fontWeight: "bold", my: 2, fontSize: "1.2rem" }}>
@@ -1810,7 +2026,9 @@ const InvoiceCreate = () => {
                             <TableCell>{formatDate(item.createdOn ?? null)}</TableCell>
                           )}
                           {isOutlet ? (
-                            <TableCell>{item.currentQuantityValue}</TableCell>
+                            <TableCell>
+                              {item.currentQuantityValue ?? item.CurrentQuantityValue ?? "-"}
+                            </TableCell>
                           ) : (
                             <TableCell>{item.bookBalanceQuantity}</TableCell>
                           )}

@@ -29,10 +29,9 @@ import { toast } from "react-toastify";
 
 // 3-step flow:
 //   STEP_REQUEST  -> enter the account email AND pick a delivery channel on
-//                    the same screen (only WhatsApp is enabled today; Email
-//                    and SMS are shown as "Coming Soon"). One "Send OTP"
-//                    button delivers the code to the matching contact detail
-//                    on the user's profile.
+//                    the same screen (WhatsApp and Email are enabled; SMS
+//                    is shown as "Coming Soon"). One "Send OTP" button delivers
+//                    the code to the matching contact detail on the user's profile.
 //   STEP_OTP      -> enter the 6-digit code, with attempts-left + lockout UX
 //   STEP_PASSWORD -> set the new password
 const STEP_REQUEST = 0;
@@ -40,16 +39,16 @@ const STEP_OTP = 1;
 const STEP_PASSWORD = 2;
 
 const ALL_CHANNELS = ["WhatsApp", "Email", "Sms"];
-const COMING_SOON_CHANNELS = new Set(["Email", "Sms"]);
+const COMING_SOON_CHANNELS = new Set(["Sms"]);
 const CHANNEL_LABEL = {
   WhatsApp: "WhatsApp",
   Email: "Email",
   Sms: "SMS",
 };
 const CHANNEL_ICON = {
-  WhatsApp: <WhatsApp />,
-  Email: <MarkEmailRead />,
-  Sms: <SmsIcon />,
+  WhatsApp: WhatsApp,
+  Email: MarkEmailRead,
+  Sms: SmsIcon,
 };
 
 const passwordRules = [
@@ -494,7 +493,7 @@ const ForgotPasswordForm = () => {
             flexShrink: 0,
           }}
         >
-          {React.cloneElement(CHANNEL_ICON[ch], { sx: { fontSize: 20 } })}
+          {React.createElement(CHANNEL_ICON[ch], { sx: { fontSize: 20 } })}
         </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -534,6 +533,8 @@ const ForgotPasswordForm = () => {
           >
             {isComingSoon
               ? "Not available yet — check back soon."
+              : ch === "Email"
+              ? "Send the code to the email address on your profile."
               : "Send the code to the WhatsApp number on your profile."}
           </Typography>
         </Box>
@@ -555,7 +556,8 @@ const ForgotPasswordForm = () => {
       ? `Enter the 6-digit code we sent via ${CHANNEL_LABEL[channel]}.`
       : "Choose a strong password to keep your account secure.";
 
-  const HeaderIcon = step === STEP_OTP ? WhatsApp : MarkEmailRead;
+  const HeaderIconComponent =
+    step === STEP_OTP ? CHANNEL_ICON[channel] || MarkEmailRead : MarkEmailRead;
 
   return (
     <Box
@@ -595,7 +597,7 @@ const ForgotPasswordForm = () => {
             borderBottomRightRadius: { md: "120px" },
           }}
         >
-          <HeaderIcon sx={{ fontSize: 56, mb: 2, opacity: 0.9 }} />
+          <HeaderIconComponent sx={{ fontSize: 56, mb: 2, opacity: 0.9 }} />
           <Typography variant="h4" fontWeight={700} mb={1}>
             {headerTitle}
           </Typography>

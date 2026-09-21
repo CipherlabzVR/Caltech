@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Checkbox, FormControlLabel, Grid, Typography } from "@mui/material";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -26,58 +26,93 @@ const style = {
 const validationSchema = Yup.object().shape({
   Code: Yup.string().required("Code is required"),
   Description: Yup.string().required("Description is required"),
-  AccountType: Yup.string().required("Account Type is required"),
+  AccountType: Yup.number().required("Account Type is required"),
 });
 
-export default function AddChartOfAccounts({ fetchItems }) {
-  const [open, setOpen] = React.useState(false);
-  const [code, setCode] = React.useState(false);
-  const handleClose = () => setOpen(false);
+const authHeaders = () => ({
+  Authorization: `Bearer ${localStorage.getItem("token")}`,
+  "Content-Type": "application/json",
+});
+
+export default function AddChartOfAccounts({ fetchItems, activeGroupType, subTypes = [] }) {
+  const [open, setOpen] = useState(false);
+  const [previewCode, setPreviewCode] = useState("");
+  const [selectedAccountType, setSelectedAccountType] = useState(null);
   const inputRef = useRef(null);
+  const formikRef = useRef(null);
+
+  const handleClose = () => setOpen(false);
+
+  const fetchNextCode = async (accountType) => {
+    if (!accountType) {
+      setPreviewCode("");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${BASE_URL}/ChartOfAccount/GetNextCodeForAccountType?accountType=${accountType}`,
+        {
+          method: "GET",
+          headers: authHeaders(),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch next code");
+      }
+
+      const data = await response.json();
+      if (data.statusCode === 200 && data.result?.code) {
+        setPreviewCode(data.result.code);
+        formikRef.current?.setFieldValue("Code", data.result.code);
+      } else {
+        setPreviewCode("");
+        formikRef.current?.setFieldValue("Code", "");
+        toast.error(data.message || "Unable to preview account code");
+      }
+    } catch (err) {
+      setPreviewCode("");
+      formikRef.current?.setFieldValue("Code", "");
+      toast.error(err.message || "Unable to preview account code");
+    }
+  };
 
   const handleOpen = async () => {
-      try {
-        const response = await fetch(
-          `${BASE_URL}/DocumentSequence/GetNextDocumentNumber?documentType=23`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-  
-        if (!response.ok) {
-          throw new Error("Failed to fetch");
-        }
-  
-        const result = await response.json();
-        setCode(result.result);
-      } catch (err) {
-        //
-      }
-      setOpen(true);
-    };
+    const defaultType = subTypes[0]?.accountType ?? null;
+    setSelectedAccountType(defaultType);
+    setOpen(true);
+    if (defaultType) {
+      await fetchNextCode(defaultType);
+    } else {
+      setPreviewCode("");
+      toast.error(`No account types configured for ${activeGroupType}`);
+    }
+  };
 
   useEffect(() => {
     if (open) {
       setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.focus();
-        }
+        inputRef.current?.focus();
       }, 100);
     }
   }, [open]);
 
+  const handleAccountTypeChange = async (setFieldValue, value) => {
+    const accountType = Number(value);
+    setSelectedAccountType(accountType);
+    setFieldValue("AccountType", accountType);
+    await fetchNextCode(accountType);
+  };
+
   const handleSubmit = (values) => {
     fetch(`${BASE_URL}/ChartOfAccount/CreateChartOfAccount`, {
       method: "POST",
-      body: JSON.stringify(values),
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
+      body: JSON.stringify({
+        ...values,
+        AccountType: Number(values.AccountType),
+      }),
+      headers: authHeaders(),
     })
       .then((response) => response.json())
       .then((data) => {
@@ -94,9 +129,11 @@ export default function AddChartOfAccounts({ fetchItems }) {
       });
   };
 
+  const defaultAccountType = subTypes[0]?.accountType ?? "";
+
   return (
     <>
-      <Button variant="outlined" onClick={handleOpen}>
+      <Button variant="outlined" onClick={handleOpen} disabled={subTypes.length === 0}>
         + new account
       </Button>
       <Modal
@@ -107,56 +144,42 @@ export default function AddChartOfAccounts({ fetchItems }) {
       >
         <Box sx={style} className="bg-black">
           <Formik
+            innerRef={formikRef}
+            enableReinitialize
             initialValues={{
               Description: "",
-              Code: code,
+              Code: previewCode,
               IsBankInvolved: false,
-              AccountType: 1
+              AccountType: selectedAccountType ?? defaultAccountType,
             }}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
-            {({ errors, touched, values, setFieldValue, resetForm }) => (
+            {({ errors, touched, values, setFieldValue }) => (
               <Form>
                 <Grid container>
                   <Grid item xs={12}>
-                    <Typography
-                      variant="h5"
-                      sx={{
-                        fontWeight: "500",
-                        mb: "5px",
-                      }}
-                    >
+                    <Typography variant="h5" sx={{ fontWeight: "500", mb: "5px" }}>
                       Add Chart Of Account
+                    </Typography>
+                    <Typography variant="body2" sx={{ mb: 1, opacity: 0.8 }}>
+                      Group: {activeGroupType}
                     </Typography>
                   </Grid>
                   <Grid item xs={12}>
-                    <Typography
-                      sx={{
-                        fontWeight: "500",
-                        mb: "5px",
-                      }}
-                    >
-                      Code
-                    </Typography>
+                    <Typography sx={{ fontWeight: "500", mb: "5px" }}>Code</Typography>
                     <Field
                       as={TextField}
                       fullWidth
                       name="Code"
-                      size="small"                      
+                      size="small"
                       error={touched.Code && Boolean(errors.Code)}
                       helperText={touched.Code && errors.Code}
                       disabled
                     />
                   </Grid>
                   <Grid item xs={12} mt={1}>
-                    <Typography
-                      sx={{
-                        fontWeight: "500",
-                        fontSize: "14px",
-                        mb: "5px",
-                      }}
-                    >
+                    <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>
                       Description
                     </Typography>
                     <Field
@@ -170,13 +193,7 @@ export default function AddChartOfAccounts({ fetchItems }) {
                     />
                   </Grid>
                   <Grid item xs={12} mt={1}>
-                    <Typography
-                      sx={{
-                        fontWeight: "500",
-                        fontSize: "14px",
-                        mb: "5px",
-                      }}
-                    >
+                    <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>
                       Account Type
                     </Typography>
                     <FormControl fullWidth>
@@ -186,17 +203,14 @@ export default function AddChartOfAccounts({ fetchItems }) {
                         fullWidth
                         name="AccountType"
                         size="small"
-                        onChange={(e) => {
-                          setFieldValue("AccountType", e.target.value);
-                        }}
+                        value={values.AccountType}
+                        onChange={(e) => handleAccountTypeChange(setFieldValue, e.target.value)}
                       >
-                        <MenuItem value={1}> Income </MenuItem>
-                        <MenuItem value={2}> Payment </MenuItem>
-                        <MenuItem value={3}> Fixed Assets </MenuItem>
-                        <MenuItem value={4}> Bank </MenuItem>
-                        <MenuItem value={5}> Loan </MenuItem>
-                        <MenuItem value={6}> Credit Card </MenuItem>
-                        <MenuItem value={7}> Equity </MenuItem>
+                        {subTypes.map((sub) => (
+                          <MenuItem key={sub.accountType} value={sub.accountType}>
+                            {sub.accountTypeName}
+                          </MenuItem>
+                        ))}
                       </Field>
                       {touched.AccountType && Boolean(errors.AccountType) && (
                         <Typography variant="caption" color="error">
@@ -220,19 +234,8 @@ export default function AddChartOfAccounts({ fetchItems }) {
                       label="Bank Involved"
                     />
                   </Grid>
-                  <Grid
-                    display="flex"
-                    justifyContent="space-between"
-                    item
-                    xs={12}
-                    p={1}
-                  >
-                    <Button
-                      variant="contained"
-                      size="small"
-                      color="error"
-                      onClick={handleClose}
-                    >
+                  <Grid display="flex" justifyContent="space-between" item xs={12} p={1}>
+                    <Button variant="contained" size="small" color="error" onClick={handleClose}>
                       Cancel
                     </Button>
                     <Button type="submit" variant="contained" size="small">

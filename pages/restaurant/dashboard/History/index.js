@@ -18,21 +18,17 @@ export default function History() {
         setPageSize,
         setSearch,
         fetchData: fetchOrderList,
-    } = usePaginatedFetch(`RestaurantPOS/GetAllOrderHistoryByUser?date=${dateFilter}`);
+        handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch(`RestaurantPOS/GetAllOrderHistoryByUser?date=${dateFilter}`);
 
 
 
-    const handlePageChange = (event, value) => {
-        setPage(value);
-        fetchOrderList(value, searchText, pageSize);
-    };
 
-    const handlePageSizeChange = (event) => {
-        const size = event.target.value;
-        setPageSize(size);
-        setPage(1);
-        fetchOrderList(1, searchText, size);
-    };
+
+
 
     useEffect(() => {
         fetchOrderList(1, "", pageSize);

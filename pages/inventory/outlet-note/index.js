@@ -20,6 +20,7 @@ import { formatCurrency } from "@/components/utils/formatHelper";
 import EditOutlet from "./edit";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 
 export default function OutletNote() {
   const cId = sessionStorage.getItem("category")
@@ -36,25 +37,6 @@ export default function OutletNote() {
   const { data: IsBatchNumberAvailable } = IsAppSettingEnabled(
     "IsBatchNumberAvailable"
   );
-
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchOutlets(1, value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchOutlets(value, searchTerm, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchOutlets(1, searchTerm, newSize);
-  };
 
   const fetchOutlets = async (page = 1, search = "", size = pageSize) => {
     try {
@@ -79,6 +61,21 @@ export default function OutletNote() {
       console.error("Error:", error);
     }
   };
+
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: fetchOutlets,
+  });
 
   useEffect(() => {
     fetchOutlets();

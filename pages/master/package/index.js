@@ -1,4 +1,4 @@
-import React, { } from "react";
+import React from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -33,29 +33,13 @@ export default function Packages() {
     setPageSize,
     setSearch,
     fetchData: fetchPackageList,
-  } = usePaginatedFetch("Package/GetAllPackages");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Package/GetAllPackages");
 
-  const controller = "Package/DeletePackage";
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchPackageList(1, event.target.value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchPackageList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchPackageList(1, search, size);
-  };
-
-  if (!navigate) {
+  const controller = "Package/DeletePackage";  if (!navigate) {
     return <AccessDenied />;
   }
 

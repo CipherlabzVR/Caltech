@@ -63,7 +63,7 @@ const FIELD_LIMITS = {
   entryFeeLocation: 200,
 };
 
-const emptyEntryFee = () => ({ location: "", perPersonFee: "" });
+const emptyEntryFee = () => ({ location: "", perPersonFee: "", perChildFee: "" });
 
 /** Allow digits and at most one decimal point (max 2 decimal places). */
 const sanitizeDecimalInput = (raw) => {
@@ -96,6 +96,7 @@ const hydrateEntryFees = (row) => {
     return row.entryFees.map((f) => ({
       location: f.location || "",
       perPersonFee: f.perPersonFee != null && f.perPersonFee !== "" ? String(f.perPersonFee) : "",
+      perChildFee: f.perChildFee != null && f.perChildFee !== "" ? String(f.perChildFee) : "",
     }));
   }
   if (row?.entryFee != null && row.entryFee !== "" && Number(row.entryFee) > 0) {
@@ -119,8 +120,10 @@ const normalizeEntryFeesForSave = (entryFees) => {
     const row = entryFees[i];
     const location = (row.location || "").trim();
     const feeParsed = parseOptionalMoney(row.perPersonFee);
+    const childParsed = parseOptionalMoney(row.perChildFee);
     if (feeParsed.error) return { error: feeParsed.error };
-    if (!location && (feeParsed.value == null || feeParsed.value === 0)) continue;
+    if (childParsed.error) return { error: "Child entry fee must be a valid number." };
+    if (!location && (feeParsed.value == null || feeParsed.value === 0) && (childParsed.value == null || childParsed.value === 0)) continue;
     if (!location) return { error: "Each entry fee must have a location." };
     if (feeParsed.value == null || feeParsed.value === 0) {
       return { error: "Per person fee is required when a location is entered." };
@@ -131,6 +134,7 @@ const normalizeEntryFeesForSave = (entryFees) => {
     rows.push({
       location,
       perPersonFee: feeParsed.value ?? 0,
+      perChildFee: childParsed.value,
       displayOrder: i,
     });
   }
@@ -147,6 +151,7 @@ const emptyForm = {
   highlights: [],
   displayOrder: 0,
   isActive: true,
+  hideFromDestinationsPage: false,
   entryFees: [],
 };
 
@@ -276,6 +281,7 @@ export default function TravelDestinations() {
       highlights: Array.isArray(row.highlights) ? [...row.highlights] : [],
       displayOrder: row.displayOrder ?? 0,
       isActive: row.isActive ?? true,
+      hideFromDestinationsPage: row.hideFromDestinationsPage ?? false,
       entryFees: hydrateEntryFees(row),
     });
     setImages(Array.isArray(row.images) ? [...row.images].sort((a, b) => a.displayOrder - b.displayOrder) : []);
@@ -374,6 +380,7 @@ export default function TravelDestinations() {
         coverImageUrl: existing?.coverImageUrl?.trim() || null,
         displayOrder: Number(form.displayOrder) || 0,
         isActive: form.isActive,
+        hideFromDestinationsPage: form.hideFromDestinationsPage,
         entryFees: entryFeesResult.value,
         latitude: existing?.latitude ?? null,
         longitude: existing?.longitude ?? null,
@@ -673,19 +680,20 @@ export default function TravelDestinations() {
                   <TableCell>Best Time</TableCell>
                   <TableCell>Images</TableCell>
                   <TableCell>Active</TableCell>
+                  <TableCell>Dest. Page</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={9} align="center">
+                    <TableCell colSpan={10} align="center">
                       <Typography>Loading...</Typography>
                     </TableCell>
                   </TableRow>
                 ) : pageRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} align="center">
+                    <TableCell colSpan={10} align="center">
                       <Typography color="textSecondary">
                         No destinations yet. Click &quot;Add Destination&quot; to create one.
                       </Typography>
@@ -723,6 +731,13 @@ export default function TravelDestinations() {
                           <span className="successBadge">Active</span>
                         ) : (
                           <span className="dangerBadge">Inactive</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {!row.hideFromDestinationsPage ? (
+                          <span className="successBadge">Yes</span>
+                        ) : (
+                          <span className="dangerBadge">No</span>
                         )}
                       </TableCell>
                       <TableCell align="right">
@@ -923,7 +938,7 @@ export default function TravelDestinations() {
                     Entry / Ticket Fees (per person)
                   </Typography>
                   <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-                    Add one row per site or location. If you enter a location, the per person fee is required.
+                    Add one row per site or location. Per person is required; per child is optional (used in the custom plan when children are on the trip).
                   </Typography>
                   <Stack spacing={1}>
                     {form.entryFees.map((f, i) => (
@@ -951,6 +966,30 @@ export default function TravelDestinations() {
                           onChange={(e) => {
                             const arr = [...form.entryFees];
                             arr[i] = { ...arr[i], perPersonFee: sanitizeDecimalInput(e.target.value) };
+                            setForm((prev) => ({ ...prev, entryFees: arr }));
+                          }}
+                          onKeyDown={(e) => {
+                            if (
+                              e.key.length === 1 &&
+                              !/[0-9.,]/.test(e.key) &&
+                              !e.ctrlKey &&
+                              !e.metaKey
+                            ) {
+                              e.preventDefault();
+                            }
+                          }}
+                          inputProps={{ inputMode: "decimal", pattern: "[0-9]*\\.?[0-9]*" }}
+                        />
+                        <TextField
+                          label="Per child"
+                          type="text"
+                          inputMode="decimal"
+                          size="small"
+                          sx={{ width: { xs: "100%", sm: 140 } }}
+                          value={f.perChildFee}
+                          onChange={(e) => {
+                            const arr = [...form.entryFees];
+                            arr[i] = { ...arr[i], perChildFee: sanitizeDecimalInput(e.target.value) };
                             setForm((prev) => ({ ...prev, entryFees: arr }));
                           }}
                           onKeyDown={(e) => {
@@ -997,7 +1036,20 @@ export default function TravelDestinations() {
                         onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
                       />
                     }
-                    label="Active (show on website)"
+                    label="Active"
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={form.hideFromDestinationsPage}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, hideFromDestinationsPage: e.target.checked }))
+                        }
+                      />
+                    }
+                    label="Hide from destinations page (still shown in custom plan dropdowns)"
                   />
                 </Grid>
               </Grid>
@@ -1389,13 +1441,14 @@ export default function TravelDestinations() {
                 </Grid>
                 <Grid item xs={12}>
                   <Typography variant="overline" color="textSecondary">
-                    Entry Fees (per person)
+                    Entry Fees
                   </Typography>
                   {(viewing.entryFees || []).length > 0 ? (
                     <Stack spacing={0.5} mt={0.5}>
                       {viewing.entryFees.map((f, i) => (
                         <Typography key={i} variant="body2">
-                          {f.location}: {Number(f.perPersonFee).toFixed(2)}
+                          {f.location}: adult {Number(f.perPersonFee).toFixed(2)}
+                          {f.perChildFee != null && f.perChildFee !== "" ? ` · child ${Number(f.perChildFee).toFixed(2)}` : ""}
                         </Typography>
                       ))}
                       {viewing.entryFee != null && (

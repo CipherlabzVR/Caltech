@@ -24,8 +24,7 @@ import {
   FormControl,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
 import ImageIcon from "@mui/icons-material/Image";
@@ -50,7 +49,11 @@ export default function CompanyHosting() {
     setPageSize,
     setSearch,
     fetchData: fetchHostingFees,
-  } = usePaginatedFetch("Company/GetAllCompanyHostingFees", "", 10, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Company/GetAllCompanyHostingFees", "", 10, false);
 
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -59,24 +62,11 @@ export default function CompanyHosting() {
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [selectedInvoiceUrl, setSelectedInvoiceUrl] = useState("");
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchHostingFees(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchHostingFees(1, search, size);
-  };
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchHostingFees(1, value, pageSize);
-  };
+
+
+
 
   const getStatusName = (status) => {
     switch (Number(status)) {
@@ -140,12 +130,9 @@ export default function CompanyHosting() {
           method: "POST",
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
+            "Content-Type": "application/json" },
           body: JSON.stringify({
-            id: selectedId,
-          }),
-        }
+            id: selectedId }) }
       );
 
       const data = await response.json();
@@ -176,13 +163,10 @@ export default function CompanyHosting() {
           method: "POST",
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
+            "Content-Type": "application/json" },
           body: JSON.stringify({
             id: selectedId,
-            reason: rejectionReason.trim(),
-          }),
-        }
+            reason: rejectionReason.trim() }) }
       );
 
       const data = await response.json();
@@ -419,8 +403,7 @@ export default function CompanyHosting() {
               justifyContent: "center",
               alignItems: "center",
               width: "100%",
-              minHeight: "400px",
-            }}
+              minHeight: "400px" }}
           >
             {selectedInvoiceUrl && (
               <img
@@ -429,8 +412,7 @@ export default function CompanyHosting() {
                 style={{
                   maxWidth: "100%",
                   maxHeight: "70vh",
-                  objectFit: "contain",
-                }}
+                  objectFit: "contain" }}
               />
             )}
           </Box>

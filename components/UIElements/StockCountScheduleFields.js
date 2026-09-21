@@ -5,12 +5,24 @@ export const STOCK_COUNT_FREQUENCY = {
   DAILY: 1,
   MONTHLY: 2,
   YEARLY: 3,
+  WEEKLY: 4,
 };
 
 export const STOCK_COUNT_FREQUENCY_OPTIONS = [
   { value: STOCK_COUNT_FREQUENCY.DAILY, label: "Daily" },
+  { value: STOCK_COUNT_FREQUENCY.WEEKLY, label: "Weekly" },
   { value: STOCK_COUNT_FREQUENCY.MONTHLY, label: "Monthly" },
   { value: STOCK_COUNT_FREQUENCY.YEARLY, label: "Yearly" },
+];
+
+export const WEEKDAY_OPTIONS = [
+  { value: 1, label: "Monday" },
+  { value: 2, label: "Tuesday" },
+  { value: 3, label: "Wednesday" },
+  { value: 4, label: "Thursday" },
+  { value: 5, label: "Friday" },
+  { value: 6, label: "Saturday" },
+  { value: 7, label: "Sunday" },
 ];
 
 export const MONTH_OPTIONS = [
@@ -36,6 +48,8 @@ export const getDefaultStockCountSchedule = () => ({
   dayOfMonth: "",
   month: "",
   day: "",
+  startDay: "",
+  endDay: "",
 });
 
 /** Returns an error message when the schedule is incomplete, otherwise null. */
@@ -49,6 +63,9 @@ export const validateStockCountSchedule = (schedule) => {
   if (schedule.frequency === STOCK_COUNT_FREQUENCY.YEARLY && (!schedule.month || !schedule.day)) {
     return "Please select the month and day of the year for the stock count.";
   }
+  if (schedule.frequency === STOCK_COUNT_FREQUENCY.WEEKLY && !schedule.startDay) {
+    return "Please select the start day for the weekly stock count.";
+  }
   return null;
 };
 
@@ -57,8 +74,15 @@ export const getStockCountFrequencyLabel = (frequency) => {
   return match ? match.label : "Daily";
 };
 
-/** Human readable schedule, e.g. "Every day", "Day 15 of every month", "Every year on March 15". */
-export const getStockCountScheduleLabel = (frequency, dayOfMonth, month, day) => {
+/** Human readable schedule, e.g. "Every day", "Every week on Monday". */
+export const getStockCountScheduleLabel = (
+  frequency,
+  dayOfMonth,
+  month,
+  day,
+  startDay,
+  endDay
+) => {
   if (frequency === STOCK_COUNT_FREQUENCY.MONTHLY) {
     return dayOfMonth ? `Day ${dayOfMonth} of every month` : "Monthly";
   }
@@ -66,12 +90,16 @@ export const getStockCountScheduleLabel = (frequency, dayOfMonth, month, day) =>
     const monthLabel = MONTH_OPTIONS.find((m) => m.value === month)?.label;
     return monthLabel && day ? `Every year on ${monthLabel} ${day}` : "Yearly";
   }
+  if (frequency === STOCK_COUNT_FREQUENCY.WEEKLY) {
+    const startLabel = WEEKDAY_OPTIONS.find((d) => d.value === startDay)?.label;
+    return startLabel ? `Every week on ${startLabel}` : "Weekly";
+  }
   return "Every day";
 };
 
 /**
  * Controlled fields for the stock count schedule.
- * schedule: { frequency, dayOfMonth, month, day }
+ * schedule: { frequency, dayOfMonth, month, day, startDay, endDay }
  */
 export default function StockCountScheduleFields({ schedule, onChange }) {
   const value = schedule || getDefaultStockCountSchedule();
@@ -86,6 +114,8 @@ export default function StockCountScheduleFields({ schedule, onChange }) {
       dayOfMonth: "",
       month: "",
       day: "",
+      startDay: "",
+      endDay: "",
     });
   };
 
@@ -109,6 +139,27 @@ export default function StockCountScheduleFields({ schedule, onChange }) {
           ))}
         </TextField>
       </Grid>
+
+      {value.frequency === STOCK_COUNT_FREQUENCY.WEEKLY && (
+        <Grid item xs={12} lg={6}>
+          <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>
+            Start Day
+          </Typography>
+          <TextField
+            select
+            fullWidth
+            size="small"
+            value={value.startDay || ""}
+            onChange={(e) => update({ startDay: e.target.value })}
+          >
+            {WEEKDAY_OPTIONS.map((d) => (
+              <MenuItem key={d.value} value={d.value}>
+                {d.label}
+              </MenuItem>
+            ))}
+          </TextField>
+        </Grid>
+      )}
 
       {value.frequency === STOCK_COUNT_FREQUENCY.MONTHLY && (
         <Grid item xs={12} lg={6}>

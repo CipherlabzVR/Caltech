@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -105,23 +106,26 @@ export default function UpcomingProducts() {
     fetchItemsList(page, searchTerm, pageSize);
   }, [fetchItemsList, page, pageSize, searchTerm]);
 
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: () => {},
+  });
+
   const refreshItemTableLookups = useCallback(() => {
     refetchItemDetails?.();
   }, [refetchItemDetails]);
-
-  const handleSearchChange = (event) => {
-    setSearchTerm(event.target.value);
-    setPage(1);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-  };
-
-  const handlePageSizeChange = (event) => {
-    setPageSize(event.target.value);
-    setPage(1);
-  };
 
   if (!navigate) {
     return <AccessDenied />;

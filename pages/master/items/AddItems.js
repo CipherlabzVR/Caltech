@@ -112,6 +112,10 @@ function buildItemsValidationSchema(isSubCategoryNotRequired, isUOMNotRequired) 
           return n >= 0;
         }
       ),
+    DisplayOrder: Yup.number()
+      .transform((_, orig) => transformEmptyToUndefinedNumber(orig))
+      .min(0, "Display Order cannot be negative")
+      .required("Display Order is required"),
   });
 }
 
@@ -133,6 +137,12 @@ function mapApiItemToDuplicateFormValues(src) {
       const r = pick("reorderLevel", "ReorderLevel");
       if (r == null || r === "") return null;
       const n = Number(r);
+      return Number.isNaN(n) ? null : Math.max(0, n);
+    })(),
+    DisplayOrder: (() => {
+      const v = pick("displayOrder", "DisplayOrder");
+      if (v == null || v === "") return null;
+      const n = Number(v);
       return Number.isNaN(n) ? null : Math.max(0, n);
     })(),
     CategoryId: pick("categoryId", "CategoryId") ?? "",
@@ -168,6 +178,7 @@ function getAddItemEmptyFormValues(code, upcomingMode = false) {
     WholesaleMinimumQuantity: null,
     ShipmentTarget: null,
     ReorderLevel: null,
+    DisplayOrder: null,
     CategoryId: "",
     SubCategoryId: "",
     Supplier: "",
@@ -211,6 +222,7 @@ const DUPLICATE_FORM_NUMERIC_KEYS = new Set([
   "WholesaleMinimumQuantity",
   "ShipmentTarget",
   "ReorderLevel",
+  "DisplayOrder",
   "CategoryId",
   "SubCategoryId",
   "Supplier",
@@ -532,6 +544,8 @@ export default function AddItems({
               dayOfMonth: s?.dayOfMonth ?? "",
               month: s?.scheduleMonth ?? "",
               day: s?.scheduleDay ?? "",
+              startDay: s?.startDayOfWeek ?? "",
+              endDay: s?.endDayOfWeek ?? "",
             });
           } else {
             setStockCountSchedule(getDefaultStockCountSchedule());
@@ -805,6 +819,14 @@ export default function AddItems({
         formData.append("ReorderLevel", String(rlNum));
       }
     }
+    {
+      const d = values.DisplayOrder;
+      const dNum =
+        d != null && d !== "" ? Math.max(0, Number(d)) : null;
+      if (dNum != null && !Number.isNaN(dNum)) {
+        formData.append("DisplayOrder", String(dNum));
+      }
+    }
     formData.append("CategoryId", values.CategoryId);
     if (values.SubCategoryId !== "" && values.SubCategoryId != null) {
       formData.append("SubCategoryId", values.SubCategoryId);
@@ -850,6 +872,11 @@ export default function AddItems({
         }
         if (stockCountSchedule.day) {
           formData.append("StockCountDay", stockCountSchedule.day);
+        }
+      }
+      if (stockCountSchedule.frequency === STOCK_COUNT_FREQUENCY.WEEKLY) {
+        if (stockCountSchedule.startDay) {
+          formData.append("StockCountStartDayOfWeek", stockCountSchedule.startDay);
         }
       }
     }
@@ -1510,6 +1537,38 @@ export default function AddItems({
                               )}
                             </Field>
                           </FormControl>
+                        </Grid>
+                        <Grid item xs={12} lg={6} mt={1}>
+                          <Typography
+                            sx={{
+                              fontWeight: "500",
+                              fontSize: "14px",
+                              mb: "5px",
+                            }}
+                          >
+                            Display Order
+                          </Typography>
+                          <Field
+                            as={TextField}
+                            fullWidth
+                            name="DisplayOrder"
+                            size="small"
+                            type="number"
+                            inputProps={{ min: 0, step: 1 }}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              if (value === "") {
+                                setFieldValue("DisplayOrder", null);
+                                return;
+                              }
+                              const n = Number(value);
+                              if (!Number.isNaN(n)) {
+                                setFieldValue("DisplayOrder", Math.max(0, n));
+                              }
+                            }}
+                            error={touched.DisplayOrder && Boolean(errors.DisplayOrder)}
+                            helperText={touched.DisplayOrder && errors.DisplayOrder}
+                          />
                         </Grid>
                         {barcodeEnabled && (
                           <Grid item xs={12} lg={6} mt={1}>

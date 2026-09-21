@@ -129,11 +129,31 @@ import { useRouter } from "next/router";
 import { ProjectNo } from "Base/catelogue";
 import BASE_URL from "Base/api";
 import Calendar from "./reservation/calendar";
+
+if (typeof window !== "undefined" && !window.__apexFrontendOriginPatched) {
+  window.__apexFrontendOriginPatched = true;
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = (input, init = {}) => {
+    const headers = new Headers(
+      init.headers || (typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined)
+    );
+    const origin = window.location?.origin || "";
+    if (origin && !headers.has("X-Frontend-Origin")) {
+      headers.set("X-Frontend-Origin", origin);
+    }
+    return originalFetch(input, { ...init, headers });
+  };
+}
 import getSettingValueByName from "@/components/utils/getSettingValueByName";
 import logoutUser, { touchSessionActivity } from "@/components/utils/logoutUser";
 
 
-const DEFAULT_INACTIVITY_TIMEOUT_MINUTES = 12 * 60;
+/**
+ * Backoffice idle auto-logout: no mouse/keyboard/scroll/touch activity for this long
+ * triggers `logoutUser`. Administrator setting `AutoLogoutTimeMinutes` may use a
+ * shorter value; values above this cap are treated as this cap (legacy DB default was 720).
+ */
+const MAX_INACTIVITY_IDLE_MINUTES = 30;
 
 function MyApp({ Component, pageProps }) {
   const router = useRouter();
@@ -142,15 +162,18 @@ function MyApp({ Component, pageProps }) {
   const [hydrated, setHydrated] = useState(false);
   const [landingVisible, setLandingVisible] = useState(true);
   const [landingSlideUp, setLandingSlideUp] = useState(false);
+  const [splashBannerUrl, setSplashBannerUrl] = useState("");
   const inactivityTimerRef = useRef(null);
   const hasLoggedOutRef = useRef(false);
   const { data: autoLogoutTimeMinutes } = getSettingValueByName("AutoLogoutTimeMinutes");
   const parsedAutoLogoutMinutes = Number.parseInt(`${autoLogoutTimeMinutes ?? ""}`, 10);
-  const INACTIVITY_TIMEOUT_MS =
+  const configuredIdleMinutes =
     !Number.isNaN(parsedAutoLogoutMinutes) && parsedAutoLogoutMinutes > 0
-      ? parsedAutoLogoutMinutes * 60 * 1000
-      : DEFAULT_INACTIVITY_TIMEOUT_MINUTES * 60 * 1000;
-
+      ? parsedAutoLogoutMinutes
+      : MAX_INACTIVITY_IDLE_MINUTES;
+  const effectiveIdleMinutes = Math.min(configuredIdleMinutes, MAX_INACTIVITY_IDLE_MINUTES);
+  const INACTIVITY_TIMEOUT_MS = effectiveIdleMinutes * 60 * 1000;
+  
 
   const markActivity = useCallback(() => {
     if (typeof window === "undefined") {
@@ -198,6 +221,19 @@ function MyApp({ Component, pageProps }) {
 
     window.addEventListener("wheel", handleWheel, { passive: false });
     return () => window.removeEventListener("wheel", handleWheel);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const origin = window.location.origin;
+    fetch(`${BASE_URL}/Company/GetActiveSplashBanner?origin=${encodeURIComponent(origin)}`)
+      .then((response) => response.json())
+      .then((data) => {
+        const payload = data?.result || data?.data || data;
+        const url = payload?.imageUrl || payload?.ImageUrl || "";
+        if (url) setSplashBannerUrl(url);
+      })
+      .catch(() => {});
   }, []);
 
   // Self-register this site's origin with the ERP backend so CORS allows it.
@@ -488,7 +524,10 @@ function MyApp({ Component, pageProps }) {
     "/sales/invoice/print",
     "/sales/deposit/print",
     "/sales/credit-note/print",
-    "/finance/payments/print"
+    "/finance/payments/print",
+    "/photography-portal",
+    "/photography-portal/login",
+    "/photography/board/display",
   ];
 
   // trailingSlash: true can leave a trailing "/" on asPath; normalize so print pages
@@ -534,11 +573,16 @@ function MyApp({ Component, pageProps }) {
   }
 
   if (token == null && landingVisible && shouldCheckToken) {
+    const defaultSplash = ProjectNo === 1 ? "/images/cbass-2.png" : "/images/DBlogo.png";
+    const hasCustomSplash = Boolean(splashBannerUrl);
     return (
-      <div className={`landing-page ${landingSlideUp ? "slide-up" : ""}`}>
+      <div className={`landing-page ${landingSlideUp ? "slide-up" : ""} ${hasCustomSplash ? "landing-page--fullscreen" : ""}`}>
         <div className="landing-content">
-          {ProjectNo === 1 ? <img src="/images/cbass-2.png" alt="Logo" className="landing-logo" /> : <img src="/images/DBlogo.png" alt="Logo" className="landing-logo" />}
-
+          <img
+            src={splashBannerUrl || defaultSplash}
+            alt="Splash banner"
+            className={hasCustomSplash ? "landing-logo landing-logo--fullscreen" : "landing-logo"}
+          />
         </div>
       </div>
     );

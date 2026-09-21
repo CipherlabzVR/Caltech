@@ -18,8 +18,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Chip,
-} from "@mui/material";
+  Chip } from "@mui/material";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import { toast, ToastContainer } from "react-toastify";
@@ -39,8 +38,7 @@ const getLevelLabel = (level) => {
     3: "Building",
     4: "Floor",
     5: "Room",
-    6: "Bay/Rack",
-  };
+    6: "Bay/Rack" };
   return labels[level] || `Level ${level}`;
 };
 
@@ -51,8 +49,7 @@ const getLevelColor = (level) => {
     3: "info",
     4: "primary",
     5: "success",
-    6: "default",
-  };
+    6: "default" };
   return colors[level] || "default";
 };
 
@@ -70,7 +67,11 @@ const AssetLocations = () => {
     setPageSize,
     setSearch,
     fetchData: fetchLocations,
-  } = usePaginatedFetch("asset-locations/GetAllPage", "", 10, true, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("asset-locations/GetAllPage", "", 10, true, false);
 
   // Load location tree for parent dropdown in create/edit modals
   const [locationTree, setLocationTree] = useState([]);
@@ -82,9 +83,7 @@ const AssetLocations = () => {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
       if (res.ok) {
         const data = await res.json();
         if (data.result) {
@@ -107,23 +106,11 @@ const AssetLocations = () => {
     loadTree();
   };
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchLocations(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchLocations(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchLocations(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;

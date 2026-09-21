@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import { useRouter } from "next/router";
@@ -422,21 +423,29 @@ export default function EmployeeOnboardingList() {
     fetchList(page, pageSize);
   }, [fetchList, page, pageSize]);
 
-  const handlePageChange = (_, value) => {
-    setPage(value);
-  };
 
-  const handlePageSizeChange = (e) => {
-    const size = e.target.value;
-    setPageSize(size);
-    setPage(1);
-  };
 
-  const handleSearchChange = (e) => {
-    setPage(1);
-    setSearchQuery(e.target.value);
-  };
 
+
+
+
+
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: pageSize,
+    totalCount,
+    search: searchQuery,
+    setPage,
+    setPageSize: setPageSize,
+    onSearchValueChange: setSearchQuery,
+    onFetch: () => {},
+  });
   const handleStatusFilterChange = (e) => {
     setPage(1);
     setStatusFilter(e.target.value);

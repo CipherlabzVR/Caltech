@@ -523,9 +523,9 @@ export default function ShipmentPrintPage() {
               <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint} sx={{ textTransform: "none" }}>
                 Print
               </Button>
-              <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleDownloadPDF} sx={{ textTransform: "none" }}>
+              {/* <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleDownloadPDF} sx={{ textTransform: "none" }}>
                 Download PDF
-              </Button>
+              </Button> */}
             </Box>
           </Box>
         </Box>

@@ -159,8 +159,21 @@ const POCreate = () => {
           ExpDate: row.expDate,
           Qty: row.quantity,
           UnitPrice: row.unitPrice ? parseFloat(row.unitPrice) : 0,
-          AdditionalCost: row.freightDutyCost ? parseFloat(row.freightDutyCost) : 0,
-          CostPrice: row.costPrice ? parseFloat(row.costPrice) : 0,
+          // Local PO has no freight/transport — AdditionalCost stays 0
+          AdditionalCost:
+            poType === "1"
+              ? 0
+              : row.freightDutyCost
+                ? parseFloat(row.freightDutyCost)
+                : 0,
+          CostPrice:
+            poType === "1"
+              ? row.unitPrice
+                ? parseFloat(row.unitPrice)
+                : 0
+              : row.costPrice
+                ? parseFloat(row.costPrice)
+                : 0,
           Status: "Approval",
           Remark: row.remark,
           ReceivedQty: 0,
@@ -594,7 +607,6 @@ const POCreate = () => {
                       {poType === "1" && (
                         <>
                           <TableCell sx={{ color: "#fff" }}>Unit&nbsp;Price</TableCell>
-                          <TableCell sx={{ color: "#fff" }}>Freight&nbsp;Duty && Transport</TableCell>
                           <TableCell sx={{ color: "#fff" }}>Cost&nbsp;Price</TableCell>
                         </>
                       )}
@@ -701,25 +713,10 @@ const POCreate = () => {
                                 onChange={(e) => {
                                   const updatedRows = [...selectedRows];
                                   const unitPrice = parseFloat(e.target.value) || 0;
-                                  const freightCost = parseFloat(updatedRows[index].freightDutyCost) || 0;
                                   updatedRows[index].unitPrice = e.target.value;
-                                  updatedRows[index].costPrice = (unitPrice + freightCost).toFixed(2);
-                                  setSelectedRows(updatedRows);
-                                }}
-                              />
-                            </TableCell>
-                            <TableCell sx={{ p: 1 }}>
-                              <TextField
-                                sx={{ width: "120px" }}
-                                type="number"
-                                size="small"
-                                value={row.freightDutyCost || ""}
-                                onChange={(e) => {
-                                  const updatedRows = [...selectedRows];
-                                  const freightCost = parseFloat(e.target.value) || 0;
-                                  const unitPrice = parseFloat(updatedRows[index].unitPrice) || 0;
-                                  updatedRows[index].freightDutyCost = e.target.value;
-                                  updatedRows[index].costPrice = (unitPrice + freightCost).toFixed(2);
+                                  // Local PO: cost price equals unit price (no freight)
+                                  updatedRows[index].freightDutyCost = 0;
+                                  updatedRows[index].costPrice = unitPrice.toFixed(2);
                                   setSelectedRows(updatedRows);
                                 }}
                               />

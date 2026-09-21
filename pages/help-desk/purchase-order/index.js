@@ -17,8 +17,7 @@ import {
   FormControl,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
@@ -65,25 +64,17 @@ export default function HelpDeskPurchaseOrder() {
     setPageSize,
     setSearch,
     fetchData: fetchPOList,
-  } = usePaginatedFetch("HelpDesk/GetAllPurchaseOrders", "", 10, true, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("HelpDesk/GetAllPurchaseOrders", "", 10, true, false);
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchPOList(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchPOList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchPOList(1, search, size);
-  };
+
+
+
 
   return (
     <>

@@ -1,3 +1,7 @@
+.subMenu {
+  width: 100%;
+}
+
 .sidebarLink {
   display: flex;
   color: #260944;
@@ -10,6 +14,27 @@
   font-weight: 500;
   margin-top: 3px;
   margin-bottom: 3px;
+}
+
+/* Nested sub-menu group header */
+.nestedGroup {
+  background: linear-gradient(90deg, rgba(79, 70, 229, 0.08) 0%, rgba(79, 70, 229, 0.03) 100%);
+  border-left: 3px solid #4F46E5;
+  margin-left: 10px;
+  margin-right: 5px;
+  font-weight: 600;
+}
+
+/* Nested sub-menu items (children of groups) */
+.nestedItem {
+  margin-left: 25px;
+  padding-left: 15px;
+  border-left: 1px solid #e0e0e0;
+  font-size: 13.5px;
+}
+
+.nestedItem:hover {
+  border-left-color: #4F46E5;
 }
 .sidebarLink svg {
   fill: #818093;

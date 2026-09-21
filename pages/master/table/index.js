@@ -1,4 +1,4 @@
-import React, { } from "react";
+import React from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -32,29 +32,13 @@ export default function DinningTables() {
     setPageSize,
     setSearch,
     fetchData: fetchTableList,
-  } = usePaginatedFetch("DiningTable/GetAllTables");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("DiningTable/GetAllTables");
 
-  const controller = "DiningTable/DeleteTable";
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchTableList(1, event.target.value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchTableList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchTableList(1, search, size);
-  };
-
-  if (!navigate) {
+  const controller = "DiningTable/DeleteTable";  if (!navigate) {
     return <AccessDenied />;
   }
 

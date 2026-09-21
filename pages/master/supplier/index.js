@@ -48,31 +48,21 @@ export default function Supplier() {
     setPageSize,
     setSearch,
     fetchData: fetchSupplierList,
-  } = usePaginatedFetch("Supplier/GetAll");
-
-  useEffect(() => {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Supplier/GetAll");  useEffect(() => {
     if (isSettingEnabled) {
       setIsPOSSystem(isSettingEnabled);
     }
   }, [isSettingEnabled]);
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchSupplierList(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchSupplierList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchSupplierList(1, search, size);
-  };
+
+
+
 
   useEffect(() => {
     if (warehouseList) {
@@ -98,9 +88,7 @@ export default function Supplier() {
         method: "GET",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
 
       if (!response.ok) {
         throw new Error("Failed to fetch");

@@ -1,19 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Grid from "@mui/material/Grid";
 import {
-  Box,
-  Button,
-  MenuItem,
-  Paper,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  Typography,
+    Box,
+    Button,
+    MenuItem,
+    Paper,
+    Select,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+    TextField,
+    Typography,
 } from "@mui/material";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
@@ -27,89 +27,109 @@ import LoadingButton from "@/components/UIElements/Buttons/LoadingButton";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 
 const ShipmentEdit = () => {
-  const [shipmentLineDetails, setShipmentLineDetails] = useState([]);
-  const [isDisable, setIsDisable] = useState(false);
-  const [userEnteredZeros, setUserEnteredZeros] = useState(new Set());
-  const [order, setOrder] = useState({});
-  const [referenceNo, setReferenceNo] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [remark, setRemark] = useState("");
-  const [status, setStatus] = useState(null);
-  const [currencyId, setCurrencyId] = useState("");
-  const [exchangeRateInput, setExchangeRateInput] = useState("");
-  const [localTransport, setLocalTransport] = useState("");
-  const [freightDuty, setFreightDuty] = useState("");
-  const [currencies, setCurrencies] = useState([]);
-  const router = useRouter();
-  const { data: isSupplierInvolvedToShipment } = IsAppSettingEnabled(
-    "IsSupplierInvolvedToShipment"
-  );
-  const showSupplierFields = isSupplierInvolvedToShipment === true;
+    const [shipmentLineDetails, setShipmentLineDetails] = useState([]);
+    const [isDisable, setIsDisable] = useState(false);
+    const [userEnteredZeros, setUserEnteredZeros] = useState(new Set());
+    const [order, setOrder] = useState({});
+    const [referenceNo, setReferenceNo] = useState("");
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [remark, setRemark] = useState("");
+    const [status, setStatus] = useState(null);
+    const [currencyId, setCurrencyId] = useState("");
+    const [exchangeRateInput, setExchangeRateInput] = useState("");
+    const [localTransport, setLocalTransport] = useState("");
+    const [freightDuty, setFreightDuty] = useState("");
+    const [currencies, setCurrencies] = useState([]);
+    const router = useRouter();
+    const { data: isSupplierInvolvedToShipment } = IsAppSettingEnabled(
+        "IsSupplierInvolvedToShipment"
+    );
+    const showSupplierFields = isSupplierInvolvedToShipment === true;
 
   const round2 = (value) =>
-    Math.round((value + Number.EPSILON) * 100) / 100;
+    Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
+  const amountsMatchIgnoringDecimals = (left, right) => {
+    const a = round2(left);
+    const b = round2(right);
+    return Math.abs(a - b) < 1;
+  };
+
+  const toTwoDecimals = (value) => {
+    if (value === null || value === undefined || value === "") return "";
+    const number = Number(value);
+    if (isNaN(number)) return "";
+    return round2(number).toFixed(2);
+  };
 
   const sumQtyWeightedCost = (lines, field) =>
     lines.reduce(
       (sum, row) =>
         sum +
-        (parseFloat(row[field]) || 0) * (parseFloat(row.qty) || 0),
+        (parseFloat(row[field]) || 0) * (parseFloat(row.receivedQty) || 0),
       0
     );
+
+  const getTotalReceivedQty = (lines) =>
+    lines.reduce((sum, row) => sum + (parseFloat(row.receivedQty) || 0), 0);
 
   const effectiveExchangeRate = useMemo(() => {
     const rate = parseFloat(exchangeRateInput);
     if (isNaN(rate) || rate <= 0) {
       return null;
     }
-    return rate;
+    return round2(rate);
   }, [exchangeRateInput]);
 
-  const isExchangeRateInvalid =
-    showSupplierFields &&
-    (!exchangeRateInput ||
-      exchangeRateInput === "" ||
-      effectiveExchangeRate == null);
+    const isExchangeRateInvalid =
+        showSupplierFields &&
+        (!exchangeRateInput ||
+            exchangeRateInput === "" ||
+            effectiveExchangeRate == null);
 
   const getCalculatedUnitPrice = (row) => {
     if (!showSupplierFields) {
-      return row.unitPrice;
+      return row.unitPrice == null || row.unitPrice === ""
+        ? null
+        : round2(row.unitPrice);
     }
     if (row.supplierUnitPrice == null || effectiveExchangeRate == null) {
       return null;
     }
-    return parseFloat(row.supplierUnitPrice) * effectiveExchangeRate;
+    return round2(parseFloat(row.supplierUnitPrice) * effectiveExchangeRate);
   };
 
   const applyLineTotals = (row) => {
     const unitPrice = getCalculatedUnitPrice(row);
-    const freightDutyCost = row.freightDutyCost || 0;
-    const receivedQty = row.receivedQty || 0;
+    const freightDutyCost = round2(row.freightDutyCost || 0);
+    const receivedQty = parseFloat(row.receivedQty) || 0;
+    const additionalCost = round2(row.additionalCost || 0);
 
     if (showSupplierFields) {
-      const additionalCost = row.additionalCost || 0;
-      const localTransportCost = row.localTransportCost || 0;
-      const orderedQty = parseFloat(row.qty) || 0;
-      const unitAndFreight = (unitPrice || 0) + freightDutyCost;
+      const localTransportCost = round2(row.localTransportCost || 0);
+      const cost = round2(
+        (unitPrice || 0) + additionalCost + localTransportCost + freightDutyCost
+      );
       return {
         ...row,
         unitPrice,
-        costPrice: unitAndFreight,
-        lineTotal:
-          receivedQty * unitAndFreight +
-          additionalCost * orderedQty +
-          localTransportCost * orderedQty,
+        additionalCost,
+        localTransportCost,
+        freightDutyCost,
+        costPrice: cost,
+        lineTotal: round2(receivedQty * cost),
       };
     }
 
-    const additionalCost = row.additionalCost || 0;
-    const cost = (unitPrice || 0) + additionalCost + freightDutyCost;
+    const cost = round2((unitPrice || 0) + additionalCost + freightDutyCost);
 
     return {
       ...row,
       unitPrice,
+      additionalCost,
+      freightDutyCost,
       costPrice: cost,
-      lineTotal: receivedQty * cost,
+      lineTotal: round2(receivedQty * cost),
     };
   };
 
@@ -120,12 +140,9 @@ const ShipmentEdit = () => {
     freightDutyVal,
     exchangeRate
   ) => {
-    const totalOrderedQty = lines.reduce(
-      (sum, row) => sum + (parseFloat(row.qty) || 0),
-      0
-    );
+    const totalReceivedQty = getTotalReceivedQty(lines);
 
-    if (totalOrderedQty <= 0 || lines.length === 0) {
+    if (totalReceivedQty <= 0 || lines.length === 0) {
       return lines.map((row) =>
         applyLineTotals({
           ...row,
@@ -140,21 +157,22 @@ const ShipmentEdit = () => {
       (parseFloat(overseasTransportVal) || 0) * (parseFloat(exchangeRate) || 0);
     const localTotal = parseFloat(localTransportVal) || 0;
     const freightTotal = parseFloat(freightDutyVal) || 0;
-    const overseasUnitCost = round2(overseasTotal / totalOrderedQty);
-    const localUnitCost = round2(localTotal / totalOrderedQty);
-    const freightUnitCost = round2(freightTotal / totalOrderedQty);
+    const overseasUnitCost = round2(overseasTotal / totalReceivedQty);
+    const localUnitCost = round2(localTotal / totalReceivedQty);
+    const freightUnitCost = round2(freightTotal / totalReceivedQty);
 
-    return lines
-      .map((row) => ({
-        ...row,
-        additionalCost: overseasUnitCost,
-        localTransportCost: localUnitCost,
-        freightDutyCost: freightUnitCost,
-      }))
-      .map((row) => applyLineTotals(row));
-  };
+        return lines
+            .map((row) => ({
+                ...row,
+                additionalCost: overseasUnitCost,
+                localTransportCost: localUnitCost,
+                freightDutyCost: freightUnitCost,
+            }))
+            .map((row) => applyLineTotals(row));
+    };
 
   const recalculateAllLines = (lines) => lines.map((row) => applyLineTotals(row));
+  const COMPLETED_STATUS = 7;
   const shipmentStatusTypes = [
     { name: "Order", value: 1 },
     { name: "Invoice", value: 2 },
@@ -165,71 +183,69 @@ const ShipmentEdit = () => {
     { name: "Completed", value: 7 },
   ];
 
-  const navigateToBack = () => {
-    router.push({
-      pathname: "/inventory/shipment",
-    });
-  };
-  const { id } = router.query;
+    const navigateToBack = () => {
+        router.back();
+    };
+    const { id } = router.query;
 
-  const fetchCurrencies = async () => {
-    try {
-      const response = await fetch(
-        `${BASE_URL}/Currency/GetAllCurrency?SkipCount=0&MaxResultCount=1000&Search=null`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
+    const fetchCurrencies = async () => {
+        try {
+            const response = await fetch(
+                `${BASE_URL}/Currency/GetAllCurrency?SkipCount=0&MaxResultCount=1000&Search=null`,
+                {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${localStorage.getItem("token")}`,
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error("Failed to fetch currencies");
+            }
+
+            const data = await response.json();
+            let list = [];
+            if (data.result?.items) {
+                list = data.result.items;
+            } else if (Array.isArray(data.result)) {
+                list = data.result;
+            }
+            setCurrencies(list.filter((currency) => currency.isActive !== false));
+        } catch (error) {
+            console.error("Error fetching currencies:", error);
         }
-      );
+    };
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch currencies");
-      }
+    const fetchShipmentNote = async () => {
+        try {
+            const response = await fetch(
+                `${BASE_URL}/ShipmentNote/GetShipmentOrderById?id=${id}`,
+                {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${localStorage.getItem("token")}`,
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
 
-      const data = await response.json();
-      let list = [];
-      if (data.result?.items) {
-        list = data.result.items;
-      } else if (Array.isArray(data.result)) {
-        list = data.result;
-      }
-      setCurrencies(list.filter((currency) => currency.isActive !== false));
-    } catch (error) {
-      console.error("Error fetching currencies:", error);
-    }
-  };
+            if (!response.ok) {
+                throw new Error("Failed to fetch");
+            }
 
-  const fetchShipmentNote = async () => {
-    try {
-      const response = await fetch(
-        `${BASE_URL}/ShipmentNote/GetShipmentOrderById?id=${id}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
+            const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch");
-      }
-
-      const data = await response.json();
-
-      const result = data.result;
-      const shipmentDetailsWithLineTotal = result.shipmentNoteLineDetails.map(
-        (row) => ({
-          ...row,
-          receivedQty: row.receivedQty === 0 ? null : row.receivedQty,
-          unitPrice: row.unitPrice === 0 ? null : row.unitPrice,
-          damagedQty: row.damagedQty || null,
-        })
-      );
+            const result = data.result;
+            const shipmentDetailsWithLineTotal = result.shipmentNoteLineDetails.map(
+                (row) => ({
+                    ...row,
+                    receivedQty: row.receivedQty === 0 ? null : row.receivedQty,
+                    unitPrice: row.unitPrice === 0 ? null : row.unitPrice,
+                    damagedQty: row.damagedQty || null,
+                })
+            );
 
       setOrder(data.result);
       setReferenceNo(result.referanceNo);
@@ -238,21 +254,22 @@ const ShipmentEdit = () => {
       setCurrencyId(result.currencyId ?? "");
       setLocalTransport(
         result.localTransport != null && result.localTransport !== ""
-          ? String(result.localTransport)
+          ? toTwoDecimals(result.localTransport)
           : ""
       );
       const loadedFreightDutyTotal = shipmentDetailsWithLineTotal.reduce(
         (sum, row) =>
           sum +
-          (parseFloat(row.freightDutyCost) || 0) * (parseFloat(row.qty) || 0),
+          (parseFloat(row.freightDutyCost) || 0) *
+            (parseFloat(row.receivedQty) || 0),
         0
       );
       setFreightDuty(
-        loadedFreightDutyTotal > 0 ? String(round2(loadedFreightDutyTotal)) : ""
+        loadedFreightDutyTotal > 0 ? toTwoDecimals(loadedFreightDutyTotal) : ""
       );
       setExchangeRateInput(
         result.exchangeRate != null && result.exchangeRate !== ""
-          ? String(result.exchangeRate)
+          ? toTwoDecimals(result.exchangeRate)
           : ""
       );
       setShipmentLineDetails(shipmentDetailsWithLineTotal);
@@ -266,45 +283,51 @@ const ShipmentEdit = () => {
     }
   }, [id]);
 
-  useEffect(() => {
-    if (showSupplierFields) {
-      fetchCurrencies();
-    }
-  }, [showSupplierFields]);
+    useEffect(() => {
+        if (showSupplierFields) {
+            fetchCurrencies();
+        }
+    }, [showSupplierFields]);
 
-  useEffect(() => {
-    if (shipmentLineDetails.length === 0) return;
-    setShipmentLineDetails((prev) => {
-      if (showSupplierFields) {
-        return recalculateDistributions(
-          prev,
-          order.overseasTransport,
-          localTransport,
-          freightDuty,
-          effectiveExchangeRate
-        );
-      }
-      return recalculateAllLines(prev);
-    });
-  }, [
-    showSupplierFields,
-    currencyId,
-    effectiveExchangeRate,
-    localTransport,
-    freightDuty,
-    order.overseasTransport,
-  ]);
+    useEffect(() => {
+        if (shipmentLineDetails.length === 0) return;
+        setShipmentLineDetails((prev) => {
+            if (showSupplierFields) {
+                return recalculateDistributions(
+                    prev,
+                    order.overseasTransport,
+                    localTransport,
+                    freightDuty,
+                    effectiveExchangeRate
+                );
+            }
+            return recalculateAllLines(prev);
+        });
+    }, [
+        showSupplierFields,
+        currencyId,
+        effectiveExchangeRate,
+        localTransport,
+        freightDuty,
+        order.overseasTransport,
+    ]);
 
-  const handleCurrencyChange = (newCurrencyId) => {
-    setCurrencyId(newCurrencyId);
-  };
+    const handleCurrencyChange = (newCurrencyId) => {
+        setCurrencyId(newCurrencyId);
+    };
 
-  const handleChange = (index, field, value) => {
-    if (showSupplierFields && field === "unitPrice") {
-      return;
-    }
+    const handleChange = (index, field, value) => {
+        if (showSupplierFields && field === "unitPrice") {
+            return;
+        }
 
     const updatedShipmentLineDetails = [...shipmentLineDetails];
+
+    if (field === "remark") {
+      updatedShipmentLineDetails[index].remark = value;
+      setShipmentLineDetails(updatedShipmentLineDetails);
+      return;
+    }
     
     if (field === "damagedQty") {
       const maxDamagedQty =
@@ -346,70 +369,80 @@ const ShipmentEdit = () => {
     }
     updatedShipmentLineDetails[index][field] = parsedValue;
 
+    if (showSupplierFields && field === "receivedQty") {
+      setShipmentLineDetails(
+        recalculateDistributions(
+          updatedShipmentLineDetails,
+          order.overseasTransport,
+          localTransport,
+          freightDuty,
+          effectiveExchangeRate
+        )
+      );
+      return;
+    }
+
     updatedShipmentLineDetails[index] = applyLineTotals(
       updatedShipmentLineDetails[index]
     );
 
-    setShipmentLineDetails(updatedShipmentLineDetails);
-  };
+        setShipmentLineDetails(updatedShipmentLineDetails);
+    };
 
-  const finalTotal = shipmentLineDetails.reduce(
-    (total, row) => total + row.lineTotal,
-    0
-  );
-
-  const additionalCostTotal = useMemo(() => {
-    if (showSupplierFields) {
-      return sumQtyWeightedCost(shipmentLineDetails, "additionalCost");
-    }
-    return shipmentLineDetails.reduce(
-      (sum, row) =>
-        sum +
-        (parseFloat(row.additionalCost) || 0) *
-          (parseFloat(row.receivedQty) || 0),
-      0
-    );
-  }, [shipmentLineDetails, showSupplierFields]);
-
-  const localTransportCostTotal = useMemo(
-    () =>
-      showSupplierFields
-        ? sumQtyWeightedCost(shipmentLineDetails, "localTransportCost")
-        : 0,
-    [shipmentLineDetails, showSupplierFields]
-  );
-
-  const freightDutyTotal = useMemo(
-    () =>
-      shipmentLineDetails.reduce(
-        (sum, row) =>
-          sum +
-          (parseFloat(row.freightDutyCost) || 0) *
-            (parseFloat(row.receivedQty) || 0),
+    const finalTotal = shipmentLineDetails.reduce(
+        (total, row) => total + row.lineTotal,
         0
-      ),
-    [shipmentLineDetails]
-  );
+    );
+
+    const additionalCostTotal = useMemo(() => {
+        if (showSupplierFields) {
+            return sumQtyWeightedCost(shipmentLineDetails, "additionalCost");
+        }
+        return shipmentLineDetails.reduce(
+            (sum, row) =>
+                sum +
+                (parseFloat(row.additionalCost) || 0) *
+                (parseFloat(row.receivedQty) || 0),
+            0
+        );
+    }, [shipmentLineDetails, showSupplierFields]);
+
+    const localTransportCostTotal = useMemo(
+        () =>
+            showSupplierFields
+                ? sumQtyWeightedCost(shipmentLineDetails, "localTransportCost")
+                : 0,
+        [shipmentLineDetails, showSupplierFields]
+    );
+
+    const freightDutyTotal = useMemo(
+        () =>
+            shipmentLineDetails.reduce(
+                (sum, row) =>
+                    sum +
+                    (parseFloat(row.freightDutyCost) || 0) *
+                    (parseFloat(row.receivedQty) || 0),
+                0
+            ),
+        [shipmentLineDetails]
+    );
 
   const distributionFormulas = useMemo(() => {
-    const totalOrderedQty = shipmentLineDetails.reduce(
-      (sum, row) => sum + (parseFloat(row.qty) || 0),
-      0
-    );
+    const totalReceivedQty = getTotalReceivedQty(shipmentLineDetails);
     const overseasTransportVal = parseFloat(order.overseasTransport) || 0;
     const exchangeRate = effectiveExchangeRate || 0;
     const localTransportVal = parseFloat(localTransport) || 0;
     const freightDutyVal = parseFloat(freightDuty) || 0;
     const overseasTotal = round2(overseasTransportVal * exchangeRate);
     const overseasUnitCost =
-      totalOrderedQty > 0 ? round2(overseasTotal / totalOrderedQty) : null;
+      totalReceivedQty > 0 ? round2(overseasTotal / totalReceivedQty) : null;
     const localTransportUnitCost =
-      totalOrderedQty > 0 ? round2(localTransportVal / totalOrderedQty) : null;
+      totalReceivedQty > 0 ? round2(localTransportVal / totalReceivedQty) : null;
     const freightDutyUnitCost =
-      totalOrderedQty > 0 ? round2(freightDutyVal / totalOrderedQty) : null;
+      totalReceivedQty > 0 ? round2(freightDutyVal / totalReceivedQty) : null;
 
     return {
-      totalOrderedQty,
+      totalReceivedQty,
       overseasTransportVal,
       exchangeRate,
       localTransportVal,
@@ -427,121 +460,171 @@ const ShipmentEdit = () => {
     freightDuty,
   ]);
 
-  const columnHeaderFormulaSx = {
-    display: "block",
-    mt: 0.5,
-    fontSize: "10px",
-    fontWeight: 400,
-    color: "rgba(255,255,255,0.85)",
-    lineHeight: 1.4,
-    whiteSpace: "normal",
-  };
+    const columnHeaderFormulaSx = {
+        display: "block",
+        mt: 0.5,
+        fontSize: "10px",
+        fontWeight: 400,
+        color: "rgba(255,255,255,0.85)",
+        lineHeight: 1.4,
+        whiteSpace: "normal",
+    };
 
-  const handleSubmit = async () => {
-    let hasInvalidReceivedQty = false;
-    let hasInvalidUnitPrice = false;
+  const areRequiredFieldsFilled = useMemo(() => {
+    if (!shipmentLineDetails.length) {
+      return false;
+    }
 
-    shipmentLineDetails.forEach((row) => {
-      if (row.receivedQty != null && row.receivedQty < 0) {
-        hasInvalidReceivedQty = true;
+    if (showSupplierFields) {
+      if (!currencyId || isExchangeRateInvalid) {
+        return false;
+      }
+    }
+
+    return shipmentLineDetails.every((row) => {
+      const receivedQty = parseFloat(row.receivedQty);
+      if (
+        row.receivedQty == null ||
+        row.receivedQty === "" ||
+        isNaN(receivedQty) ||
+        receivedQty < 0
+      ) {
+        return false;
+      }
+
+      const maxDamagedQty = (parseFloat(row.qty) || 0) - receivedQty;
+      if (row.damagedQty && row.damagedQty > maxDamagedQty) {
+        return false;
       }
 
       if (showSupplierFields) {
         const calculatedUnitPrice = getCalculatedUnitPrice(row);
-        if (calculatedUnitPrice != null && calculatedUnitPrice < 0) {
-          hasInvalidUnitPrice = true;
+        return calculatedUnitPrice != null && calculatedUnitPrice >= 0;
+      }
+
+      return row.unitPrice != null && row.unitPrice >= 0;
+    });
+  }, [
+    shipmentLineDetails,
+    showSupplierFields,
+    currencyId,
+    isExchangeRateInvalid,
+    effectiveExchangeRate,
+  ]);
+
+  const canCompleteShipment =
+    status === COMPLETED_STATUS && areRequiredFieldsFilled;
+
+  const handleSubmit = async () => {
+    if (status === COMPLETED_STATUS && !areRequiredFieldsFilled) {
+      toast.info("Please fill all required fields before completing the shipment.");
+      return;
+    }
+
+    let hasInvalidReceivedQty = false;
+    let hasInvalidUnitPrice = false;
+
+        shipmentLineDetails.forEach((row) => {
+            if (row.receivedQty != null && row.receivedQty < 0) {
+                hasInvalidReceivedQty = true;
+            }
+
+            if (showSupplierFields) {
+                const calculatedUnitPrice = getCalculatedUnitPrice(row);
+                if (calculatedUnitPrice != null && calculatedUnitPrice < 0) {
+                    hasInvalidUnitPrice = true;
+                }
+            } else if (
+                row.unitPrice == null ||
+                row.unitPrice === undefined ||
+                row.unitPrice < 0
+            ) {
+                hasInvalidUnitPrice = true;
+            }
+        });
+
+        if (hasInvalidReceivedQty) {
+            toast.info("Received Quantity cannot be negative.");
+            return;
         }
-      } else if (
-        row.unitPrice == null ||
-        row.unitPrice === undefined ||
-        row.unitPrice < 0
-      ) {
-        hasInvalidUnitPrice = true;
-      }
-    });
 
-    if (hasInvalidReceivedQty) {
-      toast.info("Received Quantity cannot be negative.");
-      return;
-    }
+        if (hasInvalidUnitPrice) {
+            toast.info(
+                showSupplierFields
+                    ? "Unit cost requires supplier price and currency exchange rate."
+                    : "Please enter valid values (0 or greater) for Unit Cost."
+            );
+            return;
+        }
 
-    if (hasInvalidUnitPrice) {
-      toast.info(
-        showSupplierFields
-          ? "Unit cost requires supplier price and currency exchange rate."
-          : "Please enter valid values (0 or greater) for Unit Cost."
-      );
-      return;
-    }
+        if (showSupplierFields && !currencyId) {
+            toast.error("Please select a currency.");
+            return;
+        }
 
-    if (showSupplierFields && !currencyId) {
-      toast.error("Please select a currency.");
-      return;
-    }
+        if (showSupplierFields && isExchangeRateInvalid) {
+            toast.error("Please enter an exchange rate greater than zero.");
+            return;
+        }
 
-    if (showSupplierFields && isExchangeRateInvalid) {
-      toast.error("Please enter an exchange rate greater than zero.");
-      return;
-    }
+        const invalidDamagedQty = shipmentLineDetails.find((row) => {
+            const maxDamagedQty = row.qty - (row.receivedQty ?? 0);
+            return row.damagedQty && row.damagedQty > maxDamagedQty;
+        });
 
-    const invalidDamagedQty = shipmentLineDetails.find((row) => {
-      const maxDamagedQty = row.qty - (row.receivedQty ?? 0);
-      return row.damagedQty && row.damagedQty > maxDamagedQty;
-    });
+        if (invalidDamagedQty) {
+            toast.info(
+                "Damaged Quantity cannot exceed the difference between Ordered and Received Quantity."
+            );
+            return;
+        }
 
-    if (invalidDamagedQty) {
-      toast.info(
-        "Damaged Quantity cannot exceed the difference between Ordered and Received Quantity."
-      );
-      return;
-    }
+        if (showSupplierFields) {
+            const overseasTransportVal = parseFloat(order.overseasTransport) || 0;
 
-    if (showSupplierFields) {
-      const overseasTransportVal = parseFloat(order.overseasTransport) || 0;
+            if (
+                overseasTransportVal > 0 &&
+                (!effectiveExchangeRate || effectiveExchangeRate <= 0)
+            ) {
+                toast.error(
+                    "Exchange Rate is required when Overseas Transport is specified."
+                );
+                return;
+            }
 
-      if (
-        overseasTransportVal > 0 &&
-        (!effectiveExchangeRate || effectiveExchangeRate <= 0)
-      ) {
-        toast.error(
-          "Exchange Rate is required when Overseas Transport is specified."
-        );
-        return;
-      }
+            const overseasExpected =
+                overseasTransportVal * (effectiveExchangeRate || 0);
+            const overseasActual = sumQtyWeightedCost(
+                shipmentLineDetails,
+                "additionalCost"
+            );
+            const localExpected = parseFloat(localTransport) || 0;
+            const localActual = sumQtyWeightedCost(
+                shipmentLineDetails,
+                "localTransportCost"
+            );
 
-      const overseasExpected =
-        overseasTransportVal * (effectiveExchangeRate || 0);
-      const overseasActual = sumQtyWeightedCost(
-        shipmentLineDetails,
-        "additionalCost"
-      );
-      const localExpected = parseFloat(localTransport) || 0;
-      const localActual = sumQtyWeightedCost(
-        shipmentLineDetails,
-        "localTransportCost"
-      );
-
-      if (Math.abs(overseasActual - overseasExpected) > 0.01) {
+      if (!amountsMatchIgnoringDecimals(overseasActual, overseasExpected)) {
         toast.error(
           "Overseas Cost lines do not reconcile with Overseas Transport × Exchange Rate. Shipment cannot be saved."
         );
         return;
       }
 
-      if (Math.abs(localActual - localExpected) > 0.01) {
+      if (!amountsMatchIgnoringDecimals(localActual, localExpected)) {
         toast.error(
           "Local Transport Cost lines do not reconcile with Local Transport value. Shipment cannot be saved."
         );
         return;
       }
 
-      const freightExpected = parseFloat(freightDuty) || 0;
-      const freightActual = sumQtyWeightedCost(
-        shipmentLineDetails,
-        "freightDutyCost"
-      );
+            const freightExpected = parseFloat(freightDuty) || 0;
+            const freightActual = sumQtyWeightedCost(
+                shipmentLineDetails,
+                "freightDutyCost"
+            );
 
-      if (Math.abs(freightActual - freightExpected) > 0.01) {
+      if (!amountsMatchIgnoringDecimals(freightActual, freightExpected)) {
         toast.error(
           "Freight Duty Cost lines do not reconcile with Freight Duty value. Shipment cannot be saved."
         );
@@ -563,8 +646,11 @@ const ShipmentEdit = () => {
             CurrencyId: Number(currencyId),
             OverseasTransport: order.overseasTransport ?? null,
             LocalTransport:
-              localTransport === "" ? null : parseFloat(localTransport),
-            ExchangeRate: effectiveExchangeRate,
+              localTransport === "" ? null : round2(localTransport),
+            ExchangeRate:
+              effectiveExchangeRate == null
+                ? null
+                : round2(effectiveExchangeRate),
           }
         : {}),
       shipmentNoteLineDetails: shipmentLineDetails.map((row) => ({
@@ -581,234 +667,234 @@ const ShipmentEdit = () => {
         qty: row.qty,
         receivedQty: row.receivedQty ?? 0,
         damagedQty : row.damagedQty,
-        freightDutyCost: row.freightDutyCost,
-        additionalCost: row.additionalCost,
+        freightDutyCost: round2(row.freightDutyCost || 0),
+        additionalCost: round2(row.additionalCost || 0),
         ...(showSupplierFields
-          ? { LocalTransportCost: row.localTransportCost ?? 0 }
+          ? { LocalTransportCost: round2(row.localTransportCost ?? 0) }
           : {}),
-        LineTotal: row.lineTotal,
-        CostPrice: row.costPrice,
-        UnitPrice: row.unitPrice,
+        LineTotal: round2(row.lineTotal || 0),
+        CostPrice: round2(row.costPrice || 0),
+        UnitPrice: row.unitPrice == null ? null : round2(row.unitPrice),
         Remark: row.remark,
       })),
     };
 
-    try {
-      setIsSubmitting(true);
+        try {
+            setIsSubmitting(true);
 
-      const response = await fetch(
-        `${BASE_URL}/ShipmentNote/UpdateShipmentNote`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(data),
+            const response = await fetch(
+                `${BASE_URL}/ShipmentNote/UpdateShipmentNote`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${localStorage.getItem("token")}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(data),
+                }
+            );
+
+            if (response.ok) {
+                const jsonResponse = await response.json();
+                if (jsonResponse.result.result != "") {
+                    toast.success(jsonResponse.result.message);
+                    await fetchShipmentNote();
+                } else {
+                    toast.error(jsonResponse.result.message);
+                }
+            } else {
+                const errorBody = await response.json().catch(() => ({}));
+                toast.error(
+                    errorBody.message ||
+                    errorBody.result?.message ||
+                    "Please fill all required fields"
+                );
+            }
+        } catch (error) {
+            console.error("Error:", error);
+        } finally {
+            setIsSubmitting(false);
         }
-      );
+    };
 
-      if (response.ok) {
-        const jsonResponse = await response.json();
-        if (jsonResponse.result.result != "") {
-          toast.success(jsonResponse.result.message);
-          await fetchShipmentNote();
-        } else {
-          toast.error(jsonResponse.result.message);
-        }
-      } else {
-        const errorBody = await response.json().catch(() => ({}));
-        toast.error(
-          errorBody.message ||
-            errorBody.result?.message ||
-            "Please fill all required fields"
-        );
-      }
-    } catch (error) {
-      console.error("Error:", error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    return (
+        <>
+            <ToastContainer />
+            <div className={styles.pageTitle}>
+                <h1>Shipment Note Edit</h1>
+                <ul>
+                    <li>
+                        <Link href="/inventory/shipment">Shipment Note</Link>
+                    </li>
+                    <li>Edit</li>
+                </ul>
+            </div>
 
-  return (
-    <>
-      <ToastContainer />
-      <div className={styles.pageTitle}>
-        <h1>Shipment Note Edit</h1>
-        <ul>
-          <li>
-            <Link href="/inventory/shipment">Shipment Note</Link>
-          </li>
-          <li>Edit</li>
-        </ul>
-      </div>
-
-      <Grid
-        container
-        rowSpacing={1}
-        columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}
-      >
-        <Grid item xs={12} sx={{ background: "#fff" }}>
-          <Grid container p={1}>
-            <Grid item gap={2} xs={12} display="flex" justifyContent="end">
-              <Button variant="outlined" disabled>
-                <Typography sx={{ fontWeight: "bold" }}>
-                  Shipment No: {order.documentNo}
-                </Typography>
-              </Button>
-              <Button variant="outlined" onClick={() => navigateToBack()}>
-                <Typography sx={{ fontWeight: "bold" }}>Go Back</Typography>
-              </Button>
-            </Grid>
             <Grid
-              item
-              xs={12}
-              lg={6}
-              display="flex"
-              justifyContent="space-between"
-              mt={1}
+                container
+                rowSpacing={1}
+                columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}
             >
-              <Typography
-                component="label"
-                sx={{
-                  fontWeight: "500",
-                  p: 1,
-                  fontSize: "14px",
-                  display: "block",
-                  width: "35%",
-                }}
-              >
-                Supplier
-              </Typography>
-              <TextField
-                disabled
-                fullWidth
-                value={order.supplierName}
-                sx={{ width: "60%" }}
-                size="small"
-              />
-            </Grid>
-            <Grid
-              item
-              xs={12}
-              lg={6}
-              display="flex"
-              justifyContent="space-between"
-              mt={1}
-            >
-              <Typography
-                component="label"
-                sx={{
-                  fontWeight: "500",
-                  p: 1,
-                  fontSize: "14px",
-                  display: "block",
-                  width: "35%",
-                }}
-              >
-                Reference No:
-              </Typography>
-              <TextField
-                sx={{ width: "60%" }}
-                size="small"
-                fullWidth
-                value={referenceNo}
-                onChange={(e) => setReferenceNo(e.target.value)}
-              />
-            </Grid>
-            <Grid
-              item
-              xs={12}
-              lg={6}
-              display="flex"
-              justifyContent="space-between"
-              mt={1}
-            >
-              <Typography
-                component="label"
-                sx={{
-                  fontWeight: "500",
-                  p: 1,
-                  fontSize: "14px",
-                  display: "block",
-                  width: "35%",
-                }}
-              >
-                Shipment Date
-              </Typography>
-              <TextField
-                sx={{ width: "60%" }}
-                size="small"
-                type="date"
-                fullWidth
-                value={formatDate(order.shipmentDate)}
-                disabled
-              />
-            </Grid>
-            <Grid
-              item
-              xs={12}
-              lg={6}
-              display="flex"
-              justifyContent="space-between"
-              mt={1}
-            >
-              <Typography
-                component="label"
-                sx={{
-                  fontWeight: "500",
-                  p: 1,
-                  fontSize: "14px",
-                  display: "block",
-                  width: "35%",
-                }}
-              >
-                Remark
-              </Typography>
-              <TextField
-                sx={{ width: "60%" }}
-                size="small"
-                type="text"
-                fullWidth
-                value={remark}
-                onChange={(e) => setRemark(e.target.value)}
-              />
-            </Grid>
-            <Grid
-              item
-              xs={12}
-              lg={6}
-              display="flex"
-              justifyContent="space-between"
-              mt={1}
-            >
-              <Typography
-                component="label"
-                sx={{
-                  fontWeight: "500",
-                  p: 1,
-                  fontSize: "14px",
-                  display: "block",
-                  width: "35%",
-                }}
-              >
-                Status
-              </Typography>
-              <Select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                sx={{ width: "60%" }}
-                size="small"
-                fullWidth
-              >
-                {shipmentStatusTypes.map((statusType) => (
-                  <MenuItem key={statusType.value} value={statusType.value}>
-                    {statusType.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </Grid>
+                <Grid item xs={12} sx={{ background: "#fff" }}>
+                    <Grid container p={1}>
+                        <Grid item gap={2} xs={12} display="flex" justifyContent="end">
+                            <Button variant="outlined" disabled>
+                                <Typography sx={{ fontWeight: "bold" }}>
+                                    Shipment No: {order.documentNo}
+                                </Typography>
+                            </Button>
+                            <Button variant="outlined" onClick={() => navigateToBack()}>
+                                <Typography sx={{ fontWeight: "bold" }}>Go Back</Typography>
+                            </Button>
+                        </Grid>
+                        <Grid
+                            item
+                            xs={12}
+                            lg={6}
+                            display="flex"
+                            justifyContent="space-between"
+                            mt={1}
+                        >
+                            <Typography
+                                component="label"
+                                sx={{
+                                    fontWeight: "500",
+                                    p: 1,
+                                    fontSize: "14px",
+                                    display: "block",
+                                    width: "35%",
+                                }}
+                            >
+                                Supplier
+                            </Typography>
+                            <TextField
+                                disabled
+                                fullWidth
+                                value={order.supplierName}
+                                sx={{ width: "60%" }}
+                                size="small"
+                            />
+                        </Grid>
+                        <Grid
+                            item
+                            xs={12}
+                            lg={6}
+                            display="flex"
+                            justifyContent="space-between"
+                            mt={1}
+                        >
+                            <Typography
+                                component="label"
+                                sx={{
+                                    fontWeight: "500",
+                                    p: 1,
+                                    fontSize: "14px",
+                                    display: "block",
+                                    width: "35%",
+                                }}
+                            >
+                                Reference No:
+                            </Typography>
+                            <TextField
+                                sx={{ width: "60%" }}
+                                size="small"
+                                fullWidth
+                                value={referenceNo}
+                                onChange={(e) => setReferenceNo(e.target.value)}
+                            />
+                        </Grid>
+                        <Grid
+                            item
+                            xs={12}
+                            lg={6}
+                            display="flex"
+                            justifyContent="space-between"
+                            mt={1}
+                        >
+                            <Typography
+                                component="label"
+                                sx={{
+                                    fontWeight: "500",
+                                    p: 1,
+                                    fontSize: "14px",
+                                    display: "block",
+                                    width: "35%",
+                                }}
+                            >
+                                Shipment Date
+                            </Typography>
+                            <TextField
+                                sx={{ width: "60%" }}
+                                size="small"
+                                type="date"
+                                fullWidth
+                                value={formatDate(order.shipmentDate)}
+                                disabled
+                            />
+                        </Grid>
+                        <Grid
+                            item
+                            xs={12}
+                            lg={6}
+                            display="flex"
+                            justifyContent="space-between"
+                            mt={1}
+                        >
+                            <Typography
+                                component="label"
+                                sx={{
+                                    fontWeight: "500",
+                                    p: 1,
+                                    fontSize: "14px",
+                                    display: "block",
+                                    width: "35%",
+                                }}
+                            >
+                                Remark
+                            </Typography>
+                            <TextField
+                                sx={{ width: "60%" }}
+                                size="small"
+                                type="text"
+                                fullWidth
+                                value={remark}
+                                onChange={(e) => setRemark(e.target.value)}
+                            />
+                        </Grid>
+                        <Grid
+                            item
+                            xs={12}
+                            lg={6}
+                            display="flex"
+                            justifyContent="space-between"
+                            mt={1}
+                        >
+                            <Typography
+                                component="label"
+                                sx={{
+                                    fontWeight: "500",
+                                    p: 1,
+                                    fontSize: "14px",
+                                    display: "block",
+                                    width: "35%",
+                                }}
+                            >
+                                Status
+                            </Typography>
+                            <Select
+                                value={status}
+                                onChange={(e) => setStatus(e.target.value)}
+                                sx={{ width: "60%" }}
+                                size="small"
+                                fullWidth
+                            >
+                                {shipmentStatusTypes.map((statusType) => (
+                                    <MenuItem key={statusType.value} value={statusType.value}>
+                                        {statusType.name}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </Grid>
 
             {showSupplierFields ? (
               <Grid
@@ -834,7 +920,7 @@ const ShipmentEdit = () => {
                 <TextField
                   disabled
                   fullWidth
-                  value={order.overseasTransport ?? ""}
+                  value={toTwoDecimals(order.overseasTransport)}
                   sx={{ width: "60%" }}
                   size="small"
                 />
@@ -885,11 +971,14 @@ const ShipmentEdit = () => {
                       type="number"
                       value={exchangeRateInput}
                       onChange={(e) => setExchangeRateInput(e.target.value)}
+                      onBlur={(e) =>
+                        setExchangeRateInput(toTwoDecimals(e.target.value))
+                      }
                       size="small"
                       placeholder="0.00"
                       label="Exc. Rate"
                       InputLabelProps={{ shrink: true }}
-                      inputProps={{ min: 0, step: "0.0001" }}
+                      inputProps={{ min: 0, step: "0.01" }}
                       error={isExchangeRateInvalid}
                       sx={{
                         width: "50%",
@@ -938,6 +1027,7 @@ const ShipmentEdit = () => {
                   type="number"
                   value={localTransport}
                   onChange={(e) => setLocalTransport(e.target.value)}
+                  onBlur={(e) => setLocalTransport(toTwoDecimals(e.target.value))}
                   sx={{ width: "60%" }}
                   size="small"
                   inputProps={{ min: 0, step: "0.01" }}
@@ -971,6 +1061,7 @@ const ShipmentEdit = () => {
                   type="number"
                   value={freightDuty}
                   onChange={(e) => setFreightDuty(e.target.value)}
+                  onBlur={(e) => setFreightDuty(toTwoDecimals(e.target.value))}
                   sx={{ width: "60%" }}
                   size="small"
                   inputProps={{ min: 0, step: "0.01" }}
@@ -1005,13 +1096,13 @@ const ShipmentEdit = () => {
                           <>
                             Overseas Cost
                             <Typography component="span" sx={columnHeaderFormulaSx}>
-                              Unit = (Overseas Transport × Exc. Rate) ÷ Total Ordered Qty
+                              Unit = (Overseas Transport × Exc. Rate) ÷ Total Received Qty
                               {distributionFormulas.overseasUnitCost != null
                                 ? ` (${formatCurrency(distributionFormulas.overseasUnitCost)})`
                                 : ""}
                             </Typography>
                             <Typography component="span" sx={columnHeaderFormulaSx}>
-                              Total = Σ(Unit × Ordered Qty)
+                              Total = Σ(Unit × Received Qty)
                             </Typography>
                           </>
                         ) : (
@@ -1022,13 +1113,13 @@ const ShipmentEdit = () => {
                         <TableCell sx={{ color: "#fff" }}>
                           Local Transport Cost
                           <Typography component="span" sx={columnHeaderFormulaSx}>
-                            Unit = Local Transport ÷ Total Ordered Qty
+                            Unit = Local Transport ÷ Total Received Qty
                             {distributionFormulas.localTransportUnitCost != null
                               ? ` (${formatCurrency(distributionFormulas.localTransportUnitCost)})`
                               : ""}
                           </Typography>
                           <Typography component="span" sx={columnHeaderFormulaSx}>
-                            Total = Σ(Unit × Ordered Qty)
+                            Total = Σ(Unit × Received Qty)
                           </Typography>
                         </TableCell>
                       ) : null}
@@ -1037,13 +1128,13 @@ const ShipmentEdit = () => {
                         {showSupplierFields ? (
                           <>
                             <Typography component="span" sx={columnHeaderFormulaSx}>
-                              Unit = Freight Duty ÷ Total Ordered Qty
+                              Unit = Freight Duty ÷ Total Received Qty
                               {distributionFormulas.freightDutyUnitCost != null
                                 ? ` (${formatCurrency(distributionFormulas.freightDutyUnitCost)})`
                                 : ""}
                             </Typography>
                             <Typography component="span" sx={columnHeaderFormulaSx}>
-                              Total = Σ(Unit × Ordered Qty)
+                              Total = Σ(Unit × Received Qty)
                             </Typography>
                           </>
                         ) : (
@@ -1079,7 +1170,7 @@ const ShipmentEdit = () => {
                           {row.productName}
                         </TableCell>
                         <TableCell sx={{ p: 1 }} component="th" scope="row">
-                          {row.qty}
+                          {toTwoDecimals(row.qty)}
                         </TableCell>
                         {showSupplierFields ? (
                           <TableCell sx={{ p: 1 }} align="right">
@@ -1094,6 +1185,8 @@ const ShipmentEdit = () => {
                             value={
                               row.unitPrice === null || row.unitPrice === undefined
                                 ? ""
+                                : showSupplierFields
+                                ? toTwoDecimals(row.unitPrice)
                                 : row.unitPrice
                             }
                             fullWidth
@@ -1107,6 +1200,14 @@ const ShipmentEdit = () => {
                                 e.target.value
                               )
                             }
+                            onBlur={(e) => {
+                              if (e.target.value === "") return;
+                              handleChange(
+                                index,
+                                "unitPrice",
+                                round2(e.target.value)
+                              );
+                            }}
                           />
                         </TableCell>
                         <TableCell sx={{ p: 1 }}>
@@ -1129,6 +1230,14 @@ const ShipmentEdit = () => {
                                 e.target.value
                               )
                             }
+                            onBlur={(e) => {
+                              if (e.target.value === "") return;
+                              handleChange(
+                                index,
+                                "receivedQty",
+                                round2(e.target.value)
+                              );
+                            }}
                           />
                         </TableCell>
                          <TableCell sx={{ p: 1 }}>
@@ -1142,9 +1251,17 @@ const ShipmentEdit = () => {
                               handleChange(
                                 index,
                                 "damagedQty",
-                                parseFloat(e.target.value)
+                                e.target.value
                               )
                             }
+                            onBlur={(e) => {
+                              if (e.target.value === "") return;
+                              handleChange(
+                                index,
+                                "damagedQty",
+                                round2(e.target.value)
+                              );
+                            }}
                           />
                         </TableCell>
                         <TableCell sx={{ p: 1 }}>
@@ -1162,9 +1279,17 @@ const ShipmentEdit = () => {
                               handleChange(
                                 index,
                                 "additionalCost",
-                                parseFloat(e.target.value)
+                                e.target.value
                               )
                             }
+                            onBlur={(e) => {
+                              if (e.target.value === "") return;
+                              handleChange(
+                                index,
+                                "additionalCost",
+                                round2(e.target.value)
+                              );
+                            }}
                           />
                         </TableCell>
                         {showSupplierFields ? (
@@ -1184,9 +1309,17 @@ const ShipmentEdit = () => {
                                 handleChange(
                                   index,
                                   "localTransportCost",
-                                  parseFloat(e.target.value)
+                                  e.target.value
                                 )
                               }
+                              onBlur={(e) => {
+                                if (e.target.value === "") return;
+                                handleChange(
+                                  index,
+                                  "localTransportCost",
+                                  round2(e.target.value)
+                                );
+                              }}
                             />
                           </TableCell>
                         ) : null}
@@ -1196,26 +1329,35 @@ const ShipmentEdit = () => {
                             value={row.freightDutyCost === 0 || row.freightDutyCost === null ? "" : row.freightDutyCost}
                             fullWidth
                             size="small"
+                            inputProps={{ min: 0, step: "0.01" }}
                             onChange={(e) =>
                               handleChange(
                                 index,
                                 "freightDutyCost",
-                                parseFloat(e.target.value)
+                                e.target.value
                               )
                             }
+                            onBlur={(e) => {
+                              if (e.target.value === "") return;
+                              handleChange(
+                                index,
+                                "freightDutyCost",
+                                round2(e.target.value)
+                              );
+                            }}
                           />
                         </TableCell>
                         <TableCell sx={{ p: 1 }}>
                           <TextField
                             type="text"
-                            value={row.remark}
+                            value={row.remark ?? ""}
                             fullWidth
                             size="small"
                             onChange={(e) =>
                               handleChange(
                                 index,
                                 "remark",
-                                parseFloat(e.target.value)
+                                e.target.value
                               )
                             }
                           />
@@ -1310,6 +1452,10 @@ const ShipmentEdit = () => {
                 loading={isSubmitting}
                 handleSubmit={() => handleSubmit()}
                 disabled={isDisable || (showSupplierFields && isExchangeRateInvalid)}
+                label={canCompleteShipment ? "Complete Shipment" : "Save"}
+                loadingLabel={
+                  canCompleteShipment ? "Completing..." : "Saving..."
+                }
               />
             </Grid>
           </Grid>

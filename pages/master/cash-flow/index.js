@@ -1,4 +1,4 @@
-import React, {  } from "react";
+import React from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -33,29 +33,13 @@ export default function Customers() {
     setPageSize,
     setSearch,
     fetchData: fetchCashFlowTypeList,
-  } = usePaginatedFetch("CashFlowType/GetAllCashFlowType");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("CashFlowType/GetAllCashFlowType");
 
-  const controller = "CashFlowType/DeleteCashFlowType";
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchCashFlowTypeList(1, event.target.value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchCashFlowTypeList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchCashFlowTypeList(1, search, size);
-  };
-
-  if (!navigate) {
+  const controller = "CashFlowType/DeleteCashFlowType";  if (!navigate) {
     return <AccessDenied />;
   }
 

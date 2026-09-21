@@ -8,8 +8,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Typography,
-} from "@mui/material";
+  Typography } from "@mui/material";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import { ToastContainer } from "react-toastify";
@@ -56,29 +55,11 @@ const SubCategory = () => {
     setPageSize,
     setSearch,
     fetchData: fetchSubCategoryList,
-  } = usePaginatedFetch("SubCategory/GetAllSubCategoryPage");
-
-
-  const handleSearchChange = (event) => {
-    const val = event.target.value;
-    setSearch(val);
-    setPage(1);
-    fetchSubCategoryList(1, val, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchSubCategoryList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchSubCategoryList(1, search, size);
-  };
-
-  useEffect(() => {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("SubCategory/GetAllSubCategoryPage");  useEffect(() => {
     fetchSubCategoryList();
   }, []);
 

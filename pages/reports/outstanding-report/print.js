@@ -34,27 +34,47 @@ const toFilterLabel = (value, allLabel) => {
   return text;
 };
 
+const EMPTY_LINE_ITEMS_HTML = `<tr><td colspan="8" style="text-align:center;padding:16px;">No outstanding invoices found for the selected filters.</td></tr>`;
+
+const mapOutstandingLine = (row) => {
+  const invoiceDate = row.invoiceDate ?? row.InvoiceDate;
+  return {
+    invoiceDate: invoiceDate ? formatDate(invoiceDate) : "—",
+    invoiceNumber: row.invoiceNumber ?? row.InvoiceNumber ?? "—",
+    customerName: row.customerName ?? row.CustomerName ?? "—",
+    totalInvoiceAmount: formatAmount(
+      row.totalInvoiceAmount ?? row.TotalInvoiceAmount
+    ),
+    creditAmount: formatAmount(row.creditAmount ?? row.CreditAmount),
+    outstandingAmount: formatAmount(
+      row.outstandingAmount ?? row.OutstandingAmount
+    ),
+    salesPersonName: (row.salesPersonName ?? row.SalesPersonName) || "—",
+    remark: (row.remark ?? row.Remark) || "—",
+  };
+};
+
 const buildLineItemsRows = (rows) => {
-  if (!rows || rows.length === 0) {
-    return `<tr><td colspan="8" style="text-align:center;padding:16px;">No outstanding invoices found for the selected filters.</td></tr>`;
-  }
+  if (!rows || rows.length === 0) return EMPTY_LINE_ITEMS_HTML;
 
   return rows
     .map((row) => {
-      const invoiceDate = row.invoiceDate ?? row.InvoiceDate;
+      const t = mapOutstandingLine(row);
       return `<tr>
-        <td>${escapeHtml(invoiceDate ? formatDate(invoiceDate) : "—")}</td>
-        <td>${escapeHtml(row.invoiceNumber ?? row.InvoiceNumber ?? "—")}</td>
-        <td>${escapeHtml(row.customerName ?? row.CustomerName ?? "—")}</td>
-        <td class="num">${escapeHtml(formatAmount(row.totalInvoiceAmount ?? row.TotalInvoiceAmount))}</td>
-        <td class="num">${escapeHtml(formatAmount(row.creditAmount ?? row.CreditAmount))}</td>
-        <td class="num">${escapeHtml(formatAmount(row.outstandingAmount ?? row.OutstandingAmount))}</td>
-        <td>${escapeHtml((row.salesPersonName ?? row.SalesPersonName) || "—")}</td>
-        <td>${escapeHtml((row.remark ?? row.Remark) || "—")}</td>
+        <td>${escapeHtml(t.invoiceDate)}</td>
+        <td>${escapeHtml(t.invoiceNumber)}</td>
+        <td>${escapeHtml(t.customerName)}</td>
+        <td class="num">${escapeHtml(t.totalInvoiceAmount)}</td>
+        <td class="num">${escapeHtml(t.creditAmount)}</td>
+        <td class="num">${escapeHtml(t.outstandingAmount)}</td>
+        <td>${escapeHtml(t.salesPersonName)}</td>
+        <td>${escapeHtml(t.remark)}</td>
       </tr>`;
     })
     .join("\n");
 };
+
+const buildLineTokenMaps = (rows) => (rows || []).map(mapOutstandingLine);
 
 export default function OutstandingReportPrintPage() {
   const router = useRouter();
@@ -152,8 +172,11 @@ export default function OutstandingReportPrintPage() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || loadingData) return "";
-    return applyTemplate(templateHtml, tokenMap, lineItemsRows);
-  }, [templateHtml, loadingData, tokenMap, lineItemsRows]);
+    return applyTemplate(templateHtml, tokenMap, lineItemsRows, {
+      lineTokenMaps: buildLineTokenMaps(rows),
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
+  }, [templateHtml, loadingData, tokenMap, lineItemsRows, rows]);
 
   return (
     <>

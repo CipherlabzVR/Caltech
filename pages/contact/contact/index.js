@@ -36,27 +36,19 @@ export default function Contacts() {
     setPageSize,
     setSearch,
     fetchData: fetchContacts,
-  } = usePaginatedFetch("Contact/GetAllContacts");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Contact/GetAllContacts");
 
   const controller = "Contact/DeleteContact";
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchContacts(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchContacts(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchContacts(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;
@@ -95,8 +87,7 @@ export default function Contacts() {
                 width: 16,
                 height: 16,
                 backgroundColor: alpha(theme.palette.warning.main, 0.15),
-                border: `0.5px solid ${theme.palette.warning.main,0.1}`,
-              })}
+                border: `0.5px solid ${theme.palette.warning.main,0.1}` })}
             />
             <Typography variant="body2" color="text.secondary">
               Feedback
@@ -138,9 +129,7 @@ export default function Contacts() {
                             ? {
                                 backgroundColor: alpha(theme.palette.warning.main, 0.15),
                                 "&:hover": {
-                                  backgroundColor: alpha(theme.palette.warning.main, 0.3),
-                                },
-                              }
+                                  backgroundColor: alpha(theme.palette.warning.main, 0.3) } }
                             : {}
                         }
                       >

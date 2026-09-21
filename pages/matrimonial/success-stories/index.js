@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import Grid from "@mui/material/Grid";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
@@ -40,9 +41,13 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 
+/** Must match SidebarData Matrimonial → Success Stories categoryId. */
+const MATRIMONIAL_CATEGORY_SUCCESS_STORIES = 174;
+
 export default function SuccessStories() {
-  const cId = sessionStorage.getItem("category");
-  const { navigate, create, update, remove } = IsPermissionEnabled(cId);
+  const { navigate, create, update, remove, permissionsLoading } = IsPermissionEnabled(
+    MATRIMONIAL_CATEGORY_SUCCESS_STORIES
+  );
   const [stories, setStories] = useState([]);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -65,6 +70,13 @@ export default function SuccessStories() {
   const [storyToDelete, setStoryToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  /** Inline validation messages (MUI helperText); empty string = no error for that field. */
+  const [fieldErrors, setFieldErrors] = useState({
+    coupleName: "",
+    quote: "",
+    quoteSi: "",
+    imageUrl: "",
+  });
 
   const fetchStories = async (currentPage = page, currentRowsPerPage = rowsPerPage, currentSearch = searchTerm) => {
     setLoading(true);
@@ -84,8 +96,10 @@ export default function SuccessStories() {
       );
       if (!response.ok) throw new Error("Failed to fetch");
       const data = await response.json();
-      setStories(data?.result?.items || []);
-      setTotalCount(data?.result?.totalCount || 0);
+      const wrap = data?.result ?? data?.Result ?? {};
+      const items = wrap.items ?? wrap.Items ?? [];
+      setStories(Array.isArray(items) ? items : []);
+      setTotalCount(Number(wrap.totalCount ?? wrap.TotalCount ?? 0) || 0);
     } catch (error) {
       console.error("Error:", error);
       toast.error("Failed to fetch success stories");
@@ -95,16 +109,37 @@ export default function SuccessStories() {
   };
 
   useEffect(() => {
+    sessionStorage.setItem("category", String(MATRIMONIAL_CATEGORY_SUCCESS_STORIES));
+  }, []);
+
+  useEffect(() => {
+    if (permissionsLoading || !navigate) return;
     fetchStories(page, rowsPerPage, searchTerm);
-  }, [page, rowsPerPage, searchTerm]);
+  }, [permissionsLoading, navigate, page, rowsPerPage, searchTerm]);
 
-  const handleSearchChange = (e) => {
-    setSearchTerm(e.target.value);
-    setPage(0);
-  };
 
+
+
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: rowsPerPage,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize: setRowsPerPage,
+    onSearchValueChange: setSearchTerm,
+    zeroBasedPage: true,
+    onFetch: () => {},
+  });
   const openCreate = () => {
     setEditingStory(null);
+    setFieldErrors({ coupleName: "", quote: "", quoteSi: "", imageUrl: "" });
     setForm({
       coupleName: "",
       coupleNameSi: "",
@@ -119,12 +154,13 @@ export default function SuccessStories() {
 
   const openEdit = (story) => {
     setEditingStory(story);
+    setFieldErrors({ coupleName: "", quote: "", quoteSi: "", imageUrl: "" });
     setForm({
-      coupleName: story.coupleName || "",
-      coupleNameSi: story.coupleNameSi || "",
-      quote: story.quote || "",
-      quoteSi: story.quoteSi || "",
-      imageUrl: story.imageUrl || "",
+      coupleName: story.coupleName || story.CoupleName || "",
+      coupleNameSi: story.coupleNameSi || story.CoupleNameSi || "",
+      quote: story.quote || story.Quote || "",
+      quoteSi: story.quoteSi || story.QuoteSi || "",
+      imageUrl: story.imageUrl || story.ImageUrl || "",
       displayOrder: story.displayOrder ?? 0,
       isActive: story.isActive ?? true,
     });
@@ -166,6 +202,7 @@ export default function SuccessStories() {
         }
         if (typeof url === "string" && url.startsWith("http")) {
           setForm((f) => ({ ...f, imageUrl: url }));
+          setFieldErrors((prev) => ({ ...prev, imageUrl: "" }));
           toast.success("Image uploaded");
         } else {
           throw new Error("Upload failed - no URL returned");
@@ -182,10 +219,33 @@ export default function SuccessStories() {
   };
 
   const handleSave = async () => {
+    const quoteEn = (form.quote ?? "").trim();
+    const quoteSi = (form.quoteSi ?? "").trim();
+    const imageTrim = (form.imageUrl ?? "").trim();
+    const nextErrors = { coupleName: "", quote: "", quoteSi: "", imageUrl: "" };
+
     if (!form.coupleName?.trim()) {
-      toast.error("Couple name is required");
+      nextErrors.coupleName = "Couple name (English) is required.";
+    }
+    if (!quoteEn && !quoteSi) {
+      const quoteMsg =
+        "Testimonial quote is required. Enter text in English and/or Sinhala (both cannot be empty).";
+      nextErrors.quote = quoteMsg;
+      nextErrors.quoteSi = quoteMsg;
+    }
+    if (!imageTrim) {
+      nextErrors.imageUrl =
+        "Photo is required. Upload an image together with the quote.";
+    }
+
+    setFieldErrors(nextErrors);
+    if (nextErrors.coupleName || nextErrors.quote || nextErrors.imageUrl) {
+      toast.error(
+        nextErrors.coupleName || nextErrors.quote || nextErrors.imageUrl
+      );
       return;
     }
+
     setSaving(true);
     try {
       const token = localStorage.getItem("token");
@@ -196,9 +256,9 @@ export default function SuccessStories() {
         id: editingStory?.id,
         coupleName: form.coupleName.trim(),
         coupleNameSi: form.coupleNameSi.trim(),
-        quote: form.quote.trim(),
-        quoteSi: form.quoteSi.trim(),
-        imageUrl: form.imageUrl.trim(),
+        quote: quoteEn,
+        quoteSi: quoteSi,
+        imageUrl: imageTrim,
         displayOrder: Number(form.displayOrder) || 0,
         isActive: form.isActive,
       };
@@ -210,11 +270,22 @@ export default function SuccessStories() {
         },
         body: JSON.stringify(body),
       });
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error("Invalid response from server.");
+      }
+      if (!response.ok) {
+        throw new Error(
+          data?.message || data?.Message || `Save failed (${response.status}).`
+        );
+      }
       if (data.statusCode !== 1 && data.statusCode !== 200) {
-        throw new Error(data.message || "Failed to save");
+        throw new Error(data.message || data.Message || "Failed to save");
       }
       toast.success(editingStory ? "Success story updated" : "Success story created");
+      setFieldErrors({ coupleName: "", quote: "", quoteSi: "", imageUrl: "" });
       setDialogOpen(false);
       fetchStories();
     } catch (error) {
@@ -259,6 +330,7 @@ export default function SuccessStories() {
     }
   };
 
+  if (permissionsLoading) return null;
   if (!navigate) return <AccessDenied />;
 
   return (
@@ -298,18 +370,23 @@ export default function SuccessStories() {
             </Search>
           </Box>
 
-          <TableContainer component={Paper}>
-            <Table className="dark-table">
+          <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
+            <Table
+              className="dark-table"
+              sx={{ tableLayout: "fixed", minWidth: 900 }}
+            >
               <TableHead>
                 <TableRow>
-                  <TableCell>#</TableCell>
-                  <TableCell>Order</TableCell>
-                  <TableCell>Couple Name (EN)</TableCell>
-                  <TableCell>Couple Name (SI)</TableCell>
-                  <TableCell>Quote (preview)</TableCell>
-                  <TableCell>Image</TableCell>
-                  <TableCell>Active</TableCell>
-                  <TableCell align="right">Actions</TableCell>
+                  <TableCell sx={{ width: 48 }}>#</TableCell>
+                  <TableCell sx={{ width: 64 }}>Order</TableCell>
+                  <TableCell sx={{ width: "14%" }}>Couple Name (EN)</TableCell>
+                  <TableCell sx={{ width: "14%" }}>Couple Name (SI)</TableCell>
+                  <TableCell sx={{ width: "32%" }}>Quote (preview)</TableCell>
+                  <TableCell sx={{ width: 72 }}>Image</TableCell>
+                  <TableCell sx={{ width: 80 }}>Active</TableCell>
+                  <TableCell align="right" sx={{ width: 100 }}>
+                    Actions
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -332,18 +409,65 @@ export default function SuccessStories() {
                     <TableRow key={row.id}>
                       <TableCell>{page * rowsPerPage + idx + 1}</TableCell>
                       <TableCell>{row.displayOrder}</TableCell>
-                      <TableCell>{row.coupleName || "-"}</TableCell>
-                      <TableCell>{row.coupleNameSi || "-"}</TableCell>
-                      <TableCell sx={{ maxWidth: 200 }}>
-                        {(row.quote || "").slice(0, 60)}
-                        {(row.quote || "").length > 60 ? "…" : ""}
+                      <TableCell
+                        sx={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          maxWidth: 0,
+                        }}
+                      >
+                        {row.coupleName || row.CoupleName || "-"}
                       </TableCell>
-                      <TableCell>
-                        {row.imageUrl ? (
+                      <TableCell
+                        sx={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          maxWidth: 0,
+                        }}
+                      >
+                        {row.coupleNameSi || row.CoupleNameSi || "-"}
+                      </TableCell>
+                      <TableCell
+                        sx={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          maxWidth: 0,
+                        }}
+                        title={
+                          row.quote ||
+                          row.Quote ||
+                          row.quoteSi ||
+                          row.QuoteSi ||
+                          ""
+                        }
+                      >
+                        {(() => {
+                          const preview =
+                            row.quote ||
+                            row.Quote ||
+                            row.quoteSi ||
+                            row.QuoteSi ||
+                            "";
+                          return preview.length > 80
+                            ? `${preview.slice(0, 80)}…`
+                            : preview || "-";
+                        })()}
+                      </TableCell>
+                      <TableCell sx={{ width: 72, whiteSpace: "nowrap" }}>
+                        {row.imageUrl || row.ImageUrl ? (
                           <img
-                            src={row.imageUrl}
+                            src={row.imageUrl || row.ImageUrl}
                             alt=""
-                            style={{ width: 48, height: 36, objectFit: "cover", borderRadius: 4 }}
+                            style={{
+                              width: 48,
+                              height: 36,
+                              objectFit: "cover",
+                              borderRadius: 4,
+                              display: "block",
+                            }}
                           />
                         ) : (
                           "-"
@@ -382,7 +506,7 @@ export default function SuccessStories() {
               <Pagination
                 count={Math.max(1, Math.ceil(totalCount / rowsPerPage))}
                 page={page + 1}
-                onChange={(_, value) => setPage(value - 1)}
+                onChange={handlePageChange}
                 color="primary"
                 shape="rounded"
               />
@@ -407,16 +531,29 @@ export default function SuccessStories() {
         </Grid>
       </Grid>
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={dialogOpen}
+        onClose={() => {
+          setDialogOpen(false);
+          setFieldErrors({ coupleName: "", quote: "", quoteSi: "", imageUrl: "" });
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>{editingStory ? "Edit Success Story" : "Add Success Story"}</DialogTitle>
         <DialogContent>
           <Box display="flex" flexDirection="column" gap={2} pt={1}>
             <TextField
               label="Couple Name (English)"
               value={form.coupleName}
-              onChange={(e) => setForm((f) => ({ ...f, coupleName: e.target.value }))}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, coupleName: e.target.value }));
+                setFieldErrors((prev) => ({ ...prev, coupleName: "" }));
+              }}
               fullWidth
               required
+              error={Boolean(fieldErrors.coupleName)}
+              helperText={fieldErrors.coupleName || "Required — shown on website."}
               placeholder="e.g. Nadeesha & Rajitha"
             />
             <TextField
@@ -429,24 +566,55 @@ export default function SuccessStories() {
             <TextField
               label="Quote (English)"
               value={form.quote}
-              onChange={(e) => setForm((f) => ({ ...f, quote: e.target.value }))}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, quote: e.target.value }));
+                setFieldErrors((prev) => ({ ...prev, quote: "", quoteSi: "" }));
+              }}
               fullWidth
               multiline
               rows={4}
+              error={Boolean(fieldErrors.quote)}
+              helperText={
+                fieldErrors.quote ||
+                "Required unless Sinhala quote is filled. Couple photo is also required to save."
+              }
               placeholder="Testimonial text shown on website"
             />
             <TextField
               label="Quote (Sinhala)"
               value={form.quoteSi}
-              onChange={(e) => setForm((f) => ({ ...f, quoteSi: e.target.value }))}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, quoteSi: e.target.value }));
+                setFieldErrors((prev) => ({ ...prev, quote: "", quoteSi: "" }));
+              }}
               fullWidth
               multiline
               rows={4}
+              error={Boolean(fieldErrors.quoteSi)}
+              helperText={
+                fieldErrors.quoteSi ||
+                "Optional if English quote is set. Couple photo is also required to save."
+              }
               placeholder="සිංහල පෙළ"
             />
-            <Box>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Image
+            <Box
+              sx={{
+                p: 1.5,
+                borderRadius: 1,
+                border: "1px solid",
+                borderColor: fieldErrors.imageUrl ? "error.main" : "divider",
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                Couple photo (required)
+              </Typography>
+              <Typography
+                variant="caption"
+                display="block"
+                sx={{ mb: 1, color: fieldErrors.imageUrl ? "error.main" : "text.secondary" }}
+              >
+                {fieldErrors.imageUrl ||
+                  "Upload an image. A story is saved only when both photo and testimonial quote are provided."}
               </Typography>
               <Box display="flex" flexDirection="column" gap={1}>
                 <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
@@ -469,9 +637,14 @@ export default function SuccessStories() {
                       size="small"
                       color="error"
                       variant="text"
-                      onClick={() => setForm((f) => ({ ...f, imageUrl: "" }))}
+                      onClick={() =>
+                        setForm((f) => ({
+                          ...f,
+                          imageUrl: "",
+                        }))
+                      }
                     >
-                      Remove
+                      Remove photo
                     </Button>
                   )}
                 </Box>
@@ -496,14 +669,6 @@ export default function SuccessStories() {
                     />
                   </Box>
                 )}
-                <TextField
-                  label="Or paste image URL"
-                  value={form.imageUrl}
-                  onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
-                  fullWidth
-                  size="small"
-                  placeholder="https://..."
-                />
               </Box>
             </Box>
             <TextField
@@ -526,7 +691,14 @@ export default function SuccessStories() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={() => {
+              setDialogOpen(false);
+              setFieldErrors({ coupleName: "", quote: "", quoteSi: "", imageUrl: "" });
+            }}
+          >
+            Cancel
+          </Button>
           <Button variant="contained" onClick={handleSave} disabled={saving}>
             {saving ? "Saving..." : "Save"}
           </Button>

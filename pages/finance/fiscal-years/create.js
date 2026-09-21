@@ -1,0 +1,155 @@
+import React, { useEffect, useRef, useState } from "react";
+import { Grid, Typography } from "@mui/material";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Modal from "@mui/material/Modal";
+import TextField from "@mui/material/TextField";
+import { Field, Form, Formik } from "formik";
+import * as Yup from "yup";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import BASE_URL from "Base/api";
+
+const style = {
+  position: "absolute",
+  top: "50%",
+  left: "50%",
+  transform: "translate(-50%, -50%)",
+  width: { lg: 400, xs: 350 },
+  bgcolor: "background.paper",
+  boxShadow: 24,
+  p: 2,
+};
+
+const validationSchema = Yup.object().shape({
+  Name: Yup.string().required("Name is required"),
+  StartDate: Yup.string().required("Start date is required"),
+  EndDate: Yup.string()
+    .required("End date is required")
+    .test("after-start", "End date must be after start date", function (value) {
+      return !this.parent.StartDate || !value || value > this.parent.StartDate;
+    }),
+});
+
+const authHeaders = () => ({
+  Authorization: `Bearer ${localStorage.getItem("token")}`,
+  "Content-Type": "application/json",
+});
+
+const defaultYear = new Date().getFullYear();
+const pad = (n) => String(n).padStart(2, "0");
+const toInputDate = (year, month, day) => `${year}-${pad(month)}-${pad(day)}`;
+
+export default function AddFiscalYear({ fetchItems }) {
+  const [open, setOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const inputRef = useRef(null);
+
+  const handleOpen = () => setOpen(true);
+  const handleClose = () => setOpen(false);
+
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [open]);
+
+  const handleSubmit = (values) => {
+    setIsLoading(true);
+    fetch(`${BASE_URL}/FiscalYear/CreateFiscalYear`, {
+      method: "POST",
+      body: JSON.stringify(values),
+      headers: authHeaders(),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.statusCode === 200) {
+          toast.success(data.message);
+          setOpen(false);
+          fetchItems();
+        } else {
+          toast.error(data.message || "Failed to create fiscal year.");
+        }
+      })
+      .catch((error) => {
+        toast.error(error.message || "Failed to create fiscal year.");
+      })
+      .finally(() => setIsLoading(false));
+  };
+
+  return (
+    <>
+      <Button variant="outlined" onClick={handleOpen}>
+        + New fiscal year
+      </Button>
+      <Modal open={open} onClose={handleClose}>
+        <Box sx={style} className="bg-black">
+          <Formik
+            initialValues={{
+              Name: String(defaultYear),
+              StartDate: toInputDate(defaultYear, 1, 1),
+              EndDate: toInputDate(defaultYear, 12, 31),
+            }}
+            validationSchema={validationSchema}
+            onSubmit={handleSubmit}
+          >
+            {({ errors, touched }) => (
+              <Form>
+                <Typography variant="h5" sx={{ fontWeight: "500", mb: "12px" }}>
+                  New Fiscal Year
+                </Typography>
+                <Grid container spacing={1}>
+                  <Grid item xs={12} mt={1}>
+                    <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>Name</Typography>
+                    <Field
+                      as={TextField}
+                      fullWidth
+                      size="small"
+                      name="Name"
+                      inputRef={inputRef}
+                      placeholder="e.g. 2026"
+                      error={touched.Name && Boolean(errors.Name)}
+                      helperText={touched.Name && errors.Name}
+                    />
+                  </Grid>
+                  <Grid item xs={12} mt={1}>
+                    <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>Start Date</Typography>
+                    <Field
+                      as={TextField}
+                      fullWidth
+                      size="small"
+                      type="date"
+                      name="StartDate"
+                      error={touched.StartDate && Boolean(errors.StartDate)}
+                      helperText={touched.StartDate && errors.StartDate}
+                    />
+                  </Grid>
+                  <Grid item xs={12} mt={1} mb={2}>
+                    <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>End Date</Typography>
+                    <Field
+                      as={TextField}
+                      fullWidth
+                      size="small"
+                      type="date"
+                      name="EndDate"
+                      error={touched.EndDate && Boolean(errors.EndDate)}
+                      helperText={touched.EndDate && errors.EndDate}
+                    />
+                  </Grid>
+                </Grid>
+                <Box display="flex" justifyContent="space-between">
+                  <Button variant="contained" color="error" size="small" onClick={handleClose}>
+                    Cancel
+                  </Button>
+                  <Button disabled={isLoading} type="submit" variant="contained" size="small">
+                    Save
+                  </Button>
+                </Box>
+              </Form>
+            )}
+          </Formik>
+        </Box>
+      </Modal>
+    </>
+  );
+}

@@ -42,7 +42,11 @@ export default function MaterialIssuedNotes() {
     setPageSize,
     setSearch,
     fetchData: fetchIssuedNotes,
-  } = usePaginatedFetch("MaterialIssuedNote/GetAllMaterialIssuedNotes");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("MaterialIssuedNote/GetAllMaterialIssuedNotes");
 
   const controller = "MaterialIssuedNote/DeleteMaterialIssuedNote";
 
@@ -54,23 +58,11 @@ export default function MaterialIssuedNotes() {
     }
   }, [issuedNotes]);
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchIssuedNotes(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchIssuedNotes(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchIssuedNotes(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;
@@ -78,15 +70,13 @@ export default function MaterialIssuedNotes() {
 
   const navigateToCreate = () => {
     router.push({
-      pathname: "/manufacture/material-issued-note/create",
-    });
+      pathname: "/manufacture/material-issued-note/create" });
   };
 
   const navigateToEdit = (id) => {
     router.push({
       pathname: `/manufacture/material-issued-note/edit`,
-      query: { id: id },
-    });
+      query: { id: id } });
   };
 
   const getStatusDisplay = (status) => {

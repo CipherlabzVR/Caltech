@@ -24,6 +24,7 @@ import GetAllItemDetails from "@/components/utils/GetAllItemDetails";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import useApi from "@/components/utils/useApi";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 
 const OUTBOUND_METHOD_LABELS = {
   1: "FIFO",
@@ -118,25 +119,6 @@ export default function Items() {
     await Promise.all([refetchItemDetails(), refetchSuppliers()]);
   };
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchItemsList(1, value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchItemsList(value, searchTerm, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchItemsList(1, searchTerm, newSize);
-  };
-
   const handleSort = (field) => {
     if (sortField === field) {
       setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -184,6 +166,21 @@ export default function Items() {
       console.error("Error:", error);
     }
   };
+
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: fetchItemsList,
+  });
 
   useEffect(() => {
     fetchItemsList(page, searchTerm, pageSize);

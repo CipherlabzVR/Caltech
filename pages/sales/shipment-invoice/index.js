@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import Grid from "@mui/material/Grid";
@@ -85,20 +85,38 @@ export default function ShipmentInvoiceList() {
     if (page > maxPage) setPage(maxPage);
   }, [totalCount, pageSize, page]);
 
+  const pageBeforeSearchRef = useRef(1);
+
   const handlePageChange = (event, value) => {
     setPage(value);
   };
 
   const handlePageSizeChange = (event) => {
     const size = Number(event.target.value);
+    const maxPage = Math.max(1, Math.ceil(totalCount / size));
+    const newPage = Math.min(page, maxPage);
     setPageSize(size);
-    setPage(1);
+    setPage(newPage);
   };
 
   const handleSearchChange = (event) => {
-    const searchValue = event.target.value;
-    setSearch(searchValue);
-    setPage(1);
+    const value = event.target.value;
+    const wasEmpty = !search.trim();
+    const isEmpty = !value.trim();
+
+    if (wasEmpty && !isEmpty) {
+      pageBeforeSearchRef.current = page;
+    }
+
+    let targetPage = page;
+    if (!isEmpty) {
+      targetPage = 1;
+    } else if (!wasEmpty) {
+      targetPage = pageBeforeSearchRef.current;
+    }
+
+    setSearch(value);
+    setPage(targetPage);
   };
 
   const handleToggleCurrentDate = (event) => {

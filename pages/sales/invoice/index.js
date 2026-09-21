@@ -59,28 +59,11 @@ export default function Invoice() {
     setSearch,
     setIsCurrentDate,
     fetchData: fetchInvoiceList,
-  } = usePaginatedFetch("SalesInvoice/GetAll");
-
-  const handleSearchChange = (event) => {
-    const searchValue = event.target.value;
-    setSearch(searchValue);
-    setPage(1);
-    fetchInvoiceList(1, searchValue, pageSize, isCurrentDate);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchInvoiceList(value, search, pageSize, isCurrentDate);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchInvoiceList(1, search, size, isCurrentDate);
-  };
-
-  const handleToggleCurrentDate = () => {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("SalesInvoice/GetAll");  const handleToggleCurrentDate = () => {
     const checked = event.target.checked;
     setIsCurrentDate(checked);
     fetchInvoiceList(1, search, pageSize, checked);
@@ -92,15 +75,13 @@ export default function Invoice() {
       return;
     }
     router.push({
-      pathname: "/sales/invoice/create-invoice",
-    });
+      pathname: "/sales/invoice/create-invoice" });
   };
 
   const openInvoicePrintPopup = (item) => {
     const query = new URLSearchParams({
       id: String(item.id ?? ""),
-      documentNumber: item.documentNo ?? "",
-    });
+      documentNumber: item.documentNo ?? "" });
 
     window.open(
       `/sales/invoice/print?${query.toString()}`,

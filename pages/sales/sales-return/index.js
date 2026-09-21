@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -9,7 +10,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
-import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Button, Tooltip, IconButton, Box } from "@mui/material";
+import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Button, Tooltip, IconButton } from "@mui/material";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import { toast, ToastContainer } from "react-toastify";
 import BASE_URL from "Base/api";
@@ -21,8 +22,13 @@ import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
 import useShiftCheck from "@/components/utils/useShiftCheck";
 import { getPaymentMethods } from "@/components/types/types";
 
+const SALES_RETURN_CATEGORY_ID = "62";
+
 export default function SalesReturn() {
-    const cId = sessionStorage.getItem("category")
+    if (typeof window !== "undefined") {
+        sessionStorage.setItem("category", SALES_RETURN_CATEGORY_ID);
+    }
+    const cId = SALES_RETURN_CATEGORY_ID;
     const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
     const [salesReturnList, setSalesReturnList] = useState([]);
     const [searchTerm, setSearchTerm] = useState("");
@@ -31,25 +37,6 @@ export default function SalesReturn() {
     const [totalCount, setTotalCount] = useState(0);
     const router = useRouter();
     const { result: shiftResult, message: shiftMessage } = useShiftCheck();
-
-    const handleSearchChange = (event) => {
-        const value = event.target.value;
-        setSearchTerm(value);
-        setPage(1);
-        fetchSalesReturnList(1, value, pageSize);
-    };
-
-    const handlePageChange = (event, value) => {
-        setPage(value);
-        fetchSalesReturnList(value, searchTerm, pageSize);
-    };
-
-    const handlePageSizeChange = (event) => {
-        const newSize = event.target.value;
-        setPageSize(newSize);
-        setPage(1);
-        fetchSalesReturnList(1, searchTerm, newSize);
-    };
 
     const fetchSalesReturnList = async (page = 1, search = "", size = pageSize) => {
         try {
@@ -75,6 +62,21 @@ export default function SalesReturn() {
             console.error("Error:", error);
         }
     };
+
+    const {
+        handleSearchChange,
+        handlePageChange,
+        handlePageSizeChange,
+    } = usePaginationHandlers({
+        page,
+        pageSize,
+        totalCount,
+        search: searchTerm,
+        setPage,
+        setPageSize,
+        onSearchValueChange: setSearchTerm,
+        onFetch: fetchSalesReturnList,
+    });
 
     useEffect(() => {
         fetchSalesReturnList();
@@ -154,7 +156,7 @@ export default function SalesReturn() {
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    salesReturnList.map((item, index) => (
+                                    salesReturnList.map((item) => (
                                         <TableRow key={item.id}>
                                             <TableCell>{formatDate(item.salesReturnDate)}</TableCell>
                                             <TableCell>{item.documentNo}</TableCell>

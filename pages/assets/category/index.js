@@ -18,8 +18,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Chip,
-} from "@mui/material";
+  Chip } from "@mui/material";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import { toast, ToastContainer } from "react-toastify";
@@ -37,8 +36,7 @@ const getDepreciationMethodName = (value) => {
     1: "Straight Line",
     2: "Reducing Balance",
     3: "Units of Production",
-    4: "No Depreciation",
-  };
+    4: "No Depreciation" };
   return methods[value] || "Unknown";
 };
 
@@ -56,7 +54,11 @@ const AssetCategories = () => {
     setPageSize,
     setSearch,
     fetchData: fetchCategories,
-  } = usePaginatedFetch("asset-categories/GetAllPage", "", 10, true, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("asset-categories/GetAllPage", "", 10, true, false);
 
   // Load category tree for parent dropdown in create/edit modals
   const [categoryTree, setCategoryTree] = useState([]);
@@ -68,9 +70,7 @@ const AssetCategories = () => {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
       if (res.ok) {
         const data = await res.json();
         // Handle different response shapes
@@ -95,23 +95,11 @@ const AssetCategories = () => {
     loadTree();
   };
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchCategories(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchCategories(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchCategories(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;

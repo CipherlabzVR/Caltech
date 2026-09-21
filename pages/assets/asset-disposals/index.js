@@ -24,8 +24,7 @@ import {
   TableRow,
   TextField,
   Tooltip,
-  Typography,
-} from "@mui/material";
+  Typography } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
@@ -52,8 +51,7 @@ const modalStyle = {
   p: 4,
   borderRadius: "10px",
   maxHeight: "90vh",
-  overflowY: "auto",
-};
+  overflowY: "auto" };
 
 const disposalMethodLabel = (value) => {
   const map = {
@@ -61,8 +59,7 @@ const disposalMethodLabel = (value) => {
     2: "Write Off",
     3: "Donation",
     4: "Trade In",
-    5: "Retirement",
-  };
+    5: "Retirement" };
   return map[value] || "Unknown";
 };
 
@@ -81,8 +78,7 @@ function CreateDisposalModal({ fetchItems }) {
     BuyerName: "",
     InvoiceNumber: "",
     Reason: "",
-    Notes: "",
-  });
+    Notes: "" });
 
   const setValue = (name, value) => setValues((prev) => ({ ...prev, [name]: value }));
   const reset = () => {
@@ -95,8 +91,7 @@ function CreateDisposalModal({ fetchItems }) {
       BuyerName: "",
       InvoiceNumber: "",
       Reason: "",
-      Notes: "",
-    });
+      Notes: "" });
   };
 
   const handleClose = () => {
@@ -120,8 +115,7 @@ function CreateDisposalModal({ fetchItems }) {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
+          "Content-Type": "application/json" },
         body: JSON.stringify({
           AssetId: Number(values.AssetId),
           DisposalMethod: Number(values.DisposalMethod),
@@ -130,9 +124,7 @@ function CreateDisposalModal({ fetchItems }) {
           BuyerName: values.BuyerName,
           InvoiceNumber: values.InvoiceNumber,
           Reason: values.Reason,
-          Notes: values.Notes,
-        }),
-      });
+          Notes: values.Notes }) });
       const data = await response.json();
       if (apiOk(response, data)) {
         toast.success(data.message || "Asset disposal created");
@@ -217,9 +209,7 @@ function DisposalDeleteAction({ item, fetchItems }) {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
       const data = await response.json();
       if (apiOk(response, data)) {
         toast.success(data.message || "Asset disposal deleted");
@@ -276,28 +266,19 @@ export default function AssetDisposals() {
     setPageSize,
     setSearch,
     fetchData: fetchDisposals,
-  } = usePaginatedFetch("assets/disposals", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("assets/disposals", "", 10, false, false);
 
   const refreshList = () => fetchDisposals(page, search, pageSize);
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchDisposals(1, value, pageSize);
-  };
 
-  const handlePageChange = (_, value) => {
-    setPage(value);
-    fetchDisposals(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchDisposals(1, search, size);
-  };
+
+
+
 
   if (!navigate) return <AccessDenied />;
 

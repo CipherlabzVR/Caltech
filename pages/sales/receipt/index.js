@@ -42,34 +42,17 @@ export default function Receipt() {
     setPageSize,
     setSearch,
     fetchData: fetchReceiptList,
-  } = usePaginatedFetch("Receipt/GetAll");
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchReceiptList(1, event.target.value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchReceiptList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchReceiptList(1, search, size);
-  };
-
-  const navigateToCreate = () => {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Receipt/GetAll");  const navigateToCreate = () => {
     if (shiftResult) {
       toast.warning(shiftMessage);
       return;
     }
     router.push({
-      pathname: "/sales/receipt/create-receipt",
-    });
+      pathname: "/sales/receipt/create-receipt" });
   };
 
   if (!navigate) {

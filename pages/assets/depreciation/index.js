@@ -20,8 +20,7 @@ import {
   TableRow,
   Tabs,
   TextField,
-  Typography,
-} from "@mui/material";
+  Typography } from "@mui/material";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import { ToastContainer, toast } from "react-toastify";
@@ -42,8 +41,7 @@ const modalStyle = {
   bgcolor: "background.paper",
   boxShadow: 24,
   p: 4,
-  borderRadius: "10px",
-};
+  borderRadius: "10px" };
 
 const runStatusColor = (status) => {
   if (status === "SUCCESS") return "success";
@@ -56,8 +54,7 @@ const scheduleStatusConfig = (status) => {
   const map = {
     1: { label: "Projected", color: "info" },
     2: { label: "Posted", color: "success" },
-    3: { label: "Reversed", color: "error" },
-  };
+    3: { label: "Reversed", color: "error" } };
   return map[status] || { label: "Unknown", color: "default" };
 };
 
@@ -67,8 +64,7 @@ function CreateRunModal({ fetchItems }) {
   const [values, setValues] = useState({
     PeriodYear: new Date().getFullYear(),
     PeriodMonth: new Date().getMonth() + 1,
-    EntityId: 1,
-  });
+    EntityId: 1 });
 
   const setValue = (name, value) => setValues((prev) => ({ ...prev, [name]: value }));
 
@@ -79,14 +75,11 @@ function CreateRunModal({ fetchItems }) {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
+          "Content-Type": "application/json" },
         body: JSON.stringify({
           PeriodYear: Number(values.PeriodYear),
           PeriodMonth: Number(values.PeriodMonth),
-          EntityId: Number(values.EntityId),
-        }),
-      });
+          EntityId: Number(values.EntityId) }) });
       const data = await response.json();
       if (response.ok && (data.statusCode === 200 || data.isSuccess || data.status === "SUCCESS")) {
         toast.success(data.message || "Depreciation run completed");
@@ -139,12 +132,7 @@ function DepreciationRunsTab({ create, update, print }) {
     usePaginatedFetch("depreciation/runs", "", 10, false, false);
 
   const refreshList = () => fetchData(page, search, pageSize);
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchData(1, value, pageSize);
-  };
+
 
   return (
     <Grid container rowSpacing={1} columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}>
@@ -206,12 +194,7 @@ function DepreciationSchedulesTab({ print }) {
   const { data: schedules, totalCount, page, pageSize, search, setPage, setPageSize, setSearch, fetchData } =
     usePaginatedFetch("depreciation/schedules", "", 10, false, false);
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchData(1, value, pageSize);
-  };
+
 
   return (
     <Grid container rowSpacing={1} columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}>

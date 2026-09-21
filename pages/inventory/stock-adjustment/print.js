@@ -8,6 +8,7 @@ import TemplatePrintFrame from "@/components/ReportTemplate/TemplatePrintFrame";
 import useReportTemplate from "@/components/ReportTemplate/useReportTemplate";
 import useTemplateLetterhead from "@/components/ReportTemplate/useTemplateLetterhead";
 import { applyTemplate, escapeHtml } from "@/components/ReportTemplate/applyTemplate";
+import { EMPTY_LINE_ITEMS_HTML } from "@/components/ReportTemplate/lineItemsEditor";
 
 const REPORT_KEY = "STOCKADJUSTMENT";
 
@@ -23,19 +24,40 @@ const formatQty = (value) => {
 };
 
 const buildLineItemsRows = (record) => {
-  if (!record) {
+  const lines =
+    record?.lines?.length > 0
+      ? record.lines
+      : record
+        ? [
+            {
+              createdOn: record.createdOn,
+              supplierName: record.supplierName,
+              productCode: record.productCode,
+              productName: record.productName,
+              availableQty: record.availableQty,
+              updatedQty: record.updatedQty,
+              remark: record.remark,
+            },
+          ]
+        : [];
+
+  if (!lines.length) {
     return `<tr><td colspan="7" style="text-align:center;padding:16px;">No adjustment details available.</td></tr>`;
   }
 
-  return `<tr>
-    <td>${escapeHtml(formatDate(record.createdOn) || "—")}</td>
-    <td>${escapeHtml(record.supplierName || "—")}</td>
-    <td>${escapeHtml(record.productCode || "—")}</td>
-    <td>${escapeHtml(record.productName || "—")}</td>
-    <td class="num">${escapeHtml(formatQty(record.availableQty))}</td>
-    <td class="num">${escapeHtml(formatQty(record.updatedQty))}</td>
-    <td>${escapeHtml(record.remark || "—")}</td>
-  </tr>`;
+  return lines
+    .map(
+      (line) => `<tr>
+    <td>${escapeHtml(formatDate(line.createdOn) || "—")}</td>
+    <td>${escapeHtml(line.supplierName || "—")}</td>
+    <td>${escapeHtml(line.productCode || "—")}</td>
+    <td>${escapeHtml(line.productName || "—")}</td>
+    <td class="num">${escapeHtml(formatQty(line.availableQty))}</td>
+    <td class="num">${escapeHtml(formatQty(line.updatedQty))}</td>
+    <td>${escapeHtml(line.remark || "—")}</td>
+  </tr>`
+    )
+    .join("");
 };
 
 export default function StockAdjustmentPrintPage() {
@@ -82,8 +104,25 @@ export default function StockAdjustmentPrintPage() {
 
   const lineItemsRows = useMemo(() => buildLineItemsRows(record), [record]);
 
-  const previousQty = Number(record?.availableQty ?? 0);
-  const updatedQty = Number(record?.updatedQty ?? 0);
+  const printLines = useMemo(() => {
+    if (record?.lines?.length > 0) return record.lines;
+    if (!record) return [];
+    return [
+      {
+        availableQty: record.availableQty,
+        updatedQty: record.updatedQty,
+      },
+    ];
+  }, [record]);
+
+  const previousQty = useMemo(
+    () => printLines.reduce((sum, line) => sum + Number(line.availableQty ?? 0), 0),
+    [printLines]
+  );
+  const updatedQty = useMemo(
+    () => printLines.reduce((sum, line) => sum + Number(line.updatedQty ?? 0), 0),
+    [printLines]
+  );
   const qtyDiff = updatedQty - previousQty;
 
   const tokenMap = useMemo(
@@ -97,16 +136,30 @@ export default function StockAdjustmentPrintPage() {
       remark: record?.remark || "—",
       productCode: record?.productCode || "—",
       productName: record?.productName || "—",
-      previousQuantity: formatQty(record?.availableQty),
-      updatedQuantity: formatQty(record?.updatedQty),
+      previousQuantity: formatQty(previousQty),
+      updatedQuantity: formatQty(updatedQty),
       quantityDifference: formatQty(qtyDiff),
     }),
-    [record, documentNumber, letterheadTokens, qtyDiff]
+    [record, documentNumber, letterheadTokens, previousQty, updatedQty, qtyDiff]
   );
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || !record) return "";
-    return applyTemplate(templateHtml, tokenMap, lineItemsRows);
+    const lineTokenMaps = [
+      {
+        date: formatDate(record.createdOn) || "—",
+        supplierName: record.supplierName || "—",
+        productCode: record.productCode || "—",
+        productName: record.productName || "—",
+        previousQuantity: formatQty(record.availableQty),
+        updatedQuantity: formatQty(record.updatedQty),
+        remark: record.remark || "—",
+      },
+    ];
+    return applyTemplate(templateHtml, tokenMap, lineItemsRows, {
+      lineTokenMaps,
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
   }, [templateHtml, record, tokenMap, lineItemsRows]);
 
   const isLoading = loadingRecord || loadingTemplate;

@@ -42,7 +42,11 @@ export default function MaterialReturnNotes() {
     setPageSize,
     setSearch,
     fetchData: fetchReturnNotes,
-  } = usePaginatedFetch("MaterialReturnNote/GetAllMaterialReturnNotes");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("MaterialReturnNote/GetAllMaterialReturnNotes");
 
   const controller = "MaterialReturnNote/DeleteMaterialReturnNote";
 
@@ -54,23 +58,11 @@ export default function MaterialReturnNotes() {
     }
   }, [returnNotes]);
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchReturnNotes(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchReturnNotes(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchReturnNotes(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;
@@ -78,15 +70,13 @@ export default function MaterialReturnNotes() {
 
   const navigateToCreate = () => {
     router.push({
-      pathname: "/manufacture/material-return-note/create",
-    });
+      pathname: "/manufacture/material-return-note/create" });
   };
 
   const navigateToEdit = (id) => {
     router.push({
       pathname: `/manufacture/material-return-note/edit`,
-      query: { id: id },
-    });
+      query: { id: id } });
   };
 
   const getStatusDisplay = (status) => {

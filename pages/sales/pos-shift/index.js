@@ -25,12 +25,12 @@ import ViewCashInOut from "./view-cash-in-out";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { Catelogue } from "Base/catelogue";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 
 export default function POSShift() {
   const cId = sessionStorage.getItem("category")
   const { navigate, create, update, remove, print, customPrint } = IsPermissionEnabled(cId);
   const [shifts, setShifts] = useState([]);
-  const [searchTerm] = useState("");
   const [page, setPage] = useState(1);
   const [activeShiftId, setActiveShiftId] = useState(null);
   const [pageSize, setPageSize] = useState(10);
@@ -49,18 +49,6 @@ export default function POSShift() {
       `pos-shift-print-${item.id}`,
       "popup=yes,width=1200,height=900,scrollbars=yes,resizable=yes"
     );
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchShifts(value, searchTerm, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchShifts(1, searchTerm, newSize);
   };
 
   const fetchShifts = async (page = 1, search = "", size = pageSize) => {
@@ -88,6 +76,19 @@ export default function POSShift() {
       console.error("Error:", error);
     }
   };
+
+  const {
+    handlePageChange,
+    handlePageSizeChange,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search: "",
+    setPage,
+    setPageSize,
+    onFetch: fetchShifts,
+  });
 
   useEffect(() => {
     fetchShifts();

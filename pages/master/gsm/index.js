@@ -23,8 +23,7 @@ import { InputLabel, MenuItem, Select } from "@mui/material";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import {
   FormControl,
-  Pagination,
-} from "@mui/material";
+  Pagination } from "@mui/material";
 export default function GSM() {
   const [gsmList, setGSMList] = useState([]);
   const controller = "GSM/DeleteGSM";
@@ -41,10 +40,11 @@ export default function GSM() {
     setPageSize,
     setSearch,
     fetchData: fetchGSMList,
-  } = usePaginatedFetch("GSM/GetAllGSMPage");
-
-
-  // const fetchGSMList = async () => {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("GSM/GetAllGSMPage");  // const fetchGSMList = async () => {
   //   try {
   //     const response = await fetch(`${BASE_URL}/GSM/GetAllGSM`, {
   //       method: "GET",
@@ -65,24 +65,11 @@ export default function GSM() {
   //   }
   // };
 
-  const handleSearchChange = (event) => {
-    const val = event.target.value;
-    setSearch(val);
-    setPage(1);
-    fetchGSMList(1, val, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchGSMList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchGSMList(1, search, size);
-  };
+
+
+
 
   useEffect(() => {
     fetchGSMList();

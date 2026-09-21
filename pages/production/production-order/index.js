@@ -20,8 +20,7 @@ import {
   Tooltip,
   Typography,
   IconButton,
-  Chip,
-} from "@mui/material";
+  Chip } from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
@@ -37,8 +36,7 @@ const statusConfig = {
   1: { label: "Draft", color: "default" },
   2: { label: "In Progress", color: "info" },
   3: { label: "Completed", color: "success" },
-  4: { label: "Cancelled", color: "error" },
-};
+  4: { label: "Cancelled", color: "error" } };
 
 export default function ProductionOrders() {
   const router = useRouter();
@@ -55,27 +53,19 @@ export default function ProductionOrders() {
     setPageSize,
     setSearch,
     fetchData: fetchOrderList,
-  } = usePaginatedFetch("ProductionOrder/GetAllProductionOrders");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("ProductionOrder/GetAllProductionOrders");
 
   const controller = "ProductionOrder/DeleteProductionOrder";
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchOrderList(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchOrderList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchOrderList(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;

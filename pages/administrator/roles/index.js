@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -32,24 +33,11 @@ export default function Roles() {
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchRolesList(1, value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchRolesList(value, searchTerm, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchRolesList(1, searchTerm, newSize);
-  };
+
+
+
 
   const fetchRolesList = async (page = 1, search = "", size = pageSize) => {
     try {
@@ -74,6 +62,23 @@ export default function Roles() {
       console.error("Error:", error);
     }
   };
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize: setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: fetchRolesList,
+  });
+
 
   useEffect(() => {
     fetchRolesList();

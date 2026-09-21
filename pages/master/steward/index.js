@@ -1,4 +1,4 @@
-import React, { } from "react";
+import React from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -32,29 +32,13 @@ export default function Doctors() {
     setPageSize,
     setSearch,
     fetchData: fetchStewardList,
-  } = usePaginatedFetch("Steward/GetAllSteward");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Steward/GetAllSteward");
 
-  const controller = "Steward/DeleteSteward";
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchStewardList(1, event.target.value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchStewardList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchStewardList(1, search, size);
-  };
-
-  if (!navigate) {
+  const controller = "Steward/DeleteSteward";  if (!navigate) {
     return <AccessDenied />;
   }
 

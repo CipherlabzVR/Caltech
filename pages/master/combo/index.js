@@ -1,4 +1,4 @@
-import React, { } from "react";
+import React from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -35,31 +35,21 @@ export default function ComboMeal() {
     setPageSize,
     setSearch,
     fetchData: fetchComboList,
-  } = usePaginatedFetch("ComboMeal/GetAllComboMeals");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("ComboMeal/GetAllComboMeals");
 
-  const controller = "ComboMeal/DeleteComboMeal";
-
-  const navigateToViewImage = (url) => {
+  const controller = "ComboMeal/DeleteComboMeal";  const navigateToViewImage = (url) => {
     window.open(url, "_blank");
   };
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchComboList(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchComboList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchComboList(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;

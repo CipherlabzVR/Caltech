@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import {
@@ -650,6 +651,23 @@ const EmployeeLifecycle = () => {
     }
   }, [navigate, page, pageSize, search, departmentFilter, statusFilter, employmentTypeFilter]);
 
+
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: pageSize,
+    totalCount,
+    search: search,
+    setPage,
+    setPageSize: setPageSize,
+    setSearch,
+    onFetch: () => {},
+  });
   useEffect(() => {
     if (!navigate) {
       return;
@@ -660,19 +678,11 @@ const EmployeeLifecycle = () => {
     loadJobTitles();
   }, [navigate, loadEmployeeProfiles, loadDepartments, loadJobTitles]);
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-  };
 
-  const handlePageSizeChange = (event) => {
-    setPageSize(event.target.value);
-    setPage(1);
-  };
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-  };
+
+
+
 
   // Calculate status counts from employee profiles
   const statusCounts = useMemo(() => {

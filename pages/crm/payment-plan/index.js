@@ -49,8 +49,7 @@ const formatCurrency = (value) => {
 
   return numberValue.toLocaleString(undefined, {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+    maximumFractionDigits: 2 });
 };
 
 const formatDateValue = (value) => {
@@ -96,7 +95,11 @@ export default function InvoiceList() {
     setPageSize,
     setSearch,
     fetchData: fetchInvoices,
-  } = usePaginatedFetch("CRMInvoice/GetAllCRMInvoices", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("CRMInvoice/GetAllCRMInvoices", "", 10, false, false);
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedInvoice, setSelectedInvoice] = React.useState(null);
@@ -111,24 +114,11 @@ export default function InvoiceList() {
     [fetchInvoices, page, pageSize, search]
   );
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchInvoices(1, value, pageSize, false);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchInvoices(value, search, pageSize, false);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = Number(event.target.value);
-    setPageSize(size);
-    setPage(1);
-    fetchInvoices(1, search, size, false);
-  };
+
+
+
 
   const handleDeleteClick = (invoice) => {
     setSelectedInvoice(invoice);
@@ -153,9 +143,7 @@ export default function InvoiceList() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
+          ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
 
       const data = await response.json().catch(() => null);
 
@@ -201,9 +189,7 @@ export default function InvoiceList() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-        }
+            ...(token ? { Authorization: `Bearer ${token}` } : {}) } }
       );
 
       const data = await response.json().catch(() => null);

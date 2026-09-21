@@ -34,30 +34,48 @@ const toFilterLabel = (value, allLabel) => {
   return text;
 };
 
+const EMPTY_LINE_ITEMS_HTML = `<tr><td colspan="10" style="text-align:center;padding:16px;">No shifts found for the selected filters.</td></tr>`;
+
+const mapShiftSummaryLine = (row) => {
+  const startDate = row.startDate ?? row.StartDate;
+  const endDate = row.endDate ?? row.EndDate;
+  return {
+    documentNo: row.documentNo ?? row.DocumentNo ?? "—",
+    startDate: startDate ? formatDate(startDate) : "—",
+    endDate: endDate ? formatDate(endDate) : "—",
+    userName: row.userName ?? row.UserName ?? "—",
+    terminalCode: row.terminalCode ?? row.TerminalCode ?? "—",
+    totalStartAmount: formatAmount(row.totalStartAmount ?? row.TotalStartAmount),
+    totalEndAmount: formatAmount(row.totalEndAmount ?? row.TotalEndAmount),
+    totalInvoice: formatAmount(row.totalInvoice ?? row.TotalInvoice),
+    totalReceipt: formatAmount(row.totalReceipt ?? row.TotalReceipt),
+    status: row.status ?? row.Status ?? "—",
+  };
+};
+
 const buildLineItemsRows = (rows) => {
-  if (!rows || rows.length === 0) {
-    return `<tr><td colspan="10" style="text-align:center;padding:16px;">No shifts found for the selected filters.</td></tr>`;
-  }
+  if (!rows || rows.length === 0) return EMPTY_LINE_ITEMS_HTML;
 
   return rows
     .map((row) => {
-      const startDate = row.startDate ?? row.StartDate;
-      const endDate = row.endDate ?? row.EndDate;
+      const t = mapShiftSummaryLine(row);
       return `<tr>
-        <td>${escapeHtml(row.documentNo ?? row.DocumentNo ?? "—")}</td>
-        <td>${escapeHtml(startDate ? formatDate(startDate) : "—")}</td>
-        <td>${escapeHtml(endDate ? formatDate(endDate) : "—")}</td>
-        <td>${escapeHtml(row.userName ?? row.UserName ?? "—")}</td>
-        <td>${escapeHtml(row.terminalCode ?? row.TerminalCode ?? "—")}</td>
-        <td class="num">${escapeHtml(formatAmount(row.totalStartAmount ?? row.TotalStartAmount))}</td>
-        <td class="num">${escapeHtml(formatAmount(row.totalEndAmount ?? row.TotalEndAmount))}</td>
-        <td class="num">${escapeHtml(formatAmount(row.totalInvoice ?? row.TotalInvoice))}</td>
-        <td class="num">${escapeHtml(formatAmount(row.totalReceipt ?? row.TotalReceipt))}</td>
-        <td>${escapeHtml(row.status ?? row.Status ?? "—")}</td>
+        <td>${escapeHtml(t.documentNo)}</td>
+        <td>${escapeHtml(t.startDate)}</td>
+        <td>${escapeHtml(t.endDate)}</td>
+        <td>${escapeHtml(t.userName)}</td>
+        <td>${escapeHtml(t.terminalCode)}</td>
+        <td class="num">${escapeHtml(t.totalStartAmount)}</td>
+        <td class="num">${escapeHtml(t.totalEndAmount)}</td>
+        <td class="num">${escapeHtml(t.totalInvoice)}</td>
+        <td class="num">${escapeHtml(t.totalReceipt)}</td>
+        <td>${escapeHtml(t.status)}</td>
       </tr>`;
     })
     .join("\n");
 };
+
+const buildLineTokenMaps = (rows) => (rows || []).map(mapShiftSummaryLine);
 
 export default function ShiftSummaryPrintPage() {
   const router = useRouter();
@@ -170,8 +188,11 @@ export default function ShiftSummaryPrintPage() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || loadingData) return "";
-    return applyTemplate(templateHtml, tokenMap, lineItemsRows);
-  }, [templateHtml, loadingData, tokenMap, lineItemsRows]);
+    return applyTemplate(templateHtml, tokenMap, lineItemsRows, {
+      lineTokenMaps: buildLineTokenMaps(rows),
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
+  }, [templateHtml, loadingData, tokenMap, lineItemsRows, rows]);
 
   return (
     <>

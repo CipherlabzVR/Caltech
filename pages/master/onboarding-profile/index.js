@@ -23,8 +23,7 @@ import {
   Pagination,
   Select,
   Tooltip,
-  Typography,
-} from "@mui/material";
+  Typography } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { ToastContainer, toast } from "react-toastify";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
@@ -49,8 +48,7 @@ export default function OnboardingProfiles() {
     (async () => {
       try {
         const res = await fetch(`${BASE_URL}/Employee/GetAlldepartment`, {
-          headers: createAuthHeaders(),
-        });
+          headers: createAuthHeaders() });
         if (!res.ok || cancelled) return;
         const json = await res.json();
         const list = json.result || json || [];
@@ -82,25 +80,17 @@ export default function OnboardingProfiles() {
     setPageSize,
     setSearch,
     fetchData: fetchProfiles,
-  } = usePaginatedFetch("hr/onboarding-profiles", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("hr/onboarding-profiles", "", 10, false, false);
 
-  const handleSearchChange = (e) => {
-    setSearch(e.target.value);
-    setPage(1);
-    fetchProfiles(1, e.target.value, pageSize);
-  };
 
-  const handlePageChange = (_, value) => {
-    setPage(value);
-    fetchProfiles(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (e) => {
-    const size = e.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchProfiles(1, search, size);
-  };
+
+
+
 
   const refresh = () => {
     setPage(1);

@@ -34,8 +34,11 @@ export async function isItemCodeAvailable(code, excludeItemId = null) {
     }
 
     const data = await response.json();
-    const items = data?.result?.items ?? data?.result?.Items ?? [];
+    const payload = data?.result ?? data?.Result ?? {};
+    const items = payload.items ?? payload.Items ?? (Array.isArray(payload) ? payload : []);
     const normalized = trimmed.toUpperCase();
+    const excludeId =
+      excludeItemId == null || excludeItemId === "" ? null : String(excludeItemId);
     const conflict = items.find((entry) => {
       const itemCode = String(entry.code ?? entry.Code ?? "")
         .trim()
@@ -43,11 +46,14 @@ export async function isItemCodeAvailable(code, excludeItemId = null) {
       if (itemCode !== normalized) {
         return false;
       }
-      if (excludeItemId == null || excludeItemId === "") {
+      if (excludeId == null) {
         return true;
       }
       const itemId = entry.id ?? entry.Id;
-      return Number(itemId) !== Number(excludeItemId);
+      if (itemId == null || itemId === "") {
+        return false;
+      }
+      return String(itemId) !== excludeId;
     });
 
     return { available: !conflict };

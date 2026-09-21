@@ -33,30 +33,17 @@ export default function Employees() {
     setPage,
     setPageSize,
     setSearch,
-    fetchData: fetchPrinterList,
-  } =  usePaginatedFetch("Printer/GetAllPrintersByPagedResult");
+    fetchData: fetchPrinterList } =  usePaginatedFetch("Printer/GetAllPrintersByPagedResult");
   const rows = PrinterLisat?.result || [];
 
 
   const controller = "Printer/DeletePrinter";
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchPrinterList(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchPrinterList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchPrinterList(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;

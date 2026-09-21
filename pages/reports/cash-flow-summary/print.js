@@ -34,26 +34,41 @@ const toFilterLabel = (value, allLabel) => {
   return text;
 };
 
+const EMPTY_LINE_ITEMS_HTML = `<tr><td colspan="7" style="text-align:center;padding:16px;">No cash flow entries found for the selected filters.</td></tr>`;
+
+const mapCashFlowLine = (row) => {
+  const date = row.date ?? row.Date;
+  return {
+    date: date ? formatDate(date) : "—",
+    shiftNo: row.shiftNo ?? row.ShiftNo ?? "—",
+    cashFlowTypeName: row.cashFlowTypeName ?? row.CashFlowTypeName ?? "—",
+    cashType: row.cashType ?? row.CashType ?? "—",
+    amount: formatAmount(row.amount ?? row.Amount),
+    description: (row.description ?? row.Description) || "—",
+    status: row.status ?? row.Status ?? "—",
+  };
+};
+
 const buildLineItemsRows = (rows) => {
-  if (!rows || rows.length === 0) {
-    return `<tr><td colspan="7" style="text-align:center;padding:16px;">No cash flow entries found for the selected filters.</td></tr>`;
-  }
+  if (!rows || rows.length === 0) return EMPTY_LINE_ITEMS_HTML;
 
   return rows
     .map((row) => {
-      const date = row.date ?? row.Date;
+      const t = mapCashFlowLine(row);
       return `<tr>
-        <td>${escapeHtml(date ? formatDate(date) : "—")}</td>
-        <td>${escapeHtml(row.shiftNo ?? row.ShiftNo ?? "—")}</td>
-        <td>${escapeHtml(row.cashFlowTypeName ?? row.CashFlowTypeName ?? "—")}</td>
-        <td>${escapeHtml(row.cashType ?? row.CashType ?? "—")}</td>
-        <td class="num">${escapeHtml(formatAmount(row.amount ?? row.Amount))}</td>
-        <td>${escapeHtml((row.description ?? row.Description) || "—")}</td>
-        <td>${escapeHtml(row.status ?? row.Status ?? "—")}</td>
+        <td>${escapeHtml(t.date)}</td>
+        <td>${escapeHtml(t.shiftNo)}</td>
+        <td>${escapeHtml(t.cashFlowTypeName)}</td>
+        <td>${escapeHtml(t.cashType)}</td>
+        <td class="num">${escapeHtml(t.amount)}</td>
+        <td>${escapeHtml(t.description)}</td>
+        <td>${escapeHtml(t.status)}</td>
       </tr>`;
     })
     .join("\n");
 };
+
+const buildLineTokenMaps = (rows) => (rows || []).map(mapCashFlowLine);
 
 export default function CashFlowSummaryPrintPage() {
   const router = useRouter();
@@ -164,8 +179,11 @@ export default function CashFlowSummaryPrintPage() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || loadingData) return "";
-    return applyTemplate(templateHtml, tokenMap, lineItemsRows);
-  }, [templateHtml, loadingData, tokenMap, lineItemsRows]);
+    return applyTemplate(templateHtml, tokenMap, lineItemsRows, {
+      lineTokenMaps: buildLineTokenMaps(rows),
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
+  }, [templateHtml, loadingData, tokenMap, lineItemsRows, rows]);
 
   return (
     <>

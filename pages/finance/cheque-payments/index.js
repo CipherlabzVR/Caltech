@@ -34,25 +34,17 @@ export default function ChequePayments() {
     setPageSize,
     setSearch,
     fetchData: fetchChequePayments,
-  } = usePaginatedFetch("BankHistory/GetAllChequeRecordsAsync");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("BankHistory/GetAllChequeRecordsAsync");
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchChequePayments(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchChequePayments(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchChequePayments(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;

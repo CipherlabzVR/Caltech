@@ -15,8 +15,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Chip,
-} from "@mui/material";
+  Chip } from "@mui/material";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import { ToastContainer } from "react-toastify";
@@ -34,8 +33,7 @@ const getStatusChip = (status) => {
     2: { label: "In Progress", color: "warning" },
     3: { label: "On Hold", color: "default" },
     4: { label: "Completed", color: "success" },
-    5: { label: "Cancelled", color: "error" },
-  };
+    5: { label: "Cancelled", color: "error" } };
   const config = statusMap[status] || { label: "Unknown", color: "default" };
   return <Chip label={config.label} color={config.color} size="small" />;
 };
@@ -64,26 +62,17 @@ const WorkOrdersRegistry = () => {
     setPageSize,
     setSearch,
     fetchData: fetchWorkOrders,
-  } = usePaginatedFetch("maintenance/work-orders", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("maintenance/work-orders", "", 10, false, false);
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchWorkOrders(1, value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchWorkOrders(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchWorkOrders(1, search, size);
-  };
+
+
+
 
   const refreshList = () => fetchWorkOrders(page, search, pageSize);
 

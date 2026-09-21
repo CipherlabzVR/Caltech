@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -40,24 +41,11 @@ export default function MyTasks() {
     });
   };
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchTasksList(1, value, pageSize, projectId);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchTasksList(value, searchTerm, pageSize, projectId);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchTasksList(1, searchTerm, newSize, projectId);
-  };
+
+
+
 
   const fetchTasksList = async (page = 1, search = "", size = pageSize, project) => {
     try {
@@ -82,6 +70,23 @@ export default function MyTasks() {
       console.error("Error:", error);
     }
   };
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize: setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: (p, s, sz) => fetchTasksList(p, s, sz, projectId),
+  });
+
 
   useEffect(() => {
     if (projectList) {

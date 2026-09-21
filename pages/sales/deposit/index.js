@@ -24,6 +24,7 @@ import DescriptionIcon from "@mui/icons-material/Description";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { Catelogue } from "Base/catelogue";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 
 export default function DailyDeposits() {
   const cId = sessionStorage.getItem("category")
@@ -48,24 +49,6 @@ export default function DailyDeposits() {
     setSelectedTotal(item.totalAmount);
     setSelectedDocument(item.documentNo);
     setOpen(true);
-  };
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchDepositList(1, value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchDepositList(value, searchTerm, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchDepositList(1, searchTerm, newSize);
   };
 
   const fetchDepositList = async (page = 1, search = "", size = pageSize) => {
@@ -92,6 +75,21 @@ export default function DailyDeposits() {
       console.error("Error:", error);
     }
   };
+
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: fetchDepositList,
+  });
 
   useEffect(() => {
     fetchDepositList();

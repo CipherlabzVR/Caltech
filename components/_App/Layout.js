@@ -6,7 +6,6 @@ import TopNavbar from "@/components/_App/TopNavbar";
 import Footer from "@/components/_App/Footer";
 import ScrollToTop from "./ScrollToTop";
 import ControlPanelModal from "./ControlPanelModal";
-import HidableButtons from "../Dashboard/eCommerce/HidableButtons";
 import ChatWidget from "./AiAssistant/ChatWidget";
 import AccessDenied from "../UIElements/Permission/AccessDenied";
 import { TopbarContext } from "./TopbarContext";
@@ -14,6 +13,12 @@ import { CurrencyProvider, useCurrency } from "@/components/HR/CurrencyContext";
 import SnowEffect from "./SnowEffect";
 import NewYearEffect from "./NewYearEffect";
 import HolidayGreeting from "./HolidayGreeting";
+import FirstLoginChangePasswordDialog from "@/components/Authentication/FirstLoginChangePasswordDialog";
+import {
+  clearFirstLoginPasswordOffer,
+  hasFirstLoginPasswordOffer,
+  isUserTypeUser,
+} from "@/components/utils/firstLoginPasswordOffer";
 import BASE_URL from "Base/api";
 import { Box, Typography, Grid, IconButton, Slide, Button, Input } from "@mui/material";
 import PaymentIcon from "@mui/icons-material/Payment";
@@ -55,6 +60,7 @@ const LayoutContent = ({ children }) => {
   const [paymentSlipFile, setPaymentSlipFile] = useState(null);
   const [paymentSlipPreview, setPaymentSlipPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [firstLoginPasswordOpen, setFirstLoginPasswordOpen] = useState(false);
 
   const showSidebar = useCallback(() => {
     // In desktop: active = false shows sidebar (no active class = visible)
@@ -77,6 +83,17 @@ const LayoutContent = ({ children }) => {
       setActive(true); // Desktop: active = true hides sidebar
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!localStorage.getItem("token")) return;
+    if ((router.pathname || "").startsWith("/authentication/")) return;
+    if (hasFirstLoginPasswordOffer() && isUserTypeUser(localStorage.getItem("type"))) {
+      setFirstLoginPasswordOpen(true);
+    } else {
+      clearFirstLoginPasswordOffer();
+    }
+  }, [router.pathname]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -720,6 +737,10 @@ const LayoutContent = ({ children }) => {
         <SnowEffect />
         <NewYearEffect />
         <HolidayGreeting />
+        <FirstLoginChangePasswordDialog
+          open={firstLoginPasswordOpen}
+          onFinished={() => setFirstLoginPasswordOpen(false)}
+        />
 
         {!(
           router.pathname === "/authentication/sign-in" ||
@@ -730,7 +751,6 @@ const LayoutContent = ({ children }) => {
           router.pathname === "/authentication/logout" ||
           router.pathname === "/restaurant/dashboard"
         ) && <ControlPanelModal />}
-        <HidableButtons />
         <ChatWidget />
       </>
     </TopbarContext.Provider>

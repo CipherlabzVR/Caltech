@@ -35,27 +35,19 @@ export default function Bookings() {
     setPageSize,
     setSearch,
     fetchData: fetchBookingList,
-  } = usePaginatedFetch("Booking/GetAllBookings");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Booking/GetAllBookings");
 
   const controller = "Booking/BookingCancelation";
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchBookingList(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchBookingList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchBookingList(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;

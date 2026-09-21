@@ -15,8 +15,7 @@ import {
   Typography,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
@@ -30,8 +29,7 @@ import {
   PROMOTION_CATEGORIES,
   PROMOTION_TYPES,
   humanizePromotionCategoryEnumKey,
-  normalizePromotionCategoryKey,
-} from "@/components/eCommerce/promotions/promotionConfig";
+  normalizePromotionCategoryKey } from "@/components/eCommerce/promotions/promotionConfig";
 
 function extraQueryForPromotionStatusFilter(value) {
   return value === "active" ? { ActivePromotionsOnly: true } : {};
@@ -60,17 +58,15 @@ export default function Promotions() {
     setSearch,
     setExtraQuery,
     fetchData,
-  } = usePaginatedFetch("ECommerce/GetAllPromotions", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("ECommerce/GetAllPromotions", "", 10, false, false);
 
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    const nextExtra = extraQueryForPromotionStatusFilter(statusFilter);
-    setExtraQuery(nextExtra);
-    fetchData(1, event.target.value, pageSize, undefined, undefined, nextExtra);
-  };
+
 
   const handleStatusFilterChange = (event) => {
     const value = event.target.value;
@@ -81,17 +77,9 @@ export default function Promotions() {
     fetchData(1, search, pageSize, undefined, undefined, nextExtra);
   };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchData(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchData(1, search, size);
-  };
+
+
 
   const getTypeLabel = (category, type) => {
     const types = PROMOTION_TYPES[category];

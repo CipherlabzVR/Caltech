@@ -15,8 +15,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Typography,
-} from "@mui/material";
+  Typography } from "@mui/material";
 import styles from "@/styles/PageTitle.module.css";
 import { ToastContainer } from "react-toastify";
 import AddDeliveryMethodModal from "./create";
@@ -42,9 +41,7 @@ const useDeliveryTypeOptions = () => {
           method: "GET",
           headers: {
             Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
+            "Content-Type": "application/json" } });
 
         if (!response.ok) {
           return;
@@ -81,11 +78,13 @@ export default function DeliveryMethods() {
     setPageSize,
     setSearch,
     fetchData,
-  } = usePaginatedFetch("DeliveryMethods/GetAllDeliveryMethods", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("DeliveryMethods/GetAllDeliveryMethods", "", 10, false, false);
 
-  const deliveryTypeOptions = useDeliveryTypeOptions();
-
-  const refreshList = useCallback(
+  const deliveryTypeOptions = useDeliveryTypeOptions();  const refreshList = useCallback(
     (resetToFirstPage = false) => {
       const targetPage = resetToFirstPage ? 1 : page;
       if (resetToFirstPage && page !== 1) {
@@ -96,24 +95,11 @@ export default function DeliveryMethods() {
     [fetchData, page, pageSize, search, setPage]
   );
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchData(1, value, pageSize, false);
-  };
 
-  const handlePageChange = (_, value) => {
-    setPage(value);
-    fetchData(value, search, pageSize, false);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = Number(event.target.value);
-    setPageSize(size);
-    setPage(1);
-    fetchData(1, search, size, false);
-  };
+
+
+
 
   const paginatedItems = useMemo(() => deliveryMethods || [], [deliveryMethods]);
 

@@ -32,8 +32,7 @@ import {
   Step,
   StepLabel,
   CircularProgress,
-  TextField,
-} from "@mui/material";
+  TextField } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
@@ -81,30 +80,26 @@ const ORDER_STATUS_NAME_TO_NUM = {
   dispatched: 3,
   delivered: 4,
   completed: 5,
-  cancelled: 6,
-};
+  cancelled: 6 };
 
 const PAYMENT_NAME_TO_NUM = {
   cashondelivery: 1,
   card: 2,
-  banktransfer: 3,
-};
+  banktransfer: 3 };
 
 const REFUND_STATUS_NAME_TO_NUM = {
   notapplicable: 0,
   pending: 1,
   processing: 2,
   completed: 3,
-  failed: 4,
-};
+  failed: 4 };
 
 const REFUND_STATUS_META = {
   0: { label: "Not applicable", color: "default" },
   1: { label: "Refund pending", color: "warning" },
   2: { label: "Refund processing", color: "info" },
   3: { label: "Refund completed", color: "success" },
-  4: { label: "Refund failed", color: "error" },
-};
+  4: { label: "Refund failed", color: "error" } };
 
 function parseRefundStatus(raw) {
   if (raw == null || raw === "") return 0;
@@ -193,47 +188,41 @@ function getStatusHistoryVisuals(action) {
       title: "Order placed",
       description: "This order was created in the system.",
       palette: "info",
-      Icon: ReceiptLongIcon,
-    };
+      Icon: ReceiptLongIcon };
   }
   if (a === "Advance") {
     return {
       title: "Moved forward",
       description: "Fulfillment moved to the next step.",
       palette: "success",
-      Icon: TrendingUpIcon,
-    };
+      Icon: TrendingUpIcon };
   }
   if (a === "Revert") {
     return {
       title: "Rolled back",
       description: "The order was moved to an earlier step.",
       palette: "warning",
-      Icon: UndoIcon,
-    };
+      Icon: UndoIcon };
   }
   if (a === "CustomerConfirm") {
     return {
       title: "Customer confirmed",
       description: "The buyer marked this order as completed.",
       palette: "success",
-      Icon: HowToRegIcon,
-    };
+      Icon: HowToRegIcon };
   }
   if (a === "Cancel") {
     return {
       title: "Order cancelled",
       description: "Fulfillment was stopped and the customer was notified.",
       palette: "error",
-      Icon: CancelIcon,
-    };
+      Icon: CancelIcon };
   }
   return {
     title: formatStatusHistoryAction(action),
     description: "Status update recorded.",
     palette: "grey",
-    Icon: MoreHorizIcon,
-  };
+    Icon: MoreHorizIcon };
 }
 
 async function readOrderStatusApiResult(response) {
@@ -268,7 +257,11 @@ export default function Orders() {
     setSearch,
     setExtraQuery,
     fetchData: fetchOrders,
-  } = usePaginatedFetch("ECommerce/GetAllOnlineOrders");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("ECommerce/GetAllOnlineOrders");
 
   const [statusTab, setStatusTab] = useState("all");
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -299,8 +292,7 @@ export default function Orders() {
       3: { label: "Dispatched", color: "warning" },
       4: { label: "Delivered", color: "secondary" },
       5: { label: "Completed", color: "success" },
-      6: { label: "Cancelled", color: "error" },
-    }),
+      6: { label: "Cancelled", color: "error" } }),
     []
   );
 
@@ -308,8 +300,7 @@ export default function Orders() {
     () => ({
       1: "Cash on Delivery",
       2: "Card",
-      3: "Bank Transfer",
-    }),
+      3: "Bank Transfer" }),
     []
   );
 
@@ -357,8 +348,7 @@ export default function Orders() {
         paymentVerifiedOn: order.paymentVerifiedOn ?? order.PaymentVerifiedOn ?? null,
         paymentVerifiedBy: order.paymentVerifiedBy ?? order.PaymentVerifiedBy ?? "",
         paymentRejectReason: order.paymentRejectReason ?? order.PaymentRejectReason ?? "",
-        paymentOption: paymentOpt,
-      };
+        paymentOption: paymentOpt };
     });
   }, [ordersList, STATUS_META, PAYMENT_MAPPER]);
 
@@ -370,25 +360,11 @@ export default function Orders() {
     fetchOrders(1, search, pageSize, undefined, undefined, nextExtra);
   };
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    const nextExtra = extraQueryForStatusTab(statusTab);
-    setExtraQuery(nextExtra);
-    fetchOrders(1, event.target.value, pageSize, undefined, undefined, nextExtra);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchOrders(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchOrders(1, search, size);
-  };
+
+
+
 
   const handleOpenItems = (order) => {
     setSelectedOrder(order);
@@ -413,9 +389,7 @@ export default function Orders() {
           `${BASE_URL}/ECommerce/GetOnlineOrderStatusHistory?orderId=${orderId}`,
           {
             headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-          }
+              Authorization: `Bearer ${localStorage.getItem("token")}` } }
         );
         const data = await readOrderStatusApiResult(response);
         const list = data?.result ?? data?.Result ?? [];
@@ -448,9 +422,7 @@ export default function Orders() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      }
+          "Content-Type": "application/json" } }
     );
     await readOrderStatusApiResult(response);
   };
@@ -496,8 +468,7 @@ export default function Orders() {
     0: { label: "—", color: "default" },
     1: { label: "Payment pending", color: "warning" },
     2: { label: "Payment accepted", color: "success" },
-    3: { label: "Payment rejected", color: "error" },
-  };
+    3: { label: "Payment rejected", color: "error" } };
 
   const handleApproveBankTransfer = async (order) => {
     const orderId = order?.orderId ?? order?.OrderId;
@@ -508,10 +479,8 @@ export default function Orders() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ orderId }),
-      });
+          "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }) });
       // ApiResponse.SUCCESS is 200 (not 1) — use shared reader.
       const data = await readOrderStatusApiResult(response);
       const result = data.result ?? data.Result ?? {};
@@ -531,8 +500,7 @@ export default function Orders() {
           InvoiceNo: result.invoiceNo ?? result.InvoiceNo ?? prev.invoiceNo,
           invoiceId:
             result.invoiceId ?? result.InvoiceId ?? prev.invoiceId,
-          InvoiceId: result.invoiceId ?? result.InvoiceId ?? prev.invoiceId,
-        };
+          InvoiceId: result.invoiceId ?? result.InvoiceId ?? prev.invoiceId };
       });
       setHistoryRefreshKey((k) => k + 1);
     } catch (error) {
@@ -571,10 +539,8 @@ export default function Orders() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ orderId, reason }),
-      });
+          "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, reason }) });
       const data = await readOrderStatusApiResult(response);
       toast.success(data.message || data.Message || "Payment rejected and order cancelled.");
       setRejectPaymentDialogOpen(false);
@@ -658,13 +624,10 @@ export default function Orders() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
+          "Content-Type": "application/json" },
         body: JSON.stringify({
           OrderId: orderId,
-          Reason: reason,
-        }),
-      });
+          Reason: reason }) });
       const result = await readOrderStatusApiResult(response);
       const refundStatus = parseRefundStatus(
         result?.result?.refundStatus ?? result?.Result?.RefundStatus
@@ -704,13 +667,10 @@ export default function Orders() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
+          "Content-Type": "application/json" },
         body: JSON.stringify({
           OrderId: orderId,
-          Reason: reason,
-        }),
-      });
+          Reason: reason }) });
       await readOrderStatusApiResult(response);
       toast.success("Order status reverted");
       setRevertDialogOpen(false);
@@ -763,8 +723,7 @@ export default function Orders() {
               border: "1px solid",
               borderColor: "divider",
               mb: 2,
-              overflow: "hidden",
-            }}
+              overflow: "hidden" }}
           >
             <Tabs
               value={statusTab}
@@ -780,9 +739,7 @@ export default function Orders() {
                   textTransform: "none",
                   fontWeight: 600,
                   fontSize: "0.875rem",
-                  minHeight: 48,
-                },
-              }}
+                  minHeight: 48 } }}
             >
               {STATUS_TABS.map((t) => (
                 <Tab key={t.value} label={t.label} value={t.value} />
@@ -846,8 +803,7 @@ export default function Orders() {
                               month: "short",
                               day: "2-digit",
                               hour: "2-digit",
-                              minute: "2-digit",
-                            })
+                              minute: "2-digit" })
                           : "-"}
                       </TableCell>
                       <TableCell>
@@ -875,9 +831,7 @@ export default function Orders() {
                               bgcolor: (theme) =>
                                 theme.palette.mode === "dark"
                                   ? "rgba(144, 202, 249, 0.08)"
-                                  : "rgba(25, 118, 210, 0.06)",
-                            },
-                          }}
+                                  : "rgba(25, 118, 210, 0.06)" } }}
                         >
                           View
                         </Button>
@@ -989,9 +943,7 @@ export default function Orders() {
             background: (theme) =>
               theme.palette.mode === "dark"
                 ? theme.palette.background.paper
-                : "linear-gradient(180deg, #fafbff 0%, #ffffff 48%)",
-          },
-        }}
+                : "linear-gradient(180deg, #fafbff 0%, #ffffff 48%)" } }}
       >
         <DialogTitle
           sx={{
@@ -1005,8 +957,7 @@ export default function Orders() {
             alignItems: "center",
             justifyContent: "space-between",
             flexWrap: "wrap",
-            gap: 1,
-          }}
+            gap: 1 }}
         >
           <Box>
             Order overview
@@ -1045,8 +996,7 @@ export default function Orders() {
                     border: "1px solid",
                     borderColor: "divider",
                     bgcolor: "background.paper",
-                    height: "100%",
-                  }}
+                    height: "100%" }}
                 >
                   <Typography variant="overline" color="primary" fontWeight={700} letterSpacing={0.6}>
                     Fulfillment progress
@@ -1067,8 +1017,7 @@ export default function Orders() {
                             gap: 1.25,
                             bgcolor: (t) => alpha(t.palette.error.main, 0.08),
                             border: "1px solid",
-                            borderColor: (t) => alpha(t.palette.error.main, 0.3),
-                          }}
+                            borderColor: (t) => alpha(t.palette.error.main, 0.3) }}
                         >
                           <BlockIcon color="error" />
                           <Box>
@@ -1093,8 +1042,7 @@ export default function Orders() {
                             alternativeLabel
                             sx={{
                               minWidth: { xs: 520, sm: "100%" },
-                              "& .MuiStepLabel-label": { fontSize: "0.7rem", fontWeight: 600 },
-                            }}
+                              "& .MuiStepLabel-label": { fontSize: "0.7rem", fontWeight: 600 } }}
                           >
                             {ORDER_FLOW_STEPS.map((label) => (
                               <Step key={label}>
@@ -1139,9 +1087,7 @@ export default function Orders() {
                             transition: "box-shadow 0.2s ease, border-color 0.2s ease",
                             "&:hover": {
                               borderColor: "primary.light",
-                              boxShadow: "0 2px 12px rgba(25, 118, 210, 0.08)",
-                            },
-                          }}
+                              boxShadow: "0 2px 12px rgba(25, 118, 210, 0.08)" } }}
                         >
                           <CardContent sx={{ py: 1.25, px: 1.75, "&:last-child": { pb: 1.25 } }}>
                             <Box
@@ -1150,8 +1096,7 @@ export default function Orders() {
                                 justifyContent: "space-between",
                                 alignItems: "flex-start",
                                 gap: 1,
-                                flexWrap: "wrap",
-                              }}
+                                flexWrap: "wrap" }}
                             >
                               <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 0.75 }}>
                               <Typography variant="subtitle2" fontWeight={700}>
@@ -1256,8 +1201,7 @@ export default function Orders() {
                         borderRadius: 2,
                         bgcolor: "primary.main",
                         color: "primary.contrastText",
-                        minWidth: { xs: "100%", sm: 220 },
-                      }}
+                        minWidth: { xs: "100%", sm: 220 } }}
                     >
                       <Typography variant="caption" sx={{ opacity: 0.9 }}>
                         Order total
@@ -1280,8 +1224,7 @@ export default function Orders() {
                     borderColor: "divider",
                     bgcolor: (theme) =>
                       theme.palette.mode === "dark" ? theme.palette.background.paper : "grey.50",
-                    height: "100%",
-                  }}
+                    height: "100%" }}
                 >
                   <Typography variant="overline" color="primary" fontWeight={700} letterSpacing={0.6}>
                     Customer & delivery
@@ -1358,8 +1301,7 @@ export default function Orders() {
                           borderRadius: 1.5,
                           border: "1px solid",
                           borderColor: "divider",
-                          bgcolor: "background.paper",
-                        }}
+                          bgcolor: "background.paper" }}
                       >
                         <Stack
                           direction="row"
@@ -1422,8 +1364,7 @@ export default function Orders() {
                                   border: "1px solid",
                                   borderColor: "divider",
                                   objectFit: "contain",
-                                  bgcolor: "grey.100",
-                                }}
+                                  bgcolor: "grey.100" }}
                                 onError={(e) => {
                                   e.currentTarget.style.display = "none";
                                 }}
@@ -1643,8 +1584,7 @@ export default function Orders() {
                         borderRadius: 2,
                         border: "1px solid",
                         borderColor: (t) => alpha(t.palette.error.main, 0.3),
-                        bgcolor: (t) => alpha(t.palette.error.main, 0.04),
-                      }}
+                        bgcolor: (t) => alpha(t.palette.error.main, 0.04) }}
                     >
                       <Box
                         sx={{
@@ -1652,8 +1592,7 @@ export default function Orders() {
                           alignItems: "center",
                           gap: 1,
                           mb: 1.5,
-                          flexWrap: "wrap",
-                        }}
+                          flexWrap: "wrap" }}
                       >
                         <CancelIcon color="error" />
                         <Typography
@@ -1693,8 +1632,7 @@ export default function Orders() {
                                   month: "short",
                                   day: "2-digit",
                                   hour: "2-digit",
-                                  minute: "2-digit",
-                                })
+                                  minute: "2-digit" })
                               : "—"}
                           </Typography>
                         </Grid>
@@ -1727,8 +1665,7 @@ export default function Orders() {
                                       month: "short",
                                       day: "2-digit",
                                       hour: "2-digit",
-                                      minute: "2-digit",
-                                    })
+                                      minute: "2-digit" })
                                   : refundStatusNum === 1
                                   ? "Pending — refund manually via WebXPay dashboard"
                                   : "—"}
@@ -1771,8 +1708,7 @@ export default function Orders() {
                     border: "1px solid",
                     borderColor: "divider",
                     bgcolor: (theme) =>
-                      theme.palette.mode === "dark" ? theme.palette.background.paper : "grey.50",
-                  }}
+                      theme.palette.mode === "dark" ? theme.palette.background.paper : "grey.50" }}
                 >
                   <Typography variant="overline" color="primary" fontWeight={700} letterSpacing={0.6}>
                     Customer feedback
@@ -1802,8 +1738,7 @@ export default function Orders() {
                                 month: "short",
                                 day: "2-digit",
                                 hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                                minute: "2-digit" })}
                             </Typography>
                           ) : null}
                         </Box>
@@ -1831,8 +1766,7 @@ export default function Orders() {
                     background: (t) =>
                       t.palette.mode === "dark"
                         ? alpha(t.palette.primary.main, 0.04)
-                        : alpha(t.palette.primary.main, 0.02),
-                  }}
+                        : alpha(t.palette.primary.main, 0.02) }}
                 >
                   <Box
                     sx={{
@@ -1841,8 +1775,7 @@ export default function Orders() {
                       justifyContent: "space-between",
                       mb: 2,
                       flexWrap: "wrap",
-                      gap: 1,
-                    }}
+                      gap: 1 }}
                   >
                     <Box>
                       <Typography variant="overline" color="primary" fontWeight={800} letterSpacing={1}>
@@ -1892,8 +1825,7 @@ export default function Orders() {
                               display: "flex",
                               gap: { xs: 1.5, sm: 2 },
                               pb: isLast ? 0 : 2,
-                              position: "relative",
-                            }}
+                              position: "relative" }}
                           >
                             <Box
                               sx={{
@@ -1901,8 +1833,7 @@ export default function Orders() {
                                 flexDirection: "column",
                                 alignItems: "center",
                                 width: 48,
-                                flexShrink: 0,
-                              }}
+                                flexShrink: 0 }}
                             >
                               <Box
                                 sx={{
@@ -1919,8 +1850,7 @@ export default function Orders() {
                                     pal === "grey"
                                       ? theme.palette.divider
                                       : alpha(theme.palette[pal].main, 0.35),
-                                  zIndex: 1,
-                                }}
+                                  zIndex: 1 }}
                               >
                                 <IconCmp sx={{ fontSize: 22 }} />
                               </Box>
@@ -1933,8 +1863,7 @@ export default function Orders() {
                                     mt: 0.5,
                                     mb: -1,
                                     borderRadius: 1,
-                                    bgcolor: alpha(theme.palette.primary.main, 0.15),
-                                  }}
+                                    bgcolor: alpha(theme.palette.primary.main, 0.15) }}
                                 />
                               )}
                             </Box>
@@ -1951,8 +1880,7 @@ export default function Orders() {
                                 borderLeftColor: mainColor,
                                 bgcolor: "background.paper",
                                 boxShadow: (t) =>
-                                  t.palette.mode === "dark" ? "none" : "0 1px 4px rgba(15, 23, 42, 0.06)",
-                              }}
+                                  t.palette.mode === "dark" ? "none" : "0 1px 4px rgba(15, 23, 42, 0.06)" }}
                             >
                               <Box
                                 sx={{
@@ -1961,8 +1889,7 @@ export default function Orders() {
                                   alignItems: { sm: "flex-start" },
                                   justifyContent: "space-between",
                                   gap: 1,
-                                  mb: 1.25,
-                                }}
+                                  mb: 1.25 }}
                               >
                                 <Box>
                                   <Typography variant="subtitle1" fontWeight={800} sx={{ lineHeight: 1.3 }}>
@@ -1982,8 +1909,7 @@ export default function Orders() {
                                       py: 0.5,
                                       borderRadius: 10,
                                       bgcolor: alpha(theme.palette.primary.main, 0.08),
-                                      alignSelf: { xs: "flex-start", sm: "flex-start" },
-                                    }}
+                                      alignSelf: { xs: "flex-start", sm: "flex-start" } }}
                                   >
                                     <ScheduleIcon sx={{ fontSize: 16, color: "primary.main", opacity: 0.85 }} />
                                     <Typography variant="caption" fontWeight={600} color="primary.dark">
@@ -1992,8 +1918,7 @@ export default function Orders() {
                                         month: "short",
                                         day: "2-digit",
                                         hour: "2-digit",
-                                        minute: "2-digit",
-                                      })}
+                                        minute: "2-digit" })}
                                     </Typography>
                                   </Box>
                                 ) : null}
@@ -2021,8 +1946,7 @@ export default function Orders() {
                                   display: "flex",
                                   alignItems: "center",
                                   gap: 0.75,
-                                  color: "text.secondary",
-                                }}
+                                  color: "text.secondary" }}
                               >
                                 <PersonOutlineIcon sx={{ fontSize: 18, opacity: 0.75 }} />
                                 <Typography variant="caption" sx={{ wordBreak: "break-all" }}>
@@ -2050,8 +1974,7 @@ export default function Orders() {
                                         ? theme.palette.error.main
                                         : theme.palette.warning.main,
                                       0.28
-                                    ),
-                                  }}
+                                    ) }}
                                 >
                                   <Typography
                                     variant="caption"
@@ -2178,8 +2101,7 @@ export default function Orders() {
             display: "flex",
             alignItems: "center",
             gap: 1,
-            color: "error.dark",
-          }}
+            color: "error.dark" }}
         >
           <CancelIcon color="error" />
           Cancel order {cancelTargetOrder?.orderNo ? `#${cancelTargetOrder.orderNo}` : ""}

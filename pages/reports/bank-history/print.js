@@ -34,27 +34,43 @@ const toFilterLabel = (value, allLabel) => {
   return text;
 };
 
+const EMPTY_LINE_ITEMS_HTML = `<tr><td colspan="8" style="text-align:center;padding:16px;">No bank history found for the selected filters.</td></tr>`;
+
+const mapBankHistoryLine = (row) => {
+  const date = row.date ?? row.Date;
+  return {
+    date: date ? formatDate(date) : "—",
+    documentNo: row.documentNo ?? row.DocumentNo ?? "—",
+    bankName: row.bankName ?? row.BankName ?? "—",
+    categoryName: row.categoryName ?? row.CategoryName ?? "—",
+    transactionType: row.transactionType ?? row.TransactionType ?? "—",
+    amount: formatAmount(row.amount ?? row.Amount),
+    remainingBalance: formatAmount(row.remainingBalance ?? row.RemainingBalance),
+    description: (row.description ?? row.Description) || "—",
+  };
+};
+
 const buildLineItemsRows = (rows) => {
-  if (!rows || rows.length === 0) {
-    return `<tr><td colspan="8" style="text-align:center;padding:16px;">No bank history found for the selected filters.</td></tr>`;
-  }
+  if (!rows || rows.length === 0) return EMPTY_LINE_ITEMS_HTML;
 
   return rows
     .map((row) => {
-      const date = row.date ?? row.Date;
+      const t = mapBankHistoryLine(row);
       return `<tr>
-        <td>${escapeHtml(date ? formatDate(date) : "—")}</td>
-        <td>${escapeHtml(row.documentNo ?? row.DocumentNo ?? "—")}</td>
-        <td>${escapeHtml(row.bankName ?? row.BankName ?? "—")}</td>
-        <td>${escapeHtml(row.categoryName ?? row.CategoryName ?? "—")}</td>
-        <td>${escapeHtml(row.transactionType ?? row.TransactionType ?? "—")}</td>
-        <td class="num">${escapeHtml(formatAmount(row.amount ?? row.Amount))}</td>
-        <td class="num">${escapeHtml(formatAmount(row.remainingBalance ?? row.RemainingBalance))}</td>
-        <td>${escapeHtml((row.description ?? row.Description) || "—")}</td>
+        <td>${escapeHtml(t.date)}</td>
+        <td>${escapeHtml(t.documentNo)}</td>
+        <td>${escapeHtml(t.bankName)}</td>
+        <td>${escapeHtml(t.categoryName)}</td>
+        <td>${escapeHtml(t.transactionType)}</td>
+        <td class="num">${escapeHtml(t.amount)}</td>
+        <td class="num">${escapeHtml(t.remainingBalance)}</td>
+        <td>${escapeHtml(t.description)}</td>
       </tr>`;
     })
     .join("\n");
 };
+
+const buildLineTokenMaps = (rows) => (rows || []).map(mapBankHistoryLine);
 
 export default function BankHistoryPrintPage() {
   const router = useRouter();
@@ -176,8 +192,11 @@ export default function BankHistoryPrintPage() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || loadingData) return "";
-    return applyTemplate(templateHtml, tokenMap, lineItemsRows);
-  }, [templateHtml, loadingData, tokenMap, lineItemsRows]);
+    return applyTemplate(templateHtml, tokenMap, lineItemsRows, {
+      lineTokenMaps: buildLineTokenMaps(rows),
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
+  }, [templateHtml, loadingData, tokenMap, lineItemsRows, rows]);
 
   return (
     <>

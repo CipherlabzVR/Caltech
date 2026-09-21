@@ -15,8 +15,7 @@ import {
   Typography,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import { formatDate } from "@/components/utils/formatHelper";
@@ -38,25 +37,17 @@ export default function ECommerceCustomers() {
     setPageSize,
     setSearch,
     fetchData,
-  } = usePaginatedFetch("ECommerce/GetAllECommerceCustomers", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("ECommerce/GetAllECommerceCustomers", "", 10, false, false);
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchData(1, event.target.value, pageSize);
-    setPage(1);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchData(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchData(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;

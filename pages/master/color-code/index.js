@@ -39,9 +39,11 @@ export default function ColorCode() {
     setPageSize,
     setSearch,
     fetchData: fetchColorCodeList,
-  } = usePaginatedFetch("ColorCode/GetAllColorCodePage");
-
-  // const fetchColorCodeList = async () => {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("ColorCode/GetAllColorCodePage");  // const fetchColorCodeList = async () => {
   //   try {
   //     const response = await fetch(`${BASE_URL}/ColorCode/GetAllColorCode`, {
   //       method: "GET",
@@ -62,24 +64,11 @@ export default function ColorCode() {
   //   }
   // };
 
-  const handleSearchChange = (event) => {
-    const val = event.target.value;
-    setSearch(val);
-    setPage(1);
-    fetchColorCodeList(1, val, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchColorCodeList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchColorCodeList(1, search, size);
-  };
+
+
+
 
   useEffect(() => {
     fetchColorCodeList();

@@ -17,8 +17,7 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem,
-} from "@mui/material";
+  MenuItem } from "@mui/material";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import { toast, ToastContainer } from "react-toastify";
@@ -37,8 +36,14 @@ import { Catelogue } from "Base/catelogue";
 import IsFiscalPeriodAvailable from "@/components/utils/IsFiscalPeriodAvailable";
 import { Report } from "Base/report";
 
+const GRN_RETURN_CATEGORY_ID = "77";
+
 const GrnReturn = () => {
-  const cId = sessionStorage.getItem("category");
+  // Ensure Goods Return Note category (not GRN / 17) for permission checks
+  if (typeof window !== "undefined") {
+    sessionStorage.setItem("category", GRN_RETURN_CATEGORY_ID);
+  }
+  const cId = GRN_RETURN_CATEGORY_ID;
   const { navigate, create, print, customPrint, whatsAppShare } = IsPermissionEnabled(cId);
   const name = localStorage.getItem("name");
   const { data: IsSupplierSalesRef } =
@@ -53,15 +58,13 @@ const GrnReturn = () => {
       return;
     }
     router.push({
-      pathname: "/inventory/grn-return/create",
-    });
+      pathname: "/inventory/grn-return/create" });
   };
 
   const openReturnPrintPopup = (item) => {
     const query = new URLSearchParams({
       id: String(item.id ?? ""),
-      documentNumber: item.documentNo ?? "",
-    });
+      documentNumber: item.documentNo ?? "" });
 
     window.open(
       `/inventory/grn-return/print?${query.toString()}`,
@@ -80,28 +83,11 @@ const GrnReturn = () => {
     setPageSize,
     setSearch,
     fetchData: fetchGrnReturnList,
-  } = usePaginatedFetch("GoodReceivedNote/GetAllGoodsReturnNotes");
-
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchGrnReturnList(1, event.target.value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchGrnReturnList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchGrnReturnList(1, search, size);
-  };
-
-  if (!navigate) {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("GoodReceivedNote/GetAllGoodsReturnNotes");  if (!navigate) {
     return <AccessDenied />;
   }
 

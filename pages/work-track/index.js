@@ -54,7 +54,11 @@ export default function WorkTrackList() {
     setPageSize,
     setSearch,
     fetchData: fetchWorkTracks,
-  } = usePaginatedFetch("WorkTrack/GetAllWorkTracksPaged", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("WorkTrack/GetAllWorkTracksPaged", "", 10, false, false);
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedWorkTrack, setSelectedWorkTrack] = React.useState(null);
@@ -85,9 +89,7 @@ export default function WorkTrackList() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
 
       const data = await response.json();
       
@@ -107,24 +109,11 @@ export default function WorkTrackList() {
     }
   };
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchWorkTracks(1, value, pageSize, false);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchWorkTracks(value, search, pageSize, false);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchWorkTracks(1, search, size, false);
-  };
+
+
+
 
   const handleWorkTrackCreated = () => {
     setPage(1);

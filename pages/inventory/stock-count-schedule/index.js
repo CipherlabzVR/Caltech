@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, {useEffect, useMemo, useState} from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -36,6 +36,7 @@ import StockCountScheduleFields, {
   getStockCountScheduleLabel,
   validateStockCountSchedule,
 } from "@/components/UIElements/StockCountScheduleFields";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 
 const modalStyle = {
   position: "absolute",
@@ -96,16 +97,26 @@ export default function StockCountSchedule() {
     );
   }, [schedules, search]);
 
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount: filtered.length,
+    search,
+    setSearch,
+    setPage,
+    setPageSize,
+    onFetch: () => {},
+  });
+
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const paged = useMemo(() => {
     const start = (page - 1) * pageSize;
     return filtered.slice(start, start + pageSize);
   }, [filtered, page, pageSize]);
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-  };
 
   const handleEditOpen = (row) => {
     setEditItem(row);
@@ -114,6 +125,8 @@ export default function StockCountSchedule() {
       dayOfMonth: row.dayOfMonth ?? "",
       month: row.scheduleMonth ?? "",
       day: row.scheduleDay ?? "",
+      startDay: row.startDayOfWeek ?? "",
+      endDay: row.endDayOfWeek ?? "",
     });
     setEditOpen(true);
   };
@@ -147,6 +160,11 @@ export default function StockCountSchedule() {
           editSchedule.frequency === STOCK_COUNT_FREQUENCY.YEARLY
             ? Number(editSchedule.day)
             : null,
+        StartDayOfWeek:
+          editSchedule.frequency === STOCK_COUNT_FREQUENCY.WEEKLY
+            ? Number(editSchedule.startDay)
+            : null,
+        EndDayOfWeek: null,
       };
       const response = await fetch(`${BASE_URL}/Items/UpdateStockCountSchedule`, {
         method: "POST",
@@ -239,7 +257,9 @@ export default function StockCountSchedule() {
                           row.frequency ?? STOCK_COUNT_FREQUENCY.DAILY,
                           row.dayOfMonth,
                           row.scheduleMonth,
-                          row.scheduleDay
+                          row.scheduleDay,
+                          row.startDayOfWeek,
+                          row.endDayOfWeek
                         )}
                       </TableCell>
                       <TableCell>
@@ -270,7 +290,7 @@ export default function StockCountSchedule() {
               <Pagination
                 count={pageCount}
                 page={page}
-                onChange={(e, value) => setPage(value)}
+                onChange={handlePageChange}
                 color="primary"
                 shape="rounded"
               />
@@ -279,10 +299,7 @@ export default function StockCountSchedule() {
                 <Select
                   value={pageSize}
                   label="Page Size"
-                  onChange={(e) => {
-                    setPageSize(e.target.value);
-                    setPage(1);
-                  }}
+                  onChange={handlePageSizeChange}
                 >
                   <MenuItem value={5}>5</MenuItem>
                   <MenuItem value={10}>10</MenuItem>

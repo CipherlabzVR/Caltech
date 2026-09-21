@@ -9,8 +9,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Typography,
-} from "@mui/material";
+  Typography } from "@mui/material";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import { ToastContainer } from "react-toastify";
@@ -42,28 +41,11 @@ const Category = () => {
     setPageSize,
     setSearch,
     fetchData: fetchCategoryList,
-  } = usePaginatedFetch("Category/GetAllCategoryPage");
-
-  const handleSearchChange = (event) => {
-    const val = event.target.value;
-    setSearch(val);
-    setPage(1);
-    fetchCategoryList(1, val, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchCategoryList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchCategoryList(1, search, size);
-  };
-
-  const navigateToViewImage = (url) => {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Category/GetAllCategoryPage");  const navigateToViewImage = (url) => {
     window.open(url, "_blank");
   };
 

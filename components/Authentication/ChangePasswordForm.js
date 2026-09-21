@@ -10,6 +10,7 @@ import { useFormik } from "formik";
 import * as Yup from "yup";
 import BASE_URL from "Base/api";
 import { toast } from "react-toastify";
+import { clearFirstLoginPasswordOffer } from "@/components/utils/firstLoginPasswordOffer";
 
 const validationSchema = Yup.object({
   Password: Yup.string().required("Current password is required"),
@@ -39,6 +40,7 @@ const handleSubmit = async (values, { resetForm }) => {
     const data = await response.json();
     if (data.statusCode === 200) {
       toast.success(data.result);
+      clearFirstLoginPasswordOffer();
       resetForm(); 
     } else {
       toast.error(data.message);

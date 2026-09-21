@@ -10,6 +10,18 @@ import BASE_URL from "Base/api";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import useLoggedUserCompanyLetterhead from "@/hooks/useLoggedUserCompanyLetterhead";
+import { applyTemplate, escapeHtml } from "@/components/ReportTemplate/applyTemplate";
+import {
+  buildGrnLineTokenMap,
+  buildLegacyGrnLineItemsRows,
+  EMPTY_LINE_ITEMS_HTML,
+  getFreightDutyCost,
+} from "@/components/ReportTemplate/grnLineItems";
+import {
+  getPageSizeMm,
+  PAGE_ORIENTATION,
+  parsePageOrientation,
+} from "@/components/ReportTemplate/pageOrientation";
 
 const REPORT_KEY = "GRN";
 
@@ -66,45 +78,6 @@ const getUserLabel = (user) =>
   user?.email ||
   (user?.id != null ? `User #${user.id}` : "-");
 
-const escapeHtml = (value) => {
-  if (value === null || value === undefined) {
-    return "";
-  }
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-};
-
-// Per-unit freight duty: prefer persisted AdditionalCost, else derive from line math.
-const getFreightDutyCost = (item) => {
-  const stored = Number(item?.additionalCost);
-  if (Number.isFinite(stored) && Math.abs(stored) > 0.0001) {
-    return stored;
-  }
-
-  const qty = Number(item?.qty) || 0;
-  const free = Number(item?.free) || 0;
-  const unitPrice = Number(item?.unitPrice) || 0;
-  const lineTotal = Number(item?.lineTotal) || 0;
-  const discountRate = Number(item?.discountRate) || 0;
-  const lineDiscountAmount = (unitPrice * qty * discountRate) / 100;
-  const qtyPlusFree = qty + free;
-
-  if (qty > 0 && free === 0) {
-    return (lineTotal - unitPrice * qty + lineDiscountAmount) / qty;
-  }
-
-  const costPrice = Number(item?.costPrice) || 0;
-  if (costPrice > 0 && qtyPlusFree > 0) {
-    return costPrice - (unitPrice * qty - lineDiscountAmount) / qtyPlusFree;
-  }
-
-  return Number.isFinite(stored) ? stored : 0;
-};
-
 // Ensures older DB templates (without this column) still show a Freight Duty header.
 const ensureFreightDutyColumnHeader = (html) => {
   if (!html || /<th[^>]*>\s*Freight\s*Duty/i.test(html)) {
@@ -131,65 +104,25 @@ const ensureFreightDutyTotalRow = (html) => {
   );
 };
 
-// Builds one <tr> per GRN line, matching the template table columns:
-// Item | Batch | Exp. Date | Qty | Free | Unit Price | Freight Duty | Dis% | Selling | Line Total
-const buildLineItemsRows = (items) => {
-  if (!items || items.length === 0) {
-    return `<tr><td colspan="10" style="text-align:center;padding:16px;">No items available</td></tr>`;
-  }
-
-  return items
-    .map((item) => {
-      const productName = escapeHtml(item.productName || "-");
-      const productCode = item.productCode
-        ? `<br/><span style="color:#666;">${escapeHtml(item.productCode)}</span>`
-        : "";
-      return `<tr>
-        <td>${productName}${productCode}</td>
-        <td>${escapeHtml(item.batch || "-")}</td>
-        <td>${escapeHtml(formatDisplayDate(item.expDate))}</td>
-        <td class="num">${escapeHtml(formatQty(item.qty))}</td>
-        <td class="num">${escapeHtml(formatQty(item.free))}</td>
-        <td class="num">${escapeHtml(formatAmount(item.unitPrice))}</td>
-        <td class="num">${escapeHtml(formatAmount(getFreightDutyCost(item)))}</td>
-        <td class="num">${escapeHtml(formatAmount(item.discountRate))}</td>
-        <td class="num">${escapeHtml(formatAmount(item.sellingPrice))}</td>
-        <td class="num">${escapeHtml(formatAmount(item.lineTotal))}</td>
-      </tr>`;
-    })
-    .join("\n");
-};
-
-// Replaces {{tokens}} in the template HTML with live document data.
-// `lineItemsRows` and `companyLogo` are injected as raw HTML; everything else is escaped.
-const applyTemplate = (templateHtml, tokenMap, rowsHtml) => {
+const renderGrnTemplate = (templateHtml, tokenMap, lineItems) => {
   if (!templateHtml) {
     return "";
   }
 
   let output = ensureFreightDutyColumnHeader(templateHtml);
   output = ensureFreightDutyTotalRow(output);
-  output = output.replace(/\{\{\s*lineItemsRows\s*\}\}/gi, rowsHtml);
-  output = output.replace(/\{\{\s*companyLogo\s*\}\}/gi, tokenMap.companyLogo || "");
 
-  Object.entries(tokenMap).forEach(([key, value]) => {
-    if (key === "companyLogo") {
-      return;
-    }
-    const pattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "gi");
-    output = output.replace(pattern, escapeHtml(value));
+  const lineTokenMaps = (lineItems || []).map((item) =>
+    buildGrnLineTokenMap(item, { formatDisplayDate })
+  );
+  const legacyRowsHtml = buildLegacyGrnLineItemsRows(lineItems, {
+    formatDisplayDate,
   });
 
-  // Ensure clean A4 output regardless of the (user-editable) template styles.
-  const printStyle =
-    '<style>@page{size:A4;margin:0;}@media print{html,body{margin:0!important;}}</style>';
-  if (/<\/head>/i.test(output)) {
-    output = output.replace(/<\/head>/i, `${printStyle}</head>`);
-  } else {
-    output = `${printStyle}${output}`;
-  }
-
-  return output;
+  return applyTemplate(output, tokenMap, legacyRowsHtml, {
+    lineTokenMaps,
+    emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+  });
 };
 
 export default function GRNPrintPage() {
@@ -572,11 +505,22 @@ export default function GRNPrintPage() {
     ]
   );
 
+  const pageOrientation = useMemo(
+    () => parsePageOrientation(templateHtml),
+    [templateHtml]
+  );
+  const pageSizeMm = useMemo(
+    () => getPageSizeMm(pageOrientation),
+    [pageOrientation]
+  );
+  const pageWidthCss =
+    pageOrientation === PAGE_ORIENTATION.LANDSCAPE ? "297mm" : "210mm";
+
   const finalHtml = useMemo(() => {
     if (!templateHtml || !grnData) {
       return "";
     }
-    return applyTemplate(templateHtml, tokenMap, buildLineItemsRows(lineItems));
+    return renderGrnTemplate(templateHtml, tokenMap, lineItems);
   }, [templateHtml, grnData, tokenMap, lineItems]);
 
   const resizeIframe = () => {
@@ -646,9 +590,13 @@ export default function GRNPrintPage() {
         backgroundColor: "#ffffff",
       });
 
-      const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-      const pageWidthMm = 210;
-      const pageHeightMm = 297;
+      const pdf = new jsPDF({
+        unit: "mm",
+        format: "a4",
+        orientation: pageOrientation,
+      });
+      const pageWidthMm = pageSizeMm.widthMm;
+      const pageHeightMm = pageSizeMm.heightMm;
       const pxPerMm = canvas.width / pageWidthMm;
       const pageHeightPx = Math.floor(pageHeightMm * pxPerMm);
 
@@ -716,7 +664,7 @@ export default function GRNPrintPage() {
       <Box
         sx={{
           width: "100%",
-          maxWidth: "900px",
+          maxWidth: pageOrientation === PAGE_ORIENTATION.LANDSCAPE ? "1200px" : "900px",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -745,7 +693,7 @@ export default function GRNPrintPage() {
           >
             Print
           </Button>
-          <Button
+          {/* <Button
             variant="outlined"
             startIcon={<PictureAsPdfIcon />}
             onClick={handleDownloadPDF}
@@ -753,14 +701,14 @@ export default function GRNPrintPage() {
             sx={{ textTransform: "none" }}
           >
             Download PDF
-          </Button>
+          </Button> */}
         </Box>
 
         {isLoading ? (
           <Box
             sx={{
-              width: { xs: "100%", sm: "210mm" },
-              minHeight: "297mm",
+              width: { xs: "100%", sm: pageWidthCss },
+              minHeight: pageOrientation === PAGE_ORIENTATION.LANDSCAPE ? "210mm" : "297mm",
               display: "flex",
               justifyContent: "center",
               alignItems: "center",
@@ -780,7 +728,7 @@ export default function GRNPrintPage() {
             srcDoc={finalHtml}
             onLoad={handleIframeLoad}
             sx={{
-              width: { xs: "100%", sm: "210mm" },
+              width: { xs: "100%", sm: pageWidthCss },
               maxWidth: "100%",
               height: `${iframeHeight}px`,
               border: "none",
@@ -795,8 +743,8 @@ export default function GRNPrintPage() {
         ) : (
           <Box
             sx={{
-              width: { xs: "100%", sm: "210mm" },
-              minHeight: "297mm",
+              width: { xs: "100%", sm: pageWidthCss },
+              minHeight: pageOrientation === PAGE_ORIENTATION.LANDSCAPE ? "210mm" : "297mm",
               display: "flex",
               justifyContent: "center",
               alignItems: "center",

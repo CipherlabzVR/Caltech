@@ -40,7 +40,11 @@ export default function CampaignsList() {
     setPageSize,
     setSearch,
     fetchData: fetchCampaigns,
-  } = usePaginatedFetch("CRMCampaign/GetAllCampaigns", "", 10, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("CRMCampaign/GetAllCampaigns", "", 10, false);
 
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState(null);
@@ -48,24 +52,11 @@ export default function CampaignsList() {
   const [deleteTarget, setDeleteTarget] = React.useState(null);
   const [deleteLoading, setDeleteLoading] = React.useState(false);
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchCampaigns(1, value, pageSize, false);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchCampaigns(value, search, pageSize, false);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchCampaigns(1, search, size, false);
-  };
+
+
+
 
   const refresh = () => fetchCampaigns(page, search, pageSize, false);
 
@@ -87,9 +78,7 @@ export default function CampaignsList() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
       const data = await res.json().catch(() => null);
       if (!res.ok || data?.statusCode !== 200) {
         throw new Error(data?.message || "Failed to delete campaign");

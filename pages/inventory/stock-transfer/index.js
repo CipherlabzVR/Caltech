@@ -18,6 +18,7 @@ import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import { useRouter } from "next/router";
 import { formatDate } from "@/components/utils/formatHelper";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 
 export default function StockTransferNote() {
   const cId = sessionStorage.getItem("category")
@@ -28,25 +29,6 @@ export default function StockTransferNote() {
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
   const router = useRouter();
-
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchTransferList(1, value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchTransferList(value, searchTerm, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchTransferList(1, searchTerm, newSize);
-  };
 
   const fetchTransferList = async (page = 1, search = "", size = pageSize) => {
     try {
@@ -71,6 +53,21 @@ export default function StockTransferNote() {
       console.error("Error:", error);
     }
   };
+
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: fetchTransferList,
+  });
 
   useEffect(() => {
     fetchTransferList();

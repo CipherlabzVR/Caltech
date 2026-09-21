@@ -53,37 +53,45 @@ const toFilterLabel = (value, allLabel) => {
 
 const statusLabelFromCode = (status) => STATUS_LABELS[Number(status ?? 0)] || STATUS_LABELS[0];
 
+const EMPTY_LINE_ITEMS_HTML = `<tr><td colspan="9" style="text-align:center;padding:16px;">No shipments found for the selected filters.</td></tr>`;
+
+const mapShipmentSummaryLine = (row) => {
+  const shipmentDate = row.shipmentDate ?? row.ShipmentDate;
+  return {
+    shipmentDate: shipmentDate ? formatDate(shipmentDate) : "—",
+    documentNo: row.documentNo ?? row.DocumentNo ?? "—",
+    purchaseOrderNos: (row.purchaseOrderNos ?? row.PurchaseOrderNos) || "—",
+    supplierName: row.supplierName ?? row.SupplierName ?? "—",
+    referenceNo: (row.referanceNo ?? row.ReferanceNo) || "—",
+    status: row.status ?? row.Status ?? "—",
+    qty: formatQty(row.totalQty ?? row.TotalQty ?? 0),
+    amount: formatAmount(row.totalAmount ?? row.TotalAmount ?? 0),
+    remark: (row.remark ?? row.Remark) || "—",
+  };
+};
+
 const buildLineItemsRows = (rows) => {
-  if (!rows || rows.length === 0) {
-    return `<tr><td colspan="9" style="text-align:center;padding:16px;">No shipments found for the selected filters.</td></tr>`;
-  }
+  if (!rows || rows.length === 0) return EMPTY_LINE_ITEMS_HTML;
 
   return rows
     .map((row) => {
-      const shipmentDate = row.shipmentDate ?? row.ShipmentDate;
-      const documentNo = row.documentNo ?? row.DocumentNo ?? "—";
-      const purchaseOrderNos = row.purchaseOrderNos ?? row.PurchaseOrderNos;
-      const supplierName = row.supplierName ?? row.SupplierName ?? "—";
-      const referanceNo = row.referanceNo ?? row.ReferanceNo;
-      const status = row.status ?? row.Status ?? "—";
-      const totalQty = row.totalQty ?? row.TotalQty ?? 0;
-      const totalAmount = row.totalAmount ?? row.TotalAmount ?? 0;
-      const remark = row.remark ?? row.Remark;
-
+      const t = mapShipmentSummaryLine(row);
       return `<tr>
-        <td>${escapeHtml(shipmentDate ? formatDate(shipmentDate) : "—")}</td>
-        <td>${escapeHtml(documentNo || "—")}</td>
-        <td>${escapeHtml(purchaseOrderNos || "—")}</td>
-        <td>${escapeHtml(supplierName || "—")}</td>
-        <td>${escapeHtml(referanceNo || "—")}</td>
-        <td>${escapeHtml(status || "—")}</td>
-        <td class="num">${escapeHtml(formatQty(totalQty))}</td>
-        <td class="num">${escapeHtml(formatAmount(totalAmount))}</td>
-        <td>${escapeHtml(remark || "—")}</td>
+        <td>${escapeHtml(t.shipmentDate)}</td>
+        <td>${escapeHtml(t.documentNo)}</td>
+        <td>${escapeHtml(t.purchaseOrderNos)}</td>
+        <td>${escapeHtml(t.supplierName)}</td>
+        <td>${escapeHtml(t.referenceNo)}</td>
+        <td>${escapeHtml(t.status)}</td>
+        <td class="num">${escapeHtml(t.qty)}</td>
+        <td class="num">${escapeHtml(t.amount)}</td>
+        <td>${escapeHtml(t.remark)}</td>
       </tr>`;
     })
     .join("\n");
 };
+
+const buildLineTokenMaps = (rows) => (rows || []).map(mapShipmentSummaryLine);
 
 export default function ShipmentSummaryPrintPage() {
   const router = useRouter();
@@ -208,8 +216,11 @@ export default function ShipmentSummaryPrintPage() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || loadingData) return "";
-    return applyTemplate(templateHtml, tokenMap, lineItemsRows);
-  }, [templateHtml, loadingData, tokenMap, lineItemsRows]);
+    return applyTemplate(templateHtml, tokenMap, lineItemsRows, {
+      lineTokenMaps: buildLineTokenMaps(rows),
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
+  }, [templateHtml, loadingData, tokenMap, lineItemsRows, rows]);
 
   const isLoading = loadingData || loadingTemplate;
   const downloadName = `ShipmentSummary_${new Date().toISOString().slice(0, 10)}`;

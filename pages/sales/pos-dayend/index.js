@@ -18,6 +18,7 @@ import CreateDayEnd from "./create";
 import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 
 export default function POSDayEnd() {
   const cId = sessionStorage.getItem("category")
@@ -27,25 +28,6 @@ export default function POSDayEnd() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
-
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchDayEndList(1, value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchDayEndList(value, searchTerm, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchDayEndList(1, searchTerm, newSize);
-  };
 
   const fetchDayEndList = async (page = 1, search = "", size = pageSize) => {
     try {
@@ -70,6 +52,21 @@ export default function POSDayEnd() {
       console.error("Error:", error);
     }
   };
+
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: fetchDayEndList,
+  });
 
   useEffect(() => {
     fetchDayEndList();

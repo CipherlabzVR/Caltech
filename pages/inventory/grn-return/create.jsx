@@ -356,7 +356,9 @@ const GrnReturn = () => {
       return;
     }
 
-    const hasZeroStock = editRows.some(row => parseFloat(row.qty || 0) <= 0);
+    const hasZeroStock = editRows.some(
+      (row) => parseFloat(row.stockQty ?? row.qty ?? 0) <= 0
+    );
     if (hasZeroStock) {
       toast.error("Cannot return an item with zero stock. Please uncheck the item.");
       return;
@@ -469,7 +471,15 @@ const GrnReturn = () => {
     }
   };
 
+  const hasAvailableStock = (row) => parseFloat(row.stockQty ?? 0) > 0;
+
   const handleSelectRow = (index) => {
+    const targetRow = selectedRows[index];
+    if (!targetRow.isSelected && !hasAvailableStock(targetRow)) {
+      toast.info("Cannot return items with zero stock quantity.");
+      return;
+    }
+
     const updatedRows = selectedRows.map((row, i) => {
       if (i === index) {
         const newRow = { ...row, isSelected: !row.isSelected };
@@ -538,10 +548,17 @@ const GrnReturn = () => {
       if (i === index) {
         const newRow = { ...row };
         if (field === "returnedQty") {
+          if (!hasAvailableStock(newRow)) {
+            newRow.returnedQty = 0;
+            newRow.returnAmount = 0;
+            newRow.returnQtyError = null;
+            return newRow;
+          }
+
           const qty = parseFloat(value);
           newRow[field] = isNaN(qty) ? 0 : qty;
 
-          const stockQty = newRow.qty;
+          const stockQty = newRow.stockQty ?? newRow.qty ?? 0;
 
           if (qty > stockQty) {
             newRow.returnQtyError = `Max return is ${stockQty}`;
@@ -786,11 +803,28 @@ const GrnReturn = () => {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      selectedRows.map((row, index) => (
-                        <TableRow key={row.id}>
+                      selectedRows.map((row, index) => {
+                        const rowDisabled = !hasAvailableStock(row);
+
+                        return (
+                        <TableRow
+                          key={row.id}
+                          sx={
+                            rowDisabled
+                              ? {
+                                  backgroundColor: "action.hover",
+                                  opacity: 0.55,
+                                  "& .MuiTableCell-root": {
+                                    color: "text.disabled",
+                                  },
+                                }
+                              : undefined
+                          }
+                        >
                           <TableCell sx={{ p: 1 }}>
                             <Checkbox
                               checked={row.isSelected || false}
+                              disabled={rowDisabled}
                               onChange={() => handleSelectRow(index)}
                             />
                             {row.isNonGrn && (
@@ -825,6 +859,7 @@ const GrnReturn = () => {
                                 handleRowValueChange(index, "returnedQty", e.target.value)
                               }
                               fullWidth
+                              disabled={rowDisabled}
                               error={!!row.returnQtyError}
                               helperText={row.returnQtyError || ""}
                               inputProps={{ min: 0 }}
@@ -846,11 +881,13 @@ const GrnReturn = () => {
                               value={row.remark || ''}
                               onChange={(e) => handleRowValueChange(index, 'remark', e.target.value)}
                               fullWidth
+                              disabled={rowDisabled}
                               placeholder="Add remark"
                             />
                           </TableCell>
                         </TableRow>
-                      ))
+                        );
+                      })
                     )}
                     <TableRow>
                       <TableCell colSpan={returnType != 'non-grn' ? 8 : 6} align="right">

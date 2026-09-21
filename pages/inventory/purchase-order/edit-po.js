@@ -54,6 +54,8 @@ const POEdit = () => {
   const [po, setPO] = useState();
   const [hasShipmentForPO, setHasShipmentForPO] = useState(false);
   const [isShipmentCheckLoading, setIsShipmentCheckLoading] = useState(true);
+  const [isInitialDataReady, setIsInitialDataReady] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [isDisable, setIsDisable] = useState(false);
   const [isRefreshingLines, setIsRefreshingLines] = useState(false);
   const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
@@ -69,9 +71,10 @@ const POEdit = () => {
     "AllowCostLessThanSelling"
   );
 
-  const { data: IsProfitVisibleOnGRNAndPO } = IsAppSettingEnabled(
-    "IsProfitVisibleOnGRNAndPO"
+  const { data: IsFreightDutyEnabled } = IsAppSettingEnabled(
+    "IsFreightDutyEnabled"
   );
+  const showDiscountField = IsFreightDutyEnabled !== true;
 
   const calculateProfit = (sellingPrice, costPrice) => {
     const sp = parseFloat(sellingPrice);
@@ -177,10 +180,13 @@ const POEdit = () => {
       }
     }
   };
-  const fetchPO = async () => {
+  const fetchPO = async (poId) => {
+    const resolvedId = poId ?? id;
+    if (!resolvedId) return;
+
     try {
       const response = await fetch(
-        `${BASE_URL}/GoodReceivedNote/GetPurchaseOrderById?id=${id}`,
+        `${BASE_URL}/GoodReceivedNote/GetPurchaseOrderById?id=${resolvedId}`,
         {
           method: "GET",
           headers: {
@@ -197,8 +203,11 @@ const POEdit = () => {
       const data = await response.json();
       setPO(data.result);
       setIsCredit(data.result.isCredit);
+      setLoadError(null);
     } catch (error) {
       console.error("Error fetching:", error);
+      setLoadError("Failed to load purchase order.");
+      setIsShipmentCheckLoading(false);
     }
   };
 
@@ -212,10 +221,23 @@ const POEdit = () => {
 
   const isPOComplete = po?.isPurchasingOrderComplete;
 
-  /** Shipment locks only add row, delete row, and ordered qty editing. */
-  const canModifyLineItems = !hasShipmentForPO && !isPOComplete;
+  const shipmentLinkedProductIds = useMemo(() => {
+    const ids = new Set();
+    (poTallyList || []).forEach((item) => {
+      if (item.productId != null) {
+        ids.add(item.productId);
+      }
+    });
+    return ids;
+  }, [poTallyList]);
+
+  const isRowShipmentLinked = (row) =>
+    Boolean(row?.productId) && shipmentLinkedProductIds.has(row.productId);
+
+  /** Add/Delete stay visible after a shipment is linked. Completed POs stay locked. */
+  const canAddOrDeleteLineItems = !isPOComplete;
   const showLineItemModifications =
-    !isShipmentCheckLoading && canModifyLineItems;
+    !isShipmentCheckLoading && canAddOrDeleteLineItems;
 
   const hasReceivedQty = selectedRows.some(
     (row) => parseFloat(row.poReceivedQty) > 0
@@ -228,6 +250,43 @@ const POEdit = () => {
     !hasReceivedQty;
   const showSaveButton = showLineItemModifications || canSaveBatchExpOnly;
 
+  const parseSellingPrice = (value) =>
+    value !== "" && value != null && value !== undefined
+      ? parseFloat(value) || 0
+      : null;
+
+  const mapCompleteSubmitLine = (row, index) => ({
+    Id: getLineItemId(row),
+    GRNHeaderID: row.grnHeaderID ?? po.id,
+    DocumentNo: row.purchaseOrderNo,
+    PurchaseOrderNo: row.purchaseOrderNo,
+    SequenceNumber: index + 1,
+    WarehouseId: row.warehouseId,
+    WarehouseCode: row.warehouseCode,
+    WarehouseName: row.warehouseName,
+    ProductId: row.productId,
+    ProductCode: row.productCode,
+    ProductName: row.productName,
+    Batch: row.batch,
+    ExpDate: row.expDate,
+    UnitPrice: parseFloat(row.avgUnitPrice) || 0,
+    AdditionalCost: isLocalPO ? 0 : parseFloat(row.avgFreighCost) || 0,
+    CostPrice: isLocalPO
+      ? parseFloat(row.avgUnitPrice) || 0
+      : parseFloat(row.costPrice) || 0,
+    SellingPrice: parseSellingPrice(row.sellingPrice),
+    MaximumSellingPrice: parseFloat(row.maxSellingPrice) || 0,
+    Profit: calculateProfit(row.sellingPrice, row.costPrice),
+    ProfitMargin: calculateProfitMargin(row.sellingPrice, row.costPrice),
+    Qty: Number(row.poReceivedQty) || 0,
+    Free: row.free,
+    DiscountRate: parseFloat(row.discountRate) || 0,
+    DiscountAmount: parseFloat(row.discountAmount) || 0,
+    Status: row.status,
+    Remark: row.remark,
+    LineTotal: parseFloat(row.lineTot) || 0,
+    AverageCostPrice: 0.0,
+  });
   const mapPendingSubmitLine = (row, index) => ({
     Id: getLineItemId(row),
     GRNHeaderID: po.id,
@@ -247,14 +306,11 @@ const POEdit = () => {
     OrderedQty: 0,
     ReceivedQty: Number(row.poReceivedQty) || 0,
     UnitPrice: parseFloat(row.avgUnitPrice) || 0,
-    AdditionalCost: parseFloat(row.avgFreighCost) || 0,
-    CostPrice: parseFloat(row.costPrice) || 0,
-    SellingPrice:
-      row.sellingPrice !== "" &&
-      row.sellingPrice != null &&
-      row.sellingPrice !== undefined
-        ? parseFloat(row.sellingPrice) || 0
-        : null,
+    AdditionalCost: isLocalPO ? 0 : parseFloat(row.avgFreighCost) || 0,
+    CostPrice: isLocalPO
+      ? parseFloat(row.avgUnitPrice) || 0
+      : parseFloat(row.costPrice) || 0,
+    SellingPrice: parseSellingPrice(row.sellingPrice),
     MaximumSellingPrice: parseFloat(row.maxSellingPrice) || 0,
     DiscountRate: parseFloat(row.discountRate) || 0,
     DiscountAmount: parseFloat(row.discountAmount) || 0,
@@ -294,12 +350,17 @@ const POEdit = () => {
   });
 
   const handleAddEmptyRow = () => {
-    if (!canModifyLineItems) return;
+    if (!canAddOrDeleteLineItems) return;
     setSelectedRows((prev) => [...prev, createEmptyLineItem()]);
   };
 
   const handleDeleteRow = (index) => {
-    if (!canModifyLineItems) return;
+    if (!canAddOrDeleteLineItems) return;
+    const row = selectedRows[index];
+    if (isRowShipmentLinked(row)) {
+      toast.info("Cannot delete this item because it is linked to a shipment.");
+      return;
+    }
     setSelectedRows((prev) => prev.filter((_, i) => i !== index));
   };
 
@@ -372,10 +433,11 @@ const POEdit = () => {
       if (i !== index) return row;
       const updated = { ...row, [field]: value };
 
-      if (isLocalPO && ["avgUnitPrice", "avgFreighCost", "poReceivedQty"].includes(field)) {
+      if (isLocalPO && ["avgUnitPrice", "poReceivedQty"].includes(field)) {
         const unitPrice = parseFloat(updated.avgUnitPrice) || 0;
-        const freightCost = parseFloat(updated.avgFreighCost) || 0;
-        updated.costPrice = (unitPrice + freightCost).toFixed(2);
+        // Local PO: no freight/transport — cost equals unit price
+        updated.avgFreighCost = 0;
+        updated.costPrice = unitPrice.toFixed(2);
       }
 
       if (field === "poQty") {
@@ -402,6 +464,12 @@ const POEdit = () => {
 
   useEffect(() => {
     if (po) {
+      const poIsLocal = (po.type ?? po.purchasingOrderType) == 1;
+      // Import PO rows depend on shipment tally — wait until that fetch completes.
+      if (!poIsLocal && isShipmentCheckLoading) {
+        return;
+      }
+
       const mapDbLineRow = (row) => {
         const dbDiscountRate = parseFloat(row.discountRate) || 0;
         const dbDiscountAmount = parseFloat(row.discountAmount) || 0;
@@ -410,15 +478,16 @@ const POEdit = () => {
 
         if ((po.type ?? po.purchasingOrderType) == 1) {
           const unitPrice = parseFloat(row.unitPrice) || 0;
-          const additionalCost = parseFloat(row.additionalCost) || 0;
-          const costPrice = unitPrice + additionalCost;
-          const receivedQty = parseFloat(row.qty) || 0;
+          // Local PO ignores freight/additional cost
+          const costPrice = unitPrice;
+          // Ordered qty is qty/poQty; received must come from receivedQty (starts at 0)
+          const receivedQty = parseFloat(row.receivedQty) || 0;
 
           const baseRow = {
             ...row,
             poQty: row.poQty ?? row.qty ?? 0,
             avgUnitPrice: unitPrice.toFixed(2),
-            avgFreighCost: additionalCost.toFixed(2),
+            avgFreighCost: "0.00",
             costPrice: costPrice.toFixed(2),
             poReceivedQty: receivedQty,
             discountType,
@@ -465,12 +534,17 @@ const POEdit = () => {
         );
         return [...dbRows, ...unsavedRows];
       });
+      setIsInitialDataReady(true);
     }
-  }, [po, poTallyList]);
+  }, [po, poTallyList, isShipmentCheckLoading]);
 
   useEffect(() => {
-    fetchPO();
-  }, []);
+    if (!router.isReady || !id) return;
+    setIsInitialDataReady(false);
+    setIsShipmentCheckLoading(true);
+    setLoadError(null);
+    fetchPO(id);
+  }, [router.isReady, id]);
 
   useEffect(() => {
     if (po?.purchaseOrderNo) {
@@ -481,9 +555,7 @@ const POEdit = () => {
   }, [po]);
 
   const navigateToBack = () => {
-    router.push({
-      pathname: "/inventory/purchase-order",
-    });
+    router.back();
   };
 
   const handlePendingSubmit = async () => {
@@ -504,6 +576,20 @@ const POEdit = () => {
     if (invalidOrderedQty) {
       toast.info("Ordered Quantity must be greater than 0.");
       return;
+    }
+
+    if (isLocalPO) {
+      const overReceivedRow = selectedRows.find((row) => {
+        const poQty = parseFloat(row.poQty) || 0;
+        const poReceivedQty = parseFloat(row.poReceivedQty) || 0;
+        return poReceivedQty > poQty;
+      });
+      if (overReceivedRow) {
+        toast.error(
+          `Received Quantity cannot exceed PO Quantity for ${overReceivedRow.productName}.`
+        );
+        return;
+      }
     }
 
     const totalOrderedQty = selectedRows.reduce(
@@ -678,15 +764,16 @@ const POEdit = () => {
 
               if (freshIsLocal) {
                 const unitPrice = parseFloat(row.unitPrice) || 0;
-                const additionalCost = parseFloat(row.additionalCost) || 0;
-                const costPrice = unitPrice + additionalCost;
-                const receivedQty = parseFloat(row.qty) || 0;
+                // Local PO ignores freight/additional cost
+                const costPrice = unitPrice;
+                // Ordered qty is qty/poQty; received must come from receivedQty (starts at 0)
+                const receivedQty = parseFloat(row.receivedQty) || 0;
 
                 const baseRow = {
                   ...row,
                   poQty: row.poQty ?? row.qty ?? 0,
                   avgUnitPrice: unitPrice.toFixed(2),
-                  avgFreighCost: additionalCost.toFixed(2),
+                  avgFreighCost: "0.00",
                   costPrice: costPrice.toFixed(2),
                   poReceivedQty: receivedQty,
                   discountType,
@@ -755,6 +842,20 @@ const POEdit = () => {
     }
 
     if (isLocalPO) {
+      const overReceivedRow = selectedRows.find((row) => {
+        const poQty = parseFloat(row.poQty) || 0;
+        const poReceivedQty = parseFloat(row.poReceivedQty) || 0;
+        return poReceivedQty > poQty;
+      });
+      if (overReceivedRow) {
+        toast.error(
+          `Received Quantity cannot exceed PO Quantity for ${overReceivedRow.productName}.`
+        );
+        return false;
+      }
+    }
+
+    if (isLocalPO) {
       const missingUnitPrice = selectedRows.find(
         (row) => !row.avgUnitPrice || parseFloat(row.avgUnitPrice) <= 0
       );
@@ -788,18 +889,21 @@ const POEdit = () => {
       return false;
     }
 
-    const invalidDiscount = selectedRows.find((row) => {
-      const discountInput = parseFloat(row.discountInput) || 0;
-      if (discountInput < 0) return true;
-      if (row.discountType === "percentage" && discountInput > 100) return true;
-      const gross =
-        (parseFloat(row.costPrice) || 0) * getLineQtyForDiscount(row);
-      const discountAmount =
-        row.discountType === "percentage"
-          ? (gross * discountInput) / 100
-          : discountInput;
-      return discountAmount > gross;
-    });
+    const invalidDiscount = showDiscountField
+      ? selectedRows.find((row) => {
+          const discountInput = parseFloat(row.discountInput) || 0;
+          if (discountInput < 0) return true;
+          if (row.discountType === "percentage" && discountInput > 100)
+            return true;
+          const gross =
+            (parseFloat(row.costPrice) || 0) * getLineQtyForDiscount(row);
+          const discountAmount =
+            row.discountType === "percentage"
+              ? (gross * discountInput) / 100
+              : discountInput;
+          return discountAmount > gross;
+        })
+      : null;
 
     if (invalidDiscount) {
       toast.info("Discount cannot exceed the line total (or 100%).");
@@ -853,36 +957,7 @@ const POEdit = () => {
       TotalQty: totalQty,
       IsCredit: isCredit,
       PurchasingOrderType: po.type ?? po.purchasingOrderType,
-      GoodReceivedNoteLineDetails: selectedRows.map((row, index) => ({
-        Id: getLineItemId(row),
-        GRNHeaderID: row.grnHeaderID ?? po.id,
-        DocumentNo: row.purchaseOrderNo,
-        PurchaseOrderNo: row.purchaseOrderNo,
-        SequenceNumber: index + 1,
-        WarehouseId: row.warehouseId,
-        WarehouseCode: row.warehouseCode,
-        WarehouseName: row.warehouseName,
-        ProductId: row.productId,
-        ProductCode: row.productCode,
-        ProductName: row.productName,
-        Batch: row.batch,
-        ExpDate: row.expDate,
-        UnitPrice: row.avgUnitPrice,
-        AdditionalCost: row.avgFreighCost,
-        CostPrice: row.costPrice,
-        SellingPrice: row.sellingPrice,
-        MaximumSellingPrice: row.maxSellingPrice,
-        Profit: calculateProfit(row.sellingPrice, row.costPrice),
-        ProfitMargin: calculateProfitMargin(row.sellingPrice, row.costPrice),
-        Qty: row.poReceivedQty,
-        Free: row.free,
-        DiscountRate: row.discountRate,
-        DiscountAmount: row.discountAmount,
-        Status: row.status,
-        Remark: row.remark,
-        LineTotal: row.lineTot,
-        AverageCostPrice: 0.0,
-      })),
+      GoodReceivedNoteLineDetails: selectedRows.map(mapCompleteSubmitLine),
     };
 
     try {
@@ -1037,11 +1112,53 @@ const POEdit = () => {
   }, [isPOComplete, canShowCompleteButton, selectedRows, isLocalPO]);
 
   const totalTableColumns = useMemo(() => {
-    let count = isLocalPO ? 15 : 16;
+    // Local has no Freight column (Import keeps it + extra Received Qty)
+    let count = isLocalPO ? 14 : 16;
     if (showLineItemModifications) count += 1;
-    if (IsProfitVisibleOnGRNAndPO) count += 2;
+    if (!showDiscountField) count -= 1;
     return count;
-  }, [showLineItemModifications, isLocalPO, IsProfitVisibleOnGRNAndPO]);
+  }, [showLineItemModifications, isLocalPO, showDiscountField]);
+
+  const isPageLoading = !loadError && (!po || !isInitialDataReady);
+
+  if (isPageLoading || loadError) {
+    return (
+      <>
+        <ToastContainer />
+        <div className={styles.pageTitle}>
+          <h1>Purchase Order Edit</h1>
+          <ul>
+            <li>
+              <Link href="/inventory/purchase-order">Purchase Order</Link>
+            </li>
+            <li> Edit</li>
+          </ul>
+        </div>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            minHeight: "50vh",
+            bgcolor: "#fff",
+            gap: 2,
+          }}
+        >
+          {loadError ? (
+            <>
+              <Alert severity="error">{loadError}</Alert>
+              <Button variant="outlined" onClick={() => navigateToBack()}>
+                Go Back
+              </Button>
+            </>
+          ) : (
+            <CircularProgress size={40} thickness={4} />
+          )}
+        </Box>
+      </>
+    );
+  }
 
   return (
     <>
@@ -1282,24 +1399,20 @@ const POEdit = () => {
                       <TableCell sx={{ color: "#fff" }}>
                         Unit&nbsp;Price
                       </TableCell>
-                      <TableCell sx={{ color: "#fff" }}>
-                        Freight&nbsp;Duty & Transport
-                      </TableCell>
+                      {!isLocalPO && (
+                        <TableCell sx={{ color: "#fff" }}>
+                          Freight&nbsp;Duty & Transport
+                        </TableCell>
+                      )}
                       <TableCell sx={{ color: "#fff" }}>
                         Cost&nbsp;Price
                       </TableCell>
                       <TableCell sx={{ color: "#fff" }}>
                         Selling&nbsp;Price
                       </TableCell>
-                      {IsProfitVisibleOnGRNAndPO && (
-                        <>
-                          <TableCell sx={{ color: "#fff" }}>Profit</TableCell>
-                          <TableCell sx={{ color: "#fff" }}>
-                            Profit&nbsp;Margin&nbsp;(%)
-                          </TableCell>
-                        </>
-                      )}
-                      <TableCell sx={{ color: "#fff" }}>Discount</TableCell>
+                      {showDiscountField ? (
+                        <TableCell sx={{ color: "#fff" }}>Discount</TableCell>
+                      ) : null}
                       <TableCell sx={{ color: "#fff" }}>Status</TableCell>
                       <TableCell sx={{ color: "#fff" }}>Remark</TableCell>
                       <TableCell sx={{ color: "#fff" }}>
@@ -1320,14 +1433,27 @@ const POEdit = () => {
                       >
                         {showLineItemModifications && (
                           <TableCell sx={{ p: 1 }}>
-                            <Tooltip title="Delete" placement="top">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleDeleteRow(index)}
-                                aria-label="delete row"
-                              >
-                                <DeleteIcon color="error" fontSize="inherit" />
-                              </IconButton>
+                            <Tooltip
+                              title={
+                                isRowShipmentLinked(row)
+                                  ? "Cannot delete. This item is linked to a shipment."
+                                  : "Delete"
+                              }
+                              placement="top"
+                            >
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleDeleteRow(index)}
+                                  aria-label="delete row"
+                                  disabled={isRowShipmentLinked(row)}
+                                >
+                                  <DeleteIcon
+                                    color={isRowShipmentLinked(row) ? "disabled" : "error"}
+                                    fontSize="inherit"
+                                  />
+                                </IconButton>
+                              </span>
                             </Tooltip>
                           </TableCell>
                         )}
@@ -1383,7 +1509,7 @@ const POEdit = () => {
                           />
                         </TableCell>
                         <TableCell sx={{ p: 1 }}>
-                          {showLineItemModifications ? (
+                          {showLineItemModifications && !isRowShipmentLinked(row) ? (
                             <TextField
                               size="small"
                               type="number"
@@ -1415,6 +1541,7 @@ const POEdit = () => {
                               item={row}
                               fetchPO={fetchPO}
                               fetchPOTally={() => fetchPOTally(po?.purchaseOrderNo)}
+                              isPOComplete={isPOComplete}
                             />
                           )}
                         </TableCell>
@@ -1436,21 +1563,11 @@ const POEdit = () => {
                             <Typography>{row.avgUnitPrice}</Typography>
                           )}
                         </TableCell>
-                        <TableCell sx={{ p: 1 }}>
-                          {isLocalPO ? (
-                            <TextField
-                              size="small"
-                              type="number"
-                              sx={{ width: "120px" }}
-                              value={row.avgFreighCost == "0.00" ? "" : row.avgFreighCost}
-                              onChange={(e) =>
-                                handleInputChange(index, "avgFreighCost", e.target.value)
-                              }
-                            />
-                          ) : (
-                            formatCurrency(row.avgFreighCost)
-                          )}
-                        </TableCell>
+                        {!isLocalPO && (
+                          <TableCell sx={{ p: 1 }}>
+                            {formatCurrency(row.avgFreighCost)}
+                          </TableCell>
+                        )}
                         <TableCell sx={{ p: 1 }}>{formatCurrency(row.costPrice)}</TableCell>
                         <TableCell sx={{ p: 1 }}>
                           <TextField
@@ -1468,58 +1585,45 @@ const POEdit = () => {
                             }
                           />
                         </TableCell>
-                        {IsProfitVisibleOnGRNAndPO && (
-                          <>
-                            <TableCell sx={{ p: 1 }}>
-                              {formatCurrency(
-                                calculateProfit(row.sellingPrice, row.costPrice)
-                              )}
-                            </TableCell>
-                            <TableCell sx={{ p: 1 }}>
-                              {calculateProfitMargin(
-                                row.sellingPrice,
-                                row.costPrice
-                              ).toFixed(2)}
-                            </TableCell>
-                          </>
-                        )}
-                        <TableCell sx={{ p: 1 }}>
-                          <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                            <Select
-                              size="small"
-                              value={row.discountType || "value"}
-                              onChange={(e) =>
-                                handleInputChange(index, "discountType", e.target.value)
-                              }
-                              sx={{ width: "85px" }}
-                            >
-                              <MenuItem value="value">Value</MenuItem>
-                              <MenuItem value="percentage">%</MenuItem>
-                            </Select>
-                            <TextField
-                              size="small"
-                              type="number"
-                              sx={{ width: "110px" }}
-                              inputProps={{
-                                min: 0,
-                                max:
-                                  row.discountType === "percentage" ? 100 : undefined,
-                                step: "0.01",
-                              }}
-                              value={
-                                row.discountInput === 0 ||
-                                row.discountInput === null ||
-                                row.discountInput === undefined ||
-                                row.discountInput === ""
-                                  ? ""
-                                  : row.discountInput
-                              }
-                              onChange={(e) =>
-                                handleInputChange(index, "discountInput", e.target.value)
-                              }
-                            />
-                          </Box>
-                        </TableCell>
+                        {showDiscountField ? (
+                          <TableCell sx={{ p: 1 }}>
+                            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                              <Select
+                                size="small"
+                                value={row.discountType || "value"}
+                                onChange={(e) =>
+                                  handleInputChange(index, "discountType", e.target.value)
+                                }
+                                sx={{ width: "85px" }}
+                              >
+                                <MenuItem value="value">Value</MenuItem>
+                                <MenuItem value="percentage">%</MenuItem>
+                              </Select>
+                              <TextField
+                                size="small"
+                                type="number"
+                                sx={{ width: "110px" }}
+                                inputProps={{
+                                  min: 0,
+                                  max:
+                                    row.discountType === "percentage" ? 100 : undefined,
+                                  step: "0.01",
+                                }}
+                                value={
+                                  row.discountInput === 0 ||
+                                  row.discountInput === null ||
+                                  row.discountInput === undefined ||
+                                  row.discountInput === ""
+                                    ? ""
+                                    : row.discountInput
+                                }
+                                onChange={(e) =>
+                                  handleInputChange(index, "discountInput", e.target.value)
+                                }
+                              />
+                            </Box>
+                          </TableCell>
+                        ) : null}
                         <TableCell sx={{ p: 1 }}>
                           <Select
                             label="Status"
@@ -1578,37 +1682,41 @@ const POEdit = () => {
                   pr: 1,
                   py: 1,
                 }}
-              >
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    alignItems: "center",
-                    gap: 2,
-                    py: 0.5,
-                  }}
                 >
-                  <Typography variant="h6">Discount</Typography>
-                  <Typography variant="h6">
-                    {formatCurrency(totalLineDiscount)}
-                  </Typography>
-                </Box>
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    alignItems: "center",
-                    gap: 2,
-                    py: 0.5,
-                  }}
-                >
-                  <Typography variant="h6">
-                    Freight Duty &amp; Transport Total
-                  </Typography>
-                  <Typography variant="h6">
-                    {formatCurrency(freightTotal)}
-                  </Typography>
-                </Box>
+                  {showDiscountField ? (
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        alignItems: "center",
+                        gap: 2,
+                        py: 0.5,
+                      }}
+                    >
+                      <Typography variant="h6">Discount</Typography>
+                      <Typography variant="h6">
+                        {formatCurrency(totalLineDiscount)}
+                      </Typography>
+                    </Box>
+                  ) : null}
+                  {!isLocalPO && (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      alignItems: "center",
+                      gap: 2,
+                      py: 0.5,
+                    }}
+                  >
+                    <Typography variant="h6">
+                      Freight Duty &amp; Transport Total
+                    </Typography>
+                    <Typography variant="h6">
+                      {formatCurrency(freightTotal)}
+                    </Typography>
+                  </Box>
+                )}
                 <Box
                   sx={{
                     display: "flex",

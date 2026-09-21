@@ -15,24 +15,19 @@ import useLoggedUserCompanyLetterhead from "@/hooks/useLoggedUserCompanyLetterhe
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { getPaymentMethods } from "@/components/types/types";
+import { applyTemplate, escapeHtml } from "@/components/ReportTemplate/applyTemplate";
+import { EMPTY_LINE_ITEMS_HTML } from "@/components/ReportTemplate/lineItemsEditor";
+import {
+  getPageSizeMm,
+  PAGE_ORIENTATION,
+  parsePageOrientation,
+} from "@/components/ReportTemplate/pageOrientation";
 
 const FIRST_PAGE_ROW_LIMIT = 4;
 const NEXT_PAGE_ROW_LIMIT = 8;
 
 // Customizable HTML template key (managed under Report Template > Sales > Invoice Print Template).
 const REPORT_KEY = "INVOICE";
-
-const escapeHtml = (value) => {
-  if (value === null || value === undefined) {
-    return "";
-  }
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-};
 
 const formatDisplayDate = (value) => {
   if (!value) {
@@ -75,58 +70,36 @@ const getUserLabel = (user) =>
   user?.email ||
   (user?.id != null ? `User #${user.id}` : "-");
 
-// Builds one <tr> per invoice line for the customizable HTML template:
-// Item | Qty | Unit Price | Dis% | Dis Amt | Line Total
-const buildLineItemsRows = (items) => {
-  if (!items || items.length === 0) {
-    return `<tr><td colspan="6" style="text-align:center;padding:16px;">No items available</td></tr>`;
-  }
+const buildInvoiceLineTokenMap = (item) => ({
+  productName: item.productName || "-",
+  productCode: item.productCode || "-",
+  qty: formatQty(item.qty),
+  unitPrice: formatAmount(item.unitPrice),
+  discountPercentage: formatAmount(item.discountPercentage),
+  discountAmount: formatAmount(item.discountAmount),
+  lineTotal: formatAmount(item.lineTotal),
+});
 
+// Legacy fallback for templates still using {{lineItemsRows}}.
+const buildLineItemsRows = (items) => {
+  if (!items || items.length === 0) return EMPTY_LINE_ITEMS_HTML;
   return items
     .map((item) => {
-      const productName = escapeHtml(item.productName || "-");
-      const productCode = item.productCode
-        ? `<br/><span style="color:#666;">${escapeHtml(item.productCode)}</span>`
-        : "";
+      const t = buildInvoiceLineTokenMap(item);
+      const productCode =
+        t.productCode && t.productCode !== "-"
+          ? `<br/><span style="color:#666;">${escapeHtml(t.productCode)}</span>`
+          : "";
       return `<tr>
-        <td>${productName}${productCode}</td>
-        <td class="num">${escapeHtml(formatQty(item.qty))}</td>
-        <td class="num">${escapeHtml(formatAmount(item.unitPrice))}</td>
-        <td class="num">${escapeHtml(formatAmount(item.discountPercentage))}</td>
-        <td class="num">${escapeHtml(formatAmount(item.discountAmount))}</td>
-        <td class="num">${escapeHtml(formatAmount(item.lineTotal))}</td>
+        <td>${escapeHtml(t.productName)}${productCode}</td>
+        <td class="num">${escapeHtml(t.qty)}</td>
+        <td class="num">${escapeHtml(t.unitPrice)}</td>
+        <td class="num">${escapeHtml(t.discountPercentage)}</td>
+        <td class="num">${escapeHtml(t.discountAmount)}</td>
+        <td class="num">${escapeHtml(t.lineTotal)}</td>
       </tr>`;
     })
     .join("\n");
-};
-
-// Replaces {{tokens}} in the template HTML with live document data.
-// `lineItemsRows` and `companyLogo` are injected as raw HTML; everything else is escaped.
-const applyTemplate = (templateHtml, tokenMap, rowsHtml) => {
-  if (!templateHtml) {
-    return "";
-  }
-
-  let output = templateHtml.replace(/\{\{\s*lineItemsRows\s*\}\}/gi, rowsHtml);
-  output = output.replace(/\{\{\s*companyLogo\s*\}\}/gi, tokenMap.companyLogo || "");
-
-  Object.entries(tokenMap).forEach(([key, value]) => {
-    if (key === "companyLogo") {
-      return;
-    }
-    const pattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "gi");
-    output = output.replace(pattern, escapeHtml(value));
-  });
-
-  const printStyle =
-    '<style>@page{size:A4;margin:0;}@media print{html,body{margin:0!important;}}</style>';
-  if (/<\/head>/i.test(output)) {
-    output = output.replace(/<\/head>/i, `${printStyle}</head>`);
-  } else {
-    output = `${printStyle}${output}`;
-  }
-
-  return output;
 };
 
 export default function InvoicePrintPage() {
@@ -456,11 +429,29 @@ export default function InvoicePrintPage() {
     ]
   );
 
+  const pageOrientation = useMemo(
+    () =>
+      isTemplateCustomized && templateHtml
+        ? parsePageOrientation(templateHtml)
+        : PAGE_ORIENTATION.PORTRAIT,
+    [isTemplateCustomized, templateHtml]
+  );
+  const pageSizeMm = useMemo(
+    () => getPageSizeMm(pageOrientation),
+    [pageOrientation]
+  );
+  const pageWidthCss =
+    pageOrientation === PAGE_ORIENTATION.LANDSCAPE ? "297mm" : "210mm";
+
   const finalHtml = useMemo(() => {
     if (!isTemplateCustomized || !templateHtml || !invoiceData) {
       return "";
     }
-    return applyTemplate(templateHtml, tokenMap, buildLineItemsRows(lineItems));
+    const lineTokenMaps = lineItems.map(buildInvoiceLineTokenMap);
+    return applyTemplate(templateHtml, tokenMap, buildLineItemsRows(lineItems), {
+      lineTokenMaps,
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
   }, [isTemplateCustomized, templateHtml, invoiceData, tokenMap, lineItems]);
 
   const usingCustomTemplate = Boolean(finalHtml);
@@ -590,9 +581,13 @@ export default function InvoicePrintPage() {
         backgroundColor: "#ffffff",
       });
 
-      const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-      const pageWidthMm = 210;
-      const pageHeightMm = 297;
+      const pdf = new jsPDF({
+        unit: "mm",
+        format: "a4",
+        orientation: pageOrientation,
+      });
+      const pageWidthMm = pageSizeMm.widthMm;
+      const pageHeightMm = pageSizeMm.heightMm;
       const pxPerMm = canvas.width / pageWidthMm;
       const pageHeightPx = Math.floor(pageHeightMm * pxPerMm);
 
@@ -871,7 +866,11 @@ export default function InvoicePrintPage() {
       <Box
         sx={{
           width: "100%",
-          maxWidth: "900px",
+          maxWidth: usingCustomTemplate
+            ? pageOrientation === PAGE_ORIENTATION.LANDSCAPE
+              ? "1200px"
+              : "900px"
+            : "900px",
           backgroundColor: "white",
           borderRadius: 2,
           boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
@@ -908,9 +907,9 @@ export default function InvoicePrintPage() {
               <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint} sx={{ textTransform: "none" }}>
                 Print
               </Button>
-              <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleDownloadPDF} sx={{ textTransform: "none" }}>
+              {/* <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleDownloadPDF} sx={{ textTransform: "none" }}>
                 Download PDF
-              </Button>
+              </Button> */}
             </Box>
           </Box>
         </Box>
@@ -942,7 +941,7 @@ export default function InvoicePrintPage() {
                 srcDoc={finalHtml}
                 onLoad={handleIframeLoad}
                 sx={{
-                  width: { xs: "100%", sm: "210mm" },
+                  width: { xs: "100%", sm: pageWidthCss },
                   maxWidth: "100%",
                   height: `${iframeHeight}px`,
                   margin: "0 auto",

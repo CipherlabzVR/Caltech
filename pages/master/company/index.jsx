@@ -18,8 +18,7 @@ import {
   Typography,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import CreateShiftCompanyModal from "./create";
@@ -38,30 +37,13 @@ const Index = () => {
     setPageSize,
     setSearch,
     fetchData: fetchCompanyList,
-  } = usePaginatedFetch("ShiftCompany/GetAllShiftCompanies");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("ShiftCompany/GetAllShiftCompanies");
 
-  const controller = "ShiftCompany/DeleteShiftCompany";
-
-  const handleSearchChange = (event) => {
-    const newSearch = event.target.value;
-    setSearch(newSearch);
-    setPage(1);
-    fetchCompanyList(1, newSearch, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchCompanyList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchCompanyList(1, search, size);
-  };
-
-  if (!navigate) { 
+  const controller = "ShiftCompany/DeleteShiftCompany";  if (!navigate) { 
     return <div>Access Denied</div>;
   }
 

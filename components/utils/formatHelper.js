@@ -9,11 +9,37 @@ export const formatCurrency = (value) => {
 };
 
 
+/**
+ * Normalize .NET / EF date strings so they display in the browser's local timezone.
+ * ISO datetimes without a zone are treated as UTC (matches UtcNow-stored matrimonial rows).
+ */
+export const parseApiDateForDisplay = (value) => {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value : null;
+  const s = String(value).trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const d = new Date(`${s}T12:00:00Z`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (/Z$/i.test(s) || /[+-]\d{2}:?\d{2}$/.test(s)) {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?$/i.test(s)) {
+    const d = new Date(`${s}Z`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
 export const formatDate = (date) => {
   if (date === null) {
     return "";
   } else {
-    const d = new Date(date);
+    const d = parseApiDateForDisplay(date);
+    if (!d) return "";
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
@@ -23,19 +49,19 @@ export const formatDate = (date) => {
 };
 
 export const formatDateWithTime = (dateStr) => {
-  const date = new Date(dateStr);
+  const date = parseApiDateForDisplay(dateStr);
+  if (!date) return "";
 
   const options = {
-    timeZone: 'Asia/Colombo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
     hour12: true,
   };
 
-  const formatter = new Intl.DateTimeFormat('en-CA', options);
+  const formatter = new Intl.DateTimeFormat(undefined, options);
   const parts = formatter.formatToParts(date);
 
   const yyyy = parts.find(p => p.type === 'year').value;

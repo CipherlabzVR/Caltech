@@ -17,6 +17,12 @@ import { useRouter } from "next/router";
 import getDeviceName from "@/components/utils/getDeviceName";
 import { getDeviceIdentity } from "@/components/utils/getDeviceId";
 import DeviceNameDialog from "@/components/Authentication/DeviceNameDialog";
+import FirstLoginChangePasswordDialog from "@/components/Authentication/FirstLoginChangePasswordDialog";
+import {
+  hasFirstLoginPasswordOffer,
+  loginOffersPasswordChange,
+  markFirstLoginPasswordOffer,
+} from "@/components/utils/firstLoginPasswordOffer";
 
 const DrawerSignIn = () => {
   const router = useRouter();
@@ -32,6 +38,21 @@ const DrawerSignIn = () => {
   const [deviceDialogOpen, setDeviceDialogOpen] = useState(false);
   const [deviceNameInput, setDeviceNameInput] = useState("");
   const [loginResult, setLoginResult] = useState(null);
+  const [passwordOfferOpen, setPasswordOfferOpen] = useState(false);
+
+  const goToReservation = () => {
+    touchSessionActivity();
+    window.location.href = "/dashboard/reservation/";
+  };
+
+  const finishDeviceThenContinue = () => {
+    setDeviceDialogOpen(false);
+    if (loginOffersPasswordChange(loginResult) || hasFirstLoginPasswordOffer()) {
+      setPasswordOfferOpen(true);
+      return;
+    }
+    goToReservation();
+  };
 
   const validate = () => {
     const errors = {};
@@ -88,6 +109,7 @@ const DrawerSignIn = () => {
       localStorage.setItem("role", result.userRole);
 
       sessionStorage.setItem("justLoggedIn", "true");
+      markFirstLoginPasswordOffer(result);
       touchSessionActivity();
 
       fetch(`${BASE_URL}/Company/CreateCompanyHostingFeeIfDue`, {
@@ -105,7 +127,13 @@ const DrawerSignIn = () => {
         return;
       }
 
-      window.location.href = "/dashboard/reservation/";
+      if (loginOffersPasswordChange(result) || hasFirstLoginPasswordOffer()) {
+        setLoginResult(result);
+        setPasswordOfferOpen(true);
+        return;
+      }
+
+      goToReservation();
     } catch (error) {
       const message = error.message || "Login failed";
 
@@ -119,9 +147,7 @@ const DrawerSignIn = () => {
   };
 
   const handleDeviceDialogCancel = () => {
-    setDeviceDialogOpen(false);
-    touchSessionActivity();
-    window.location.href = "/dashboard/reservation/";
+    finishDeviceThenContinue();
   };
 
   const handleDeviceDialogConfirm = async () => {
@@ -179,14 +205,10 @@ const DrawerSignIn = () => {
       if (!response.ok || !isRenameSuccess(data)) {
         toast.error(data?.message || "Could not save device name. You can continue anyway.");
       }
-      setDeviceDialogOpen(false);
-      touchSessionActivity();
-      window.location.href = "/dashboard/reservation/";
+      finishDeviceThenContinue();
     } catch {
       toast.error("Could not save device name. You can continue anyway.");
-      setDeviceDialogOpen(false);
-      touchSessionActivity();
-      window.location.href = "/dashboard/reservation/";
+      finishDeviceThenContinue();
     }
   };
 
@@ -252,6 +274,13 @@ const DrawerSignIn = () => {
         onChange={setDeviceNameInput}
         onCancel={handleDeviceDialogCancel}
         onConfirm={handleDeviceDialogConfirm}
+      />
+      <FirstLoginChangePasswordDialog
+        open={passwordOfferOpen}
+        onFinished={() => {
+          setPasswordOfferOpen(false);
+          goToReservation();
+        }}
       />
     </Grid>
   );

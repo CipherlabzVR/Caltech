@@ -39,7 +39,11 @@ export default function ArchivedLeadsPage() {
     setPageSize,
     setSearch,
     fetchData: fetchLeads,
-  } = usePaginatedFetch("Leads/GetArchivedLeads", "", 10, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Leads/GetArchivedLeads", "", 10, false);
 
   const [restoreTarget, setRestoreTarget] = React.useState(null);
   const [deleteTarget, setDeleteTarget] = React.useState(null);
@@ -74,9 +78,7 @@ export default function ArchivedLeadsPage() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
       const data = await res.json().catch(() => null);
       if (!res.ok || data?.statusCode !== 200) {
         throw new Error(data?.message || "Failed to restore lead");
@@ -99,9 +101,7 @@ export default function ArchivedLeadsPage() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
       const data = await res.json().catch(() => null);
       if (!res.ok || data?.statusCode !== 200) {
         throw new Error(data?.message || "Failed to delete lead");

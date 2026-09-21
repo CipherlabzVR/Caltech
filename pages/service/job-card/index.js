@@ -26,8 +26,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
-} from "@mui/material";
+  DialogActions } from "@mui/material";
 import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import DescriptionIcon from "@mui/icons-material/Description";
@@ -73,15 +72,13 @@ const STATUS_COLOR = {
   Ready: "success",
   Delivered: "success",
   Cancelled: "error",
-  Unrepairable: "error",
-};
+  Unrepairable: "error" };
 
 // Human-readable labels for statuses whose enum name is hard to read.
 const STATUS_LABEL_DISPLAY = {
   AwaitingApproval: "Awaiting Customer Approval",
   AwaitingPartsApproval: "Awaiting Parts Approval",
-  Unrepairable: "Can't Repair",
-};
+  Unrepairable: "Can't Repair" };
 
 function statusLabel(value) {
   if (typeof value === "string") return value;
@@ -128,14 +125,17 @@ export default function JobCardList() {
     setFilter,
     setIsCurrentDate,
     fetchData,
-  } = usePaginatedFetch("ServiceJobCard/GetAll");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("ServiceJobCard/GetAll");
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (!token) return;
     fetch(`${BASE_URL}/WorkTrackDetail/GetTechnicians`, {
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    })
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } })
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => {
         const items = json?.result || json?.data || [];
@@ -144,11 +144,7 @@ export default function JobCardList() {
       .catch(() => setTechnicians([]));
   }, []);
 
-  const handleSearchChange = (e) => {
-    setSearch(e.target.value);
-    setPage(1);
-    fetchData(1, e.target.value, pageSize, isCurrentDate, filter);
-  };
+
 
   const handleStatusChange = (e) => {
     const val = e.target.value || "";
@@ -157,17 +153,9 @@ export default function JobCardList() {
     fetchData(1, search, pageSize, isCurrentDate, val);
   };
 
-  const handlePageChange = (_e, value) => {
-    setPage(value);
-    fetchData(value, search, pageSize, isCurrentDate, filter);
-  };
 
-  const handlePageSizeChange = (e) => {
-    const size = e.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchData(1, search, size, isCurrentDate, filter);
-  };
+
+
 
   const filteredRows = (jobCards || []).filter((jc) => {
     if (technicianFilter && String(jc.assignedTechnicianId || "") !== String(technicianFilter)) return false;
@@ -213,8 +201,7 @@ export default function JobCardList() {
 
     const query = new URLSearchParams({
       id: String(jc.id ?? ""),
-      documentNumber: jc.documentNo ?? "",
-    });
+      documentNumber: jc.documentNo ?? "" });
     if (name === "Approved") {
       query.set("type", "customer-bill");
     }
@@ -244,9 +231,7 @@ export default function JobCardList() {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
+          ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
       const j = await r.json().catch(() => null);
       if (!r.ok || j?.statusCode === 0 || j?.statusCode === -99) {
         toast.error(j?.message || "Delete failed.");

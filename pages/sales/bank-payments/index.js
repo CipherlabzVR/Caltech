@@ -36,27 +36,11 @@ export default function BankPayments() {
     setPageSize,
     setSearch,
     fetchData: fetchBankPayments,
-  } = usePaginatedFetch("BankHistory/GetAllBankPaymentsResult");
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchBankPayments(1, event.target.value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchBankPayments(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchBankPayments(1, search, size);
-  };
-
-  const handleOpenApprove = (item) => {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("BankHistory/GetAllBankPaymentsResult");  const handleOpenApprove = (item) => {
     setSelectedRecord(item);
     setApproveModalOpen(true);
   };
@@ -91,9 +75,7 @@ export default function BankPayments() {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
+            "Content-Type": "application/json" } }
       );
 
       const text = await response.text();
@@ -131,9 +113,7 @@ export default function BankPayments() {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
+            "Content-Type": "application/json" } }
       );
 
       const text = await response.text();

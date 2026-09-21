@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -45,24 +46,11 @@ export default function Tax() {
     }
   }, [accountList]);
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchTaxList(1, value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchTaxList(value, searchTerm, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchTaxList(1, searchTerm, newSize);
-  };
+
+
+
 
   const fetchTaxList = async (page = 1, search = "", size = pageSize) => {
     try {
@@ -87,6 +75,23 @@ export default function Tax() {
       console.error("Error:", error);
     }
   };
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize: setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: fetchTaxList,
+  });
+
 
   useEffect(() => {
     fetchTaxList();

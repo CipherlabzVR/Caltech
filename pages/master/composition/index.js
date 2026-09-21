@@ -39,9 +39,11 @@ export default function Composition() {
     setPageSize,
     setSearch,
     fetchData: fetchCompositionList,
-  } = usePaginatedFetch("Composition/GetAllCompositionPage");
-
-  // const fetchCompositionList = async () => {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Composition/GetAllCompositionPage");  // const fetchCompositionList = async () => {
   //   try {
   //     const response = await fetch(
   //       `${BASE_URL}/Composition/GetAllComposition`,
@@ -65,24 +67,11 @@ export default function Composition() {
   //   }
   // };
 
-  const handleSearchChange = (event) => {
-    const val = event.target.value;
-    setSearch(val);
-    setPage(1);
-    fetchCompositionList(1, val, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchCompositionList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchCompositionList(1, search, size);
-  };
+
+
+
 
   useEffect(() => {
     fetchCompositionList();

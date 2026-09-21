@@ -1,5 +1,5 @@
 export const getModule = (type) => {
-  switch (type) {
+  switch (Number(type)) {
     case 1:
       return "Master Data";
     case 2:
@@ -60,6 +60,10 @@ export const getModule = (type) => {
       return "Service Management";
     case 30:
       return "Report Template";
+    case 31:
+      return "Photography";
+    case 32:
+      return "WhatsApp";
     default:
       return "N/A";
   }

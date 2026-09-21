@@ -39,7 +39,7 @@ export default function EditNote({ date, note, fetchItems }) {
   const [showExpDate, setShowExpDate] = useState(note.isExpire);
   const handleOpen = () => setOpen(true);
   const formattedDate = new Date(note.reservationExpiryDate)
-    .toLocaleDateString('en-CA', { timeZone: 'Asia/Colombo' });
+    .toLocaleDateString(undefined);
   const handleClose = () => {
     setOpen(false);
   };

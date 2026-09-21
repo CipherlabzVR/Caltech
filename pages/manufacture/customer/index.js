@@ -45,7 +45,11 @@ export default function CustomersList() {
     setPageSize,
     setSearch,
     fetchData: fetchCustomers,
-  } = usePaginatedFetch("Customer/GetAllCustomersInManufacture", "", 10, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Customer/GetAllCustomersInManufacture", "", 10, false);
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedCustomer, setSelectedCustomer] = React.useState(null);
@@ -72,9 +76,7 @@ export default function CustomersList() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
@@ -93,24 +95,11 @@ export default function CustomersList() {
     }
   };
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchCustomers(1, value, pageSize, false);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchCustomers(value, search, pageSize, false);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchCustomers(1, search, size, false);
-  };
+
+
+
 
   const handleCustomerCreated = () => {
     setPage(1);

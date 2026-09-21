@@ -50,7 +50,11 @@ export default function ActivitiesList() {
     setPageSize,
     setSearch,
     fetchData: fetchActivities,
-  } = usePaginatedFetch("CRMActivities/GetAllCRMActivities", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("CRMActivities/GetAllCRMActivities", "", 10, false, false);
 
   const { types: activityTypes } = useActivityTypes();
   const { entities: relatedEntities } = useRelatedEntityTypes();
@@ -109,24 +113,11 @@ export default function ActivitiesList() {
     [fetchActivities, page, pageSize, search]
   );
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchActivities(1, value, pageSize, false);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchActivities(value, search, pageSize, false);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = Number(event.target.value);
-    setPageSize(size);
-    setPage(1);
-    fetchActivities(1, search, size, false);
-  };
+
+
+
 
   const handleDeleteClick = (activity) => {
     setSelectedActivity(activity);
@@ -151,9 +142,7 @@ export default function ActivitiesList() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
 
       const data = await response.json().catch(() => null);
 
@@ -180,8 +169,7 @@ export default function ActivitiesList() {
         relatedEntityName: activity.relatedEntityName || activity.relatedEntityTypeName || "",
         assignedTo: String(activity.assignedTo ?? ""),
         status: String(activity.status ?? ""),
-        priority: String(activity.priority ?? ""),
-      })),
+        priority: String(activity.priority ?? "") })),
     [activities]
   );
 
@@ -286,8 +274,7 @@ export default function ActivitiesList() {
                           activity={{
                             ...activity,
                             relatedTo: `${relatedEntityMap[String(activity.relatedEntityType)] || ""} - ${activity.relatedEntityName || ""}`,
-                            type: activity.type,
-                          }}
+                            type: activity.type }}
                           onActivityUpdated={() => refreshActivities(page)}
                         />
                         <Tooltip title="Delete">

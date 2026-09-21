@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -59,24 +60,11 @@ export default function ProformaList() {
         }
     };
 
-    const handleSearchChange = (event) => {
-        const value = event.target.value;
-        setSearchTerm(value);
-        setPage(1);
-        fetchQuotationList(1, value, pageSize, tabValue);
-    };
 
-    const handlePageChange = (event, value) => {
-        setPage(value);
-        fetchQuotationList(value, searchTerm, pageSize, tabValue);
-    };
 
-    const handlePageSizeChange = (event) => {
-        const newSize = event.target.value;
-        setPageSize(newSize);
-        setPage(1);
-        fetchQuotationList(1, searchTerm, newSize, tabValue);
-    };
+
+
+
 
     const handleTabChange = (event, newValue) => {
         setTabValue(newValue);
@@ -182,6 +170,23 @@ export default function ProformaList() {
             console.error("Error:", error);
         }
     };
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize: setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: (p, s, sz) => fetchQuotationList(p, s, sz, tabValue),
+  });
+
 
     // After status changes (confirm/reject) refresh both target tab and Sent tab, then switch view
     const refreshAfterStatusChange = async (targetTab, stayOnSent = true) => {

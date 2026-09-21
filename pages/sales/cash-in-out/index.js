@@ -39,37 +39,24 @@ export default function CashInOut() {
     setSearch,
     setFilter,
     fetchData: fetchCashInOutList,
-  } = usePaginatedFetch("Shift/GetAllCashInOutPagedResult");
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchCashInOutList(1, event.target.value, pageSize, undefined, filter);
-  };
-
-  const handleFilterChange = (event) => {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Shift/GetAllCashInOutPagedResult");  const handleFilterChange = (event) => {
     setFilter(event.target.value);
     setPage(1);
     fetchCashInOutList(1, search, pageSize, undefined, event.target.value);
   };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchCashInOutList(value, search, pageSize, undefined, filter);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchCashInOutList(1, search, size, undefined, filter);
-  };
+
+
 
   const openCashInOutPrintPopup = (item) => {
     const query = new URLSearchParams({
       id: String(item.id ?? ""),
-      shiftCode: item.shiftCode ?? "",
-    });
+      shiftCode: item.shiftCode ?? "" });
 
     window.open(
       `/sales/cash-in-out/print?${query.toString()}`,
@@ -113,9 +100,7 @@ export default function CashInOut() {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
+            "Content-Type": "application/json" } }
       );
 
       const text = await response.text();
@@ -153,9 +138,7 @@ export default function CashInOut() {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
+            "Content-Type": "application/json" } }
       );
 
       const text = await response.text();

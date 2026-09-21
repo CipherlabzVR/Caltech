@@ -34,8 +34,7 @@ const getVehicleTypeName = (type) => {
     1: "BIKE",
     2: "VAN",
     3: "THREEWHEELER",
-    4: "LORRY",
-  };
+    4: "LORRY" };
   return types[type] || "Unknown";
 };
 
@@ -53,29 +52,13 @@ const Vehicles = () => {
     setPageSize,
     setSearch,
     fetchData: fetchVehicles,
-  } = usePaginatedFetch("Vehicle/GetAllVehicles");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Vehicle/GetAllVehicles");
 
-  const controller = "Vehicle/DeleteVehicle";
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchVehicles(1, event.target.value, pageSize);
-    setPage(1);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchVehicles(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchVehicles(1, search, size);
-  };
-
-  if (!navigate) {
+  const controller = "Vehicle/DeleteVehicle";  if (!navigate) {
     return <AccessDenied />;
   }
 

@@ -10,6 +10,14 @@ import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import BASE_URL from "Base/api";
 import { ProjectNo } from "Base/catelogue";
 
+function findNavPermission(transformed, menuModuleId, sub) {
+  const moduleId = Number(sub.permissionModuleId ?? menuModuleId);
+  const categoryId = Number(sub.categoryId);
+  return transformed.find(
+    (t) => Number(t.ModuleId) === moduleId && Number(t.CategoryId) === categoryId
+  );
+}
+
 /** Apply role permissions to sidebar subNav; supports one level of nested subNav (e.g. Master Data → HR). */
 function applyPermissionsToSubNav(subNav, moduleId, transformed, isHelpDeskSupport) {
   if (!subNav?.length) return subNav;
@@ -26,17 +34,13 @@ function applyPermissionsToSubNav(subNav, moduleId, transformed, isHelpDeskSuppo
       if (!isHelpDeskSupport) {
         return { ...sub, isAvailable: false };
       }
-      const matched = transformed.find(
-        (t) => t.ModuleId === moduleId && t.CategoryId === sub.categoryId
-      );
+      const matched = findNavPermission(transformed, moduleId, sub);
       return {
         ...sub,
         isAvailable: matched ? matched.IsAvailable : false,
       };
     }
-    const matched = transformed.find(
-      (t) => t.ModuleId === moduleId && t.CategoryId === sub.categoryId
-    );
+    const matched = findNavPermission(transformed, moduleId, sub);
     return {
       ...sub,
       isAvailable: matched ? matched.IsAvailable : false,
@@ -66,6 +70,11 @@ const SERVICE_MODULE_ID = 28;
 const SERVICE_MODULE_CATEGORY_IDS = [196, 197, 198, 200, 201];
 
 function resolveSubNavAvailability(sub, menuModuleId, transformed) {
+  // Skip items with nested subNav - their availability is determined by children
+  if (sub.subNav?.length) {
+    return sub;
+  }
+
   if (sub.userTypeRestriction) {
     const userType = localStorage.getItem("type");
     const isHelpDeskSupport = userType === "14" || userType === 14;
@@ -89,9 +98,7 @@ function resolveSubNavAvailability(sub, menuModuleId, transformed) {
     };
   }
 
-  const matched = transformed.find(
-    (t) => t.ModuleId === menuModuleId && t.CategoryId === sub.categoryId
-  );
+  const matched = findNavPermission(transformed, menuModuleId, sub);
   return {
     ...sub,
     isAvailable: matched ? matched.IsAvailable : false,
@@ -102,20 +109,26 @@ const SidebarNav = styled("nav")(({ theme }) => ({
   background: "#fff",
   boxShadow: "0px 4px 20px rgba(47, 143, 232, 0.07)",
   width: "300px",
-  padding: "0 10px",
+  padding: "0 10px 16px",
   height: "100vh",
   display: "flex",
-  justifyContent: "center",
+  flexDirection: "column",
+  justifyContent: "flex-start",
+  alignItems: "stretch",
   position: "fixed",
   top: 0,
   left: 0,
   transition: "350ms",
   zIndex: "10",
   overflowY: "auto",
+  overflowX: "hidden",
+  overscrollBehavior: "contain",
 }));
 
 const SidebarWrap = styled("div")(({ theme }) => ({
   width: "100%",
+  paddingBottom: "24px",
+  boxSizing: "border-box",
 }));
 
 const Sidebar = ({ toogleActive, onGrantedCheck, hoverMode = false }) => {
@@ -307,8 +320,8 @@ const Sidebar = ({ toogleActive, onGrantedCheck, hoverMode = false }) => {
                 {ProjectNo === 1 ? (
                   <>
                     <img
-                      src={companyLogo !== "" ? companyLogo : "/images/cbass.png"}
-                      alt="Logo"
+                      src="/images/IMG_4684.png"
+                      alt="CBASS-AI Logo"
                       className="black-logo"
                       style={{
                         maxHeight: "100%",
@@ -317,8 +330,8 @@ const Sidebar = ({ toogleActive, onGrantedCheck, hoverMode = false }) => {
                       }}
                     />
                     <img
-                      src={companyLogo !== "" ? companyLogo : "/images/cbass.png"}
-                      alt="Logo"
+                      src="/images/IMG_4684.png"
+                      alt="CBASS-AI Logo"
                       className="white-logo"
                       style={{
                         maxHeight: "100%",
@@ -386,7 +399,13 @@ const Sidebar = ({ toogleActive, onGrantedCheck, hoverMode = false }) => {
 
 
             {availableItems.map((item, index) => (
-              <SubMenu item={item} allItems={allItems} key={index} onCheckPermission={handleSetPermission} hoverMode={hoverMode} />
+              <SubMenu
+                item={item}
+                allItems={allItems}
+                key={index}
+                onCheckPermission={handleSetPermission}
+                hoverMode={hoverMode}
+              />
             ))}
           </SidebarWrap>
         </SidebarNav>

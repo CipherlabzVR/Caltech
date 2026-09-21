@@ -15,8 +15,7 @@ import {
   Typography,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
@@ -48,25 +47,17 @@ export default function DeviceTypeList() {
     setPageSize,
     setSearch,
     fetchData: fetchList,
-  } = usePaginatedFetch("DeviceType/GetAllDeviceTypePaged", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("DeviceType/GetAllDeviceTypePaged", "", 10, false, false);
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchList(1, event.target.value, pageSize);
-    setPage(1);
-  };
 
-  const handleChangePage = (event, value) => {
-    setPage(value);
-    fetchList(value, search, pageSize);
-  };
 
-  const handleChangeRowsPerPage = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchList(1, search, size);
-  };
+
+
+
 
   if (!navigate) return <AccessDenied />;
 

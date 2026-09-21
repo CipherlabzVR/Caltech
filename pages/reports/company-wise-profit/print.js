@@ -34,24 +34,36 @@ const toFilterLabel = (value, allLabel) => {
   return text;
 };
 
+const EMPTY_LINE_ITEMS_HTML = `<tr><td colspan="6" style="text-align:center;padding:16px;">No company wise profit data found for the selected filters.</td></tr>`;
+
+const mapCompanyWiseProfitLine = (row) => ({
+  productCode: row.productCode ?? row.ProductCode ?? "—",
+  productName: row.productName ?? row.ProductName ?? "—",
+  qty: formatAmount(row.qty ?? row.Qty),
+  salesAmount: formatAmount(row.salesAmount ?? row.SalesAmount),
+  costAmount: formatAmount(row.costAmount ?? row.CostAmount),
+  profitAmount: formatAmount(row.profitAmount ?? row.ProfitAmount),
+});
+
 const buildLineItemsRows = (rows) => {
-  if (!rows || rows.length === 0) {
-    return `<tr><td colspan="6" style="text-align:center;padding:16px;">No company wise profit data found for the selected filters.</td></tr>`;
-  }
+  if (!rows || rows.length === 0) return EMPTY_LINE_ITEMS_HTML;
 
   return rows
     .map((row) => {
+      const t = mapCompanyWiseProfitLine(row);
       return `<tr>
-        <td>${escapeHtml(row.productCode ?? row.ProductCode ?? "—")}</td>
-        <td>${escapeHtml(row.productName ?? row.ProductName ?? "—")}</td>
-        <td class="num">${escapeHtml(formatAmount(row.qty ?? row.Qty))}</td>
-        <td class="num">${escapeHtml(formatAmount(row.salesAmount ?? row.SalesAmount))}</td>
-        <td class="num">${escapeHtml(formatAmount(row.costAmount ?? row.CostAmount))}</td>
-        <td class="num">${escapeHtml(formatAmount(row.profitAmount ?? row.ProfitAmount))}</td>
+        <td>${escapeHtml(t.productCode)}</td>
+        <td>${escapeHtml(t.productName)}</td>
+        <td class="num">${escapeHtml(t.qty)}</td>
+        <td class="num">${escapeHtml(t.salesAmount)}</td>
+        <td class="num">${escapeHtml(t.costAmount)}</td>
+        <td class="num">${escapeHtml(t.profitAmount)}</td>
       </tr>`;
     })
     .join("\n");
 };
+
+const buildLineTokenMaps = (rows) => (rows || []).map(mapCompanyWiseProfitLine);
 
 export default function CompanyWiseProfitPrintPage() {
   const router = useRouter();
@@ -128,19 +140,16 @@ export default function CompanyWiseProfitPrintPage() {
     load();
   }, [router.isReady, fromDate, toDate, supplierId, salesPersonId]);
 
-  const totals = useMemo(
-    () =>
-      rows.reduce(
-        (acc, row) => {
-          acc.sales += Number(row.salesAmount ?? row.SalesAmount ?? 0) || 0;
-          acc.cost += Number(row.costAmount ?? row.CostAmount ?? 0) || 0;
-          acc.profit += Number(row.profitAmount ?? row.ProfitAmount ?? 0) || 0;
-          return acc;
-        },
-        { sales: 0, cost: 0, profit: 0 }
-      ),
-    [rows]
-  );
+  // API is the source of truth. CostAmount is already line total cost — do not multiply by Qty.
+  const totals = useMemo(() => {
+    const sales = rows.reduce((sum, row) => sum + (Number(row.salesAmount ?? row.SalesAmount ?? 0) || 0), 0);
+    const cost = rows.reduce((sum, row) => sum + (Number(row.costAmount ?? row.CostAmount ?? 0) || 0), 0);
+    return {
+      sales,
+      cost,
+      profit: sales - cost,
+    };
+  }, [rows]);
 
   const lineItemsRows = useMemo(() => buildLineItemsRows(rows), [rows]);
 
@@ -173,8 +182,11 @@ export default function CompanyWiseProfitPrintPage() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || loadingData) return "";
-    return applyTemplate(templateHtml, tokenMap, lineItemsRows);
-  }, [templateHtml, loadingData, tokenMap, lineItemsRows]);
+    return applyTemplate(templateHtml, tokenMap, lineItemsRows, {
+      lineTokenMaps: buildLineTokenMaps(rows),
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
+  }, [templateHtml, loadingData, tokenMap, lineItemsRows, rows]);
 
   return (
     <>

@@ -1,7 +1,13 @@
 import React from "react";
 import { Button, CircularProgress } from "@mui/material";
 
-const LoadingButton = ({ loading, handleSubmit,disabled }) => {
+const LoadingButton = ({
+  loading,
+  handleSubmit,
+  disabled,
+  label,
+  loadingLabel,
+}) => {
   const handleClick = () => {
     if (handleSubmit) {
       handleSubmit();
@@ -15,7 +21,7 @@ const LoadingButton = ({ loading, handleSubmit,disabled }) => {
       disabled={disabled || loading}
       startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
     >
-      {loading ? "Saving..." : "Save"}
+      {loading ? loadingLabel || "Saving..." : label || "Save"}
     </Button>
   );
 };

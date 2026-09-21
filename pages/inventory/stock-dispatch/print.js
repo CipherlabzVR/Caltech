@@ -8,6 +8,7 @@ import TemplatePrintFrame from "@/components/ReportTemplate/TemplatePrintFrame";
 import useReportTemplate from "@/components/ReportTemplate/useReportTemplate";
 import useTemplateLetterhead from "@/components/ReportTemplate/useTemplateLetterhead";
 import { applyTemplate, escapeHtml } from "@/components/ReportTemplate/applyTemplate";
+import { EMPTY_LINE_ITEMS_HTML } from "@/components/ReportTemplate/lineItemsEditor";
 
 const REPORT_KEY = "STOCKDISPATCH";
 
@@ -26,21 +27,44 @@ const formatAmount = (value) => {
 };
 
 const buildLineItemsRows = (record) => {
-  if (!record) {
+  const lines =
+    record?.lines?.length > 0
+      ? record.lines
+      : record
+        ? [
+            {
+              createdOn: record.createdOn,
+              supplierName: record.supplierName,
+              productCode: record.productCode,
+              productName: record.productName,
+              costPrice: record.costPrice,
+              unitPrice: record.unitPrice,
+              sellingPrice: record.sellingPrice,
+              dispatchQuantity: record.dispatchQuantity,
+              remark: record.remark,
+            },
+          ]
+        : [];
+
+  if (!lines.length) {
     return `<tr><td colspan="9" style="text-align:center;padding:16px;">No dispatch details available.</td></tr>`;
   }
 
-  return `<tr>
-    <td>${escapeHtml(formatDate(record.createdOn) || "—")}</td>
-    <td>${escapeHtml(record.supplierName || "—")}</td>
-    <td>${escapeHtml(record.productCode || "—")}</td>
-    <td>${escapeHtml(record.productName || "—")}</td>
-    <td class="num">${escapeHtml(formatAmount(record.costPrice))}</td>
-    <td class="num">${escapeHtml(formatAmount(record.unitPrice))}</td>
-    <td class="num">${escapeHtml(formatAmount(record.sellingPrice))}</td>
-    <td class="num">${escapeHtml(String(record.dispatchQuantity ?? 0))}</td>
-    <td>${escapeHtml(record.remark || "—")}</td>
-  </tr>`;
+  return lines
+    .map(
+      (line) => `<tr>
+    <td>${escapeHtml(formatDate(line.createdOn) || "—")}</td>
+    <td>${escapeHtml(line.supplierName || "—")}</td>
+    <td>${escapeHtml(line.productCode || "—")}</td>
+    <td>${escapeHtml(line.productName || "—")}</td>
+    <td class="num">${escapeHtml(formatAmount(line.costPrice))}</td>
+    <td class="num">${escapeHtml(formatAmount(line.unitPrice))}</td>
+    <td class="num">${escapeHtml(formatAmount(line.sellingPrice))}</td>
+    <td class="num">${escapeHtml(String(line.dispatchQuantity ?? 0))}</td>
+    <td>${escapeHtml(line.remark || "—")}</td>
+  </tr>`
+    )
+    .join("");
 };
 
 export default function StockDispatchPrintPage() {
@@ -87,9 +111,38 @@ export default function StockDispatchPrintPage() {
 
   const lineItemsRows = useMemo(() => buildLineItemsRows(record), [record]);
 
-  const qty = Number(record?.dispatchQuantity ?? 0);
-  const costPrice = Number(record?.costPrice ?? 0);
-  const sellingPrice = Number(record?.sellingPrice ?? 0);
+  const printLines = useMemo(() => {
+    if (record?.lines?.length > 0) return record.lines;
+    if (!record) return [];
+    return [
+      {
+        dispatchQuantity: record.dispatchQuantity,
+        costPrice: record.costPrice,
+        sellingPrice: record.sellingPrice,
+      },
+    ];
+  }, [record]);
+
+  const qty = useMemo(
+    () => printLines.reduce((sum, line) => sum + Number(line.dispatchQuantity ?? 0), 0),
+    [printLines]
+  );
+  const totalCostValue = useMemo(
+    () =>
+      printLines.reduce(
+        (sum, line) => sum + Number(line.dispatchQuantity ?? 0) * Number(line.costPrice ?? 0),
+        0
+      ),
+    [printLines]
+  );
+  const totalSellingValue = useMemo(
+    () =>
+      printLines.reduce(
+        (sum, line) => sum + Number(line.dispatchQuantity ?? 0) * Number(line.sellingPrice ?? 0),
+        0
+      ),
+    [printLines]
+  );
 
   const tokenMap = useMemo(
     () => ({
@@ -107,16 +160,32 @@ export default function StockDispatchPrintPage() {
       costPrice: formatAmount(record?.costPrice),
       unitPrice: formatAmount(record?.unitPrice),
       sellingPrice: formatAmount(record?.sellingPrice),
-      dispatchQuantity: String(record?.dispatchQuantity ?? 0),
-      totalCostValue: formatCurrency(qty * costPrice),
-      totalSellingValue: formatCurrency(qty * sellingPrice),
+      dispatchQuantity: String(qty),
+      totalCostValue: formatCurrency(totalCostValue),
+      totalSellingValue: formatCurrency(totalSellingValue),
     }),
-    [record, documentNumber, letterheadTokens, qty, costPrice, sellingPrice]
+    [record, documentNumber, letterheadTokens, qty, totalCostValue, totalSellingValue]
   );
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || !record) return "";
-    return applyTemplate(templateHtml, tokenMap, lineItemsRows);
+    const lineTokenMaps = [
+      {
+        date: formatDate(record.createdOn) || "—",
+        supplierName: record.supplierName || "—",
+        productCode: record.productCode || "—",
+        productName: record.productName || "—",
+        costPrice: formatAmount(record.costPrice),
+        unitPrice: formatAmount(record.unitPrice),
+        sellingPrice: formatAmount(record.sellingPrice),
+        dispatchQuantity: String(record.dispatchQuantity ?? 0),
+        remark: record.remark || "—",
+      },
+    ];
+    return applyTemplate(templateHtml, tokenMap, lineItemsRows, {
+      lineTokenMaps,
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
   }, [templateHtml, record, tokenMap, lineItemsRows]);
 
   const isLoading = loadingRecord || loadingTemplate;

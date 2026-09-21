@@ -19,8 +19,7 @@ import {
   IconButton,
   Tooltip,
   Modal,
-  Box,
-} from "@mui/material";
+  Box } from "@mui/material";
 import ImageIcon from "@mui/icons-material/Image";
 import CloseIcon from "@mui/icons-material/Close";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
@@ -50,29 +49,21 @@ export default function Company() {
     setPageSize,
     setSearch,
     fetchData: fetchCompanies,
-  } = usePaginatedFetch("Company/GetAllCompaniesPage", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Company/GetAllCompaniesPage", "", 10, false, false);
 
   const [letterheadModalOpen, setLetterheadModalOpen] = useState(false);
   const [selectedLetterheadImage, setSelectedLetterheadImage] = useState("");
   const controller = "Company/DeleteCompany";
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchCompanies(1, event.target.value, pageSize);
-    setPage(1);
-  };
 
-  const handleChangePage = (event, value) => {
-    setPage(value);
-    fetchCompanies(value, search, pageSize);
-  };
 
-  const handleChangeRowsPerPage = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchCompanies(1, search, size);
-  };
+
+
+
 
   const handleOpenLetterheadModal = (imageUrl) => {
     setSelectedLetterheadImage(imageUrl);
@@ -338,8 +329,7 @@ export default function Company() {
             boxShadow: 24,
             borderRadius: 2,
             p: 2,
-            overflow: "auto",
-          }}
+            overflow: "auto" }}
           className="bg-black"
         >
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -356,8 +346,7 @@ export default function Company() {
               justifyContent: "center",
               alignItems: "center",
               width: "100%",
-              minHeight: "400px",
-            }}
+              minHeight: "400px" }}
           >
             {selectedLetterheadImage && (
               <img
@@ -366,8 +355,7 @@ export default function Company() {
                 style={{
                   maxWidth: "100%",
                   maxHeight: "70vh",
-                  objectFit: "contain",
-                }}
+                  objectFit: "contain" }}
               />
             )}
           </Box>

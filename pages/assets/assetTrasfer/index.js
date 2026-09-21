@@ -24,8 +24,7 @@ import {
   TableRow,
   TextField,
   Tooltip,
-  Typography,
-} from "@mui/material";
+  Typography } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
@@ -51,15 +50,13 @@ const modalStyle = {
   p: 4,
   borderRadius: "10px",
   maxHeight: "90vh",
-  overflowY: "auto",
-};
+  overflowY: "auto" };
 
 const transferTypeLabel = (value) => {
   const map = {
     1: "Inter Department",
     2: "Inter Entity",
-    3: "Custodian Change",
-  };
+    3: "Custodian Change" };
   return map[value] || "Unknown";
 };
 
@@ -69,8 +66,7 @@ const statusConfig = (value) => {
     2: { label: "Approved", color: "info" },
     3: { label: "Rejected", color: "error" },
     4: { label: "Completed", color: "success" },
-    5: { label: "Cancelled", color: "default" },
-  };
+    5: { label: "Cancelled", color: "default" } };
   return map[value] || { label: "Unknown", color: "default" };
 };
 
@@ -89,8 +85,7 @@ function CreateTransferModal({ fetchItems }) {
     ToCustodianId: "",
     ToDepartmentId: "",
     ToEntityId: "",
-    Reason: "",
-  });
+    Reason: "" });
 
   const setValue = (name, value) => setValues((prev) => ({ ...prev, [name]: value }));
 
@@ -103,8 +98,7 @@ function CreateTransferModal({ fetchItems }) {
       ToCustodianId: "",
       ToDepartmentId: "",
       ToEntityId: "",
-      Reason: "",
-    });
+      Reason: "" });
   };
 
   const handleClose = () => {
@@ -131,17 +125,14 @@ function CreateTransferModal({ fetchItems }) {
         ToCustodianId: values.ToCustodianId ? Number(values.ToCustodianId) : null,
         ToDepartmentId: values.ToDepartmentId ? Number(values.ToDepartmentId) : null,
         ToEntityId: values.ToEntityId ? Number(values.ToEntityId) : null,
-        Reason: values.Reason,
-      };
+        Reason: values.Reason };
 
       const response = await fetch(`${BASE_URL}/assets/transfers`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+          "Content-Type": "application/json" },
+        body: JSON.stringify(payload) });
       const data = await response.json();
 
       if (apiOk(response, data)) {
@@ -282,9 +273,7 @@ function TransferDeleteAction({ item, fetchItems }) {
       const response = await fetch(`${BASE_URL}/assets/transfers/${item.id}/cancel?reason=${encodeURIComponent(reason)}`, {
         method: "PUT",
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
+          Authorization: `Bearer ${localStorage.getItem("token")}` } });
       const data = await response.json();
       if (apiOk(response, data)) {
         toast.success(data.message || "Transfer deleted");
@@ -357,28 +346,19 @@ export default function AssetTransfers() {
     setPageSize,
     setSearch,
     fetchData: fetchTransfers,
-  } = usePaginatedFetch("assets/transfers", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("assets/transfers", "", 10, false, false);
 
   const refreshList = () => fetchTransfers(page, search, pageSize);
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchTransfers(1, value, pageSize);
-  };
 
-  const handlePageChange = (_, value) => {
-    setPage(value);
-    fetchTransfers(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchTransfers(1, search, size);
-  };
+
+
+
 
   if (!navigate) return <AccessDenied />;
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import Grid from "@mui/material/Grid";
 import {
   Paper,
@@ -40,12 +41,7 @@ const StockBalance = () => {
 
   const buildDateQuery = (date) => (date ? `&AsOfDate=${date}` : "");
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchStockList(1, value, pageSize, asOfDate);
-  };
+
 
   const handleAsOfDateChange = (event) => {
     const value = event.target.value;
@@ -60,17 +56,9 @@ const StockBalance = () => {
     fetchStockList(1, searchTerm, pageSize, "");
   };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchStockList(value, searchTerm, pageSize, asOfDate);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchStockList(1, searchTerm, newSize, asOfDate);
-  };
+
+
 
   const fetchStockList = async (page = 1, search = "", size = pageSize, date = asOfDate) => {
     try {
@@ -95,6 +83,23 @@ const StockBalance = () => {
       console.error("Error:", error);
     }
   };
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize: setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: (p, s, sz) => fetchStockList(p, s, sz, asOfDate),
+  });
+
 
   useEffect(() => {
     fetchStockList();

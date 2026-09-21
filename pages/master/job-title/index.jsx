@@ -15,8 +15,7 @@ import {
   Typography,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import { ToastContainer } from "react-toastify";
 import BASE_URL from "Base/api";
@@ -34,7 +33,6 @@ const Index = () => {
   const cId = sessionStorage.getItem("category");
   const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
   const { data: supplierList } = GetAllSuppliers();
-  const [searchTerm, setSearchTerm] = useState("");
   const [supplierInfo, setSupplierInfo] = useState({});
   
   const {
@@ -47,28 +45,14 @@ const Index = () => {
     setPageSize,
     setSearch,
     fetchData: fetchJobTitleList,
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
   } = usePaginatedFetch("JobTitle/GetAllJobTitle");
 
   const controller = "JobTitle/DeleteJobTitle";
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchJobTitleList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchJobTitleList(1, search, size);
-  };
-
-  const handleSearchChange = (event) => {
-    setSearchTerm(event.target.value);
-    setSearch(event.target.value);
-    fetchJobTitleList(1, event.target.value, pageSize);
-  };
-
   useEffect(() => {
     if (supplierList) {
       // console.log("Supplier list loaded:", supplierList);
@@ -107,7 +91,7 @@ const Index = () => {
             <StyledInputBase
               placeholder="Search here.."
               inputProps={{ "aria-label": "search" }}
-              value={searchTerm}
+              value={search}
               onChange={handleSearchChange}
             />
           </Search>

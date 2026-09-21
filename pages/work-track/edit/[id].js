@@ -24,6 +24,7 @@ import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
+import Autocomplete from "@mui/material/Autocomplete";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -64,7 +65,7 @@ import TableChartIcon from "@mui/icons-material/TableChart";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import FormGroup from "@mui/material/FormGroup";
 import ShareIcon from "@mui/icons-material/Share";
-import BASE_URL from "Base/api";
+import BASE_URL, { getFrontendOrigin, withFrontendOrigin } from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import WorkTrackShareDialog from "@/components/work-track/WorkTrackShareDialog";
@@ -287,6 +288,9 @@ export default function EditWorkTrack() {
         wifiKey: values.wifiKey || null,
         notes: values.notes || null,
         assignee: values.assignee || null,
+        assignedTechnicianId: values.assignedTechnicianId || null,
+        sendEmailToAssignee: Boolean(values.sendEmailToAssignee),
+        frontendOrigin: getFrontendOrigin(),
         taskCompletePercentage: values.taskCompletePercentage ? parseFloat(values.taskCompletePercentage) : null,
       };
 
@@ -301,10 +305,10 @@ export default function EditWorkTrack() {
 
       const response = await fetch(url, {
         method: "POST",
-        headers: {
+        headers: withFrontendOrigin({
           Authorization: `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json",
-        },
+        }),
         body: JSON.stringify(payload),
       });
 
@@ -715,6 +719,8 @@ export default function EditWorkTrack() {
     wifiKey: editingDetail?.wifiKey || "",
     notes: editingDetail?.notes || "",
     assignee: editingDetail?.assignee || "",
+    assignedTechnicianId: editingDetail?.assignedTechnicianId || null,
+    sendEmailToAssignee: true,
     taskCompletePercentage: editingDetail?.taskCompletePercentage || "",
   };
 
@@ -1651,13 +1657,50 @@ export default function EditWorkTrack() {
                     />
                   </Grid>
                   <Grid item xs={12} md={6}>
-                    <Field
-                      as={TextField}
-                      fullWidth
-                      label="Assignee"
-                      name="assignee"
-                      variant="outlined"
-                      size="small"
+                    <Autocomplete
+                      options={technicians}
+                      value={
+                        technicians.find(
+                          (t) =>
+                            t.id === values.assignedTechnicianId ||
+                            t.fullName === values.assignee ||
+                            t.userName === values.assignee ||
+                            t.email === values.assignee
+                        ) || null
+                      }
+                      getOptionLabel={(option) =>
+                        option?.fullName || option?.userName || option?.email || ""
+                      }
+                      isOptionEqualToValue={(option, val) => option?.id === val?.id}
+                      onChange={(_, selected) => {
+                        setFieldValue("assignedTechnicianId", selected?.id || null);
+                        setFieldValue(
+                          "assignee",
+                          selected?.fullName || selected?.userName || selected?.email || ""
+                        );
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Assignee"
+                          name="assignee"
+                          variant="outlined"
+                          size="small"
+                          placeholder="Select technician to email"
+                        />
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={Boolean(values.sendEmailToAssignee)}
+                          onChange={(e) => setFieldValue("sendEmailToAssignee", e.target.checked)}
+                          disabled={!values.assignedTechnicianId && !values.assignee}
+                        />
+                      }
+                      label="Send email to assignee"
                     />
                   </Grid>
                   <Grid item xs={12} md={6}>

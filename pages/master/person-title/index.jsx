@@ -39,7 +39,11 @@ export default function PersonTitle() {
     setPageSize,
     setSearch,
     fetchData: fetchPersonTitleList,
-  } = usePaginatedFetch("PersonTitle/GetAllPersonTitle");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("PersonTitle/GetAllPersonTitle");
 
   // const fetchCompositionList = async () => {
   //   try {
@@ -65,24 +69,11 @@ export default function PersonTitle() {
   //   }
   // };
 
-  const handleSearchChange = (event) => {
-    const val = event.target.value;
-    setSearch(val);
-    setPage(1);
-    fetchPersonTitleList(1, val, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchPersonTitleList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchPersonTitleList(1, search, size);
-  };
+
+
+
 
   useEffect(() => {
     fetchPersonTitleList();

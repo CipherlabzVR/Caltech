@@ -40,27 +40,13 @@ export default function Customers() {
     setPageSize,
     setSearch,
     fetchData: fetchCustomerList,
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
   } = usePaginatedFetch("Customer/GetAll");
-
   const controller = "Customer/DeleteCustomer";
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchCustomerList(1, event.target.value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchCustomerList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchCustomerList(1, search, size);
-  };
 
   useEffect(() => {
     if (accountList) {

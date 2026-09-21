@@ -25,6 +25,7 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import getNext from "@/components/utils/getNext";
 import { encryptLink } from "@/components/utils/linkCrypto";
 import Modules from "./modules";
+import SplashBannerTab from "./SplashBannerTab";
 import { styled } from "@mui/material/styles";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 
@@ -48,7 +49,7 @@ const style = {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: { lg: 500, xs: 360 },
+  width: { lg: 640, xs: 360 },
   bgcolor: "background.paper",
   boxShadow: 24,
   p: 2,
@@ -478,6 +479,7 @@ export default function EditCompany({ item, fetchItems }) {
                     />
                   }
                 />
+                <Tab label="Startup Banner" />
               </Tabs>
               <Form>
                 {tabIndex === 0 && (
@@ -803,6 +805,8 @@ export default function EditCompany({ item, fetchItems }) {
                     </Grid>
                   </Box>
                 )}
+
+                {tabIndex === 4 && <SplashBannerTab companyId={item.id} />}
 
                 {(tabIndex === 0 || tabIndex === 2 || tabIndex === 3) && (
                   <Box display="flex" justifyContent="space-between" mt={2}>

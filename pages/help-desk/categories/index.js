@@ -18,8 +18,7 @@ import {
   Typography,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import CreateCategoryModal from "./create";
@@ -43,28 +42,19 @@ const Index = () => {
     setPageSize,
     setSearch,
     fetchData: fetchCategoryList,
-  } = usePaginatedFetch("HelpDesk/GetAllCategories");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("HelpDesk/GetAllCategories");
 
   const controller = "HelpDesk/DeleteCategory";
 
-  const handleSearchChange = (event) => {
-    const newSearch = event.target.value;
-    setSearch(newSearch);
-    setPage(1);
-    fetchCategoryList(1, newSearch, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchCategoryList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchCategoryList(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <div>Access Denied</div>;

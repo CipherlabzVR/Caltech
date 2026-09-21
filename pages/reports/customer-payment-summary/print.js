@@ -34,27 +34,43 @@ const toFilterLabel = (value, allLabel) => {
   return text;
 };
 
+const EMPTY_LINE_ITEMS_HTML = `<tr><td colspan="8" style="text-align:center;padding:16px;">No customer payments found for the selected filters.</td></tr>`;
+
+const mapCustomerPaymentLine = (row) => {
+  const receiptDate = row.receiptDate ?? row.ReceiptDate;
+  return {
+    receiptDate: receiptDate ? formatDate(receiptDate) : "—",
+    receiptNumber: row.receiptNumber ?? row.ReceiptNumber ?? "—",
+    customerName: row.customerName ?? row.CustomerName ?? "—",
+    invoiceNos: (row.invoiceNos ?? row.InvoiceNos) || "—",
+    paymentType: row.paymentType ?? row.PaymentType ?? "—",
+    totalPaidAmount: formatAmount(row.totalPaidAmount ?? row.TotalPaidAmount),
+    referenceNumber: (row.referenceNumber ?? row.ReferenceNumber) || "—",
+    remark: (row.remark ?? row.Remark) || "—",
+  };
+};
+
 const buildLineItemsRows = (rows) => {
-  if (!rows || rows.length === 0) {
-    return `<tr><td colspan="8" style="text-align:center;padding:16px;">No customer payments found for the selected filters.</td></tr>`;
-  }
+  if (!rows || rows.length === 0) return EMPTY_LINE_ITEMS_HTML;
 
   return rows
     .map((row) => {
-      const receiptDate = row.receiptDate ?? row.ReceiptDate;
+      const t = mapCustomerPaymentLine(row);
       return `<tr>
-        <td>${escapeHtml(receiptDate ? formatDate(receiptDate) : "—")}</td>
-        <td>${escapeHtml(row.receiptNumber ?? row.ReceiptNumber ?? "—")}</td>
-        <td>${escapeHtml(row.customerName ?? row.CustomerName ?? "—")}</td>
-        <td>${escapeHtml((row.invoiceNos ?? row.InvoiceNos) || "—")}</td>
-        <td>${escapeHtml(row.paymentType ?? row.PaymentType ?? "—")}</td>
-        <td class="num">${escapeHtml(formatAmount(row.totalPaidAmount ?? row.TotalPaidAmount))}</td>
-        <td>${escapeHtml((row.referenceNumber ?? row.ReferenceNumber) || "—")}</td>
-        <td>${escapeHtml((row.remark ?? row.Remark) || "—")}</td>
+        <td>${escapeHtml(t.receiptDate)}</td>
+        <td>${escapeHtml(t.receiptNumber)}</td>
+        <td>${escapeHtml(t.customerName)}</td>
+        <td>${escapeHtml(t.invoiceNos)}</td>
+        <td>${escapeHtml(t.paymentType)}</td>
+        <td class="num">${escapeHtml(t.totalPaidAmount)}</td>
+        <td>${escapeHtml(t.referenceNumber)}</td>
+        <td>${escapeHtml(t.remark)}</td>
       </tr>`;
     })
     .join("\n");
 };
+
+const buildLineTokenMaps = (rows) => (rows || []).map(mapCustomerPaymentLine);
 
 export default function CustomerPaymentSummaryPrintPage() {
   const router = useRouter();
@@ -166,8 +182,11 @@ export default function CustomerPaymentSummaryPrintPage() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || loadingData) return "";
-    return applyTemplate(templateHtml, tokenMap, lineItemsRows);
-  }, [templateHtml, loadingData, tokenMap, lineItemsRows]);
+    return applyTemplate(templateHtml, tokenMap, lineItemsRows, {
+      lineTokenMaps: buildLineTokenMaps(rows),
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
+  }, [templateHtml, loadingData, tokenMap, lineItemsRows, rows]);
 
   return (
     <>

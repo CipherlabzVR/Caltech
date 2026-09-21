@@ -18,8 +18,7 @@ import {
   Typography,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import CreateDayTypeModal from "./create";
@@ -38,29 +37,13 @@ const Index = () => {
     setPageSize,
     setSearch,
     fetchData: fetchDayTypeList,
-  } = usePaginatedFetch("DayType/GetAllDayType");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("DayType/GetAllDayType");
 
-  const controller = "DayType/DeleteDayType";
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchDayTypeList(1, event.target.value, pageSize);
-    setPage(1);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchDayTypeList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchDayTypeList(1, search, size);
-  };
-
-  // const handleCreated = () => {
+  const controller = "DayType/DeleteDayType";  // const handleCreated = () => {
   //   handlePageChange({}, 1);
   // };
 

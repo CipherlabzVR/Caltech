@@ -18,8 +18,7 @@ import {
   Typography,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 // CHANGED: Imported Classification modals
@@ -41,31 +40,14 @@ const Index = () => {
     setPageSize,
     setSearch,
     fetchData: fetchClassificationList,
-  } = usePaginatedFetch("Classifications/GetAllClassifications");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Classifications/GetAllClassifications");
 
   // CHANGED: Delete controller endpoint
-  const controller = "Classifications/DeleteClassification";
-
-  const handleSearchChange = (event) => {
-    const newSearch = event.target.value;
-    setSearch(newSearch);
-    setPage(1);
-    fetchClassificationList(1, newSearch, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchClassificationList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchClassificationList(1, search, size);
-  };
-
-  // The original component was missing the AccessDenied check, re-adding for completeness
+  const controller = "Classifications/DeleteClassification";  // The original component was missing the AccessDenied check, re-adding for completeness
   if (!navigate) {
     // Assuming you have an AccessDenied component
     // return <AccessDenied />;

@@ -120,6 +120,7 @@ export default function ProfitabilityReport({ docName, reportName } = {}) {
     const params = new URLSearchParams({
       fromDate: fromDate || "",
       toDate: toDate || "",
+      warehouseId: warehouseId || "",
       customerId: String(customerId || 0),
       supplierId: String(supplierId || 0),
       categoryId: String(categoryId || 0),

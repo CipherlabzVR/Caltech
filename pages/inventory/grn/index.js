@@ -17,8 +17,7 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem,
-} from "@mui/material";
+  MenuItem } from "@mui/material";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import { toast, ToastContainer } from "react-toastify";
@@ -58,8 +57,7 @@ const GRN = () => {
       return;
     }
     router.push({
-      pathname: "/inventory/grn/create-grn",
-    });
+      pathname: "/inventory/grn/create-grn" });
   };
   useEffect(() => {
     if (salesPersonList) {
@@ -81,27 +79,11 @@ const GRN = () => {
     setPageSize,
     setSearch,
     fetchData: fetchGRNList,
-  } = usePaginatedFetch("GoodReceivedNote/GetAllGRN");
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchGRNList(1, event.target.value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchGRNList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchGRNList(1, search, size);
-  };
-
-  if (!navigate) {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("GoodReceivedNote/GetAllGRN");  if (!navigate) {
     return <AccessDenied />;
   }
 
@@ -111,8 +93,7 @@ const GRN = () => {
   const openGRNPrintPopup = (item) => {
     const query = new URLSearchParams({
       id: String(item.id ?? ""),
-      documentNumber: item.documentNo ?? "",
-    });
+      documentNumber: item.documentNo ?? "" });
 
     window.open(
       `/inventory/grn/print?${query.toString()}`,
@@ -196,7 +177,7 @@ const GRN = () => {
                     const reportLink = `/PrintDocumentsLocal?InitialCatalog=${Catelogue}&documentNumber=${item.documentNo}&reportName=${ReportName}&warehouseId=${item.warehouseId}&currentUser=${name}`;
                     return (
                       <TableRow key={item.id}>
-                        <TableCell>{index + 1}</TableCell>
+                        <TableCell>{(page - 1) * pageSize + index + 1}</TableCell>
                         <TableCell>
                           {item.purchaseOrderNo != null ? item.updatedOn ? formatDate(item.updatedOn) : formatDate(item.createdOn) : item.grnDate ? formatDate(item.grnDate) : formatDate(item.createdOn)}
                         </TableCell>

@@ -95,15 +95,23 @@ export default function EditSupplier({
   };
 
 
+  const supplierId = item?.id ?? item?.Id;
+
   const handleSubmit = (values) => {
     if (!selectedBank && isBankRequired) {
       toast.warning("Please Select Bank")
       return;
     }
+    if (!supplierId) {
+      toast.error("Supplier Id is missing. Please refresh and try again.");
+      return;
+    }
     const payload = {
       ...values,
+      Id: supplierId,
       FirstName: String(values.FirstName ?? "").trim(),
       LastName: String(values.LastName ?? "").trim(),
+      Name: String(values.Name ?? "").trim(),
       MobileNo: sanitizeSupplierMobileInput(values.MobileNo),
       BankId: selectedBank?.id || null,
       BankName: selectedBank?.name || "",
@@ -149,16 +157,17 @@ export default function EditSupplier({
       >
         <Box sx={style} className="bg-black">
           <Formik
+            enableReinitialize
             initialValues={{
-              Id: item.id,
+              Id: supplierId,
               FirstName: item.firstName ?? item.FirstName ?? "",
               LastName: item.lastName ?? item.LastName ?? "",
-              Name: item.name || "",
-              MobileNo: sanitizeSupplierMobileInput(item.mobileNo),
-              Email: item.email || "",
-              WarehouseId: item.warehouseId || "",
-              PayableAccount: item.payableAccount || null,
-              IsActive: item.isActive ?? true,
+              Name: item.name ?? item.Name ?? "",
+              MobileNo: sanitizeSupplierMobileInput(item.mobileNo ?? item.MobileNo),
+              Email: item.email ?? item.Email ?? "",
+              WarehouseId: item.warehouseId ?? item.WarehouseId ?? null,
+              PayableAccount: item.payableAccount ?? item.PayableAccount ?? null,
+              IsActive: item.isActive ?? item.IsActive ?? true,
             }}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}

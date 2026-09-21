@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import { useRouter } from "next/router";
@@ -76,6 +76,8 @@ export default function DailyOutstandings() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  const pageBeforeFilterRef = useRef(1);
 
   const fetchSummaries = async () => {
     try {
@@ -216,8 +218,23 @@ export default function DailyOutstandings() {
               size="small"
               value={filterDate}
               onChange={(e) => {
-                setFilterDate(e.target.value);
-                setPage(1);
+                const value = e.target.value;
+                const wasEmpty = !filterDate;
+                const isEmpty = !value;
+
+                if (wasEmpty && !isEmpty) {
+                  pageBeforeFilterRef.current = page;
+                }
+
+                let targetPage = page;
+                if (!isEmpty) {
+                  targetPage = 1;
+                } else if (!wasEmpty) {
+                  targetPage = pageBeforeFilterRef.current;
+                }
+
+                setFilterDate(value);
+                setPage(targetPage);
               }}
               InputLabelProps={{ shrink: true }}
               sx={{ minWidth: 180 }}
@@ -228,7 +245,7 @@ export default function DailyOutstandings() {
                 size="small"
                 onClick={() => {
                   setFilterDate("");
-                  setPage(1);
+                  setPage(pageBeforeFilterRef.current);
                 }}
               >
                 Clear

@@ -19,8 +19,7 @@ import {
   MenuItem,
   Select,
   Autocomplete,
-  TextField,
-} from "@mui/material";
+  TextField } from "@mui/material";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
@@ -59,9 +58,7 @@ export default function HelpDeskWorkOrder() {
             method: "GET",
             headers: {
               Authorization: `Bearer ${localStorage.getItem("token")}`,
-              "Content-Type": "application/json",
-            },
-          }
+              "Content-Type": "application/json" } }
         );
 
         if (response.ok) {
@@ -116,9 +113,7 @@ export default function HelpDeskWorkOrder() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
 
       if (response.ok) {
         const result = await response.json();
@@ -153,9 +148,7 @@ export default function HelpDeskWorkOrder() {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
 
       if (response.ok) {
         const blob = await response.blob();
@@ -213,25 +206,17 @@ export default function HelpDeskWorkOrder() {
     setPageSize,
     setSearch,
     fetchData: fetchWorkOrderList,
-  } = usePaginatedFetch("HelpDesk/GetAllWorkOrders", "", 10, true, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("HelpDesk/GetAllWorkOrders", "", 10, true, false);
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchWorkOrderList(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchWorkOrderList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchWorkOrderList(1, search, size);
-  };
+
+
+
 
   return (
     <>

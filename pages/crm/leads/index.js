@@ -39,8 +39,7 @@ const STATUS_META = {
   5: { label: "Negotiation", color: "secondary" },
   6: { label: "Won", color: "success" },
   7: { label: "Lost", color: "error" },
-  8: { label: "Project Created", color: "success" },
-};
+  8: { label: "Project Created", color: "success" } };
 
 const SOURCE_LABELS = {
   1: "Website",
@@ -48,8 +47,7 @@ const SOURCE_LABELS = {
   3: "Social",
   4: "Event",
   5: "Direct",
-  6: "Other",
-};
+  6: "Other" };
 
 export default function LeadsList() {
   const {
@@ -62,7 +60,11 @@ export default function LeadsList() {
     setPageSize,
     setSearch,
     fetchData: fetchLeads,
-  } = usePaginatedFetch("Leads/GetAllLeads", "", 10, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Leads/GetAllLeads", "", 10, false);
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedLead, setSelectedLead] = React.useState(null);
@@ -81,9 +83,7 @@ export default function LeadsList() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
       const data = await response.json().catch(() => null);
       if (!response.ok || data?.statusCode !== 200) {
         throw new Error(data?.message || "Failed to archive lead");
@@ -120,9 +120,7 @@ export default function LeadsList() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
@@ -140,24 +138,11 @@ export default function LeadsList() {
     }
   };
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchLeads(1, value, pageSize, false);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchLeads(value, search, pageSize, false);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchLeads(1, search, size, false);
-  };
+
+
+
 
   const handleLeadCreated = (message) => {
     setPage(1);

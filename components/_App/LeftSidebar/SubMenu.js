@@ -14,18 +14,13 @@ const SidebarLabel = styled("span")(({ theme }) => ({
 
 const normalizePath = (path) => path.replace(/\/+$/, "");
 
-/** True when currentPath is this menu path or a nested route under it (segment-safe). */
-function pathMatchesLeaf(menuPath, currentPath) {
-  const np = normalizePath(menuPath || "");
-  if (!np) return false;
-  return currentPath === np || currentPath.startsWith(`${np}/`);
+/** True when currentPath is the menu path or a child segment (not a sibling prefix like /grn vs /grn-return). */
+function pathMatchesRoute(menuPath, currentPath) {
+  const np = normalizePath(menuPath);
+  return np === currentPath || currentPath.startsWith(`${np}/`);
 }
 
-/**
- * Best leaf in subNav for the current route (supports nested subNav).
- * Prefers exact match, then the longest path — so /work-track/technician/
- * maps to Technician (154), not the parent Work Track (153).
- */
+/** Best (longest path) leaf in subNav matching the current route (supports nested subNav). */
 function findMatchingLeafInSubNav(subNav, currentPath) {
   let best = null;
   let bestLen = -1;
@@ -44,92 +39,109 @@ function findMatchingLeafInSubNav(subNav, currentPath) {
     }
     const p = subItem.path;
     if (!p || p === "#") continue;
-    if (!pathMatchesLeaf(p, currentPath)) continue;
-    const len = normalizePath(p).length;
-    if (len > bestLen) {
+    const np = normalizePath(p);
+    if (pathMatchesRoute(np, currentPath) && np.length > bestLen) {
       best = subItem;
-      bestLen = len;
+      bestLen = np.length;
     }
   }
   return best;
 }
 
 const SubMenu = ({ item, allItems, onCheckPermission, hoverMode = false }) => {
-  const [subnav, setSubnav] = useState(false);
   const [nestedOpen, setNestedOpen] = useState({});
   const [cat, setCat] = useState(null);
   const router = useRouter();
-  const role = localStorage.getItem("role");
+  const role = typeof window !== "undefined" ? localStorage.getItem("role") : null;
 
-  const isActive = router.asPath === item.path || router.asPath.startsWith(item.path);
+  const availableSubNav = useMemo(
+    () => item.subNav?.filter((subItem) => subItem.isAvailable) || [],
+    [item.subNav]
+  );
 
-  const showSubnav = () => {
-    setSubnav(!subnav);
+  const normalize = (path) => (path || "").replace(/\/+$/, "");
+  const currentPath = normalize(router.asPath.split("?")[0].split("#")[0]);
+
+  const pathMatches = (basePath) => {
+    const base = normalize(basePath);
+    if (!base) return false;
+    return currentPath === base || currentPath.startsWith(`${base}/`);
   };
 
-  // Removed hover functionality for submenu items
-  // Hover mode only affects Menu icon in header, not submenu items
+  const hasActiveChild = availableSubNav.some((subItem) => pathMatches(subItem.path));
 
+  // Parent highlight only — same as before (do not restyle submenu rows)
+  const isActive = router.asPath === item.path || router.asPath.startsWith(item.path);
+
+  const [subnav, setSubnav] = useState(hasActiveChild);
+
+  // Keep the active module's dropdown open when navigating within it
+  useEffect(() => {
+    if (hasActiveChild) {
+      setSubnav(true);
+    }
+  }, [hasActiveChild, router.asPath]);
+
+  const showSubnav = () => {
+    setSubnav((open) => !open);
+  };
 
   const fetchPermission = async (cId) => {
     try {
-      const response = await fetch(`${BASE_URL}/User/GetModuleCategoryNavigationPermissions?roleId=${role}&categoryId=${cId}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await fetch(
+        `${BASE_URL}/User/GetModuleCategoryNavigationPermissions?roleId=${role}&categoryId=${cId}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
       if (!response.ok) {
-        throw new Error('Failed to fetch');
+        throw new Error("Failed to fetch");
       }
 
       const result = await response.json();
-      if(onCheckPermission){
-        onCheckPermission(result.result)
+      if (onCheckPermission) {
+        onCheckPermission(result.result);
       }
-
     } catch (err) {
       //
     }
   };
 
   useEffect(() => {
-    const currentPath = normalizePath(router.asPath.split("?")[0].split("#")[0]);
+    const path = normalizePath(router.asPath.split("?")[0].split("#")[0]);
 
-    let bestMenu = null;
-    let bestSub = null;
+    let bestMatch = null;
+    let bestModuleId = null;
     let bestLen = -1;
 
-    (allItems || []).forEach((menuItem) => {
-      const matchedSub = findMatchingLeafInSubNav(menuItem.subNav, currentPath);
+    allItems.forEach((menuItem) => {
+      const matchedSub = findMatchingLeafInSubNav(menuItem.subNav, path);
       if (!matchedSub) return;
       const len = normalizePath(matchedSub.path || "").length;
       if (len > bestLen) {
+        bestMatch = matchedSub;
+        bestModuleId = menuItem.ModuleId;
         bestLen = len;
-        bestMenu = menuItem;
-        bestSub = matchedSub;
       }
     });
 
-    if (bestMenu && bestSub) {
-      sessionStorage.setItem("moduleid", bestMenu.ModuleId);
-      sessionStorage.setItem("category", bestSub.categoryId);
-      setCat(bestSub.categoryId);
+    if (bestMatch) {
+      sessionStorage.setItem("moduleid", bestModuleId);
+      sessionStorage.setItem("category", bestMatch.categoryId);
+      setCat(bestMatch.categoryId);
     }
   }, [router.asPath, allItems]);
 
   useEffect(() => {
-      if (cat) {
-        fetchPermission(cat);
-      }
-    }, [cat]);
-
-  const availableSubNav = useMemo(
-    () => item.subNav?.filter((subItem) => subItem.isAvailable) || [],
-    [item.subNav]
-  );
+    if (cat) {
+      fetchPermission(cat);
+    }
+  }, [cat]);
 
   useEffect(() => {
     const currentPath = normalizePath(router.asPath.split("?")[0].split("#")[0]);
@@ -142,8 +154,7 @@ const SubMenu = ({ item, allItems, onCheckPermission, hoverMode = false }) => {
           if (!child.isAvailable) return false;
           const p = child.path;
           if (!p || p === "#") return false;
-          const np = normalizePath(p);
-          return np === currentPath || currentPath.startsWith(np);
+          return pathMatchesRoute(p, currentPath);
         });
         if (open && !merged[idx]) {
           merged[idx] = true;
@@ -162,9 +173,7 @@ const SubMenu = ({ item, allItems, onCheckPermission, hoverMode = false }) => {
 
   const handleMainClick = (e) => {
     if (item.subNav) {
-      // Always prevent default navigation for items with subNav
       e.preventDefault();
-      // Toggle submenu on click
       showSubnav();
       return;
     }
@@ -204,7 +213,7 @@ const SubMenu = ({ item, allItems, onCheckPermission, hoverMode = false }) => {
                 <div key={index} className={styles.subMenu}>
                   <Link
                     href="#"
-                    className={styles.sidebarLink}
+                    className={`${styles.sidebarLink} ${styles.nestedGroup}`}
                     onClick={(e) => {
                       e.preventDefault();
                       setNestedOpen((prev) => ({
@@ -225,7 +234,7 @@ const SubMenu = ({ item, allItems, onCheckPermission, hoverMode = false }) => {
                         <div key={`${index}-${cidx}`} className={styles.subMenu}>
                           <Link
                             href={child.path}
-                            className={styles.sidebarLink}
+                            className={`${styles.sidebarLink} ${styles.nestedItem}`}
                             onClick={() => {
                               sessionStorage.setItem("moduleid", item.ModuleId);
                               sessionStorage.setItem("category", child.categoryId);
@@ -272,4 +281,3 @@ const SubMenu = ({ item, allItems, onCheckPermission, hoverMode = false }) => {
 };
 
 export default SubMenu;
-

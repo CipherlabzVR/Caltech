@@ -16,8 +16,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow,
-} from "@mui/material";
+  TableRow } from "@mui/material";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import EditSetting from "pages/administrator/settings/EditSetting";
 import BASE_URL from "Base/api";
@@ -43,7 +42,11 @@ export default function Warehouse() {
     setPageSize,
     setSearch,
     fetchData: fetchWarehouses,
-  } = usePaginatedFetch("Warehouse/GetAllWarehousePage", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Warehouse/GetAllWarehousePage", "", 10, false, false);
 
   const [companies, setCompanies] = useState([]);
   const controller = "Warehouse/DeleteWarehouse";
@@ -61,23 +64,11 @@ export default function Warehouse() {
     }
   }, [companyList]);
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchWarehouses(1, event.target.value, pageSize);
-    setPage(1);
-  };
 
-  const handleChangePage = (event, value) => {
-    setPage(value);
-    fetchWarehouses(value, search, pageSize);
-  };
 
-  const handleChangeRowsPerPage = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchWarehouses(1, search, size);
-  };
+
+
+
 
 
 

@@ -43,7 +43,11 @@ export default function SubscriptionsList() {
     setPageSize,
     setSearch,
     fetchData: fetchSubscriptions,
-  } = usePaginatedFetch("Subscription/GetAllSubscriptions", "", 10, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Subscription/GetAllSubscriptions", "", 10, false);
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedSubscription, setSelectedSubscription] = React.useState(null);
@@ -71,9 +75,7 @@ export default function SubscriptionsList() {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
@@ -91,24 +93,11 @@ export default function SubscriptionsList() {
     }
   };
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchSubscriptions(1, value, pageSize, false);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchSubscriptions(value, search, pageSize, false);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchSubscriptions(1, search, size, false);
-  };
+
+
+
 
   const handleSubscriptionCreated = () => {
     setPage(1);

@@ -26,6 +26,7 @@ import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import AddDepartment from "./create";
 import EditDepartment from "./edit";
 import { createAuthHeaders, parsePagedResponse } from "@/components/utils/apiHelpers";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 
 const Index = () => {
   const [departments, setDepartments] = useState([]);
@@ -83,28 +84,24 @@ const Index = () => {
     }
   };
 
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: fetchDepartments,
+  });
+
   useEffect(() => {
     fetchDepartments();
   }, []);
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchDepartments(value, searchTerm, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchDepartments(1, searchTerm, size);
-  };
-
-  const handleSearchChange = (event) => {
-    const newSearch = event.target.value;
-    setSearchTerm(newSearch);
-    setPage(1);
-    fetchDepartments(1, newSearch, pageSize);
-  };
 
   if (!navigate) {
     return <AccessDenied />;

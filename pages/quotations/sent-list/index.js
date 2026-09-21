@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -30,24 +31,11 @@ export default function SentQuotations() {
     const [totalCount, setTotalCount] = useState(0);
     const [tab, setTab] = useState(0);
 
-    const handleSearchChange = (event) => {
-        const value = event.target.value;
-        setSearchTerm(value);
-        setPage(1);
-        fetchQuotationList(1, value, pageSize, tab);
-    };
 
-    const handlePageChange = (event, value) => {
-        setPage(value);
-        fetchQuotationList(value, searchTerm, pageSize, tab);
-    };
 
-    const handlePageSizeChange = (event) => {
-        const newSize = event.target.value;
-        setPageSize(newSize);
-        setPage(1);
-        fetchQuotationList(1, searchTerm, newSize, tab);
-    };
+
+
+
 
     const handleTabChange = (event, newValue) => {
         setTab(newValue);
@@ -80,6 +68,23 @@ export default function SentQuotations() {
             console.error("Error:", error);
         }
     };
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize: setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: (p, s, sz) => fetchQuotationList(p, s, sz, tab),
+  });
+
 
     useEffect(() => {
         fetchQuotationList(1, searchTerm, pageSize, tab);

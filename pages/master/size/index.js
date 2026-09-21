@@ -39,9 +39,11 @@ export default function Size() {
     setPageSize,
     setSearch,
     fetchData: fetchSizeList,
-  } = usePaginatedFetch("Size/GetAllSizePage");
-
-  // const fetchSizeList = async () => {
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Size/GetAllSizePage");  // const fetchSizeList = async () => {
   //   try {
   //     const response = await fetch(`${BASE_URL}/Size/GetAllSize`, {
   //       method: "GET",
@@ -62,24 +64,11 @@ export default function Size() {
   //   }
   // };
 
-  const handleSearchChange = (event) => {
-    const val = event.target.value;
-    setSearch(val);
-    setPage(1);
-    fetchSizeList(1, val, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchSizeList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchSizeList(1, search, size);
-  };
+
+
+
 
   useEffect(() => {
     fetchSizeList();

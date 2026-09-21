@@ -18,6 +18,7 @@ import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import BASE_URL from "Base/api";
 import GetAllWarehouse from "@/components/utils/GetAllWarehouse";
 import CreateSummary from "./create";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 
 export default function ShiftSummary() {
   const cId = sessionStorage.getItem("category");
@@ -61,24 +62,20 @@ export default function ShiftSummary() {
     if (warehouse) fetchList(1, searchTerm, pageSize, warehouse);
   }, [warehouse]);
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchList(1, value, pageSize, warehouse);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchList(value, searchTerm, pageSize, warehouse);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchList(1, searchTerm, newSize, warehouse);
-  };
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: (p, s, sz) => fetchList(p, s, sz, warehouse),
+  });
 
   if (!navigate) return <AccessDenied />;
 

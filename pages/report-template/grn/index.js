@@ -12,6 +12,8 @@ import {
   DialogTitle,
   Grid,
   Paper,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -19,10 +21,28 @@ import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import UploadFileOutlinedIcon from "@mui/icons-material/UploadFileOutlined";
 import RestartAltOutlinedIcon from "@mui/icons-material/RestartAltOutlined";
 import RefreshOutlinedIcon from "@mui/icons-material/RefreshOutlined";
+import CropPortraitOutlinedIcon from "@mui/icons-material/CropPortraitOutlined";
+import CropLandscapeOutlinedIcon from "@mui/icons-material/CropLandscapeOutlined";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import styles from "@/styles/PageTitle.module.css";
 import BASE_URL from "Base/api";
+import { applyTemplate } from "@/components/ReportTemplate/applyTemplate";
+import {
+  addGrnLineColumn,
+  buildGrnLineTokenMap,
+  buildLegacyGrnLineItemsRows,
+  EMPTY_LINE_ITEMS_HTML,
+  getUsedGrnLineTokens,
+  GRN_LINE_FIELD_GROUPS,
+  removeGrnLineColumn,
+  upgradeGrnLineItemsPlaceholder,
+} from "@/components/ReportTemplate/grnLineItems";
+import {
+  applyPageOrientation,
+  PAGE_ORIENTATION,
+  parsePageOrientation,
+} from "@/components/ReportTemplate/pageOrientation";
 
 const REPORT_KEY = "GRN";
 const TEMPLATE_NAME = "GRN Print Template";
@@ -51,27 +71,63 @@ const SAMPLE_DATA = {
   grossTotal: "142,500.00",
 };
 
-const SAMPLE_ROWS = [
-  { productName: "A4 Copy Paper 80gsm", productCode: "ITM-1001", batch: "B-2207", expDate: "-", qty: "50", free: "2", unitPrice: "850.00", freightDuty: "25.00", discountRate: "0.00", sellingPrice: "1,100.00", lineTotal: "42,500.00" },
-  { productName: "Blue Ball Pen", productCode: "ITM-1002", batch: "B-3310", expDate: "-", qty: "40", free: "0", unitPrice: "45.00", freightDuty: "5.00", discountRate: "5.00", sellingPrice: "75.00", lineTotal: "1,710.00" },
-  { productName: "Stapler Heavy Duty", productCode: "ITM-1003", batch: "B-9921", expDate: "-", qty: "30", free: "1", unitPrice: "1,250.00", freightDuty: "50.00", discountRate: "0.00", sellingPrice: "1,650.00", lineTotal: "37,500.00" },
+const SAMPLE_LINE_ITEMS = [
+  {
+    productName: "A4 Copy Paper 80gsm",
+    productCode: "ITM-1001",
+    batch: "B-2207",
+    expDate: null,
+    qty: 50,
+    free: 2,
+    unitPrice: 850,
+    additionalCost: 25,
+    discountRate: 0,
+    sellingPrice: 1100,
+    lineTotal: 42500,
+    costPrice: 875,
+  },
+  {
+    productName: "Blue Ball Pen",
+    productCode: "ITM-1002",
+    batch: "B-3310",
+    expDate: null,
+    qty: 40,
+    free: 0,
+    unitPrice: 45,
+    additionalCost: 5,
+    discountRate: 5,
+    sellingPrice: 75,
+    lineTotal: 1710,
+    costPrice: 50,
+  },
+  {
+    productName: "Stapler Heavy Duty",
+    productCode: "ITM-1003",
+    batch: "B-9921",
+    expDate: null,
+    qty: 30,
+    free: 1,
+    unitPrice: 1250,
+    additionalCost: 50,
+    discountRate: 0,
+    sellingPrice: 1650,
+    lineTotal: 37500,
+    costPrice: 1300,
+  },
 ];
 
-const buildSampleRows = () =>
-  SAMPLE_ROWS.map(
-    (r) => `<tr>
-      <td>${r.productName}<br/>${r.productCode}</td>
-      <td>${r.batch}</td>
-      <td>${r.expDate}</td>
-      <td class="num">${r.qty}</td>
-      <td class="num">${r.free}</td>
-      <td class="num">${r.unitPrice}</td>
-      <td class="num">${r.freightDuty}</td>
-      <td class="num">${r.discountRate}</td>
-      <td class="num">${r.sellingPrice}</td>
-      <td class="num">${r.lineTotal}</td>
-    </tr>`
-  ).join("\n");
+const formatSampleDate = (value) => {
+  if (!value) return "-";
+  try {
+    return new Date(value).toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return "-";
+  }
+};
 
 const ensureFreightDutyColumnHeader = (html) => {
   if (!html || /<th[^>]*>\s*Freight\s*Duty/i.test(html)) return html;
@@ -100,12 +156,18 @@ const renderPreview = (html) => {
   if (!html) return "";
   let output = ensureFreightDutyColumnHeader(html);
   output = ensureFreightDutyTotalRow(output);
-  output = output.replace(/\{\{\s*lineItemsRows\s*\}\}/gi, buildSampleRows());
-  Object.entries(SAMPLE_DATA).forEach(([token, value]) => {
-    const pattern = new RegExp(`\\{\\{\\s*${token}\\s*\\}\\}`, "gi");
-    output = output.replace(pattern, value ?? "");
+
+  const lineTokenMaps = SAMPLE_LINE_ITEMS.map((item) =>
+    buildGrnLineTokenMap(item, { formatDisplayDate: formatSampleDate })
+  );
+  const legacyRowsHtml = buildLegacyGrnLineItemsRows(SAMPLE_LINE_ITEMS, {
+    formatDisplayDate: formatSampleDate,
   });
-  return output;
+
+  return applyTemplate(output, SAMPLE_DATA, legacyRowsHtml, {
+    lineTokenMaps,
+    emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+  });
 };
 
 export default function GRNPrintTemplatePage() {
@@ -139,9 +201,49 @@ export default function GRNPrintTemplatePage() {
 
       if (response.ok && data) {
         const content = data.htmlContent || "";
-        setHtml(content);
+        let nextHtml = upgradeGrnLineItemsPlaceholder(content);
+        // Ensure orientation meta exists so Portrait/Landscape toggle can persist.
+        nextHtml = applyPageOrientation(nextHtml, parsePageOrientation(nextHtml));
+        setHtml(nextHtml);
         setSavedHtml(content);
         setIsCustomized(Boolean(data.isCustomized));
+
+        // Auto-save when the editor upgrades default / legacy HTML.
+        if (nextHtml !== content && nextHtml.trim()) {
+          try {
+            setSaving(true);
+            const saveResponse = await fetch(
+              `${BASE_URL}/ReportTemplate/UpsertReportTemplate`,
+              {
+                method: "POST",
+                headers: authHeaders(),
+                body: JSON.stringify({
+                  reportKey: REPORT_KEY,
+                  name: TEMPLATE_NAME,
+                  htmlContent: nextHtml,
+                }),
+              }
+            );
+            const saveData = await saveResponse.json().catch(() => null);
+            if (saveResponse.ok && saveData?.statusCode === 200) {
+              setSavedHtml(nextHtml);
+              setIsCustomized(true);
+              toast.success("Default template options applied and saved.");
+            } else {
+              toast.warning(
+                saveData?.message ||
+                  "Template options updated. Click Save Template to keep changes."
+              );
+            }
+          } catch (saveError) {
+            console.error("Error auto-saving upgraded GRN template:", saveError);
+            toast.warning(
+              "Template options updated. Click Save Template to keep changes."
+            );
+          } finally {
+            setSaving(false);
+          }
+        }
       } else {
         toast.error(data?.message || "Failed to load the GRN print template.");
       }
@@ -159,6 +261,28 @@ export default function GRNPrintTemplatePage() {
 
   const previewSrcDoc = useMemo(() => renderPreview(html), [html]);
   const isDirty = html !== savedHtml;
+  const pageOrientation = useMemo(() => parsePageOrientation(html), [html]);
+  const usedLineTokens = useMemo(() => getUsedGrnLineTokens(html), [html]);
+
+  const handleOrientationChange = (_event, value) => {
+    if (!value) return;
+    setHtml((prev) => applyPageOrientation(prev, value));
+  };
+
+  const handleToggleLineField = (token) => {
+    setHtml((prev) => {
+      if (!/\{\{#\s*lineItems\s*\}\}/i.test(prev)) {
+        toast.warning(
+          "Add an editable {{#lineItems}} block first, or Reset to Default."
+        );
+        return prev;
+      }
+      if (getUsedGrnLineTokens(prev).has(token)) {
+        return removeGrnLineColumn(prev, token);
+      }
+      return addGrnLineColumn(prev, token);
+    });
+  };
 
   // Scale the rendered document to fit the preview pane width and grow the
   // iframe to its full content height, so the whole template is always visible
@@ -293,81 +417,214 @@ export default function GRNPrintTemplatePage() {
         </ul>
       </div>
 
-      <Paper sx={{ p: 2, mb: 2 }}>
+      <Paper sx={{ p: 1.25, mb: 1.5 }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".html,.htm,text/html"
+          style={{ display: "none" }}
+          onChange={handleFileUpload}
+        />
+
+        {/* Header: status + primary save */}
         <Box
           sx={{
             display: "flex",
             flexWrap: "wrap",
-            gap: 1.5,
+            gap: 1,
             alignItems: "center",
             justifyContent: "space-between",
+            pb: 1,
+            mb: 1,
+            borderBottom: "1px solid #ececec",
           }}
         >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
-            <Typography sx={{ fontWeight: 600 }}>Status:</Typography>
+          <Box
+            sx={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 1,
+              minWidth: 0,
+            }}
+          >
+            <Typography sx={{ fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>
+              Template settings
+            </Typography>
             <Chip
-              label={isCustomized ? "Custom Template" : "Default Template"}
+              label={isCustomized ? "Custom" : "Default"}
               color={isCustomized ? "primary" : "default"}
               size="small"
+              sx={{ height: 22, fontSize: 11, fontWeight: 600 }}
             />
-            {isDirty && <Chip label="Unsaved changes" color="warning" size="small" variant="outlined" />}
+            {isDirty ? (
+              <Chip
+                label="Unsaved"
+                color="warning"
+                size="small"
+                variant="outlined"
+                sx={{ height: 22, fontSize: 11, fontWeight: 600 }}
+              />
+            ) : (
+              <Chip
+                label="Saved"
+                size="small"
+                variant="outlined"
+                sx={{
+                  height: 22,
+                  fontSize: 11,
+                  color: "success.dark",
+                  borderColor: "success.light",
+                }}
+              />
+            )}
           </Box>
 
-          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".html,.htm,text/html"
-              style={{ display: "none" }}
-              onChange={handleFileUpload}
-            />
-            <Button
-              variant="outlined"
-              startIcon={<UploadFileOutlinedIcon />}
-              onClick={() => fileInputRef.current?.click()}
-              sx={{ textTransform: "none" }}
-            >
-              Upload HTML
-            </Button>
-            <Tooltip title="Discard unsaved changes and reload the saved template">
-              <span>
-                <Button
-                  variant="outlined"
-                  color="inherit"
-                  startIcon={<RefreshOutlinedIcon />}
-                  onClick={fetchTemplate}
-                  disabled={saving || loading}
-                  sx={{ textTransform: "none" }}
-                >
-                  Reload
-                </Button>
-              </span>
-            </Tooltip>
-            <Tooltip title="Delete the custom template and restore the built-in default">
-              <span>
-                <Button
-                  variant="outlined"
-                  color="error"
-                  startIcon={<RestartAltOutlinedIcon />}
-                  onClick={() => setResetOpen(true)}
-                  disabled={saving || loading || !isCustomized}
-                  sx={{ textTransform: "none" }}
-                >
-                  Delete / Reset to Default
-                </Button>
-              </span>
-            </Tooltip>
-            <Button
-              variant="contained"
-              startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveOutlinedIcon />}
-              onClick={handleSave}
-              disabled={saving || loading || !isDirty}
-              sx={{ textTransform: "none" }}
-            >
-              Save Template
-            </Button>
-          </Box>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveOutlinedIcon />}
+            onClick={handleSave}
+            disabled={saving || loading || !isDirty}
+            sx={{ textTransform: "none", px: 1.75 }}
+          >
+            Save Template
+          </Button>
         </Box>
+
+        {/* Two clear sections: page size | other actions */}
+        <Grid container spacing={1}>
+          <Grid item xs={12} md={5}>
+            <Box
+              sx={{
+                height: "100%",
+                px: 1.25,
+                py: 1,
+                borderRadius: "8px",
+                bgcolor: "#f7f8fa",
+                border: "1px solid #e8eaee",
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: 1,
+              }}
+            >
+              <Typography
+                sx={{
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  color: "text.secondary",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.4,
+                  minWidth: 64,
+                }}
+              >
+                Page size
+              </Typography>
+              <ToggleButtonGroup
+                value={pageOrientation}
+                exclusive
+                size="small"
+                onChange={handleOrientationChange}
+                disabled={loading || !html}
+                aria-label="Print page orientation"
+                sx={{
+                  bgcolor: "#fff",
+                  flex: 1,
+                  minWidth: 180,
+                  "& .MuiToggleButton-root": {
+                    textTransform: "none",
+                    py: 0.35,
+                    px: 1.25,
+                    fontSize: 12.5,
+                    borderColor: "#d9dde3",
+                    flex: 1,
+                  },
+                }}
+              >
+                <ToggleButton value={PAGE_ORIENTATION.PORTRAIT}>
+                  <CropPortraitOutlinedIcon sx={{ fontSize: 16, mr: 0.5 }} />
+                  Portrait
+                </ToggleButton>
+                <ToggleButton value={PAGE_ORIENTATION.LANDSCAPE}>
+                  <CropLandscapeOutlinedIcon sx={{ fontSize: 16, mr: 0.5 }} />
+                  Landscape
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+          </Grid>
+
+          <Grid item xs={12} md={7}>
+            <Box
+              sx={{
+                height: "100%",
+                px: 1.25,
+                py: 1,
+                borderRadius: "8px",
+                bgcolor: "#f7f8fa",
+                border: "1px solid #e8eaee",
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: 1,
+              }}
+            >
+              <Typography
+                sx={{
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  color: "text.secondary",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.4,
+                  minWidth: 78,
+                }}
+              >
+                More actions
+              </Typography>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<UploadFileOutlinedIcon />}
+                  onClick={() => fileInputRef.current?.click()}
+                  sx={{ textTransform: "none", bgcolor: "#fff" }}
+                >
+                  Upload HTML
+                </Button>
+                <Tooltip title="Discard unsaved changes and reload the saved template">
+                  <span>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      color="inherit"
+                      startIcon={<RefreshOutlinedIcon />}
+                      onClick={fetchTemplate}
+                      disabled={saving || loading}
+                      sx={{ textTransform: "none", bgcolor: "#fff" }}
+                    >
+                      Reload
+                    </Button>
+                  </span>
+                </Tooltip>
+                <Tooltip title="Delete the custom template and restore the built-in default">
+                  <span>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      color="error"
+                      startIcon={<RestartAltOutlinedIcon />}
+                      onClick={() => setResetOpen(true)}
+                      disabled={saving || loading || !isCustomized}
+                      sx={{ textTransform: "none", bgcolor: "#fff" }}
+                    >
+                      Reset to Default
+                    </Button>
+                  </span>
+                </Tooltip>
+              </Box>
+            </Box>
+          </Grid>
+        </Grid>
       </Paper>
 
       {loading ? (
@@ -378,7 +635,68 @@ export default function GRNPrintTemplatePage() {
         <Grid container spacing={2}>
           <Grid item xs={12} md={6}>
             <Paper sx={{ p: 1.5, height: "100%" }}>
-              <Typography sx={{ fontWeight: 600, mb: 1 }}>HTML Source</Typography>
+              <Typography sx={{ fontWeight: 600, mb: 0.5 }}>HTML Source</Typography>
+              <Typography sx={{ fontSize: 12, color: "text.secondary", mb: 1.25 }}>
+                Click a field to add or remove it as a table column. Blue = already on the
+                print. Hover to see the token name.
+              </Typography>
+              <Box
+                sx={{
+                  mb: 1.5,
+                  p: 1.25,
+                  border: "1px solid #e6e6e6",
+                  borderRadius: "8px",
+                  bgcolor: "#fcfcfc",
+                  maxHeight: 180,
+                  overflow: "auto",
+                }}
+              >
+                {GRN_LINE_FIELD_GROUPS.map((group) => (
+                  <Box key={group.id} sx={{ mb: 1.25, "&:last-child": { mb: 0 } }}>
+                    <Typography
+                      sx={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: "text.secondary",
+                        textTransform: "uppercase",
+                        letterSpacing: 0.4,
+                        mb: 0.75,
+                      }}
+                    >
+                      {group.title}
+                    </Typography>
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
+                      {group.fields.map((field) => {
+                        const active = usedLineTokens.has(field.token);
+                        return (
+                          <Tooltip
+                            key={field.token}
+                            title={
+                              active
+                                ? `Remove column · {{${field.token}}}`
+                                : `Add column · {{${field.token}}}`
+                            }
+                          >
+                            <Chip
+                              label={field.label}
+                              size="small"
+                              color={active ? "primary" : "default"}
+                              variant={active ? "filled" : "outlined"}
+                              onClick={() => handleToggleLineField(field.token)}
+                              sx={{
+                                fontSize: 12,
+                                height: 28,
+                                cursor: "pointer",
+                                fontWeight: active ? 600 : 500,
+                              }}
+                            />
+                          </Tooltip>
+                        );
+                      })}
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
               <Box
                 component="textarea"
                 value={html}
@@ -386,7 +704,7 @@ export default function GRNPrintTemplatePage() {
                 spellCheck={false}
                 sx={{
                   width: "100%",
-                  height: { xs: "55vh", md: "70vh" },
+                  height: { xs: "45vh", md: "58vh" },
                   resize: "vertical",
                   fontFamily: "'DM Mono', 'Courier New', monospace",
                   fontSize: "12.5px",

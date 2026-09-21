@@ -78,15 +78,14 @@ import ShareIcon from "@mui/icons-material/Share";
 import FreeBreakfastIcon from "@mui/icons-material/FreeBreakfast";
 import RestaurantIcon from "@mui/icons-material/Restaurant";
 import CoffeeIcon from "@mui/icons-material/Coffee";
-import ReplayIcon from "@mui/icons-material/Replay";
-import BASE_URL from "Base/api";
+import BASE_URL, { getFrontendOrigin, withFrontendOrigin } from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import SignatureCanvas from "react-signature-canvas";
 import CameraCaptureModal from "@/components/work-track/CameraCaptureModal";
 import WorkTrackShareDialog from "@/components/work-track/WorkTrackShareDialog";
-import ChecklistItemHistory from "@/components/work-track/ChecklistItemHistory";
-import RequestRedoDialog from "@/components/work-track/RequestRedoDialog";
+import { parseChecklistImageUrls } from "@/components/work-track/sharedViewHelpers";
+import PhotoLibraryIcon from "@mui/icons-material/PhotoLibrary";
 
 /** Extract checklist array from ApiResponse / alternate shapes */
 function extractChecklistArrayFromResponse(result) {
@@ -170,15 +169,11 @@ export default function WorkTrackDetailView() {
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [cameraItemId, setCameraItemId] = useState(null);
 
-  // Request Redo (manager)
-  const [redoDialogOpen, setRedoDialogOpen] = useState(false);
-  const [redoItem, setRedoItem] = useState(null);
-  const [submittingRedo, setSubmittingRedo] = useState(false);
-
   // Delete confirmation
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteType, setDeleteType] = useState(""); // "checklist" or "item"
   const [deleteId, setDeleteId] = useState(null);
+  const [deleteImageUrl, setDeleteImageUrl] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
   // Duplicate checklist
@@ -292,6 +287,7 @@ export default function WorkTrackDetailView() {
   const [technicians, setTechnicians] = useState([]);
   const [selectedTechnician, setSelectedTechnician] = useState("");
   const [assigningTechnician, setAssigningTechnician] = useState(false);
+  const [sendEmailToAssignee, setSendEmailToAssignee] = useState(true);
 
   // Submit to Manager on Duty modal
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
@@ -981,13 +977,15 @@ export default function WorkTrackDetailView() {
       setAssigningTechnician(true);
       const response = await fetch(`${BASE_URL}/WorkTrackDetail/AssignTechnician`, {
         method: "POST",
-        headers: {
+        headers: withFrontendOrigin({
           Authorization: `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json",
-        },
+        }),
         body: JSON.stringify({
           workTrackDetailId: parseInt(id),
           technicianId: parseInt(selectedTechnician),
+          sendEmailToAssignee,
+          frontendOrigin: getFrontendOrigin(),
         }),
       });
       const result = await response.json();
@@ -1176,17 +1174,6 @@ export default function WorkTrackDetailView() {
               ? item.optionsList
               : Array.isArray(item.OptionsList)
                 ? item.OptionsList
-                : [],
-            needsRedo: Boolean(item.needsRedo ?? item.NeedsRedo),
-            redoReason: item.redoReason ?? item.RedoReason ?? null,
-            redoRequestedByUserId: item.redoRequestedByUserId ?? item.RedoRequestedByUserId ?? null,
-            redoRequestedByName: item.redoRequestedByName ?? item.RedoRequestedByName ?? "",
-            redoRequestedOn: item.redoRequestedOn ?? item.RedoRequestedOn ?? null,
-            attemptCount: item.attemptCount ?? item.AttemptCount ?? 0,
-            responses: Array.isArray(item.responses)
-              ? item.responses
-              : Array.isArray(item.Responses)
-                ? item.Responses
                 : [],
           })),
         };
@@ -1612,6 +1599,8 @@ export default function WorkTrackDetailView() {
   // Handle camera capture from modal
   const handleCameraCapture = async (imageData) => {
     if (!cameraItemId) return;
+    const imageDatas = (Array.isArray(imageData) ? imageData : [imageData]).filter(Boolean);
+    if (imageDatas.length === 0) return;
 
     try {
       const response = await fetch(`${BASE_URL}/WorkTrackChecklist/UploadChecklistItemImage`, {
@@ -1622,7 +1611,8 @@ export default function WorkTrackDetailView() {
         },
         body: JSON.stringify({
           id: cameraItemId,
-          imageData,
+          imageData: imageDatas[0],
+          imageDatas,
           workTrackDetailId: detail?.id != null ? Number(detail.id) : Number(id),
         }),
       });
@@ -1630,66 +1620,16 @@ export default function WorkTrackDetailView() {
       const result = await response.json();
       if (result?.statusCode === 200 || response.ok) {
         await refreshChecklists();
-        toast("Photo captured and uploaded successfully!", { type: "success" });
+        toast(
+          imageDatas.length === 1 ? "Photo uploaded successfully!" : `${imageDatas.length} photos uploaded successfully!`,
+          { type: "success" }
+        );
       } else {
         toast(result?.message || "Failed to upload photo", { type: "error" });
       }
     } catch (error) {
       console.error("Error uploading photo:", error);
       toast("Failed to upload photo", { type: "error" });
-    }
-  };
-
-  const openRequestRedoDialog = (item) => {
-    setRedoItem(item);
-    setRedoDialogOpen(true);
-  };
-
-  const handleRequestRedo = async (reason) => {
-    if (!redoItem?.id) return;
-    setSubmittingRedo(true);
-    try {
-      const response = await fetch(`${BASE_URL}/WorkTrackChecklist/RequestChecklistItemRedo`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: redoItem.id,
-          reason,
-          workTrackDetailId: detail?.id != null ? Number(detail.id) : Number(id),
-        }),
-      });
-      const result = await response.json().catch(() => ({}));
-      const status = result?.statusCode ?? result?.StatusCode;
-      const success = response.ok && (status === 200 || status === "SUCCESS" || status === "Success");
-      if (success) {
-        toast(result?.message || result?.Message || "Redo requested. Previous answer kept in history.", {
-          type: "success",
-        });
-        setRedoDialogOpen(false);
-        setRedoItem(null);
-        await refreshChecklists();
-        try {
-          const detailRes = await fetch(
-            `${BASE_URL}/WorkTrackDetail/GetWorkTrackDetailById?id=${detail?.id ?? id}`,
-            { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }
-          );
-          const detailJson = await detailRes.json();
-          const d = detailJson?.result || detailJson?.data || detailJson?.Result || detailJson?.Data;
-          if (d) setDetail(d);
-        } catch {
-          /* ignore */
-        }
-      } else {
-        toast(result?.message || result?.Message || "Failed to request redo", { type: "error" });
-      }
-    } catch (error) {
-      console.error("Error requesting redo:", error);
-      toast("Failed to request redo", { type: "error" });
-    } finally {
-      setSubmittingRedo(false);
     }
   };
 
@@ -1726,32 +1666,53 @@ export default function WorkTrackDetailView() {
   };
 
   // Delete handlers
-  const handleDeleteClick = (type, id) => {
-    if (isReadOnly) return;
+  const handleDeleteClick = (type, id, imageUrl = null) => {
+    if (isReadOnly && type !== "image") return;
     setDeleteType(type);
     setDeleteId(id);
+    setDeleteImageUrl(imageUrl);
     setDeleteDialogOpen(true);
   };
 
   const handleConfirmDelete = async () => {
     try {
       setDeleting(true);
-      const url = deleteType === "checklist"
-        ? `${BASE_URL}/WorkTrackChecklist/DeleteChecklist?id=${deleteId}`
-        : `${BASE_URL}/WorkTrackChecklist/DeleteChecklistItem?id=${deleteId}`;
+      const token = localStorage.getItem("token");
+      let response;
 
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
-
-      if (response.ok) {
-        await refreshChecklists();
-        toast(`${deleteType === "checklist" ? "Checklist" : "Item"} deleted!`, { type: "success" });
+      if (deleteType === "image") {
+        response = await fetch(`${BASE_URL}/WorkTrackChecklist/DeleteChecklistItemImage`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: deleteId,
+            imageUrl: deleteImageUrl,
+            workTrackDetailId: detail?.id != null ? Number(detail.id) : Number(id),
+          }),
+        });
       } else {
-        toast("Failed to delete", { type: "error" });
+        const url = deleteType === "checklist"
+          ? `${BASE_URL}/WorkTrackChecklist/DeleteChecklist?id=${deleteId}`
+          : `${BASE_URL}/WorkTrackChecklist/DeleteChecklistItem?id=${deleteId}`;
+
+        response = await fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      }
+
+      const result = await response.json().catch(() => ({}));
+      if (result?.statusCode === 200 || response.ok) {
+        await refreshChecklists();
+        const label = deleteType === "checklist" ? "Checklist" : deleteType === "image" ? "Photo" : "Item";
+        toast(`${label} deleted!`, { type: "success" });
+      } else {
+        toast(result?.message || "Failed to delete", { type: "error" });
       }
     } catch (error) {
       console.error("Error deleting:", error);
@@ -1761,30 +1722,28 @@ export default function WorkTrackDetailView() {
       setDeleteDialogOpen(false);
       setDeleteType("");
       setDeleteId(null);
+      setDeleteImageUrl(null);
     }
   };
 
   // Calculate checklist progress
-  const isItemEffectivelyCompleted = (item) =>
-    Boolean(item?.isCompleted) && !Boolean(item?.needsRedo);
-
   const getChecklistProgress = (checklist) => {
     if (!checklist.items || checklist.items.length === 0) return 0;
-    const completed = checklist.items.filter(isItemEffectivelyCompleted).length;
+    const completed = checklist.items.filter(item => item.isCompleted).length;
     return Math.round((completed / checklist.items.length) * 100);
   };
 
   // Calculate overall completion
   const getAllItemsCompleted = () => {
-    const items = checklists.flatMap(cl => cl.items || []);
-    if (items.length === 0) return false;
-    return items.every(isItemEffectivelyCompleted);
+    const allItems = checklists.flatMap(cl => cl.items || []);
+    if (allItems.length === 0) return false;
+    return allItems.every(item => item.isCompleted);
   };
 
   // Dashboard Statistics
   const allItems = checklists.flatMap(cl => cl.items || []);
   const totalChecklistItems = allItems.length;
-  const completedChecklistItems = allItems.filter(isItemEffectivelyCompleted).length;
+  const completedChecklistItems = allItems.filter(item => item.isCompleted).length;
   const pendingChecklistItems = totalChecklistItems - completedChecklistItems;
   const checklistCompletionPercentage = totalChecklistItems > 0 
     ? Math.round((completedChecklistItems / totalChecklistItems) * 100) 
@@ -1792,7 +1751,7 @@ export default function WorkTrackDetailView() {
   const totalChecklists = checklists.length;
   const completedChecklists = checklists.filter(cl => {
     const items = cl.items || [];
-    return items.length > 0 && items.every(isItemEffectivelyCompleted);
+    return items.length > 0 && items.every(item => item.isCompleted);
   }).length;
 
   if (loading) {
@@ -2826,6 +2785,16 @@ export default function WorkTrackDetailView() {
               >
                 {assigningTechnician ? "Assigning..." : "Assign"}
               </Button>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={sendEmailToAssignee}
+                    onChange={(e) => setSendEmailToAssignee(e.target.checked)}
+                    disabled={isReadOnly}
+                  />
+                }
+                label="Send email"
+              />
               {detail.assignee && (
                 <Chip 
                   label={`Current: ${detail.assignee}`} 
@@ -3252,45 +3221,27 @@ export default function WorkTrackDetailView() {
                                 </Box>
                               </Box>
                               
-                              <Box>
-                                {(item.isCompleted ||
-                                  item.selectedValue ||
-                                  item.imageUrl ||
-                                  item.needsRedo ||
-                                  (item.responses && item.responses.length > 0)) && (
-                                  <Tooltip title="Request Redo">
+                              {!isReadOnly && (
+                                <Box>
+                                  <Tooltip title="Edit Item">
                                     <IconButton
                                       size="small"
-                                      color="warning"
-                                      onClick={() => openRequestRedoDialog(item)}
-                                      disabled={item.needsRedo}
+                                      onClick={() => handleOpenItemModal(checklist.id, item)}
                                     >
-                                      <ReplayIcon fontSize="inherit" />
+                                      <EditIcon fontSize="inherit" />
                                     </IconButton>
                                   </Tooltip>
-                                )}
-                                {!isReadOnly && (
-                                  <>
-                                    <Tooltip title="Edit Item">
-                                      <IconButton
-                                        size="small"
-                                        onClick={() => handleOpenItemModal(checklist.id, item)}
-                                      >
-                                        <EditIcon fontSize="inherit" />
-                                      </IconButton>
-                                    </Tooltip>
-                                    <Tooltip title="Delete Item">
-                                      <IconButton
-                                        size="small"
-                                        color="error"
-                                        onClick={() => handleDeleteClick("item", item.id)}
-                                      >
-                                        <DeleteOutlineIcon fontSize="inherit" />
-                                      </IconButton>
-                                    </Tooltip>
-                                  </>
-                                )}
-                              </Box>
+                                  <Tooltip title="Delete Item">
+                                    <IconButton
+                                      size="small"
+                                      color="error"
+                                      onClick={() => handleDeleteClick("item", item.id)}
+                                    >
+                                      <DeleteOutlineIcon fontSize="inherit" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Box>
+                              )}
                             </Box>
 
                             {/* Radio Buttons */}
@@ -3340,30 +3291,56 @@ export default function WorkTrackDetailView() {
                             {/* Image Upload */}
                             {item.itemType === "Image" && (
                               <Box sx={{ ml: 4, mt: 1 }}>
-                                {item.imageUrl ? (
+                                {(() => {
+                                  const imageUrls = parseChecklistImageUrls(item.imageUrl);
+                                  const canEditImages = !isReadOnly && (isTimeTrackingHidden || isPendingApproval || workSummary?.currentStatus === "Started");
+                                  return imageUrls.length > 0 ? (
                                   <Box>
-                                    <img
-                                      src={item.imageUrl}
-                                      alt={item.title}
-                                      style={{
-                                        maxWidth: "100%",
-                                        maxHeight: 200,
-                                        borderRadius: 8,
-                                        border: "1px solid #ddd",
-                                      }}
-                                    />
-                                    {!isReadOnly && (isTimeTrackingHidden || isPendingApproval || workSummary?.currentStatus === "Started") && (
-                                      <Box mt={1}>
+                                    <Box display="flex" gap={1} flexWrap="wrap">
+                                      {imageUrls.map((url) => (
+                                        <Box key={url} sx={{ position: "relative" }}>
+                                          <Box
+                                            component="img"
+                                            src={url}
+                                            alt={item.title}
+                                            onClick={() => window.open(url, "_blank")}
+                                            sx={{
+                                              width: 140,
+                                              height: 140,
+                                              objectFit: "cover",
+                                              borderRadius: 1,
+                                              border: "1px solid #ddd",
+                                              display: "block",
+                                              cursor: "pointer",
+                                            }}
+                                          />
+                                          <IconButton
+                                            size="small"
+                                            onClick={() => handleDeleteClick("image", item.id, url)}
+                                            sx={{
+                                              position: "absolute",
+                                              top: 4,
+                                              right: 4,
+                                              bgcolor: "rgba(255,255,255,0.9)",
+                                            }}
+                                          >
+                                            <DeleteOutlineIcon fontSize="small" color="error" />
+                                          </IconButton>
+                                        </Box>
+                                      ))}
+                                    </Box>
+                                    <Box mt={1} display="flex" gap={1} flexWrap="wrap">
+                                      {canEditImages && (
                                         <Button
                                           variant="outlined"
                                           size="small"
-                                          startIcon={<CameraAltIcon />}
+                                          startIcon={<PhotoLibraryIcon />}
                                           onClick={() => openCameraModal(item.id)}
                                         >
-                                          Retake Photo
+                                          Add Photos
                                         </Button>
-                                      </Box>
-                                    )}
+                                      )}
+                                    </Box>
                                   </Box>
                                 ) : (
                                   <Box
@@ -3377,26 +3354,25 @@ export default function WorkTrackDetailView() {
                                   >
                                     <CameraAltIcon sx={{ fontSize: 40, color: "#aaa", mb: 1 }} />
                                     <Typography variant="body2" color="textSecondary" gutterBottom>
-                                      {isReadOnly || (!isTimeTrackingHidden && !isPendingApproval && workSummary?.currentStatus !== "Started")
+                                      {!canEditImages
                                         ? "No photo captured"
-                                        : "Tap to capture photo"}
+                                        : "Take a photo or choose multiple from gallery"}
                                     </Typography>
-                                    {!isReadOnly && (isTimeTrackingHidden || isPendingApproval || workSummary?.currentStatus === "Started") && (
+                                    {canEditImages && (
                                       <Button
                                         variant="contained"
                                         size="small"
-                                        startIcon={<CameraAltIcon />}
+                                        startIcon={<PhotoLibraryIcon />}
                                         onClick={() => openCameraModal(item.id)}
                                       >
-                                        Take Photo
+                                        Add Photos
                                       </Button>
                                     )}
                                   </Box>
-                                )}
+                                );
+                                })()}
                               </Box>
                             )}
-
-                            <ChecklistItemHistory item={item} />
                           </Box>
                         ))
                       )}
@@ -3643,7 +3619,9 @@ export default function WorkTrackDetailView() {
         <DialogTitle>Confirm Delete</DialogTitle>
         <DialogContent dividers>
           <Typography>
-            Are you sure you want to delete this {deleteType}?
+            {deleteType === "image"
+              ? "Are you sure you want to delete this photo? The technician can upload a new one afterwards."
+              : `Are you sure you want to delete this ${deleteType}?`}
             {deleteType === "checklist" && " All sub-items will also be deleted."}
           </Typography>
         </DialogContent>
@@ -3962,20 +3940,7 @@ export default function WorkTrackDetailView() {
           setCameraItemId(null);
         }}
         onCapture={handleCameraCapture}
-        title="Capture Work Photo"
-      />
-
-      <RequestRedoDialog
-        open={redoDialogOpen}
-        onClose={() => {
-          if (!submittingRedo) {
-            setRedoDialogOpen(false);
-            setRedoItem(null);
-          }
-        }}
-        onConfirm={handleRequestRedo}
-        itemTitle={redoItem?.title || ""}
-        submitting={submittingRedo}
+        title="Add Work Photos"
       />
 
       {/* Session History Modal */}

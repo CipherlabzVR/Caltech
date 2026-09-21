@@ -14,8 +14,7 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem,
-} from "@mui/material";
+  MenuItem } from "@mui/material";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import { ToastContainer } from "react-toastify";
@@ -52,26 +51,17 @@ const MaintenanceRegistry = () => {
     setPageSize,
     setSearch,
     fetchData: fetchSchedules,
-  } = usePaginatedFetch("maintenance/schedules", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("maintenance/schedules", "", 10, false, false);
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchSchedules(1, value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchSchedules(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchSchedules(1, search, size);
-  };
+
+
+
 
   const refreshList = () => fetchSchedules(page, search, pageSize);
 

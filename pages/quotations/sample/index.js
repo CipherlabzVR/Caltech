@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -35,24 +36,11 @@ export default function SampleList() {
         fetchQuotationList(1, searchTerm, pageSize, newValue);
     };
 
-    const handleSearchChange = (event) => {
-        const value = event.target.value;
-        setSearchTerm(value);
-        setPage(1);
-        fetchQuotationList(1, value, pageSize);
-    };
 
-    const handlePageChange = (event, value) => {
-        setPage(value);
-        fetchQuotationList(value, searchTerm, pageSize);
-    };
 
-    const handlePageSizeChange = (event) => {
-        const newSize = event.target.value;
-        setPageSize(newSize);
-        setPage(1);
-        fetchQuotationList(1, searchTerm, newSize);
-    };
+
+
+
 
     const fetchQuotationList = async (page = 1, search = "", size = pageSize, tab = tabValue) => {
         try {
@@ -78,6 +66,23 @@ export default function SampleList() {
             console.error("Error:", error);
         }
     };
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize: setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: fetchQuotationList,
+  });
+
 
     useEffect(() => {
         fetchQuotationList();

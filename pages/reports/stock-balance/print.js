@@ -36,36 +36,54 @@ const toFilterLabel = (value, allLabel) => {
   return text;
 };
 
+const EMPTY_LINE_ITEMS_HTML = `<tr><td colspan="10" style="text-align:center;padding:16px;">No stock balance lines found for the selected filters.</td></tr>`;
+
+const mapStockBalanceLine = (line) => {
+  const qty = Number(line.bookBalanceQuantity ?? line.BookBalanceQuantity ?? 0);
+  const unitCost = Number(
+    line.costPrice ?? line.CostPrice ?? line.unitPrice ?? line.UnitPrice ?? 0
+  );
+  const totalCost = qty * unitCost;
+  return {
+    supplierName: line.supplierName ?? line.SupplierName ?? "—",
+    categoryName: line.categoryName ?? line.CategoryName ?? "—",
+    subCategoryName: line.subCategoryName ?? line.SubCategoryName ?? "—",
+    uom: line.uom ?? line.UOM ?? "—",
+    grnNumber: line.documentNumber ?? line.DocumentNumber ?? "—",
+    batchNumber: line.batchNumber ?? line.BatchNumber ?? "—",
+    expiryDate:
+      line.expiryDate || line.ExpiryDate
+        ? formatDate(line.expiryDate ?? line.ExpiryDate)
+        : "—",
+    qty: formatQty(qty),
+    unitCost: formatCurrency(unitCost),
+    totalCost: formatCurrency(totalCost),
+  };
+};
+
 const buildLineItemsRows = (lines) => {
-  if (!lines || lines.length === 0) {
-    return `<tr><td colspan="10" style="text-align:center;padding:16px;">No stock balance lines found for the selected filters.</td></tr>`;
-  }
+  if (!lines || lines.length === 0) return EMPTY_LINE_ITEMS_HTML;
 
   return lines
     .map((line) => {
-      const qty = Number(line.bookBalanceQuantity ?? line.BookBalanceQuantity ?? 0);
-      const unitCost = Number(line.costPrice ?? line.CostPrice ?? line.unitPrice ?? line.UnitPrice ?? 0);
-      const totalCost = qty * unitCost;
-
+      const t = mapStockBalanceLine(line);
       return `<tr>
-        <td>${escapeHtml(line.supplierName ?? line.SupplierName ?? "—")}</td>
-        <td>${escapeHtml(line.categoryName ?? line.CategoryName ?? "—")}</td>
-        <td>${escapeHtml(line.subCategoryName ?? line.SubCategoryName ?? "—")}</td>
-        <td>${escapeHtml(line.uom ?? line.UOM ?? "—")}</td>
-        <td>${escapeHtml(line.documentNumber ?? line.DocumentNumber ?? "—")}</td>
-        <td>${escapeHtml(line.batchNumber ?? line.BatchNumber ?? "—")}</td>
-        <td>${escapeHtml(
-          line.expiryDate || line.ExpiryDate
-            ? formatDate(line.expiryDate ?? line.ExpiryDate)
-            : "—"
-        )}</td>
-        <td class="num">${escapeHtml(formatQty(qty))}</td>
-        <td class="num">${escapeHtml(formatCurrency(unitCost))}</td>
-        <td class="num">${escapeHtml(formatCurrency(totalCost))}</td>
+        <td>${escapeHtml(t.supplierName)}</td>
+        <td>${escapeHtml(t.categoryName)}</td>
+        <td>${escapeHtml(t.subCategoryName)}</td>
+        <td>${escapeHtml(t.uom)}</td>
+        <td>${escapeHtml(t.grnNumber)}</td>
+        <td>${escapeHtml(t.batchNumber)}</td>
+        <td>${escapeHtml(t.expiryDate)}</td>
+        <td class="num">${escapeHtml(t.qty)}</td>
+        <td class="num">${escapeHtml(t.unitCost)}</td>
+        <td class="num">${escapeHtml(t.totalCost)}</td>
       </tr>`;
     })
     .join("\n");
 };
+
+const buildLineTokenMaps = (lines) => (lines || []).map(mapStockBalanceLine);
 
 export default function StockBalanceStatementPrintPage() {
   const router = useRouter();
@@ -170,8 +188,11 @@ export default function StockBalanceStatementPrintPage() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || loadingData) return "";
-    return applyTemplate(templateHtml, tokenMap, lineItemsRows);
-  }, [templateHtml, loadingData, tokenMap, lineItemsRows]);
+    return applyTemplate(templateHtml, tokenMap, lineItemsRows, {
+      lineTokenMaps: buildLineTokenMaps(lines),
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
+  }, [templateHtml, loadingData, tokenMap, lineItemsRows, lines]);
 
   const isLoading = loadingData || loadingTemplate;
   const downloadName = `StockBalanceStatement_${new Date().toISOString().slice(0, 10)}`;

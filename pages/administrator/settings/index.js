@@ -9,7 +9,6 @@ import {
   InputLabel,
   MenuItem,
   Select,
-  FormControlLabel,
   Paper,
   Switch,
   Table,
@@ -17,8 +16,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow,
-} from "@mui/material";
+  TableRow } from "@mui/material";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import EditSetting from "pages/administrator/settings/EditSetting";
 import { toast, ToastContainer } from "react-toastify";
@@ -55,7 +53,11 @@ export default function Settings() {
     setSearch,
     setExtraQuery,
     fetchData: fetchSettings,
-  } = usePaginatedFetch("AppSetting/GetAllAppSettingsPage", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("AppSetting/GetAllAppSettingsPage", "", 10, false, false);
 
   const buildAppSettingExtraQuery = useCallback(
     () => appSettingFiltersToQuery(enableFilter),
@@ -68,30 +70,11 @@ export default function Settings() {
     fetchSettings(page, search, pageSize, false, undefined, extra);
   }, [buildAppSettingExtraQuery, fetchSettings, page, search, pageSize, setExtraQuery]);
 
-  const handleSearchChange = (event) => {
-    const term = event.target.value;
-    const extra = buildAppSettingExtraQuery();
-    setExtraQuery(extra);
-    setSearch(term);
-    setPage(1);
-    fetchSettings(1, term, pageSize, false, undefined, extra);
-  };
 
-  const handleChangePage = (event, value) => {
-    const extra = buildAppSettingExtraQuery();
-    setExtraQuery(extra);
-    setPage(value);
-    fetchSettings(value, search, pageSize, false, undefined, extra);
-  };
 
-  const handleChangeRowsPerPage = (event) => {
-    const size = event.target.value;
-    const extra = buildAppSettingExtraQuery();
-    setExtraQuery(extra);
-    setPageSize(size);
-    setPage(1);
-    fetchSettings(1, search, size, false, undefined, extra);
-  };
+
+
+
 
   const handleEnableFilterChange = (event) => {
     const next = event.target.value;
@@ -106,17 +89,14 @@ export default function Settings() {
     const data = {
       SettingName: item.settingName,
       Value: item.value,
-      IsEnabled: value,
-    }
+      IsEnabled: value }
     const token = localStorage.getItem("token");
     fetch(`${BASE_URL}/AppSetting/UpdateAppSetting`, {
       method: "POST",
       body: JSON.stringify(data),
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    })
+        Authorization: `Bearer ${token}` } })
       .then((response) => response.json())
       .then((data) => {
         if (data.statusCode == 200) {
@@ -183,17 +163,21 @@ export default function Settings() {
         </Grid>
 
         <Grid item xs={12}>
-          <TableContainer component={Paper}>
-            <Table aria-label="simple table" className="dark-table">
+          <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
+            <Table aria-label="simple table" className="dark-table" sx={{ minWidth: 980, tableLayout: "fixed" }}>
               <TableHead>
                 <TableRow>
-                  <TableCell>#</TableCell>
-                  <TableCell>Setting Name</TableCell>
-                  <TableCell>Value</TableCell>
+                  <TableCell sx={{ width: 56 }}>#</TableCell>
+                  <TableCell sx={{ width: 240 }}>Setting Name</TableCell>
+                  <TableCell sx={{ width: 180 }}>Value</TableCell>
                   <TableCell>Description</TableCell>
-                  <TableCell>Document Link</TableCell>
-                  <TableCell>Enable</TableCell>
-                  <TableCell align="right">Action</TableCell>
+                  <TableCell sx={{ width: 130 }}>Document Link</TableCell>
+                  <TableCell sx={{ width: 100, position: "sticky", right: 56, bgcolor: "background.paper", zIndex: 2 }}>
+                    Enable
+                  </TableCell>
+                  <TableCell align="right" sx={{ width: 56, position: "sticky", right: 0, bgcolor: "background.paper", zIndex: 2 }}>
+                    Action
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -218,7 +202,16 @@ export default function Settings() {
                       </TableCell>
                       <TableCell>{setting.settingName}</TableCell>
                       <TableCell>{setting.value}</TableCell>
-                      <TableCell>{setting.description || "-"}</TableCell>
+                      <TableCell
+                        sx={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={setting.description || ""}
+                      >
+                        {setting.description || "-"}
+                      </TableCell>
                       <TableCell>
                         {setting.documentLink ? (
                           <a href={setting.documentLink} target="_blank" rel="noopener noreferrer" style={{ color: '#1976d2', textDecoration: 'underline' }}>
@@ -228,14 +221,18 @@ export default function Settings() {
                           "-"
                         )}
                       </TableCell>
-                      <TableCell>
-                        <FormControlLabel control={<Switch checked={setting.isEnabled} onChange={(e) => handleChangeSwitch(e.target.checked, setting)} />} />
+                      <TableCell sx={{ position: "sticky", right: 56, bgcolor: "background.paper" }}>
+                        <Switch
+                          checked={!!setting.isEnabled}
+                          onChange={(e) => handleChangeSwitch(e.target.checked, setting)}
+                          size="small"
+                        />
                       </TableCell>
-                      <TableCell align="right">
-                        {update ? <EditSetting
+                      <TableCell align="right" sx={{ position: "sticky", right: 0, bgcolor: "background.paper" }}>
+                        <EditSetting
                           item={setting}
                           fetchItems={refreshSettingsList}
-                        /> : ""}
+                        />
                       </TableCell>
                     </TableRow>
                   ))

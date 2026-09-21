@@ -13,8 +13,7 @@ import {
   Table,
   TableRow,
   TableCell,
-  TableBody,
-} from "@mui/material";
+  TableBody } from "@mui/material";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import BASE_URL from "Base/api";
@@ -63,8 +62,7 @@ const componentMap = {
   ShiftSummaryReport,
   MatrimonialProfileQualityReport: MatrimonialSummaryReportModal,
   MatrimonialSubscriptionSummaryReport: MatrimonialSummaryReportModal,
-  MatrimonialEngagementSummaryReport: MatrimonialSummaryReportModal,
-};
+  MatrimonialEngagementSummaryReport: MatrimonialSummaryReportModal };
 
 // Frontend-only categorization for Summary Reports.
 // Backend currently returns: { id, reportName, title, documentName, isPermissionEnabled } with no module field.
@@ -101,8 +99,7 @@ const REPORT_MODULE_MAP = {
   // Matrimonial
   MatrimonialProfileQualityReport: "Matrimonial",
   MatrimonialSubscriptionSummaryReport: "Matrimonial",
-  MatrimonialEngagementSummaryReport: "Matrimonial",
-};
+  MatrimonialEngagementSummaryReport: "Matrimonial" };
 
 const getReportModuleName = (report) => {
   const explicit =
@@ -145,7 +142,11 @@ const SummeryReports = () => {
     fetchData: fetchReports,
     loading,
     error,
-  } = usePaginatedFetch(
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch(
     role ? `ReportSetting/GetAllEnabledSummaryReportsByRoleIdPage?roleId=${role}` : null,
     "",
     SUMMARY_REPORTS_FETCH_SIZE,
@@ -153,10 +154,7 @@ const SummeryReports = () => {
     false
   );
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchReports(1, event.target.value, SUMMARY_REPORTS_FETCH_SIZE);
-  };
+
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -184,10 +182,8 @@ const SummeryReports = () => {
         component: ReportComponent
           ? React.createElement(ReportComponent, {
               docName: documentName,
-              reportName: reportName,
-            })
-          : null,
-      };
+              reportName: reportName })
+          : null };
     });
   }, [reports]);
 
@@ -215,8 +211,7 @@ const SummeryReports = () => {
 
     return sortedModuleNames.map((moduleName) => ({
       moduleName,
-      reports: groups[moduleName] || [],
-    }));
+      reports: groups[moduleName] || [] }));
   }, [processedReports]);
 
   return (

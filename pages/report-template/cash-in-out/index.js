@@ -38,6 +38,7 @@ export default function CashInOutPrintTemplatePage() {
       templateName={TEMPLATE_NAME}
       pageTitle={TEMPLATE_NAME}
       renderPreview={useCallback(renderPreview, [])}
+      enableOrientation
       breadcrumbs={[
         { label: "Screens Template", href: "/report-template/screens-template/" },
         { label: "Sales", href: "/report-template/screens-template/?module=sales" },

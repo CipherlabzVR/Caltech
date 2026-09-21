@@ -35,27 +35,19 @@ export default function BillOfMaterials() {
     setPageSize,
     setSearch,
     fetchData: fetchBOMList,
-  } = usePaginatedFetch("BillOfMaterial/GetAllBillOfMaterials");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("BillOfMaterial/GetAllBillOfMaterials");
 
   const controller = "BillOfMaterial/DeleteBillOfMaterial";
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchBOMList(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchBOMList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchBOMList(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;
@@ -63,15 +55,13 @@ export default function BillOfMaterials() {
 
   const navigateToCreate = () => {
     router.push({
-      pathname: "/manufacture/bom/create",
-    });
+      pathname: "/manufacture/bom/create" });
   };
 
   const navigateToEdit = (id) => {
     router.push({
       pathname: `/manufacture/bom/edit`,
-      query: { id: id },
-    });
+      query: { id: id } });
   };
 
   return (

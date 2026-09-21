@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -39,19 +40,7 @@ export default function Outstanding() {
 
   const buildDateQuery = (date) => (date ? `&AsOfDate=${date}` : "");
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
 
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-
-    searchTimeoutRef.current = setTimeout(() => {
-      fetchOutstandingList(1, value, pageSize, asOfDate);
-    }, 300);
-  };
 
   const handleAsOfDateChange = (event) => {
     const value = event.target.value;
@@ -66,17 +55,9 @@ export default function Outstanding() {
     fetchOutstandingList(1, searchTerm, pageSize, "");
   };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchOutstandingList(value, searchTerm, pageSize, asOfDate);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchOutstandingList(1, searchTerm, newSize, asOfDate);
-  };
+
+
 
   const fetchOutstandingList = async (page = 1, search = "", size = pageSize, date = asOfDate) => {
     try {
@@ -102,6 +83,23 @@ export default function Outstanding() {
       console.error("Error:", error);
     }
   };
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize: setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: (p, s, sz) => fetchOutstandingList(p, s, sz, asOfDate),
+  });
+
 
   useEffect(() => {
     fetchOutstandingList();

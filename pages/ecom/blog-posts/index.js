@@ -16,8 +16,7 @@ import {
   InputLabel,
   MenuItem,
   Select,
-  Avatar,
-} from "@mui/material";
+  Avatar } from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
@@ -44,25 +43,17 @@ export default function BlogPosts() {
     setPageSize,
     setSearch,
     fetchData,
-  } = usePaginatedFetch("ECommerce/GetAllBlogPosts", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("ECommerce/GetAllBlogPosts", "", 10, false, false);
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchData(1, event.target.value, pageSize);
-    setPage(1);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchData(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchData(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;
@@ -142,8 +133,7 @@ export default function BlogPosts() {
                     <TableRow
                       key={item.id}
                       sx={{
-                        "&:last-child td, &:last-child th": { border: 0 },
-                      }}
+                        "&:last-child td, &:last-child th": { border: 0 } }}
                     >
                         <TableCell component="th" scope="row">
                           {(page - 1) * pageSize + index + 1}

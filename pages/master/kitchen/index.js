@@ -1,4 +1,4 @@
-import React, {  } from "react";
+import React from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -33,29 +33,13 @@ export default function Kitchen() {
     setPageSize,
     setSearch,
     fetchData: fetchKitchenList,
-  } = usePaginatedFetch("Kitchen/GetAllKitchens");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Kitchen/GetAllKitchens");
 
-  const controller = "Kitchen/DeleteKitchen";
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchKitchenList(1, event.target.value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchKitchenList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchKitchenList(1, search, size);
-  };
-
-  if (!navigate) {
+  const controller = "Kitchen/DeleteKitchen";  if (!navigate) {
     return <AccessDenied />;
   }
 

@@ -1,6 +1,7 @@
 
 import { useEffect, useState } from "react";
 import BASE_URL from "Base/api";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 
 const usePaginatedFetch = (endpoint, initialSearch = "", initialPageSize = 10) => {
   const [data, setData] = useState([]);
@@ -39,6 +40,25 @@ const usePaginatedFetch = (endpoint, initialSearch = "", initialPageSize = 10) =
     fetchData(1, search, pageSize);
   }, []);
 
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+    pageBeforeSearchRef,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search,
+    setPage,
+    setPageSize,
+    setSearch,
+    onFetch: (targetPage, value, size) =>
+      fetchData(targetPage, value, size, isCurrentDate),
+  });
+
   return {
     data,
     totalCount,
@@ -51,6 +71,12 @@ const usePaginatedFetch = (endpoint, initialSearch = "", initialPageSize = 10) =
     setSearch,
     setIsCurrentDate,
     fetchData,
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+    pageBeforeSearchRef,
   };
 };
 

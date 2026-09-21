@@ -1,4 +1,4 @@
-import React, {  } from "react";
+import React from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -33,29 +33,13 @@ export default function PortionTypes() {
     setPageSize,
     setSearch,
     fetchData: fetchPortionList,
-  } = usePaginatedFetch("Portion/GetAllPortions");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Portion/GetAllPortions");
 
-  const controller = "Portion/DeletePortion";
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchPortionList(1, event.target.value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchPortionList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchPortionList(1, search, size);
-  };
-
-  if (!navigate) {
+  const controller = "Portion/DeletePortion";  if (!navigate) {
     return <AccessDenied />;
   }
 

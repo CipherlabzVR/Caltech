@@ -18,8 +18,7 @@ import {
   Typography,
   InputLabel,
   MenuItem,
-  Select,
-} from "@mui/material";
+  Select } from "@mui/material";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
@@ -40,29 +39,13 @@ const Index = () => {
     setPageSize,
     setSearch,
     fetchData: fetchCurrencyList,
-  } = usePaginatedFetch("Currency/GetAllCurrency");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Currency/GetAllCurrency");
 
-  const controller = "Currency/DeleteCurrency";
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchCurrencyList(1, event.target.value, pageSize);
-    setPage(1);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchCurrencyList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchCurrencyList(1, search, size);
-  };
-
-  if (!navigate) {
+  const controller = "Currency/DeleteCurrency";  if (!navigate) {
     return <AccessDenied />;
   }
 

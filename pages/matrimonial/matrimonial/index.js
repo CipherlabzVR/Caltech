@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import Grid from "@mui/material/Grid";
 import Typography from "@mui/material/Typography";
 import Link from "next/link";
@@ -10,6 +11,7 @@ import {
   InputLabel,
   MenuItem,
   Paper,
+  Pagination,
   Select,
   Table,
   TableBody,
@@ -25,7 +27,7 @@ import {
   DialogContentText,
   DialogActions,
   Button,
-  Pagination,
+  TextField,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -39,6 +41,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { parseApiDateForDisplay } from "@/components/utils/formatHelper";
 
 function chunkFields(fields, size) {
   const chunks = [];
@@ -125,7 +128,145 @@ function DetailTable({ title, fields, pairsPerRow = 2 }) {
   );
 }
 
-/** Same rules as MatrimonialService.IsSubscriptionActive: SUBSCRIPTION_* address metadata, premium/subscribed role, profile flag. */
+function displayMatrimonialAccountTypeLabel(role) {
+  const r = (role || "").trim();
+  if (r === "Father" || r === "Mother") return "Parents";
+  return r || "N/A";
+}
+
+/**
+ * Reads the active Matchmaker tier (GOLD / DIAMOND) from address metadata for backoffice display.
+ * Mirrors MatrimonialService.ParseMatchmakerTierToken on the server.
+ * Returns null if the account is not a matchmaker, or has no active paid tier.
+ */
+function getActiveMatchmakerTierName(account) {
+  if (!account) return null;
+  const roleName = (account.userRoleName || account.UserRoleName || "").trim();
+  if (roleName.toLowerCase() !== "matchmaker") return null;
+  const meta = parseAddressMetadata(account.address || account.Address || "");
+  const untilRaw = meta.MATCHMAKER_SUB_UNTIL;
+  if (!untilRaw) return null;
+  const until = new Date(untilRaw);
+  if (Number.isNaN(until.getTime()) || until.getTime() < Date.now()) return null;
+  const tier = String(meta.MATCHMAKER_TIER || "").toUpperCase();
+  if (tier.includes("DIAMOND")) return "Diamond";
+  if (tier.includes("GOLD")) return "Gold";
+  return null;
+}
+
+/**
+ * Custom package name from API / Address metadata.
+ * System defaults (Free, Gold, Diamond, Premium) return null so those labels stay.
+ */
+function getCustomSubscriptionPackageName(account) {
+  if (!account) return null;
+  const fromApi = (account.subscriptionPackageName ?? account.SubscriptionPackageName ?? "").trim();
+  if (fromApi) return fromApi;
+
+  const meta = parseAddressMetadata(account.address || account.Address || "");
+  const roleName = (account.userRoleName || account.UserRoleName || "").trim().toLowerCase();
+  const isMatchmaker = roleName === "matchmaker";
+  const name = (meta[isMatchmaker ? "MATCHMAKER_PACKAGE_NAME" : "SUBSCRIPTION_PACKAGE_NAME"] || "").trim();
+  const key = (meta[isMatchmaker ? "MATCHMAKER_PACKAGE_KEY" : "SUBSCRIPTION_PACKAGE_KEY"] || "").trim();
+  // Custom packages store a name without a system package key.
+  if (name && !key) return name;
+  return null;
+}
+
+/**
+ * Subscription label + chip colour shown in the backoffice grid and details modal.
+ * Defaults: Free / Gold / Diamond / Premium. Custom admin packages show their package name.
+ */
+function getMatrimonialSubscriptionDisplay(account, profile, isSubscribedFn) {
+  const customName = getCustomSubscriptionPackageName(account);
+  if (customName) {
+    const roleName = (account?.userRoleName || account?.UserRoleName || "").trim().toLowerCase();
+    return {
+      label: customName,
+      color: roleName === "matchmaker" ? "warning" : "success",
+      variant: "filled",
+    };
+  }
+  const tier = getActiveMatchmakerTierName(account);
+  if (tier === "Gold") {
+    return { label: "Gold", color: "warning", variant: "filled" };
+  }
+  if (tier === "Diamond") {
+    return { label: "Diamond", color: "info", variant: "filled" };
+  }
+  if (isSubscribedFn(account, profile)) {
+    return { label: "Premium", color: "success", variant: "filled" };
+  }
+  return { label: "Free", color: "default", variant: "outlined" };
+}
+
+function readMatrimonialSubscriptionIsLifetime(accountOrSub) {
+  if (!accountOrSub) return false;
+  if (accountOrSub.subscriptionIsLifetime === true || accountOrSub.SubscriptionIsLifetime === true) {
+    return true;
+  }
+  const meta = parseAddressMetadata(accountOrSub.address || accountOrSub.Address || "");
+  const roleName = (accountOrSub.userRoleName || accountOrSub.UserRoleName || "").trim();
+  const isMatchmaker = roleName.toLowerCase() === "matchmaker";
+  const lifetimeKey = isMatchmaker ? "MATCHMAKER_SUB_LIFETIME" : "SUBSCRIPTION_LIFETIME";
+  return String(meta[lifetimeKey] || "").toLowerCase() === "true";
+}
+
+function readMatrimonialSubscriptionExpiresRaw(accountOrSub) {
+  if (!accountOrSub) return null;
+  const fromApi =
+    accountOrSub.subscriptionExpiresAt ??
+    accountOrSub.SubscriptionExpiresAt ??
+    accountOrSub.subscriptionUntilUtc ??
+    accountOrSub.SubscriptionUntilUtc;
+  if (fromApi) return fromApi;
+  const meta = parseAddressMetadata(accountOrSub.address || accountOrSub.Address || "");
+  const roleName = (accountOrSub.userRoleName || accountOrSub.UserRoleName || "").trim();
+  const isMatchmaker = roleName.toLowerCase() === "matchmaker";
+  const untilKey = isMatchmaker ? "MATCHMAKER_SUB_UNTIL" : "SUBSCRIPTION_UNTIL";
+  return meta[untilKey] || null;
+}
+
+function formatMatrimonialSubscriptionExpiry(accountOrSub, formatDateFn) {
+  if (!accountOrSub) return "-";
+  if (readMatrimonialSubscriptionIsLifetime(accountOrSub)) return "Lifetime";
+  const raw = readMatrimonialSubscriptionExpiresRaw(accountOrSub);
+  if (!raw) return "-";
+  return formatDateFn(raw);
+}
+
+function normalizeMatrimonialPaymentTypeLabel(raw) {
+  const lower = String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]/g, "");
+  if (!lower) return null;
+  if (lower === "bank" || lower === "banktransfer") return "Bank Transfer";
+  if (lower === "card") return "Card";
+  return String(raw).trim();
+}
+
+/** Payment type for premium accounts from GetAllMatrimonialUsers.SubscriptionPaymentType. */
+function readMatrimonialPaymentType(account, profile) {
+  if (!account) return null;
+  const fromApi = normalizeMatrimonialPaymentTypeLabel(
+    account.subscriptionPaymentType ?? account.SubscriptionPaymentType
+  );
+  if (fromApi) return fromApi;
+
+  const meta = parseAddressMetadata(account.address || account.Address || "");
+  const fromMeta = normalizeMatrimonialPaymentTypeLabel(
+    meta.SUBSCRIPTION_PAYMENT_TYPE || meta.MATCHMAKER_PAYMENT_TYPE
+  );
+  if (fromMeta) return fromMeta;
+
+  if (!isMatrimonialSubscriptionActive(account, profile) && !getCustomSubscriptionPackageName(account)) {
+    return null;
+  }
+  return null;
+}
+
+/** Matches Matrimonial subscription display: Self (IsSubscriptionActive) + paid Matchmaker (MATCHMAKER_TIER / MATCHMAKER_SUB_UNTIL). */
 function parseAddressMetadata(address) {
   if (!address || typeof address !== "string") return {};
   const dict = {};
@@ -139,8 +280,27 @@ function parseAddressMetadata(address) {
   return dict;
 }
 
+/**
+ * Paid Matchmaker tier lives in Address metadata (MatrimonialService: MATCHMAKER_TIER + MATCHMAKER_SUB_UNTIL),
+ * not SUBSCRIPTION_ACTIVE / UserRoleName "premium". Without this, Gold/Diamond matchmakers show as Free in the grid.
+ */
+function isMatchmakerPaidSubscriptionActive(account) {
+  if (!account) return false;
+  const roleName = (account.userRoleName || account.UserRoleName || "").trim();
+  if (roleName.toLowerCase() !== "matchmaker") return false;
+  const addr = account.address || account.Address || "";
+  const meta = parseAddressMetadata(addr);
+  const untilRaw = meta.MATCHMAKER_SUB_UNTIL;
+  if (!untilRaw) return false;
+  const until = new Date(untilRaw);
+  if (Number.isNaN(until.getTime()) || until.getTime() < Date.now()) return false;
+  const tier = String(meta.MATCHMAKER_TIER || "").toUpperCase();
+  return tier.includes("GOLD") || tier.includes("DIAMOND");
+}
+
 function isMatrimonialSubscriptionActive(account, profile) {
   if (!account) return false;
+  if (isMatchmakerPaidSubscriptionActive(account)) return true;
   const roleName = account.userRoleName || account.UserRoleName || "";
   if (
     roleName &&
@@ -165,10 +325,36 @@ function isMatrimonialSubscriptionActive(account, profile) {
   return false;
 }
 
+/** ApiResponse wraps PagedResult; JSON may be camelCase or PascalCase. */
+function extractMatrimonialUserPage(data) {
+  const wrap = data?.result ?? data?.Result;
+  if (!wrap) return { items: [], total: 0 };
+  const pageInner = wrap.items !== undefined || wrap.Items !== undefined ? wrap : wrap.result ?? wrap.Result ?? wrap;
+  const items = pageInner?.items ?? pageInner?.Items ?? [];
+  const total = Number(pageInner?.totalCount ?? pageInner?.TotalCount ?? 0) || 0;
+  return { items: Array.isArray(items) ? items : [], total };
+}
+
 /** Full matrimonial profile blocks (shared by primary account and sub-accounts). */
 function MatrimonialProfileFields({ profile }) {
   if (!profile) return null;
-  const readValue = (...values) => values.find((v) => v !== null && v !== undefined && String(v).trim() !== "");
+  const readValue = (...values) => {
+    const v = values.find((x) => {
+      if (x === null || x === undefined) return false;
+      const t = String(x).trim();
+      return t !== "" && t !== "-";
+    });
+    return v !== undefined ? String(v).trim() : undefined;
+  };
+
+  /** Optional text (ethnicity, caste, remarks, etc.): show "-" when empty. */
+  const readOptionalDash = (...values) => {
+    const v = values.find((x) => x !== null && x !== undefined);
+    if (v === undefined) return "-";
+    const t = String(v).trim();
+    if (t === "" || t === "-") return "-";
+    return t;
+  };
 
   const ageRangeMin = profile.PartnerMinAge ?? profile.partnerMinAge;
   const ageRangeMax = profile.PartnerMaxAge ?? profile.partnerMaxAge;
@@ -187,6 +373,7 @@ function MatrimonialProfileFields({ profile }) {
           { label: "Qualification", value: readValue(profile.QualificationLevel, profile.qualificationLevel) },
           { label: "Occupation", value: readValue(profile.Occupation, profile.occupation) },
           { label: "Horoscope", value: readValue(profile.Horoscope, profile.horoscope) },
+          { label: "Remarks", value: readOptionalDash(profile.Remarks, profile.remarks) },
         ]}
         pairsPerRow={2}
       />
@@ -217,11 +404,19 @@ function MatrimonialProfileFields({ profile }) {
         title="Parents"
         fields={[
           { label: "Father", value: readValue(profile.FatherName, profile.fatherName) },
+          { label: "Father Country of Residence", value: readValue(profile.FatherCountryOfResidence, profile.fatherCountryOfResidence) },
           { label: "Father Occupation", value: readValue(profile.FatherOccupation, profile.fatherOccupation) },
+          { label: "Father Ethnicity", value: readOptionalDash(profile.FatherEthnicity, profile.fatherEthnicity) },
           { label: "Father Religion", value: readValue(profile.FatherReligion, profile.fatherReligion) },
+          { label: "Father Caste", value: readOptionalDash(profile.FatherCaste, profile.fatherCaste) },
+          { label: "Father Remarks", value: readOptionalDash(profile.FatherRemarks, profile.fatherRemarks) },
           { label: "Mother", value: readValue(profile.MotherName, profile.motherName) },
+          { label: "Mother Country of Residence", value: readValue(profile.MotherCountryOfResidence, profile.motherCountryOfResidence) },
           { label: "Mother Occupation", value: readValue(profile.MotherOccupation, profile.motherOccupation) },
+          { label: "Mother Ethnicity", value: readOptionalDash(profile.MotherEthnicity, profile.motherEthnicity) },
           { label: "Mother Religion", value: readValue(profile.MotherReligion, profile.motherReligion) },
+          { label: "Mother Caste", value: readOptionalDash(profile.MotherCaste, profile.motherCaste) },
+          { label: "Mother Remarks", value: readOptionalDash(profile.MotherRemarks, profile.motherRemarks) },
         ]}
         pairsPerRow={2}
       />
@@ -230,8 +425,11 @@ function MatrimonialProfileFields({ profile }) {
         title="Partner Preferences"
         fields={[
           { label: "Age Range", value: ageRange },
+          { label: "Eating Habits", value: readOptionalDash(profile.PartnerEatingHabits, profile.partnerEatingHabits) },
+          { label: "Drinking Habits", value: readOptionalDash(profile.PartnerDrinkingHabits, profile.partnerDrinkingHabits) },
+          { label: "Smoking Habits", value: readOptionalDash(profile.PartnerSmokingHabits, profile.partnerSmokingHabits) },
           { label: "Religion", value: readValue(profile.PartnerReligion, profile.partnerReligion) },
-          { label: "Ethnicity", value: readValue(profile.PartnerEthnicity, profile.partnerEthnicity) },
+          { label: "Ethnicity", value: readOptionalDash(profile.PartnerEthnicity, profile.partnerEthnicity) },
           { label: "Qualification", value: readValue(profile.PartnerQualificationLevel, profile.partnerQualificationLevel) },
           { label: "Additional Requirements", value: readValue(profile.PartnerAdditionalRequirements, profile.partnerAdditionalRequirements) },
         ]}
@@ -273,9 +471,13 @@ function MatrimonialProfileFields({ profile }) {
   );
 }
 
+/** Must match SidebarData Matrimonial → Registered Accounts categoryId. */
+const MATRIMONIAL_CATEGORY_REGISTERED_ACCOUNTS = 172;
+
 export default function MatrimonialAccounts() {
-  const cId = sessionStorage.getItem("category");
-  const { navigate, create, update, remove, print } = IsPermissionEnabled(cId);
+  const { navigate, create, update, remove, print, permissionsLoading } = IsPermissionEnabled(
+    MATRIMONIAL_CATEGORY_REGISTERED_ACCOUNTS
+  );
   const [accountsList, setAccountsList] = useState([]);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -284,6 +486,9 @@ export default function MatrimonialAccounts() {
   const [selectedGender, setSelectedGender] = useState("all");
   const [selectedSubscription, setSelectedSubscription] = useState("all");
   const [selectedAccountType, setSelectedAccountType] = useState("all");
+  const [selectedPaymentType, setSelectedPaymentType] = useState("all");
+  const [registeredFromDate, setRegisteredFromDate] = useState("");
+  const [registeredToDate, setRegisteredToDate] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [selectedProfile, setSelectedProfile] = useState(null);
@@ -302,17 +507,27 @@ export default function MatrimonialAccounts() {
     currentSearch = searchTerm,
     currentGender = selectedGender,
     currentSubscription = selectedSubscription,
-    currentAccountType = selectedAccountType
+    currentAccountType = selectedAccountType,
+    currentPaymentType = selectedPaymentType,
+    currentRegisteredFrom = registeredFromDate,
+    currentRegisteredTo = registeredToDate
   ) => {
     setLoading(true);
     try {
-      const skipCount = currentPage * currentRowsPerPage;
+      const size = Math.max(1, Number(currentRowsPerPage) || 10);
+      const skipCount = currentPage * size;
       const searchValue = currentSearch?.trim() ? encodeURIComponent(currentSearch.trim()) : "null";
-      const filterValue = encodeURIComponent(
-        `gender:${currentGender || "all"};subscription:${currentSubscription || "all"};accountType:${currentAccountType || "all"}`
-      );
+      const filterParts = [
+        `gender:${currentGender || "all"}`,
+        `subscription:${currentSubscription || "all"}`,
+        `accountType:${currentAccountType || "all"}`,
+        `paymentType:${currentPaymentType || "all"}`,
+      ];
+      if (currentRegisteredFrom) filterParts.push(`registeredFrom:${currentRegisteredFrom}`);
+      if (currentRegisteredTo) filterParts.push(`registeredTo:${currentRegisteredTo}`);
+      const filterValue = encodeURIComponent(filterParts.join(";"));
       const response = await fetch(
-        `${BASE_URL}/User/GetAllMatrimonialUsers?SkipCount=${skipCount}&MaxResultCount=${currentRowsPerPage}&Search=${searchValue}&Filter=${filterValue}`,
+        `${BASE_URL}/User/GetAllMatrimonialUsers?SkipCount=${skipCount}&MaxResultCount=${size}&Search=${searchValue}&Filter=${filterValue}`,
         {
         method: "GET",
         headers: {
@@ -327,8 +542,9 @@ export default function MatrimonialAccounts() {
       }
 
       const data = await response.json();
-      setAccountsList(data?.result?.items || []);
-      setTotalCount(data?.result?.totalCount || 0);
+      const { items, total } = extractMatrimonialUserPage(data);
+      setAccountsList(items);
+      setTotalCount(total);
     } catch (error) {
       console.error("Error fetching matrimonial accounts:", error);
       toast.error("Failed to fetch matrimonial accounts");
@@ -338,18 +554,41 @@ export default function MatrimonialAccounts() {
   };
 
   useEffect(() => {
-    fetchMatrimonialAccounts(page, rowsPerPage, searchTerm, selectedGender, selectedSubscription, selectedAccountType);
-  }, [page, rowsPerPage, searchTerm, selectedGender, selectedSubscription, selectedAccountType]);
+    sessionStorage.setItem("category", String(MATRIMONIAL_CATEGORY_REGISTERED_ACCOUNTS));
+  }, []);
 
-  const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
-  };
+  useEffect(() => {
+    if (permissionsLoading || !navigate) return;
+    fetchMatrimonialAccounts(
+      page,
+      rowsPerPage,
+      searchTerm,
+      selectedGender,
+      selectedSubscription,
+      selectedAccountType,
+      selectedPaymentType,
+      registeredFromDate,
+      registeredToDate
+    );
+  }, [permissionsLoading, navigate, page, rowsPerPage, searchTerm, selectedGender, selectedSubscription, selectedAccountType, selectedPaymentType, registeredFromDate, registeredToDate]);
 
-  const handleSearchChange = (event) => {
-    setSearchTerm(event.target.value);
-    setPage(0);
-  };
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: rowsPerPage,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize: setRowsPerPage,
+    onSearchValueChange: setSearchTerm,
+    zeroBasedPage: true,
+    onFetch: () => {},
+  });
 
   const handleViewDetails = async (account) => {
     setSelectedAccount(account);
@@ -465,8 +704,9 @@ export default function MatrimonialAccounts() {
   const formatDate = (dateString) => {
     if (!dateString) return "-";
     try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString("en-US", {
+      const date = parseApiDateForDisplay(dateString);
+      if (!date) return "-";
+      return date.toLocaleDateString(undefined, {
         year: "numeric",
         month: "short",
         day: "numeric",
@@ -476,23 +716,41 @@ export default function MatrimonialAccounts() {
     }
   };
 
+  const readApprovedDate = (account) =>
+    account?.subscriptionApprovedOn ?? account?.SubscriptionApprovedOn ?? null;
+
   const calculateAge = (dateOfBirth) => {
-    if (!dateOfBirth) return "-";
+    if (!dateOfBirth) return null;
     try {
       const birthDate = new Date(dateOfBirth);
+      if (Number.isNaN(birthDate.getTime())) return null;
       const today = new Date();
       let age = today.getFullYear() - birthDate.getFullYear();
       const monthDiff = today.getMonth() - birthDate.getMonth();
       if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
         age--;
       }
-      return age;
+      return age < 0 ? null : age;
     } catch (error) {
-      return "-";
+      return null;
     }
   };
 
+  /**
+   * Always prefer a live age derived from the date of birth so it stays correct as
+   * time passes. The stored `age` column is only a fallback when no DOB is available.
+   */
+  const displayAge = (dateOfBirth, storedAge) => {
+    const live = calculateAge(dateOfBirth);
+    if (live != null) return live;
+    return storedAge != null && storedAge !== "" ? storedAge : "-";
+  };
+
   const paginatedData = accountsList;
+
+  if (permissionsLoading) {
+    return null;
+  }
 
   if (!navigate) {
     return <AccessDenied />;
@@ -518,12 +776,119 @@ export default function MatrimonialAccounts() {
           <Box
             sx={{
               display: "flex",
-              flexWrap: "wrap",
+              flexDirection: "column",
               gap: 1.5,
-              alignItems: "center",
             }}
           >
-            <Box sx={{ flex: "1 1 340px", minWidth: 280 }}>
+            <Box
+              sx={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 1.5,
+                alignItems: "center",
+              }}
+            >
+              <FormControl sx={{ flex: "1 1 190px", minWidth: 190 }}>
+                <InputLabel id="gender-filter-label">Gender</InputLabel>
+                <Select
+                  labelId="gender-filter-label"
+                  id="gender-filter"
+                  label="Gender"
+                  value={selectedGender}
+                  onChange={(e) => {
+                    setSelectedGender(e.target.value);
+                    setPage(0);
+                  }}
+                >
+                  <MenuItem value="all">All Genders</MenuItem>
+                  <MenuItem value="Male">Male</MenuItem>
+                  <MenuItem value="Female">Female</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl sx={{ flex: "1 1 190px", minWidth: 190 }}>
+                <InputLabel id="subscription-filter-label">Subscription</InputLabel>
+                <Select
+                  labelId="subscription-filter-label"
+                  id="subscription-filter"
+                  label="Subscription"
+                  value={selectedSubscription}
+                  onChange={(e) => {
+                    setSelectedSubscription(e.target.value);
+                    setPage(0);
+                  }}
+                >
+                  <MenuItem value="all">All</MenuItem>
+                  <MenuItem value="free">Free</MenuItem>
+                  <MenuItem value="subscribed">Subscribed</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl sx={{ flex: "1 1 210px", minWidth: 210 }}>
+                <InputLabel id="account-type-filter-label">Account Type</InputLabel>
+                <Select
+                  labelId="account-type-filter-label"
+                  id="account-type-filter"
+                  label="Account Type"
+                  value={selectedAccountType}
+                  onChange={(e) => {
+                    setSelectedAccountType(e.target.value);
+                    setPage(0);
+                  }}
+                >
+                  <MenuItem value="all">All Types</MenuItem>
+                  <MenuItem value="Self">Self</MenuItem>
+                  <MenuItem value="Parents">Parents</MenuItem>
+                  <MenuItem value="Relation">Relation</MenuItem>
+                  <MenuItem value="Matchmaker">Matchmaker</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl sx={{ flex: "1 1 190px", minWidth: 190 }}>
+                <InputLabel id="payment-type-filter-label">Payment Type</InputLabel>
+                <Select
+                  labelId="payment-type-filter-label"
+                  id="payment-type-filter"
+                  label="Payment Type"
+                  value={selectedPaymentType}
+                  onChange={(e) => {
+                    setSelectedPaymentType(e.target.value);
+                    setPage(0);
+                  }}
+                >
+                  <MenuItem value="all">All Payment Types</MenuItem>
+                  <MenuItem value="card">Card</MenuItem>
+                  <MenuItem value="bank">Bank Transfer</MenuItem>
+                </Select>
+              </FormControl>
+
+              <TextField
+                label="Registered from"
+                type="date"
+                size="small"
+                value={registeredFromDate}
+                onChange={(e) => {
+                  setRegisteredFromDate(e.target.value);
+                  setPage(0);
+                }}
+                InputLabelProps={{ shrink: true }}
+                sx={{ flex: "1 1 160px", minWidth: 150 }}
+              />
+              <TextField
+                label="Registered to"
+                type="date"
+                size="small"
+                value={registeredToDate}
+                onChange={(e) => {
+                  setRegisteredToDate(e.target.value);
+                  setPage(0);
+                }}
+                InputLabelProps={{ shrink: true }}
+                sx={{ flex: "1 1 160px", minWidth: 150 }}
+              />
+            </Box>
+
+            <Box sx={{ width: "100%", maxWidth: 480 }}>
               <Search className="search-form">
                 <StyledInputBase
                   placeholder="Search by name, email, phone, or NIC..."
@@ -533,63 +898,6 @@ export default function MatrimonialAccounts() {
                 />
               </Search>
             </Box>
-
-            <FormControl sx={{ flex: "1 1 190px", minWidth: 190 }}>
-              <InputLabel id="gender-filter-label">Gender</InputLabel>
-              <Select
-                labelId="gender-filter-label"
-                id="gender-filter"
-                label="Gender"
-                value={selectedGender}
-                onChange={(e) => {
-                  setSelectedGender(e.target.value);
-                  setPage(0);
-                }}
-              >
-                <MenuItem value="all">All Genders</MenuItem>
-                <MenuItem value="Male">Male</MenuItem>
-                <MenuItem value="Female">Female</MenuItem>
-              </Select>
-            </FormControl>
-
-            <FormControl sx={{ flex: "1 1 190px", minWidth: 190 }}>
-              <InputLabel id="subscription-filter-label">Subscription</InputLabel>
-              <Select
-                labelId="subscription-filter-label"
-                id="subscription-filter"
-                label="Subscription"
-                value={selectedSubscription}
-                onChange={(e) => {
-                  setSelectedSubscription(e.target.value);
-                  setPage(0);
-                }}
-              >
-                <MenuItem value="all">All</MenuItem>
-                <MenuItem value="free">Free</MenuItem>
-                <MenuItem value="subscribed">Subscribed</MenuItem>
-              </Select>
-            </FormControl>
-
-            <FormControl sx={{ flex: "1 1 210px", minWidth: 210 }}>
-              <InputLabel id="account-type-filter-label">Account Type</InputLabel>
-              <Select
-                labelId="account-type-filter-label"
-                id="account-type-filter"
-                label="Account Type"
-                value={selectedAccountType}
-                onChange={(e) => {
-                  setSelectedAccountType(e.target.value);
-                  setPage(0);
-                }}
-              >
-                <MenuItem value="all">All Types</MenuItem>
-                <MenuItem value="Self">Self</MenuItem>
-                <MenuItem value="Father">Father</MenuItem>
-                <MenuItem value="Mother">Mother</MenuItem>
-                <MenuItem value="Relation">Relation</MenuItem>
-                <MenuItem value="Matchmaker">Matchmaker</MenuItem>
-              </Select>
-            </FormControl>
           </Box>
         </Grid>
         <Grid item xs={12} order={{ xs: 3, lg: 2 }}>
@@ -605,23 +913,27 @@ export default function MatrimonialAccounts() {
                   <TableCell>Date of Birth</TableCell>
                   <TableCell>Age</TableCell>
                   <TableCell>Gender</TableCell>
+                  <TableCell>Residence Country</TableCell>
                   <TableCell>Account Type</TableCell>
                   <TableCell align="center">Subscription</TableCell>
+                  <TableCell>Payment Type</TableCell>
+                  <TableCell>Subscription Expires</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Registered Date</TableCell>
+                  <TableCell>Approved Date</TableCell>
                   <TableCell align="right">Action</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={13} align="center">
+                    <TableCell colSpan={17} align="center">
                       <Typography>Loading...</Typography>
                     </TableCell>
                   </TableRow>
                 ) : paginatedData.length === 0 ? (
                   <TableRow>
-                    <TableCell component="th" scope="row" colSpan={13}>
+                    <TableCell component="th" scope="row" colSpan={17}>
                         <Typography color="error">
                           No Matrimonial Accounts Found
                         </Typography>
@@ -679,7 +991,7 @@ export default function MatrimonialAccounts() {
                         {formatDate(account.dateofBirth)}
                       </TableCell>
                       <TableCell>
-                        {account.age || calculateAge(account.dateofBirth)}
+                        {displayAge(account.dateofBirth, account.age)}
                       </TableCell>
                       <TableCell>
                         <Chip
@@ -690,8 +1002,13 @@ export default function MatrimonialAccounts() {
                         />
                       </TableCell>
                       <TableCell>
+                        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 220 }}>
+                          {(account.countryOfResidence || account.CountryOfResidence || "").trim() || "—"}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
                         <Chip
-                          label={account.userRoleName || account.UserRoleName || "N/A"}
+                          label={displayMatrimonialAccountTypeLabel(account.userRoleName || account.UserRoleName)}
                           size="small"
                           variant="outlined"
                           color={
@@ -703,13 +1020,44 @@ export default function MatrimonialAccounts() {
                         />
                       </TableCell>
                       <TableCell align="center">
-                        <Chip
-                          label={isSubscribed(account, null) ? "Premium" : "Free"}
-                          color={isSubscribed(account, null) ? "success" : "default"}
-                          size="small"
-                          variant={isSubscribed(account, null) ? "filled" : "outlined"}
-                          sx={{ fontWeight: 600, fontSize: "0.7rem" }}
-                        />
+                        {(() => {
+                          const sub = getMatrimonialSubscriptionDisplay(account, null, isSubscribed);
+                          return (
+                            <Chip
+                              label={sub.label}
+                              color={sub.color}
+                              size="small"
+                              variant={sub.variant}
+                              sx={{ fontWeight: 600, fontSize: "0.7rem" }}
+                            />
+                          );
+                        })()}
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const paymentType = readMatrimonialPaymentType(account);
+                          if (!paymentType) {
+                            return (
+                              <Typography variant="body2" color="text.secondary">
+                                —
+                              </Typography>
+                            );
+                          }
+                          return (
+                            <Chip
+                              label={paymentType}
+                              size="small"
+                              color={paymentType === "Bank Transfer" ? "secondary" : "info"}
+                              variant="outlined"
+                              sx={{ fontWeight: 600, fontSize: "0.7rem" }}
+                            />
+                          );
+                        })()}
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="text.secondary">
+                          {formatMatrimonialSubscriptionExpiry(account, formatDate)}
+                        </Typography>
                       </TableCell>
                       <TableCell>
                         <Chip
@@ -720,6 +1068,7 @@ export default function MatrimonialAccounts() {
                         />
                       </TableCell>
                       <TableCell>{formatDate(account.createdAt)}</TableCell>
+                      <TableCell>{formatDate(readApprovedDate(account))}</TableCell>
                       <TableCell align="right">
                         <Tooltip title="View Details">
                           <IconButton
@@ -748,25 +1097,25 @@ export default function MatrimonialAccounts() {
                 )}
               </TableBody>
             </Table>
-            <Grid container justifyContent="space-between" mt={2} mb={2}>
-              <Pagination
-                count={Math.max(1, Math.ceil(totalCount / rowsPerPage))}
-                page={page + 1}
-                onChange={(_, value) => setPage(value - 1)}
-                color="primary"
-                shape="rounded"
-              />
-              <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
-                <InputLabel>Page Size</InputLabel>
-                <Select value={rowsPerPage} label="Page Size" onChange={handleChangeRowsPerPage}>
-                  <MenuItem value={5}>5</MenuItem>
-                  <MenuItem value={10}>10</MenuItem>
-                  <MenuItem value={25}>25</MenuItem>
-                  <MenuItem value={50}>50</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
           </TableContainer>
+          <Grid container justifyContent="space-between" alignItems="center" mt={2} mb={2}>
+            <Pagination
+              count={Math.max(1, Math.ceil(totalCount / rowsPerPage))}
+              page={page + 1}
+              onChange={handlePageChange}
+              color="primary"
+              shape="rounded"
+            />
+            <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+              <InputLabel>Page Size</InputLabel>
+              <Select value={rowsPerPage} label="Page Size" onChange={handleChangeRowsPerPage}>
+                <MenuItem value={5}>5</MenuItem>
+                <MenuItem value={10}>10</MenuItem>
+                <MenuItem value={25}>25</MenuItem>
+                <MenuItem value={50}>50</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
         </Grid>
       </Grid>
 
@@ -869,13 +1218,36 @@ export default function MatrimonialAccounts() {
                   { label: "Phone", value: selectedAccount.phoneNumber },
                   { label: "NIC / Passport", value: selectedAccount.identityDocument },
                   { label: "Date of Birth", value: formatDate(selectedAccount.dateofBirth) },
-                  { label: "Age", value: selectedAccount.age || calculateAge(selectedAccount.dateofBirth) },
+                  { label: "Age", value: displayAge(selectedAccount.dateofBirth, selectedAccount.age) },
                   { label: "Gender", value: selectedAccount.gender || selectedAccount.Gender },
-                  { label: "Account Type", value: selectedAccount.userRoleName || selectedAccount.UserRoleName },
+                  {
+                    label: "Country of Residence",
+                    value:
+                      selectedAccount.countryOfResidence ||
+                      selectedAccount.CountryOfResidence ||
+                      selectedProfile?.countryOfResidence ||
+                      selectedProfile?.CountryOfResidence,
+                  },
+                  { label: "Account Type", value: displayMatrimonialAccountTypeLabel(selectedAccount.userRoleName || selectedAccount.UserRoleName) },
                   { label: "Email Verification", value: selectedAccount.isEmailVerified ? "Verified" : "Not Verified" },
-                  { label: "Subscription", value: isSubscribed(selectedAccount, selectedProfile) ? "Premium" : "Free" },
+                  {
+                    label: "Subscription",
+                    value: getMatrimonialSubscriptionDisplay(selectedAccount, selectedProfile, isSubscribed).label,
+                  },
+                  {
+                    label: "Payment Type",
+                    value: readMatrimonialPaymentType(selectedAccount, selectedProfile) || "—",
+                  },
+                  {
+                    label: "Subscription Expires",
+                    value: formatMatrimonialSubscriptionExpiry(selectedAccount, formatDate),
+                  },
                   { label: "Account Status", value: selectedAccount.status === 1 ? "Active" : "Inactive" },
                   { label: "Registered On", value: formatDate(selectedAccount.createdAt) },
+                  {
+                    label: "Approved Date",
+                    value: formatDate(readApprovedDate(selectedAccount)),
+                  },
                 ]}
                 pairsPerRow={2}
               />
@@ -918,6 +1290,10 @@ export default function MatrimonialAccounts() {
                         const photo = sub.profilePhoto ?? sub.ProfilePhoto;
                         const accountType = sub.userRoleName ?? sub.UserRoleName ?? null;
                         const gender = profile?.Gender ?? profile?.gender ?? "Not provided";
+                        const residenceCountry =
+                          profile?.CountryOfResidence ?? profile?.countryOfResidence ?? "Not provided";
+                        const subSubscription = getMatrimonialSubscriptionDisplay(sub, profile, isSubscribed);
+                        const subExpires = formatMatrimonialSubscriptionExpiry(sub, formatDate);
                         return (
                           <Accordion
                             key={sid}
@@ -951,6 +1327,12 @@ export default function MatrimonialAccounts() {
                                 </Box>
                                 <Chip
                                   size="small"
+                                  label={subSubscription.label}
+                                  color={subSubscription.color}
+                                  variant={subSubscription.variant}
+                                />
+                                <Chip
+                                  size="small"
                                   label={statusVal === 1 ? "Active" : "Inactive"}
                                   color={statusVal === 1 ? "success" : "default"}
                                   sx={{ ml: "auto" }}
@@ -964,9 +1346,22 @@ export default function MatrimonialAccounts() {
                                   { label: "Email", value: email },
                                   { label: "Phone", value: phone },
                                   { label: "Date of Birth", value: dob ? formatDate(dob) : "Not provided" },
-                                  { label: "Age", value: age != null && age !== "" ? age : calculateAge(dob) },
+                                  { label: "Age", value: displayAge(dob, age) },
                                   { label: "Account Type", value: accountType },
                                   { label: "Gender", value: gender },
+                                  { label: "Country of Residence", value: residenceCountry },
+                                  {
+                                    label: "Subscription",
+                                    value: subSubscription.label,
+                                  },
+                                  {
+                                    label: "Payment Type",
+                                    value: readMatrimonialPaymentType(sub, profile) || "—",
+                                  },
+                                  {
+                                    label: "Subscription Expires",
+                                    value: subExpires,
+                                  },
                                   { label: "Status", value: statusVal === 1 ? "Active" : "Inactive" },
                                 ]}
                                 pairsPerRow={2}

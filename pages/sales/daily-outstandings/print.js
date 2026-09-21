@@ -12,18 +12,15 @@ import { ProjectNo } from "Base/catelogue";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import useLoggedUserCompanyLetterhead from "@/hooks/useLoggedUserCompanyLetterhead";
+import { applyTemplate, escapeHtml } from "@/components/ReportTemplate/applyTemplate";
+import { EMPTY_LINE_ITEMS_HTML } from "@/components/ReportTemplate/lineItemsEditor";
+import {
+  getPageSizeMm,
+  PAGE_ORIENTATION,
+  parsePageOrientation,
+} from "@/components/ReportTemplate/pageOrientation";
 
 const REPORT_KEY = "DAILYOUTSTANDING";
-
-const escapeHtml = (value) => {
-  if (value === null || value === undefined) return "";
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-};
 
 const formatDisplayDate = (value) => {
   if (!value) return "-";
@@ -52,39 +49,25 @@ const formatAmount = (value) => {
   });
 };
 
+const buildOutstandingLineTokenMap = (item, index) => ({
+  rowNum: String(index + 1),
+  customerName: item.customerName || "-",
+  outstandingAmount: formatAmount(item.outstandingAmount),
+});
+
+// Legacy fallback for templates still using {{lineItemsRows}}.
 const buildLineItemsRows = (customers) => {
-  if (!customers || customers.length === 0) {
-    return `<tr><td colspan="3" style="text-align:center;padding:16px;">No outstanding customers</td></tr>`;
-  }
+  if (!customers || customers.length === 0) return EMPTY_LINE_ITEMS_HTML;
   return customers
-    .map(
-      (item, index) => `<tr>
-        <td>${index + 1}</td>
-        <td>${escapeHtml(item.customerName || "-")}</td>
-        <td class="num">${escapeHtml(formatAmount(item.outstandingAmount))}</td>
-      </tr>`
-    )
+    .map((item, index) => {
+      const t = buildOutstandingLineTokenMap(item, index);
+      return `<tr>
+        <td>${escapeHtml(t.rowNum)}</td>
+        <td>${escapeHtml(t.customerName)}</td>
+        <td class="num">${escapeHtml(t.outstandingAmount)}</td>
+      </tr>`;
+    })
     .join("\n");
-};
-
-const applyTemplate = (templateHtml, tokenMap, rowsHtml) => {
-  if (!templateHtml) return "";
-  let output = templateHtml.replace(/\{\{\s*lineItemsRows\s*\}\}/gi, rowsHtml);
-  output = output.replace(/\{\{\s*companyLogo\s*\}\}/gi, tokenMap.companyLogo || "");
-  Object.entries(tokenMap).forEach(([key, value]) => {
-    if (key === "companyLogo") return;
-    const pattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "gi");
-    output = output.replace(pattern, escapeHtml(value));
-  });
-
-  const printStyle =
-    "<style>@page{size:A4;margin:0;}@media print{html,body{margin:0!important;}}</style>";
-  if (/<\/head>/i.test(output)) {
-    output = output.replace(/<\/head>/i, `${printStyle}</head>`);
-  } else {
-    output = `${printStyle}${output}`;
-  }
-  return output;
 };
 
 export default function DailyOutstandingPrintPage() {
@@ -256,13 +239,25 @@ export default function DailyOutstandingPrintPage() {
     ]
   );
 
+  const pageOrientation = useMemo(
+    () => parsePageOrientation(templateHtml),
+    [templateHtml]
+  );
+  const pageSizeMm = useMemo(
+    () => getPageSizeMm(pageOrientation),
+    [pageOrientation]
+  );
+  const pageWidthCss =
+    pageOrientation === PAGE_ORIENTATION.LANDSCAPE ? "297mm" : "210mm";
+
   const finalHtml = useMemo(() => {
     if (!templateHtml || !breakdown) return "";
-    return applyTemplate(
-      templateHtml,
-      tokenMap,
-      buildLineItemsRows(breakdown?.customers ?? [])
-    );
+    const customerRows = breakdown.customers ?? [];
+    const lineTokenMaps = customerRows.map(buildOutstandingLineTokenMap);
+    return applyTemplate(templateHtml, tokenMap, buildLineItemsRows(customerRows), {
+      lineTokenMaps,
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
   }, [templateHtml, breakdown, tokenMap]);
 
   const resizeIframe = () => {
@@ -304,9 +299,13 @@ export default function DailyOutstandingPrintPage() {
         logging: false,
         backgroundColor: "#ffffff",
       });
-      const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-      const pageWidthMm = 210;
-      const pageHeightMm = 297;
+      const pdf = new jsPDF({
+        unit: "mm",
+        format: "a4",
+        orientation: pageOrientation,
+      });
+      const pageWidthMm = pageSizeMm.widthMm;
+      const pageHeightMm = pageSizeMm.heightMm;
       const pxPerMm = canvas.width / pageWidthMm;
       const pageHeightPx = Math.floor(pageHeightMm * pxPerMm);
       let renderedHeight = 0;
@@ -366,7 +365,7 @@ export default function DailyOutstandingPrintPage() {
         <Box
           sx={{
             width: "100%",
-            maxWidth: "900px",
+            maxWidth: pageOrientation === PAGE_ORIENTATION.LANDSCAPE ? "1200px" : "900px",
             backgroundColor: "white",
             borderRadius: 2,
             boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
@@ -403,7 +402,7 @@ export default function DailyOutstandingPrintPage() {
             >
               Print
             </Button>
-            <Button
+            {/* <Button
               variant="outlined"
               startIcon={<PictureAsPdfIcon />}
               onClick={handleDownloadPDF}
@@ -411,7 +410,7 @@ export default function DailyOutstandingPrintPage() {
               disabled={!finalHtml}
             >
               Download PDF
-            </Button>
+            </Button> */}
           </Box>
 
           <Box mb={5}>
@@ -429,7 +428,7 @@ export default function DailyOutstandingPrintPage() {
                 srcDoc={finalHtml}
                 onLoad={handleIframeLoad}
                 sx={{
-                  width: { xs: "100%", sm: "210mm" },
+                  width: { xs: "100%", sm: pageWidthCss },
                   maxWidth: "100%",
                   height: `${iframeHeight}px`,
                   margin: "0 auto",

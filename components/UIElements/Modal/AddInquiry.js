@@ -74,8 +74,9 @@ export default function AddInquiry({ fetchItems, type }) {
   };
 
   useEffect(() => {
+    if (!open) return;
     fetchCustomers();
-  }, []);
+  }, [open]);
 
   const handleSubmit = (values) => {
     const token = localStorage.getItem("token");

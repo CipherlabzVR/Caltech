@@ -23,8 +23,7 @@ import {
   Pagination,
   Select,
   Tooltip,
-  Typography,
-} from "@mui/material";
+  Typography } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { ToastContainer, toast } from "react-toastify";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
@@ -58,7 +57,11 @@ export default function Templates() {
     setPageSize,
     setSearch,
     fetchData: fetchTemplates,
-  } = usePaginatedFetch(
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch(
     `hr/templates`,
     "",
     10,
@@ -67,11 +70,7 @@ export default function Templates() {
     orgId ? `OrgId=${orgId}` : ""
   );
 
-  const handleSearchChange = (e) => {
-    setSearch(e.target.value);
-    setPage(1);
-    fetchTemplates(1, e.target.value, pageSize);
-  };
+
 
   const handleTypeFilterChange = (e) => {
     const val = e.target.value === "All" ? "" : e.target.value;
@@ -86,17 +85,9 @@ export default function Templates() {
     fetchTemplates(1, search, pageSize, extra);
   };
 
-  const handlePageChange = (_, value) => {
-    setPage(value);
-    fetchTemplates(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (e) => {
-    const size = e.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchTemplates(1, search, size);
-  };
+
+
 
   const refresh = () => {
     setPage(1);

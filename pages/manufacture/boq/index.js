@@ -35,27 +35,19 @@ export default function BillOfQuantities() {
     setPageSize,
     setSearch,
     fetchData: fetchBOQList,
-  } = usePaginatedFetch("BillOfQuantity/GetAllBillOfQuantities");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("BillOfQuantity/GetAllBillOfQuantities");
 
   const controller = "BillOfQuantity/DeleteBillOfQuantity";
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchBOQList(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchBOQList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchBOQList(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;
@@ -63,15 +55,13 @@ export default function BillOfQuantities() {
 
   const navigateToCreate = () => {
     router.push({
-      pathname: "/manufacture/boq/create",
-    });
+      pathname: "/manufacture/boq/create" });
   };
 
   const navigateToEdit = (id) => {
     router.push({
       pathname: `/manufacture/boq/edit`,
-      query: { id: id },
-    });
+      query: { id: id } });
   };
 
   return (

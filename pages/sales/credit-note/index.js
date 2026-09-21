@@ -24,8 +24,7 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Box,
-} from "@mui/material";
+  Box } from "@mui/material";
 import Link from "next/link";
 import styles from "@/styles/PageTitle.module.css";
 import { toast, ToastContainer } from "react-toastify";
@@ -72,6 +71,9 @@ const CNN = () => {
     setPageSize,
     setSearch,
     fetchData: fetchCCNList,
+    handleSearchChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
   } = usePaginatedFetch("CreditNote/GetAllCreditNotePage", "", 10, false, false);
 
   const {
@@ -84,13 +86,14 @@ const CNN = () => {
     setPageSize: setOverpayPageSize,
     setSearch: setOverpaySearch,
     fetchData: fetchOverpayList,
+    handleSearchChange: handleOverpaySearchChange,
+    handleChangePage: handleOverpayChangePage,
+    handleChangeRowsPerPage: handleOverpayChangeRowsPerPage,
   } = usePaginatedFetch("CreditNote/GetPendingOverpayments", "", 10, false, false);
-
   const openNotePrintPopup = (item) => {
     const query = new URLSearchParams({
       id: String(item.id ?? ""),
-      documentNumber: item.documentNo ?? "",
-    });
+      documentNumber: item.documentNo ?? "" });
 
     window.open(
       `/sales/credit-note/print?${query.toString()}`,
@@ -105,45 +108,20 @@ const CNN = () => {
       return;
     }
     router.push({
-      pathname: "/sales/credit-note/create-credit-note",
-    });
+      pathname: "/sales/credit-note/create-credit-note" });
   };
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    fetchCCNList(1, event.target.value, pageSize);
-    setPage(1);
-  };
 
-  const handleChangePage = (event, value) => {
-    setPage(value);
-    fetchCCNList(value, search, pageSize);
-  };
 
-  const handleChangeRowsPerPage = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchCCNList(1, search, size);
-  };
 
-  const handleOverpaySearchChange = (event) => {
-    setOverpaySearch(event.target.value);
-    fetchOverpayList(1, event.target.value, overpayPageSize);
-    setOverpayPage(1);
-  };
 
-  const handleOverpayChangePage = (event, value) => {
-    setOverpayPage(value);
-    fetchOverpayList(value, overpaySearch, overpayPageSize);
-  };
 
-  const handleOverpayChangeRowsPerPage = (event) => {
-    const size = event.target.value;
-    setOverpayPageSize(size);
-    setOverpayPage(1);
-    fetchOverpayList(1, overpaySearch, size);
-  };
+
+
+
+
+
+
 
   const openApplyDialog = async (overpayment) => {
     setSelectedOverpayment(overpayment);
@@ -158,9 +136,7 @@ const CNN = () => {
           method: "GET",
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
+            "Content-Type": "application/json" } }
       );
       if (response.ok) {
         const json = await response.json();
@@ -204,8 +180,7 @@ const CNN = () => {
       .map((inv) => ({
         InvoiceId: inv.invoiceId,
         InvoiceNumber: inv.invoiceNumber,
-        Amount: parseFloat(allocations[inv.invoiceId] || 0),
-      }))
+        Amount: parseFloat(allocations[inv.invoiceId] || 0) }))
       .filter((l) => l.Amount > 0);
 
     if (lines.length === 0) {
@@ -231,8 +206,7 @@ const CNN = () => {
       OverpaymentId: selectedOverpayment.id,
       Date: new Date().toISOString(),
       Remark: "",
-      Allocations: lines,
-    };
+      Allocations: lines };
 
     try {
       setApplySubmitting(true);
@@ -240,10 +214,8 @@ const CNN = () => {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+          "Content-Type": "application/json" },
+        body: JSON.stringify(payload) });
 
       const json = await response.json();
       if (response.ok) {

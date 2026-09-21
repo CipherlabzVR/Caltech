@@ -20,8 +20,7 @@ import {
   Tooltip,
   Typography,
   IconButton,
-  Chip,
-} from "@mui/material";
+  Chip } from "@mui/material";
 import { ToastContainer } from "react-toastify";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
@@ -47,27 +46,19 @@ export default function Recipes() {
     setPageSize,
     setSearch,
     fetchData: fetchRecipeList,
-  } = usePaginatedFetch("Recipe/GetAllRecipes");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Recipe/GetAllRecipes");
 
   const controller = "Recipe/DeleteRecipe";
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchRecipeList(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchRecipeList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchRecipeList(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;

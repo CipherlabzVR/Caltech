@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import Grid from "@mui/material/Grid";
 import Typography from "@mui/material/Typography";
 import Link from "next/link";
@@ -13,6 +14,7 @@ import DeleteUserConfirmationById from "@/components/UIElements/Modal/DeleteUser
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import SendIcon from "@mui/icons-material/Send";
+import LockResetIcon from "@mui/icons-material/LockReset";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
@@ -28,10 +30,14 @@ export default function Users() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedUserType, setSelectedUserType] = useState("internal");
+  const [selectedUserType, setSelectedUserType] = useState("all");
+  const [userTypes, setUserTypes] = useState([]);
   const [isVerificationDialogOpen, setIsVerificationDialogOpen] = useState(false);
   const [selectedUserForVerification, setSelectedUserForVerification] = useState(null);
   const [verificationLoading, setVerificationLoading] = useState(false);
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [selectedUserForReset, setSelectedUserForReset] = useState(null);
+  const [resetLoading, setResetLoading] = useState(false);
 
   const fetchUsers = async (
     currentPage = page,
@@ -88,6 +94,23 @@ export default function Users() {
     }
   };
 
+  const fetchUserTypes = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}/User/GetAllUserTypes`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) throw new Error("Failed to fetch user types");
+      const data = await response.json();
+      setUserTypes(Array.isArray(data) ? data : data?.result || []);
+    } catch (error) {
+      console.error("Error fetching user types:", error);
+    }
+  };
+
   useEffect(() => {
     if (warehouseList) {
       const warehouseMap = warehouseList.reduce((acc, warehouse) => {
@@ -100,22 +123,35 @@ export default function Users() {
 
   useEffect(() => {
     fetchRolesList();
+    fetchUserTypes();
   }, []);
 
   useEffect(() => {
     fetchUsers(page, searchTerm, rowsPerPage, selectedUserType);
   }, [page, rowsPerPage, searchTerm, selectedUserType]);
 
-  const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
-  };
 
-  const handleSearchChange = (event) => {
-    setSearchTerm(event.target.value);
-    setPage(0);
-  };
 
+
+
+
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: rowsPerPage,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize: setRowsPerPage,
+    onSearchValueChange: setSearchTerm,
+    zeroBasedPage: true,
+    onFetch: () => {},
+  });
   const handleUserTypeFilterChange = (event) => {
     setSelectedUserType(event.target.value);
     setPage(0);
@@ -168,6 +204,47 @@ export default function Users() {
       toast.error(error.message || "Unable to send verification email");
     } finally {
       setVerificationLoading(false);
+    }
+  };
+
+  const handleResetPasswordClick = (user) => {
+    setSelectedUserForReset(user);
+    setIsResetDialogOpen(true);
+  };
+
+  const handleCloseResetDialog = () => {
+    setIsResetDialogOpen(false);
+    setSelectedUserForReset(null);
+  };
+
+  const handleConfirmResetPassword = async () => {
+    if (!selectedUserForReset?.id) {
+      toast.error("Unable to reset password for this user.");
+      return;
+    }
+
+    try {
+      setResetLoading(true);
+      const response = await fetch(
+        `${BASE_URL}/User/ResetUserPasswordToDefault?userId=${selectedUserForReset.id}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      const data = await response.json().catch(() => null);
+      if (!response.ok || (data?.statusCode && data.statusCode !== "SUCCESS" && data.statusCode !== 200)) {
+        throw new Error(data?.message || "Failed to reset password");
+      }
+      toast.success(data?.message || "Password reset to the default password.");
+      handleCloseResetDialog();
+    } catch (error) {
+      toast.error(error.message || "Unable to reset password");
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -232,6 +309,11 @@ export default function Users() {
               <MenuItem value="all">All</MenuItem>
               <MenuItem value="internal">Internal</MenuItem>
               <MenuItem value="external">External</MenuItem>
+              {userTypes.map((type) => (
+                <MenuItem key={type.id ?? type.value} value={String(type.id ?? type.value)}>
+                  {type.name ?? type.label ?? type.displayName}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
         </Grid>
@@ -319,16 +401,30 @@ export default function Users() {
                             roles={roles}
                             warehouses={warehouseList}
                           /> : ""}
-                          <Tooltip title="Send Verification">
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              aria-label="send verification"
-                              onClick={() => handleSendVerificationClick(user)}
-                            >
-                              <SendIcon fontSize="inherit" />
-                            </IconButton>
-                          </Tooltip>
+                          {update ? (
+                            <Tooltip title="Reset password to default">
+                              <IconButton
+                                size="small"
+                                color="warning"
+                                aria-label="reset password"
+                                onClick={() => handleResetPasswordClick(user)}
+                              >
+                                <LockResetIcon fontSize="inherit" />
+                              </IconButton>
+                            </Tooltip>
+                          ) : null}
+                          {user.isEmailVerified !== true ? (
+                            <Tooltip title="Send Verification">
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                aria-label="send verification"
+                                onClick={() => handleSendVerificationClick(user)}
+                              >
+                                <SendIcon fontSize="inherit" />
+                              </IconButton>
+                            </Tooltip>
+                          ) : null}
                           {remove ? <DeleteUserConfirmationById
                             id={user.id}
                             controller={controller}
@@ -345,7 +441,7 @@ export default function Users() {
               <Pagination
                 count={Math.max(1, Math.ceil(totalCount / rowsPerPage))}
                 page={page + 1}
-                onChange={(_, value) => setPage(value - 1)}
+                onChange={handlePageChange}
                 color="primary"
                 shape="rounded"
               />
@@ -361,6 +457,30 @@ export default function Users() {
           </TableContainer>
         </Grid>
       </Grid>
+
+      <Dialog open={isResetDialogOpen} onClose={handleCloseResetDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>Reset Password</DialogTitle>
+        <DialogContent dividers>
+          <DialogContentText>
+            Reset the password for{" "}
+            <strong>
+              {selectedUserForReset
+                ? selectedUserForReset.userName ||
+                  `${selectedUserForReset.firstName || ""} ${selectedUserForReset.lastName || ""}`.trim()
+                : "this user"}
+            </strong>{" "}
+            to the Internal User Default Password setting?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseResetDialog} color="inherit" disabled={resetLoading}>
+            Cancel
+          </Button>
+          <Button onClick={handleConfirmResetPassword} color="warning" variant="contained" disabled={resetLoading}>
+            {resetLoading ? "Resetting..." : "Reset"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={isVerificationDialogOpen} onClose={handleCloseVerificationDialog} maxWidth="xs" fullWidth>
         <DialogTitle>Send Verification Email</DialogTitle>

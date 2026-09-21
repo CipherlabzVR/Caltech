@@ -39,8 +39,7 @@ const STATUS_META = {
   2: { label: "Closed", color: "default" },
   3: { label: "In Progress", color: "info" },
   4: { label: "Completed", color: "success" },
-  5: { label: "Cancelled", color: "error" },
-};
+  5: { label: "Cancelled", color: "error" } };
 
 export default function ProjectsList() {
   useEffect(() => {
@@ -60,16 +59,18 @@ export default function ProjectsList() {
     setPageSize,
     setSearch,
     fetchData: fetchProjects,
-  } = usePaginatedFetch("Project/GetAllProjectsPaged", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("Project/GetAllProjectsPaged", "", 10, false, false);
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [selectedProject, setSelectedProject] = React.useState(null);
   const [deleteLoading, setDeleteLoading] = React.useState(false);
   const [createModalOpen, setCreateModalOpen] = React.useState(false);
   const [editModalOpen, setEditModalOpen] = React.useState(false);
-  const [editProject, setEditProject] = React.useState(null);
-
-  const handleDeleteClick = (project) => {
+  const [editProject, setEditProject] = React.useState(null);  const handleDeleteClick = (project) => {
     setSelectedProject(project);
     setIsDeleteDialogOpen(true);
   };
@@ -91,9 +92,7 @@ export default function ProjectsList() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
@@ -111,24 +110,11 @@ export default function ProjectsList() {
     }
   };
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchProjects(1, value, pageSize, false);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchProjects(value, search, pageSize, false);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchProjects(1, search, size, false);
-  };
+
+
+
 
   const handleProjectCreated = () => {
     setPage(1);

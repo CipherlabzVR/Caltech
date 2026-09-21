@@ -12,24 +12,19 @@ import "react-toastify/dist/ReactToastify.css";
 import useLoggedUserCompanyLetterhead from "@/hooks/useLoggedUserCompanyLetterhead";
 import PrintCompanyLogo from "@/components/UIElements/Print/PrintCompanyLogo";
 import PrintPoweredByFooter from "@/components/UIElements/Print/PrintPoweredByFooter";
+import { applyTemplate, escapeHtml } from "@/components/ReportTemplate/applyTemplate";
+import { EMPTY_LINE_ITEMS_HTML } from "@/components/ReportTemplate/lineItemsEditor";
+import {
+  getPageSizeMm,
+  PAGE_ORIENTATION,
+  parsePageOrientation,
+} from "@/components/ReportTemplate/pageOrientation";
 
 const FIRST_PAGE_ROW_LIMIT = 8;
 const NEXT_PAGE_ROW_LIMIT = 14;
 
 // Customizable HTML template key (managed under Report Template > Sales > Sales Order Print Template).
 const REPORT_KEY = "SALESORDER";
-
-const escapeHtml = (value) => {
-  if (value === null || value === undefined) {
-    return "";
-  }
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-};
 
 const formatDisplayDate = (value) => {
   if (!value) {
@@ -66,51 +61,29 @@ const formatQty = (value) => {
     : numericValue.toFixed(2);
 };
 
-// Builds one <tr> per sales order line for the customizable HTML template:
-// Product | Code | Qty | Unit Price | Line Total
+const buildSalesOrderLineTokenMap = (item) => ({
+  productName: item.productName || "-",
+  productCode: item.productCode || "-",
+  qty: formatQty(item.qty),
+  unitPrice: formatAmount(item.unitPrice),
+  lineTotal: formatAmount(item.lineTotal),
+});
+
+// Legacy fallback for templates still using {{lineItemsRows}}.
 const buildLineItemsRows = (items) => {
-  if (!items || items.length === 0) {
-    return `<tr><td colspan="5" style="text-align:center;padding:16px;">No items available</td></tr>`;
-  }
-
+  if (!items || items.length === 0) return EMPTY_LINE_ITEMS_HTML;
   return items
-    .map(
-      (item) => `<tr>
-        <td>${escapeHtml(item.productName || "-")}</td>
-        <td>${escapeHtml(item.productCode || "-")}</td>
-        <td class="num">${escapeHtml(formatQty(item.qty))}</td>
-        <td class="num">${escapeHtml(formatAmount(item.unitPrice))}</td>
-        <td class="num">${escapeHtml(formatAmount(item.lineTotal))}</td>
-      </tr>`
-    )
+    .map((item) => {
+      const t = buildSalesOrderLineTokenMap(item);
+      return `<tr>
+        <td>${escapeHtml(t.productName)}</td>
+        <td>${escapeHtml(t.productCode)}</td>
+        <td class="num">${escapeHtml(t.qty)}</td>
+        <td class="num">${escapeHtml(t.unitPrice)}</td>
+        <td class="num">${escapeHtml(t.lineTotal)}</td>
+      </tr>`;
+    })
     .join("\n");
-};
-
-const applyTemplate = (templateHtml, tokenMap, rowsHtml) => {
-  if (!templateHtml) {
-    return "";
-  }
-
-  let output = templateHtml.replace(/\{\{\s*lineItemsRows\s*\}\}/gi, rowsHtml);
-  output = output.replace(/\{\{\s*companyLogo\s*\}\}/gi, tokenMap.companyLogo || "");
-
-  Object.entries(tokenMap).forEach(([key, value]) => {
-    if (key === "companyLogo") {
-      return;
-    }
-    const pattern = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "gi");
-    output = output.replace(pattern, escapeHtml(value));
-  });
-
-  const printStyle =
-    '<style>@page{size:A4;margin:0;}@media print{html,body{margin:0!important;}}</style>';
-  if (/<\/head>/i.test(output)) {
-    output = output.replace(/<\/head>/i, `${printStyle}</head>`);
-  } else {
-    output = `${printStyle}${output}`;
-  }
-
-  return output;
 };
 
 export default function SalesOrderPrintPage() {
@@ -369,11 +342,29 @@ export default function SalesOrderPrintPage() {
     ]
   );
 
+  const pageOrientation = useMemo(
+    () =>
+      isTemplateCustomized && templateHtml
+        ? parsePageOrientation(templateHtml)
+        : PAGE_ORIENTATION.PORTRAIT,
+    [isTemplateCustomized, templateHtml]
+  );
+  const pageSizeMm = useMemo(
+    () => getPageSizeMm(pageOrientation),
+    [pageOrientation]
+  );
+  const pageWidthCss =
+    pageOrientation === PAGE_ORIENTATION.LANDSCAPE ? "297mm" : "210mm";
+
   const finalHtml = useMemo(() => {
     if (!isTemplateCustomized || !templateHtml || !salesOrderData) {
       return "";
     }
-    return applyTemplate(templateHtml, tokenMap, buildLineItemsRows(lineItems));
+    const lineTokenMaps = lineItems.map(buildSalesOrderLineTokenMap);
+    return applyTemplate(templateHtml, tokenMap, buildLineItemsRows(lineItems), {
+      lineTokenMaps,
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
   }, [isTemplateCustomized, templateHtml, salesOrderData, tokenMap, lineItems]);
 
   const usingCustomTemplate = Boolean(finalHtml);
@@ -434,9 +425,13 @@ export default function SalesOrderPrintPage() {
         backgroundColor: "#ffffff",
       });
 
-      const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-      const pageWidthMm = 210;
-      const pageHeightMm = 297;
+      const pdf = new jsPDF({
+        unit: "mm",
+        format: "a4",
+        orientation: pageOrientation,
+      });
+      const pageWidthMm = pageSizeMm.widthMm;
+      const pageHeightMm = pageSizeMm.heightMm;
       const pxPerMm = canvas.width / pageWidthMm;
       const pageHeightPx = Math.floor(pageHeightMm * pxPerMm);
 
@@ -735,7 +730,11 @@ export default function SalesOrderPrintPage() {
       <Box
         sx={{
           width: "100%",
-          maxWidth: "900px",
+          maxWidth: usingCustomTemplate
+            ? pageOrientation === PAGE_ORIENTATION.LANDSCAPE
+              ? "1200px"
+              : "900px"
+            : "900px",
           backgroundColor: "white",
           borderRadius: 2,
           boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
@@ -772,9 +771,9 @@ export default function SalesOrderPrintPage() {
               <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint} sx={{ textTransform: "none" }}>
                 Print
               </Button>
-              <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleDownloadPDF} sx={{ textTransform: "none" }}>
+              {/* <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleDownloadPDF} sx={{ textTransform: "none" }}>
                 Download PDF
-              </Button>
+              </Button> */}
             </Box>
           </Box>
         </Box>
@@ -806,7 +805,7 @@ export default function SalesOrderPrintPage() {
                 srcDoc={finalHtml}
                 onLoad={handleIframeLoad}
                 sx={{
-                  width: { xs: "100%", sm: "210mm" },
+                  width: { xs: "100%", sm: pageWidthCss },
                   maxWidth: "100%",
                   height: `${iframeHeight}px`,
                   margin: "0 auto",

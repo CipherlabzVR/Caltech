@@ -20,6 +20,7 @@ import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import DeleteDayEndConfirmation from "./DeleteDayEndConfirmation";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 
 export default function DayEnd() {
   const cId = sessionStorage.getItem("category")
@@ -33,25 +34,6 @@ export default function DayEnd() {
 
   const dataColumnCount = 13 + (showCashInvoiceTotalsInShiftAndDayend ? 2 : 0);
   const tableColumnCount = dataColumnCount + 1;
-
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchDayEndList(1, value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchDayEndList(value, searchTerm, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchDayEndList(1, searchTerm, newSize);
-  };
 
   const fetchDayEndList = async (page = 1, search = "", size = pageSize) => {
     try {
@@ -77,6 +59,21 @@ export default function DayEnd() {
       console.error("Error:", error);
     }
   };
+
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: fetchDayEndList,
+  });
 
   useEffect(() => {
     fetchDayEndList();

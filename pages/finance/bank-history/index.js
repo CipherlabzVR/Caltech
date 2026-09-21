@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -39,24 +40,11 @@ export default function BankHistory() {
     }
   }, [bankList]);
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchBankHistory(1, value, pageSize, bankId);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchBankHistory(value, searchTerm, pageSize, bankId);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchBankHistory(1, searchTerm, newSize, bankId);
-  };
+
+
+
 
   const fetchBankHistory = async (page = 1, search = "", size = pageSize, bankId) => {
     try {
@@ -79,6 +67,23 @@ export default function BankHistory() {
       console.error("Error:", error);
     }
   };
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize: setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: (p, s, sz) => fetchBankHistory(p, s, sz, bankId),
+  });
+
 
   useEffect(() => {
     //fetchBankHistory();

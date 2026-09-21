@@ -9,6 +9,7 @@ import TemplatePrintFrame from "@/components/ReportTemplate/TemplatePrintFrame";
 import useReportTemplate from "@/components/ReportTemplate/useReportTemplate";
 import useTemplateLetterhead from "@/components/ReportTemplate/useTemplateLetterhead";
 import { applyTemplate, escapeHtml } from "@/components/ReportTemplate/applyTemplate";
+import { EMPTY_LINE_ITEMS_HTML } from "@/components/ReportTemplate/lineItemsEditor";
 
 const REPORT_KEY = "SALESRETURN";
 
@@ -20,24 +21,36 @@ const authHeaders = () => ({
 const buildCustomerAddress = (record) =>
   [record?.addressLine1, record?.addressLine2, record?.addressLine3].filter(Boolean).join(", ") || "—";
 
+const buildSalesReturnLineTokenMap = (row, index) => ({
+  rowNum: String(index + 1),
+  productCode: row.productCode ?? "—",
+  productName: row.productName ?? "—",
+  invQty: row.invoiceQuantity ?? "—",
+  returnQty: row.returnQuntity ?? row.returnQuantity ?? "—",
+  unitPrice: formatCurrency(row.soldUnitPrice),
+  returnAmount: formatCurrency(row.returnAmount),
+  reason: row.reason || "—",
+});
+
 const buildLineRows = (lines) => {
   if (!lines || lines.length === 0) {
-    return `<tr><td colspan="8" style="text-align:center;padding:16px;">No return line items.</td></tr>`;
+    return EMPTY_LINE_ITEMS_HTML;
   }
 
   return lines
-    .map(
-      (row, idx) => `<tr>
-        <td>${idx + 1}</td>
-        <td>${escapeHtml(row.productCode ?? "—")}</td>
-        <td>${escapeHtml(row.productName ?? "—")}</td>
-        <td class="num">${escapeHtml(row.invoiceQuantity ?? "—")}</td>
-        <td class="num">${escapeHtml(row.returnQuntity ?? row.returnQuantity ?? "—")}</td>
-        <td class="num">${escapeHtml(formatCurrency(row.soldUnitPrice))}</td>
-        <td class="num">${escapeHtml(formatCurrency(row.returnAmount))}</td>
-        <td>${escapeHtml(row.reason || "—")}</td>
-      </tr>`
-    )
+    .map((row, idx) => {
+      const t = buildSalesReturnLineTokenMap(row, idx);
+      return `<tr>
+        <td>${escapeHtml(t.rowNum)}</td>
+        <td>${escapeHtml(t.productCode)}</td>
+        <td>${escapeHtml(t.productName)}</td>
+        <td class="num">${escapeHtml(t.invQty)}</td>
+        <td class="num">${escapeHtml(t.returnQty)}</td>
+        <td class="num">${escapeHtml(t.unitPrice)}</td>
+        <td class="num">${escapeHtml(t.returnAmount)}</td>
+        <td>${escapeHtml(t.reason)}</td>
+      </tr>`;
+    })
     .join("\n");
 };
 
@@ -106,7 +119,11 @@ export default function SalesReturnPrintPage() {
 
   const finalHtml = useMemo(() => {
     if (!templateHtml || !salesReturn) return "";
-    return applyTemplate(templateHtml, tokenMap, buildLineRows(lines));
+    const lineTokenMaps = lines.map(buildSalesReturnLineTokenMap);
+    return applyTemplate(templateHtml, tokenMap, buildLineRows(lines), {
+      lineTokenMaps,
+      emptyLineItemsHtml: EMPTY_LINE_ITEMS_HTML,
+    });
   }, [templateHtml, salesReturn, tokenMap, lines]);
 
   const isLoading = loadingSalesReturn || loadingTemplate;

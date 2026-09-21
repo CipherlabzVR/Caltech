@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -53,42 +54,11 @@ export default function PendingQuotation() {
     });
   };
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearchTerm(value);
-    setPage(1);
-    fetchQuotationList(1, value, pageSize);
-    
-    // Update URL with keyword parameter
-    const query = { ...router.query };
-    if (value && value.trim()) {
-      query.keyword = value.trim();
-    } else {
-      delete query.keyword;
-    }
-    router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchQuotationList(value, searchTerm, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const newSize = event.target.value;
-    setPageSize(newSize);
-    setPage(1);
-    fetchQuotationList(1, searchTerm, newSize);
-    
-    // Update URL with pageSize parameter
-    const query = { ...router.query };
-    if (newSize && newSize !== 10) {
-      query.pageSize = newSize;
-    } else {
-      delete query.pageSize;
-    }
-    router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
-  };
+
+
+
 
   const fetchQuotationList = async (page = 1, search = "", size = pageSize) => {
     try {
@@ -115,6 +85,23 @@ export default function PendingQuotation() {
       console.error("Error:", error);
     }
   };
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: pageSize,
+    totalCount,
+    search: searchTerm,
+    setPage,
+    setPageSize: setPageSize,
+    onSearchValueChange: setSearchTerm,
+    onFetch: fetchQuotationList,
+  });
+
 
   useEffect(() => {
     // Read pageSize and keyword from URL query parameters

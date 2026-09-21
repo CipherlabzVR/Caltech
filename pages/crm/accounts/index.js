@@ -42,7 +42,11 @@ export default function AccountsList() {
     setPageSize,
     setSearch,
     fetchData: fetchAccounts,
-  } = usePaginatedFetch("CRMAccounts/GetAllCRMAccounts", "", 10, false, false);
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("CRMAccounts/GetAllCRMAccounts", "", 10, false, false);
   const { accountTypes } = useAccountTypes();
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
@@ -67,24 +71,11 @@ export default function AccountsList() {
     [fetchAccounts, page, pageSize, search]
   );
 
-  const handleSearchChange = (event) => {
-    const value = event.target.value;
-    setSearch(value);
-    setPage(1);
-    fetchAccounts(1, value, pageSize, false);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchAccounts(value, search, pageSize, false);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = Number(event.target.value);
-    setPageSize(size);
-    setPage(1);
-    fetchAccounts(1, search, size, false);
-  };
+
+
+
 
   const handleDeleteClick = (account) => {
     setSelectedAccount(account);
@@ -108,9 +99,7 @@ export default function AccountsList() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
 
       const data = await response.json().catch(() => null);
 
@@ -158,9 +147,7 @@ export default function AccountsList() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
 
       const data = await response.json().catch(() => null);
 
@@ -252,8 +239,7 @@ export default function AccountsList() {
                                 sx={{
                                   height: 20,
                                   fontSize: "0.7rem",
-                                  fontWeight: 600,
-                                }}
+                                  fontWeight: 600 }}
                               />
                             ) : null}
                           </Box>

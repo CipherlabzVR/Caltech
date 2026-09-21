@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -33,32 +33,11 @@ export default function Employees() {
     setPage,
     setPageSize,
     setSearch,
-    fetchData: fetchEmployeeList,
-  } =  usePaginatedFetch("Employee/GetAllEmployeesByPagedResult");
+    fetchData: fetchEmployeeList } =  usePaginatedFetch("Employee/GetAllEmployeesByPagedResult");
   const rows = employeeList?.result || [];
 
 
-  const controller = "Employee/DeleteEmployees";
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchEmployeeList(1, event.target.value, pageSize);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchEmployeeList(value, search, pageSize);
-  };
-
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchEmployeeList(1, search, size);
-  };
-
-  if (!navigate) {
+  const controller = "Employee/DeleteEmployees";  if (!navigate) {
     return <AccessDenied />;
   }
 

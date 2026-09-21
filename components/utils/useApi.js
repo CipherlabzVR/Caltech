@@ -1,6 +1,13 @@
 import BASE_URL from 'Base/api';
 import { useState, useEffect } from 'react';
 
+const withFrontendOrigin = (headers = {}) => {
+  if (typeof window === "undefined") return headers;
+  const origin = window.location?.origin || "";
+  if (!origin) return headers;
+  return { ...headers, "X-Frontend-Origin": origin };
+};
+
 const useApi = (url) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -13,10 +20,10 @@ const useApi = (url) => {
       try {
         const response = await fetch(`${BASE_URL}${url}`, {
           method: 'GET',
-          headers: {
+          headers: withFrontendOrigin({
             Authorization: `Bearer ${localStorage.getItem('token')}`,
             'Content-Type': 'application/json',
-          },
+          }),
         });
 
         if (!response.ok) {

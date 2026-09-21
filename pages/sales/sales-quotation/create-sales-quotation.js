@@ -352,7 +352,7 @@ const CreateSalesQuotation = () => {
   }, [loadedQuotation, salesPersonList]);
 
   const navigateToBack = () => {
-    router.push({ pathname: "/sales/sales-quotation" });
+    router.back();
   };
 
   const handleAddItem = (item) => {

@@ -377,13 +377,18 @@ function getStopEntryFeeLines(stop) {
     .filter((f) => f && (f.location || f.Location || Number(f.perPersonFee ?? f.PerPersonFee) > 0))
     .map((f) => {
       const perPersonFee = Number(f.perPersonFee ?? f.PerPersonFee) || 0;
+      const perChildFeeRaw = f.perChildFee ?? f.PerChildFee;
+      const perChildFee =
+        perChildFeeRaw != null && perChildFeeRaw !== "" ? Number(perChildFeeRaw) : null;
+      const adultCount = Math.max(0, Math.round(Number(f.adultCount ?? f.AdultCount) || 0));
+      const childCount = Math.max(0, Math.round(Number(f.childCount ?? f.ChildCount) || 0));
       const personCount = Math.max(1, Math.round(Number(f.personCount ?? f.PersonCount) || 1));
       const subtotal =
         Number(f.subtotal ?? f.Subtotal) > 0
           ? Number(f.subtotal ?? f.Subtotal)
           : perPersonFee * personCount;
       const location = String(f.location ?? f.Location ?? "Entry fee").trim() || "Entry fee";
-      return { location, perPersonFee, personCount, subtotal };
+      return { location, perPersonFee, perChildFee, adultCount, childCount, personCount, subtotal };
     })
     .filter((f) => f.perPersonFee > 0 || f.subtotal > 0);
 }
@@ -1134,8 +1139,9 @@ function CustomPlanSummaryCard({ inquiry }) {
                               variant="caption"
                               sx={{ display: "block", color: "text.secondary" }}
                             >
-                              {line.location}: {line.personCount} person{line.personCount === 1 ? "" : "s"} ×{" "}
-                              {fmtMoney(line.perPersonFee)} = {fmtMoney(line.subtotal)}
+                              {line.childCount > 0
+                                ? `${line.adultCount} adult × ${fmtMoney(line.perPersonFee)} + ${line.childCount} child × ${fmtMoney(line.perChildFee ?? line.perPersonFee)} = ${fmtMoney(line.subtotal)}`
+                                : `${line.personCount} person${line.personCount === 1 ? "" : "s"} × ${fmtMoney(line.perPersonFee)} = ${fmtMoney(line.subtotal)}`}
                             </Typography>
                           ))}
                         </Box>

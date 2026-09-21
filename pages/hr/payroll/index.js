@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import {
@@ -206,20 +207,29 @@ const Payroll = () => {
     };
   }, [navigate, page, pageSize, search]);
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-  };
 
-  const handlePageSizeChange = (event) => {
-    setPageSize(event.target.value);
-    setPage(1);
-  };
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-  };
 
+
+
+
+
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage,
+  } = usePaginationHandlers({
+    page,
+    pageSize: pageSize,
+    totalCount,
+    search: search,
+    setPage,
+    setPageSize: setPageSize,
+    setSearch,
+    onFetch: () => {},
+  });
   const formatCurrency = (value) => {
     if (!value) return "0.00";
     const number = parseFloat(value);

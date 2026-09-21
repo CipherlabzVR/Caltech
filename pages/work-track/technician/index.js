@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import usePaginationHandlers from "@/components/hooks/usePaginationHandlers";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import styles from "@/styles/PageTitle.module.css";
@@ -62,6 +63,21 @@ export default function TechnicianWorkTrackList() {
   const [mapLocation, setMapLocation] = useState({ lat: null, lng: null });
   const [mapDialogTitle, setMapDialogTitle] = useState("");
 
+  const {
+    handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+  } = usePaginationHandlers({
+    page,
+    pageSize,
+    totalCount,
+    search,
+    setPage,
+    setPageSize,
+    setSearch,
+    onFetch: () => {},
+  });
+
   useEffect(() => {
     sessionStorage.setItem("category", "154"); // Work Track Technician
     const cId = sessionStorage.getItem("category");
@@ -90,12 +106,8 @@ export default function TechnicianWorkTrackList() {
 
         if (response.ok) {
           const result = await response.json();
-          const raw = result?.result?.result ?? result?.result ?? result?.data ?? [];
-          const data = Array.isArray(raw) ? raw : [];
-          const canNavigate = data.some((item) => {
-            const type = item.permissionType ?? item.PermissionType;
-            return Number(type) === 1;
-          });
+          const data = result?.result?.result || result?.result || result?.data || [];
+          const canNavigate = data.some(item => item.permissionType === 1);
           setHasPermission(canNavigate);
         }
       } catch (error) {
@@ -256,15 +268,6 @@ export default function TechnicianWorkTrackList() {
   if (!hasPermission) {
     return <AccessDenied />;
   }
-
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-  };
-
-  const handlePageChange = (event, value) => {
-    setPage(value);
-  };
 
   const handleViewClick = (workTrackDetail) => {
     router.push(`/work-track/technician/${workTrackDetail.id}`);

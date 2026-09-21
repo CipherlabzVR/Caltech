@@ -1,10 +1,15 @@
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import PrintIcon from "@mui/icons-material/Print";
 import { toast } from "react-toastify";
+import {
+  getPageSizeMm,
+  PAGE_ORIENTATION,
+  parsePageOrientation,
+} from "@/components/ReportTemplate/pageOrientation";
 
 /**
  * Renders a resolved HTML document (tokens already substituted) inside an A4
@@ -28,6 +33,16 @@ export default function TemplatePrintFrame({
 }) {
   const iframeRef = useRef(null);
   const [iframeHeight, setIframeHeight] = useState(1123);
+  const pageOrientation = useMemo(
+    () => parsePageOrientation(finalHtml),
+    [finalHtml]
+  );
+  const pageSizeMm = useMemo(
+    () => getPageSizeMm(pageOrientation),
+    [pageOrientation]
+  );
+  const pageWidthCss =
+    pageOrientation === PAGE_ORIENTATION.LANDSCAPE ? "297mm" : "210mm";
 
   const resizeIframe = () => {
     const iframe = iframeRef.current;
@@ -95,9 +110,13 @@ export default function TemplatePrintFrame({
         backgroundColor: "#ffffff",
       });
 
-      const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-      const pageWidthMm = 210;
-      const pageHeightMm = 297;
+      const pdf = new jsPDF({
+        unit: "mm",
+        format: "a4",
+        orientation: pageOrientation,
+      });
+      const pageWidthMm = pageSizeMm.widthMm;
+      const pageHeightMm = pageSizeMm.heightMm;
       const pxPerMm = canvas.width / pageWidthMm;
       const pageHeightPx = Math.floor(pageHeightMm * pxPerMm);
 
@@ -148,8 +167,8 @@ export default function TemplatePrintFrame({
   const placeholderBox = (content) => (
     <Box
       sx={{
-        width: { xs: "100%", sm: "210mm" },
-        minHeight: "297mm",
+        width: { xs: "100%", sm: pageWidthCss },
+        minHeight: pageOrientation === PAGE_ORIENTATION.LANDSCAPE ? "210mm" : "297mm",
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
@@ -176,7 +195,7 @@ export default function TemplatePrintFrame({
       <Box
         sx={{
           width: "100%",
-          maxWidth: "900px",
+          maxWidth: pageOrientation === PAGE_ORIENTATION.LANDSCAPE ? "1200px" : "900px",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -231,7 +250,7 @@ export default function TemplatePrintFrame({
               srcDoc={finalHtml}
               onLoad={handleIframeLoad}
               sx={{
-                width: { xs: "100%", sm: "210mm" },
+                width: { xs: "100%", sm: pageWidthCss },
                 maxWidth: "100%",
                 height: `${iframeHeight}px`,
                 border: "none",

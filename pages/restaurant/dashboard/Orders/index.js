@@ -31,8 +31,7 @@ export default function Orders({ searchText, onOrderClick }) {
         borderRadius: 2,
         p: 2,
         display: 'flex',
-        flexDirection: 'column',
-    };
+        flexDirection: 'column' };
 
     const {
         data: orderList,
@@ -43,7 +42,11 @@ export default function Orders({ searchText, onOrderClick }) {
         setPageSize,
         setSearch,
         fetchData: fetchOrderList,
-    } = usePaginatedFetch(`RestaurantPOS/GetAllOrdersByShiftAsync?type=${orderType}`);
+        handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch(`RestaurantPOS/GetAllOrdersByShiftAsync?type=${orderType}`);
 
     useEffect(() => {
         setPage(1);
@@ -57,17 +60,9 @@ export default function Orders({ searchText, onOrderClick }) {
         setOrderType(newPickup ? 1 : 2);
     };
 
-    const handlePageChange = (event, value) => {
-        setPage(value);
-        fetchOrderList(value, searchText, pageSize);
-    };
 
-    const handlePageSizeChange = (event) => {
-        const size = event.target.value;
-        setPageSize(size);
-        setPage(1);
-        fetchOrderList(1, searchText, size);
-    };
+
+
 
     const openPdfModal = (documentNumber, reportNameToUse) => {
         if (!documentNumber || !reportNameToUse) {
@@ -274,9 +269,7 @@ export default function Orders({ searchText, onOrderClick }) {
                 method: "POST",
                 headers: {
                     Authorization: `Bearer ${localStorage.getItem("token")}`,
-                    "Content-Type": "application/json",
-                },
-            });
+                    "Content-Type": "application/json" } });
             if (!response.ok) throw new Error("Failed to fetch");
             const data = await response.json();
             fetchOrderList();

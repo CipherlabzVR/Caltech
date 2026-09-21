@@ -1,4 +1,4 @@
-import React, { } from "react";
+import React from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -34,31 +34,21 @@ export default function MenuList() {
     setPageSize,
     setSearch,
     fetchData: fetchMenuList,
-  } = usePaginatedFetch("MenuList/GetAllMenuItems");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("MenuList/GetAllMenuItems");
 
-  const controller = "MenuList/DeleteMenuItem";
-
-  const navigateToViewImage = (url) => {
+  const controller = "MenuList/DeleteMenuItem";  const navigateToViewImage = (url) => {
     window.open(url, "_blank");
   };
 
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setPage(1);
-    fetchMenuList(1, event.target.value, pageSize);
-  };
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
-    fetchMenuList(value, search, pageSize);
-  };
 
-  const handlePageSizeChange = (event) => {
-    const size = event.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchMenuList(1, search, size);
-  };
+
+
+
 
   if (!navigate) {
     return <AccessDenied />;

@@ -26,8 +26,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
-} from "@mui/material";
+  DialogActions } from "@mui/material";
 import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import DescriptionIcon from "@mui/icons-material/Description";
@@ -75,25 +74,17 @@ export default function ServiceInvoiceList() {
     setSearch,
     setIsCurrentDate,
     fetchData,
-  } = usePaginatedFetch("ServiceInvoice/GetAll");
+      handleSearchChange,
+    handlePageChange,
+    handlePageSizeChange,
+    handleChangePage,
+    handleChangeRowsPerPage } = usePaginatedFetch("ServiceInvoice/GetAll");
 
-  const handleSearchChange = (e) => {
-    setSearch(e.target.value);
-    setPage(1);
-    fetchData(1, e.target.value, pageSize, isCurrentDate);
-  };
 
-  const handlePageChange = (_e, value) => {
-    setPage(value);
-    fetchData(value, search, pageSize, isCurrentDate);
-  };
 
-  const handlePageSizeChange = (e) => {
-    const size = e.target.value;
-    setPageSize(size);
-    setPage(1);
-    fetchData(1, search, size, isCurrentDate);
-  };
+
+
+
 
   // Format the customer's phone for a wa.me URL: keep digits only.
   // wa.me expects no leading + and no spaces/dashes.
@@ -125,8 +116,7 @@ export default function ServiceInvoiceList() {
   const openDefaultPrint = (inv) => {
     const query = new URLSearchParams({
       id: String(inv.id ?? ""),
-      documentNumber: inv.documentNo ?? "",
-    });
+      documentNumber: inv.documentNo ?? "" });
     window.open(
       `/service/service-invoice/print?${query.toString()}`,
       `service-invoice-print-${inv.id}`,
@@ -154,9 +144,7 @@ export default function ServiceInvoiceList() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
+          "Content-Type": "application/json" } });
       const j = await r.json();
       if (!r.ok || j?.statusCode === 0 || j?.statusCode === -99) {
         toast.error(j?.message || "Failed to cancel invoice.");

@@ -1,7 +1,6 @@
 import React, { useState } from "react";
-import { Button, Box, IconButton, Typography } from "@mui/material";
+import { Box, IconButton, Typography } from "@mui/material";
 import Link from "next/link";
-import AddInquiry from "@/components/UIElements/Modal/AddInquiry";
 import SummarizeIcon from "@mui/icons-material/Summarize";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 
@@ -30,9 +29,6 @@ const HidableButtons = () => {
           transition: "opacity 0.3s",
         }}
       >
-        <AddInquiry type={2}/>
-       
-
         {/* <Box sx={{ textAlign: "center", mt: 3 }}>
           <Link href="/quotations/pending-quotation">
             <IconButton

@@ -155,6 +155,66 @@ export default function EditSetting({ item, fetchItems }) {
                           }
                         />
                       )}
+                      <Field
+                        as={TextField}
+                        fullWidth
+                        size="small"
+                        name="Value"
+                        type={
+                          item.settingName === "IsBackDateEnabled"
+                            ? "datetime-local"
+                            : item.settingName === "AutoLogoutTimeMinutes"
+                            ? "number"
+                            : "text"
+                        }
+                        inputProps={
+                          item.settingName === "AutoLogoutTimeMinutes"
+                            ? {
+                                inputMode: "numeric",
+                                pattern: "\\d*",
+                                min: 1,
+                                max: 30,
+                                title: "Minutes with no activity before backoffice logs out (1–30).",
+                              }
+                            : undefined
+                        }
+                      />
+                    </Grid>
+                    <Grid item xs={12} mt={1}>
+                      <Typography
+                        as="h5"
+                        sx={{
+                          fontWeight: "400",
+                          mb: "5px",
+                        }}
+                      >
+                        Description
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={item.description || "-"}
+                        disabled
+                        multiline
+                        rows={2}
+                      />
+                    </Grid>
+                    <Grid item xs={12} mt={1}>
+                      <Typography
+                        as="h5"
+                        sx={{
+                          fontWeight: "400",
+                          mb: "5px",
+                        }}
+                      >
+                        Document Link
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={item.documentLink || "-"}
+                        disabled
+                      />
                     </Grid>
                   </Grid>
                 </Box>

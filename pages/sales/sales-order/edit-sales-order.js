@@ -58,9 +58,7 @@ const SalesOrderEdit = () => {
   };
 
   const navigateToBack = () => {
-    router.push({
-      pathname: "/sales/sales-order",
-    });
+    router.back();
   };
 
   const handleSearchItemSelect = (item) => {

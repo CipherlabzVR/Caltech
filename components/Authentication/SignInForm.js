@@ -23,7 +23,13 @@ import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import getDeviceName from "@/components/utils/getDeviceName";
 import { getDeviceIdentity } from "@/components/utils/getDeviceId";
 import DeviceNameDialog from "@/components/Authentication/DeviceNameDialog";
+import FirstLoginChangePasswordDialog from "@/components/Authentication/FirstLoginChangePasswordDialog";
 import TwoFactorChallengeDialog from "@/components/Authentication/TwoFactorChallengeDialog";
+import {
+  hasFirstLoginPasswordOffer,
+  loginOffersPasswordChange,
+  markFirstLoginPasswordOffer,
+} from "@/components/utils/firstLoginPasswordOffer";
 
 /** Reserved-customer portal role from backend (UserType.EXTERNAL). */
 const EXTERNAL_USER_TYPE = 15;
@@ -53,6 +59,7 @@ const SignInForm = ({ portalCustomerEntry = false }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loginNote, setLoginNote] = useState("");
   const [deviceDialogOpen, setDeviceDialogOpen] = useState(false);
+  const [passwordOfferOpen, setPasswordOfferOpen] = useState(false);
   const [deviceNameInput, setDeviceNameInput] = useState("");
   const [loginResult, setLoginResult] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -82,6 +89,7 @@ const SignInForm = ({ portalCustomerEntry = false }) => {
 
     sessionStorage.removeItem("holidayGreetingShown");
     sessionStorage.setItem("justLoggedIn", "true");
+    markFirstLoginPasswordOffer(result);
 
     fetch(`${BASE_URL}/Company/CreateCompanyHostingFeeIfDue`, {
       method: "POST",
@@ -98,7 +106,19 @@ const SignInForm = ({ portalCustomerEntry = false }) => {
       return;
     }
 
-    const target = resolvePostLoginPath(result.userType ?? result.UserType);
+    if (loginOffersPasswordChange(result) || hasFirstLoginPasswordOffer()) {
+      setLoginResult(result);
+      setPasswordOfferOpen(true);
+      return;
+    }
+
+    continueToApp(result);
+  };
+
+  const continueToApp = (result) => {
+    const source = result || loginResult;
+    const ut = source?.userType ?? source?.UserType ?? localStorage.getItem("type");
+    const target = resolvePostLoginPath(ut);
     router.replace(target);
     // Staff ERP needs a full reload to hydrate sidebar/permissions; portal is standalone.
     if (shouldReloadAfterStaffLogin(target)) {
@@ -316,14 +336,17 @@ const SignInForm = ({ portalCustomerEntry = false }) => {
     setTwoFactorState((prev) => ({ ...prev, open: false }));
   };
 
-  const handleDeviceDialogCancel = () => {
+  const finishDeviceThenContinue = () => {
     setDeviceDialogOpen(false);
-    const ut = loginResult?.userType ?? loginResult?.UserType ?? localStorage.getItem("type");
-    const target = resolvePostLoginPath(ut);
-    router.replace(target);
-    if (shouldReloadAfterStaffLogin(target)) {
-      window.location.reload();
+    if (loginOffersPasswordChange(loginResult) || hasFirstLoginPasswordOffer()) {
+      setPasswordOfferOpen(true);
+      return;
     }
+    continueToApp(loginResult);
+  };
+
+  const handleDeviceDialogCancel = () => {
+    finishDeviceThenContinue();
   };
 
   const handleDeviceDialogConfirm = async () => {
@@ -387,16 +410,7 @@ const SignInForm = ({ portalCustomerEntry = false }) => {
       return;
     }
 
-    setDeviceDialogOpen(false);
-    const ut =
-      loginResult?.userType ??
-      loginResult?.UserType ??
-      localStorage.getItem("type");
-    const target = resolvePostLoginPath(ut);
-    router.replace(target);
-    if (shouldReloadAfterStaffLogin(target)) {
-      window.location.reload();
-    }
+    finishDeviceThenContinue();
   };
 
   return (
@@ -603,6 +617,13 @@ const SignInForm = ({ portalCustomerEntry = false }) => {
         onChange={setDeviceNameInput}
         onCancel={handleDeviceDialogCancel}
         onConfirm={handleDeviceDialogConfirm}
+      />
+      <FirstLoginChangePasswordDialog
+        open={passwordOfferOpen}
+        onFinished={() => {
+          setPasswordOfferOpen(false);
+          continueToApp(loginResult);
+        }}
       />
       <TwoFactorChallengeDialog
         open={twoFactorState.open}
