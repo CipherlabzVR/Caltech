@@ -25,9 +25,6 @@ const style = {
   borderRadius: 1,
 };
 
-const isPendingApproval = (status) =>
-  String(status || "").replace(/[\s_-]/g, "").toLowerCase() === "pendingapproval";
-
 const Row = ({ label, value }) => (
   <Grid container sx={{ py: 0.4 }}>
     <Grid item xs={5}>
@@ -39,27 +36,9 @@ const Row = ({ label, value }) => (
   </Grid>
 );
 
-/**
- * QuotationApprove — Level 1 approval action.
- *
- * Gating rule (must hold BOTH):
- *   - item.statusName === "PendingApproval"
- *   - user has `approve1` permission (passed in as `canApprove`)
- *
- * The parent (list page) should already check this before rendering the
- * component at all. The internal check below is a defensive second layer
- * so this component never renders its button even if some future caller
- * forgets to gate it upstream.
- */
-export default function QuotationApprove({ item, fetchItems, canApprove }) {
+export default function QuotationApprove({ item, fetchItems }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  // Defensive guard — status + permission must both be true.
-  if (!item || !isPendingApproval(item.statusName) || !canApprove) {
-    return null;
-  }
-
   const handleOpen = () => setOpen(true);
   const handleClose = () => {
     if (!saving) setOpen(false);

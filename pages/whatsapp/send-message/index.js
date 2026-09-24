@@ -21,10 +21,7 @@ import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import { getSendingAccounts, getTemplates, sendMessage, sendTemplateMessage } from "@/Services/whatsRay";
 
 export default function WhatsAppSendMessage() {
-  const sessionCategory =
-    typeof window !== "undefined" ? sessionStorage.getItem("category") : null;
-  const parsedCategory = sessionCategory ? parseInt(sessionCategory, 10) : NaN;
-  const cId = Number.isFinite(parsedCategory) ? parsedCategory : 252;
+  const cId = typeof window !== "undefined" ? sessionStorage.getItem("category") : null;
   const { navigate, create } = IsPermissionEnabled(cId);
 
   const [activeTab, setActiveTab] = useState(0);

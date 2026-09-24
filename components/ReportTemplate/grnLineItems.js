@@ -1,10 +1,29 @@
 import { escapeHtml } from "./applyTemplate";
 
-/** Per-unit freight duty: prefer persisted AdditionalCost, else derive from line math. */
+/** Per-unit freight duty: prefer persisted FreightDutyCost, else legacy AdditionalCost / derive. */
 export const getFreightDutyCost = (item) => {
-  const stored = Number(item?.additionalCost);
-  if (Number.isFinite(stored) && Math.abs(stored) > 0.0001) {
-    return stored;
+  const freightStored = Number(
+    item?.freightDutyCost ?? item?.FreightDutyCost
+  );
+  const hasExplicitSplit =
+    item?.freightDutyCost != null ||
+    item?.FreightDutyCost != null ||
+    item?.localTransportCost != null ||
+    item?.LocalTransportCost != null;
+
+  if (hasExplicitSplit && Number.isFinite(freightStored)) {
+    return freightStored;
+  }
+
+  if (Number.isFinite(freightStored) && Math.abs(freightStored) > 0.0001) {
+    return freightStored;
+  }
+
+  if (!hasExplicitSplit) {
+    const stored = Number(item?.additionalCost);
+    if (Number.isFinite(stored) && Math.abs(stored) > 0.0001) {
+      return stored;
+    }
   }
 
   const qty = Number(item?.qty) || 0;
@@ -24,6 +43,25 @@ export const getFreightDutyCost = (item) => {
     return costPrice - (unitPrice * qty - lineDiscountAmount) / qtyPlusFree;
   }
 
+  return 0;
+};
+
+/** Per-unit overseas transport. */
+export const getOverseasTransportCost = (item) => {
+  const stored = Number(
+    item?.overseasTransportCost ??
+      item?.OverseasTransportCost ??
+      item?.additionalCost ??
+      item?.AdditionalCost
+  );
+  return Number.isFinite(stored) ? stored : 0;
+};
+
+/** Per-unit local transport. */
+export const getLocalTransportCost = (item) => {
+  const stored = Number(
+    item?.localTransportCost ?? item?.LocalTransportCost
+  );
   return Number.isFinite(stored) ? stored : 0;
 };
 
@@ -66,7 +104,9 @@ export const buildGrnLineTokenMap = (item, { formatDisplayDate } = {}) => {
     sellingPrice: formatAmount(item?.sellingPrice),
     maximumSellingPrice: formatAmount(item?.maximumSellingPrice),
     freightDuty: formatAmount(getFreightDutyCost(item)),
-    additionalCost: formatAmount(item?.additionalCost),
+    overseasCost: formatAmount(getOverseasTransportCost(item)),
+    localTransportCost: formatAmount(getLocalTransportCost(item)),
+    additionalCost: formatAmount(getOverseasTransportCost(item)),
     discountRate: formatAmount(item?.discountRate),
     discountAmount: formatAmount(item?.discountAmount),
     lineTotal: formatAmount(item?.lineTotal),

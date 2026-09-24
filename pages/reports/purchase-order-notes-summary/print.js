@@ -228,6 +228,8 @@ export default function PurchaseOrderNotesSummaryPrintPage() {
         errorText="No purchase order notes summary available to print."
         downloadName={downloadName}
         showDownloadPdf={false}
+        showDownloadExcel
+        autoExportExcel={String(router.query.exportExcel || "") === "1"}
       />
       <ToastContainer position="top-right" autoClose={3000} />
     </>

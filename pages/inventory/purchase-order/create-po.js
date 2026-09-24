@@ -159,8 +159,8 @@ const POCreate = () => {
           ExpDate: row.expDate,
           Qty: row.quantity,
           UnitPrice: row.unitPrice ? parseFloat(row.unitPrice) : 0,
-          // Local PO has no freight/transport — AdditionalCost stays 0
-          AdditionalCost:
+          // Local PO has no freight/transport — overseas cost stays 0
+          OverseasTransportCost:
             poType === "1"
               ? 0
               : row.freightDutyCost
@@ -580,6 +580,7 @@ const POCreate = () => {
                 fetchUrl={`${BASE_URL}/Items/GetAllItemsBySupplierIdAndName`}
                 queryParams={{ supplierId: supplier?.id }}
                 onSelect={(item) => handleAddRow(item)}
+                filterResults={(item) => item.isActive !== false}
               />
             </Grid>
             <Grid item xs={12}>
@@ -748,7 +749,13 @@ const POCreate = () => {
               <LoadingButton
                 loading={isSubmitting}
                 handleSubmit={() => handleSubmit()}
-                disabled={isDisable}
+                disabled={
+                  isDisable ||
+                  !supplier ||
+                  !poType ||
+                  !poDate ||
+                  selectedRows.length === 0
+                }
               />
             </Grid>
           </Grid>

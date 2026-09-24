@@ -16,6 +16,8 @@ import usePaginatedFetch from "@/components/hooks/usePaginatedFetch";
 import { useRouter } from "next/router";
 import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
 import DescriptionIcon from "@mui/icons-material/Description";
+import GridOnIcon from "@mui/icons-material/GridOn";
+import { writeOrganizedExcel } from "@/components/ReportTemplate/exportReportHtmlToExcel";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
 import { Report } from "Base/report";
 import useShiftCheck from "@/components/utils/useShiftCheck";
@@ -46,7 +48,44 @@ export default function Receipt() {
     handlePageChange,
     handlePageSizeChange,
     handleChangePage,
-    handleChangeRowsPerPage } = usePaginatedFetch("Receipt/GetAll");  const navigateToCreate = () => {
+    handleChangeRowsPerPage } = usePaginatedFetch("Receipt/GetAll");
+  const exportReceiptExcel = async (item) => {
+    const lines = item.receiptLineDetails || item.ReceiptLineDetails || [];
+    await writeOrganizedExcel(
+      {
+        title: "RECEIPT",
+        detailsLeft: [
+          ["Receipt No", item.receiptNumber || "-"],
+          ["Receipt Date", formatDate(item.receiptDate) || "-"],
+          ["Customer", item.customerName || "-"],
+          ["Payment Method", getPaymentMethods(item.paymentType) || "-"],
+        ],
+        detailsRight: [
+          ["Net Total", Number(item.totalPaidAmount ?? 0) || 0],
+          ["Sales Person", item.salesPersonName || "-"],
+          ["Remark", item.remark || "-"],
+        ],
+        sections: [
+          {
+            title: "Invoice Allocations",
+            headers: ["Invoice No", "Payment Date", "Invoice Amount", "Received Amount"],
+            rows: lines.map((line) => [
+              line.invoiceNo || line.InvoiceNo || line.documentNo || "-",
+              formatDate(line.paymentDate || line.PaymentDate || line.receiptDate) || "-",
+              Number(line.totalInvoiceAmount ?? line.TotalInvoiceAmount ?? 0) || 0,
+              Number(line.receivedAmount ?? line.ReceivedAmount ?? 0) || 0,
+            ]),
+            totals: [
+              ["Received Amount", Number(item.totalPaidAmount ?? 0) || 0],
+            ],
+          },
+        ],
+      },
+      `Receipt_${item.receiptNumber || "document"}`
+    );
+  };
+
+  const navigateToCreate = () => {
     if (shiftResult) {
       toast.warning(shiftMessage);
       return;
@@ -146,6 +185,17 @@ export default function Receipt() {
                                 </IconButton>
                               </a>
                             </Tooltip> : ""}
+                            {print ? (
+                              <Tooltip title="Convert to Excel" placement="top">
+                                <IconButton
+                                  aria-label="Convert to Excel"
+                                  size="small"
+                                  onClick={() => exportReceiptExcel(item)}
+                                >
+                                  <GridOnIcon color="success" fontSize="medium" />
+                                </IconButton>
+                              </Tooltip>
+                            ) : ""}
                           </Box>
                         </TableCell>
                       </TableRow>

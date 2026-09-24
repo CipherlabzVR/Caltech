@@ -39,16 +39,13 @@ const style = {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: { xs: "98vw", md: "96vw" },
-  maxWidth: 1600,
+  width: { lg: 1280, md: 1100, xs: "95%" },
   bgcolor: "background.paper",
   boxShadow: 24,
-  p: { xs: 1.5, md: 2 },
-  maxHeight: "92vh",
+  p: 2,
+  maxHeight: "90vh",
   overflowY: "auto",
 };
-
-const EVENT_SESSIONS = ["Morning", "Evening"];
 
 const CEREMONY_TYPES = [
   { value: 1, label: "Poruwa" },
@@ -58,16 +55,6 @@ const CEREMONY_TYPES = [
 
 const validationSchema = Yup.object().shape({
   CoupleNames: Yup.string().required("Couple / client name is required"),
-  Events: Yup.array()
-    .min(1, "At least one event is required")
-    .of(
-      Yup.object({
-        EventDate: Yup.string().required("Date is required"),
-        EventSession: Yup.string()
-          .oneOf(EVENT_SESSIONS, "Session is required")
-          .required("Session is required"),
-      })
-    ),
 });
 
 const toDateInput = (value) => {
@@ -85,33 +72,17 @@ function EventRow({ event, index, eventTypes, usedTypes, onUpdate, onRemove, onS
   );
 
   return (
-    <Box sx={{ border: "1px solid", borderColor: event.IsMainEvent ? "primary.main" : "divider", borderRadius: 1, p: { xs: 1, md: 1.25 }, mb: 1, bgcolor: event.IsMainEvent ? "action.selected" : "transparent" }}>
-      <Box
-        sx={{
-          display: "grid",
-          gap: 1,
-          alignItems: "end",
-          gridTemplateColumns: {
-            xs: "auto 1fr auto",
-            sm: "auto 1fr 1fr 1fr",
-            md: "auto minmax(0,1.4fr) minmax(132px,1fr) minmax(110px,0.9fr) minmax(128px,0.95fr) auto",
-          },
-          gridTemplateAreas: {
-            xs: `"radio type del" "date date date" "time time session" "loc loc loc"`,
-            sm: `"radio type type type" "date time session del" "loc loc loc loc"`,
-            md: `"radio type date time session del" "loc loc loc loc loc loc"`,
-          },
-        }}
-      >
-        <Box sx={{ gridArea: "radio" }}>
+    <Box sx={{ border: "1px solid", borderColor: event.IsMainEvent ? "primary.main" : "divider", borderRadius: 1, p: 1.5, mb: 1, bgcolor: event.IsMainEvent ? "action.selected" : "transparent" }}>
+      <Grid container spacing={1} alignItems="center">
+        <Grid item xs={12} sm={1}>
           <Radio
             checked={event.IsMainEvent}
             onChange={() => onSetMain(event.id)}
             size="small"
             title="Set as main event"
           />
-        </Box>
-        <Box sx={{ gridArea: "type", minWidth: 0 }}>
+        </Grid>
+        <Grid item xs={12} sm={3}>
           <Typography variant="caption" sx={{ fontWeight: 500 }}>
             Event Type {event.IsMainEvent && <span style={{ color: "#1976d2" }}>(Main)</span>}
           </Typography>
@@ -128,8 +99,8 @@ function EventRow({ event, index, eventTypes, usedTypes, onUpdate, onRemove, onS
               </MenuItem>
             ))}
           </TextField>
-        </Box>
-        <Box sx={{ gridArea: "date", minWidth: 0 }}>
+        </Grid>
+        <Grid item xs={12} sm={3}>
           <Typography variant="caption" sx={{ fontWeight: 500 }}>Date *</Typography>
           <TextField
             fullWidth
@@ -140,8 +111,8 @@ function EventRow({ event, index, eventTypes, usedTypes, onUpdate, onRemove, onS
             InputLabelProps={{ shrink: true }}
             error={!event.EventDate}
           />
-        </Box>
-        <Box sx={{ gridArea: "time", minWidth: 0 }}>
+        </Grid>
+        <Grid item xs={12} sm={2}>
           <Typography variant="caption" sx={{ fontWeight: 500 }}>Time</Typography>
           <TextField
             select
@@ -160,32 +131,8 @@ function EventRow({ event, index, eventTypes, usedTypes, onUpdate, onRemove, onS
               </MenuItem>
             ))}
           </TextField>
-        </Box>
-        <Box sx={{ gridArea: "session", minWidth: 0 }}>
-          <Typography variant="caption" sx={{ fontWeight: 500 }}>Session *</Typography>
-          <TextField
-            select
-            fullWidth
-            size="small"
-            value={event.EventSession || ""}
-            onChange={(e) => onUpdate(event.id, "EventSession", e.target.value)}
-            error={!event.EventSession}
-            SelectProps={{
-              displayEmpty: true,
-              renderValue: (v) => v || "Select session",
-            }}
-          >
-            <MenuItem value="">
-              <em>Select session</em>
-            </MenuItem>
-            {EVENT_SESSIONS.map((s) => (
-              <MenuItem key={s} value={s}>
-                {s}
-              </MenuItem>
-            ))}
-          </TextField>
-        </Box>
-        <Box sx={{ gridArea: "loc", minWidth: 0 }}>
+        </Grid>
+        <Grid item xs={12} sm={2}>
           <Typography variant="caption" sx={{ fontWeight: 500 }}>Location</Typography>
           <TextField
             fullWidth
@@ -193,15 +140,15 @@ function EventRow({ event, index, eventTypes, usedTypes, onUpdate, onRemove, onS
             value={event.Location}
             onChange={(e) => onUpdate(event.id, "Location", e.target.value)}
           />
-        </Box>
-        <Box sx={{ gridArea: "del", display: "flex", justifyContent: "flex-end" }}>
+        </Grid>
+        <Grid item xs={12} sm={1} sx={{ textAlign: "center" }}>
           {canRemove && (
             <IconButton size="small" color="error" onClick={() => onRemove(event.id)} title="Remove event">
               <DeleteOutlineIcon fontSize="small" />
             </IconButton>
           )}
-        </Box>
-      </Box>
+        </Grid>
+      </Grid>
     </Box>
   );
 }
@@ -261,10 +208,10 @@ export default function EditReservation({ item, fetchItems, isOpen, onClose, hid
         toast.success(checked ? "First meeting marked complete" : "First meeting marked incomplete");
         fetchItems?.();
       } else {
-        toast.error(response?.message || "Failed to update first meeting status");
+        toast.error(response?.message || "Failed to update");
       }
     } catch (err) {
-      toast.error(err?.message || "Failed to update first meeting status");
+      toast.error("Failed to update first meeting status");
     } finally {
       setUpdatingMeeting(false);
     }
@@ -301,7 +248,6 @@ export default function EditReservation({ item, fetchItems, isOpen, onClose, hid
         EventType: e.eventType,
         EventDate: toDateInput(e.eventDate),
         EventTime: normalizeEventTime(e.eventTime || ""),
-        EventSession: e.eventSession || e.EventSession || "",
         Location: e.location || "",
         IsMainEvent: e.isMainEvent,
       }));
@@ -311,7 +257,6 @@ export default function EditReservation({ item, fetchItems, isOpen, onClose, hid
       EventType: item.eventType || 1,
       EventDate: toDateInput(item.eventDate),
       EventTime: normalizeEventTime(item.eventTime || ""),
-      EventSession: "",
       Location: item.receptionLocation || "",
       IsMainEvent: true,
     }];
@@ -331,10 +276,6 @@ export default function EditReservation({ item, fetchItems, isOpen, onClose, hid
       if (!evt.EventDate) {
         const typeName = eventTypes.find((t) => t.id === evt.EventType)?.name || "Event";
         toast.error(`${typeName} date is required`);
-        return;
-      }
-      if (!evt.EventSession || !EVENT_SESSIONS.includes(evt.EventSession)) {
-        toast.error("Session (Morning or Evening) is required for each event");
         return;
       }
     }
@@ -360,7 +301,6 @@ export default function EditReservation({ item, fetchItems, isOpen, onClose, hid
         EventType: Number(e.EventType),
         EventDate: e.EventDate,
         EventTime: e.EventTime || null,
-        EventSession: e.EventSession || null,
         Location: e.Location || null,
         IsMainEvent: e.IsMainEvent,
       })),
@@ -431,7 +371,7 @@ export default function EditReservation({ item, fetchItems, isOpen, onClose, hid
       <Modal open={open} onClose={handleClose}>
         <Box sx={style} className="bg-black">
           <Grid container spacing={2}>
-            <Grid item xs={12} lg={7}>
+            <Grid item xs={12} md={7}>
               <Formik
                 initialValues={{
                   Id: item.id,
@@ -493,7 +433,6 @@ export default function EditReservation({ item, fetchItems, isOpen, onClose, hid
                         EventType: unusedTypes[0].id,
                         EventDate: "",
                         EventTime: "",
-                        EventSession: "",
                         Location: "",
                         IsMainEvent: false,
                       },
@@ -936,7 +875,7 @@ export default function EditReservation({ item, fetchItems, isOpen, onClose, hid
               </Formik>
             </Grid>
             
-            <Grid item xs={12} lg={5}>
+            <Grid item xs={12} md={5}>
               <Box sx={{ position: "sticky", top: 0, maxHeight: "80vh", overflowY: "auto" }}>
                 <ReservationHandover
                   reservation={item}

@@ -46,7 +46,6 @@ import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import BASE_URL from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
-import photographyReservationNoteService from "@/Services/photographyReservationNoteService";
 
 const STATUS_CONFIG = {
   Pending: { color: "warning", label: "Pending", bgColor: "#fff3e0" },
@@ -70,85 +69,30 @@ export default function TaskBoard() {
   const [detailTab, setDetailTab] = useState(0);
   const [technicians, setTechnicians] = useState([]);
   const [selectedTechnician, setSelectedTechnician] = useState("");
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [isAdminUser, setIsAdminUser] = useState(false);
-  const [userAgentType, setUserAgentType] = useState(null);
-  const [roleReady, setRoleReady] = useState(false);
-
-  const canSeeAllTasks = isAdminUser || userAgentType === 3;
-  const canFilterBoard = canSeeAllTasks;
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const t = Number(localStorage.getItem("type"));
-      setIsAdminUser(t === 0 || t === 1);
-    }
-    photographyReservationNoteService
-      .getCurrentUserAgentType()
-      .then((response) => {
-        const type = response?.result?.agentType ?? response?.result?.AgentType ?? null;
-        const n = type === null || type === undefined || type === "" ? NaN : Number(type);
-        setUserAgentType(n === 1 || n === 2 || n === 3 ? n : null);
-      })
-      .catch(() => setUserAgentType(null))
-      .finally(() => setRoleReady(true));
-  }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setSearch(searchInput.trim()), 400);
-    return () => clearTimeout(timer);
-  }, [searchInput]);
-
-  useEffect(() => {
-    if (!roleReady) return;
-    if (canSeeAllTasks && viewMode === "my" && notATechnician) {
-      setViewMode("all");
-    }
-    if (!canSeeAllTasks && viewMode === "all") {
-      setViewMode("my");
-    }
-  }, [roleReady, canSeeAllTasks, viewMode, notATechnician]);
 
   const fetchTasks = useCallback(async () => {
-    if (!roleReady) return;
     setLoading(true);
     const token = localStorage.getItem("token");
     try {
-      const useAll = viewMode === "all" && canSeeAllTasks;
-      const endpoint = useAll ? "GetAllTasks" : "GetMyTasks";
-      const params = new URLSearchParams({
-        ShowAll: String(showAll),
-        MonthsBack: "3",
-      });
-      if (search) params.set("Search", search);
-      if (useAll && selectedTechnician) params.set("TechnicianId", String(selectedTechnician));
-      if (useAll && dateFrom) params.set("DateFrom", dateFrom);
-      if (useAll && dateTo) params.set("DateTo", dateTo);
-      const res = await fetch(`${BASE_URL}/PhotographyTaskBoard/${endpoint}?${params}`, {
+      const endpoint = viewMode === "my" ? "GetMyTasks" : "GetAllTasks";
+      let url = `${BASE_URL}/PhotographyTaskBoard/${endpoint}?ShowAll=${showAll}&MonthsBack=3`;
+      if (viewMode === "all" && selectedTechnician) {
+        url += `&TechnicianId=${selectedTechnician}`;
+      }
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      const result = data.result;
-      const failed = data.statusCode === "FAILED" || data.statusCode === 400;
-      if (result && !failed) {
-        setTasks({
-          Pending: result.Pending || result.pending || [],
-          InProgress: result.InProgress || result.inProgress || [],
-          Hold: result.Hold || result.hold || [],
-          Completed: result.Completed || result.completed || [],
-        });
-        if (!useAll) setNotATechnician(false);
+      if (data.result) {
+        setTasks(data.result);
+        if (viewMode === "my") {
+          setNotATechnician(false);
+        }
       } else if (data.message) {
-        if (!useAll) {
+        if (viewMode === "my") {
           setNotATechnician(true);
-          if (canSeeAllTasks) {
-            setViewMode("all");
-          } else {
-            toast.error(data.message);
-          }
+          toast.info(data.message || "You are not registered as a technician. Showing all tasks.");
+          setViewMode("all");
         } else {
           toast.error(data.message);
         }
@@ -158,7 +102,7 @@ export default function TaskBoard() {
     } finally {
       setLoading(false);
     }
-  }, [roleReady, viewMode, showAll, selectedTechnician, search, dateFrom, dateTo, canSeeAllTasks]);
+  }, [viewMode, showAll, selectedTechnician]);
 
   const fetchTechnicians = async () => {
     const token = localStorage.getItem("token");
@@ -175,8 +119,8 @@ export default function TaskBoard() {
 
   useEffect(() => {
     fetchTasks();
-    if (canSeeAllTasks) fetchTechnicians();
-  }, [fetchTasks, canSeeAllTasks]);
+    fetchTechnicians();
+  }, [fetchTasks]);
 
   const handleStatusChange = async (assignmentId, newStatus) => {
     const token = localStorage.getItem("token");
@@ -350,60 +294,33 @@ export default function TaskBoard() {
       </div>
 
       <Paper sx={{ p: 2, mb: 2 }} className="bg-black">
-        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
-          {canSeeAllTasks && (
-            <Tabs value={viewMode} onChange={(_, v) => {
-              if (v === "my" && notATechnician) {
-                toast.warning("You are not registered as a technician. Please contact admin.");
-                return;
-              }
-              setViewMode(v);
-            }} sx={{ minHeight: 36 }}>
-              <Tab value="my" label="My Tasks" sx={{ minHeight: 36, py: 0 }} disabled={notATechnician} />
-              <Tab value="all" label="All Tasks" sx={{ minHeight: 36, py: 0 }} />
-            </Tabs>
-          )}
-          <TextField
-            size="small"
-            placeholder="Search task, couple, card no..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            sx={{ minWidth: 240 }}
-          />
-          {canFilterBoard && viewMode === "all" && (
-            <>
-              <FormControl size="small" sx={{ minWidth: 200 }}>
-                <InputLabel>Technician</InputLabel>
-                <Select
-                  value={selectedTechnician}
-                  label="Technician"
-                  onChange={(e) => setSelectedTechnician(e.target.value)}
-                >
-                  <MenuItem value="">All Technicians</MenuItem>
-                  {technicians.map((t) => (
-                    <MenuItem key={t.id} value={t.id}>
-                      {t.userName}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <TextField
-                size="small"
-                type="date"
-                label="From"
-                InputLabelProps={{ shrink: true }}
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-              <TextField
-                size="small"
-                type="date"
-                label="To"
-                InputLabelProps={{ shrink: true }}
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-            </>
+        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+          <Tabs value={viewMode} onChange={(_, v) => {
+            if (v === "my" && notATechnician) {
+              toast.warning("You are not registered as a technician. Please contact admin.");
+              return;
+            }
+            setViewMode(v);
+          }} sx={{ minHeight: 36 }}>
+            <Tab value="my" label="My Tasks" sx={{ minHeight: 36, py: 0 }} disabled={notATechnician} />
+            <Tab value="all" label="All Tasks" sx={{ minHeight: 36, py: 0 }} />
+          </Tabs>
+          {viewMode === "all" && (
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel>Technician</InputLabel>
+              <Select
+                value={selectedTechnician}
+                label="Technician"
+                onChange={(e) => setSelectedTechnician(e.target.value)}
+              >
+                <MenuItem value="">All Technicians</MenuItem>
+                {technicians.map((t) => (
+                  <MenuItem key={t.id} value={t.id}>
+                    {t.userName}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           )}
           <FormControlLabel
             control={<Switch checked={showAll} onChange={(e) => setShowAll(e.target.checked)} size="small" />}

@@ -203,6 +203,8 @@ export default function ShiftSummaryPrintPage() {
         errorText="No shift summary available to print."
         downloadName={`ShiftSummary_${new Date().toISOString().slice(0, 10)}`}
         showDownloadPdf={false}
+        showDownloadExcel
+        autoExportExcel={String(router.query.exportExcel || "") === "1"}
       />
       <ToastContainer position="top-right" autoClose={3000} />
     </>

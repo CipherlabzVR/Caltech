@@ -20,7 +20,6 @@ import HistoryIcon from "@mui/icons-material/History";
 import { toast } from "react-toastify";
 import photographyReservationNoteService from "@/Services/photographyReservationNoteService";
 import { getAgentTypes, isApiSuccess } from "@/Services/photographyAgentService";
-import BASE_URL from "Base/api";
 
 const FALLBACK_TYPES = [
   { id: 1, name: "Customer Coordinator", sortOrder: 1, color: "info" },
@@ -38,8 +37,6 @@ export default function ReservationHandover({ reservation, onHandoverComplete, u
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [agentTypes, setAgentTypes] = useState(FALLBACK_TYPES);
-  const [fullyPaid, setFullyPaid] = useState(null);
-  const [remainingBalance, setRemainingBalance] = useState(0);
 
   useEffect(() => {
     getAgentTypes()
@@ -71,43 +68,7 @@ export default function ReservationHandover({ reservation, onHandoverComplete, u
   const getAgentTypeColor = (type) =>
     ordered.find((t) => Number(t.id) === Number(type))?.color || "default";
 
-  const handingToManager =
-    Number(nextAgentType) === 3 ||
-    String(nextType?.name || "").toLowerCase().includes("after wedding");
-  const paymentsRequired = Number(currentAgentType) === 2 || handingToManager;
-  const canHandover =
-    Number(userAgentType) === Number(currentAgentType) &&
-    nextAgentType !== null &&
-    (!paymentsRequired || fullyPaid === true);
-
-  useEffect(() => {
-    if (!paymentsRequired || !reservation?.id) {
-      setFullyPaid(true);
-      return;
-    }
-    const token = localStorage.getItem("token");
-    fetch(`${BASE_URL}/PhotographyReservation/GetReservationById?id=${reservation.id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        const detail = data?.result ?? data?.Result;
-        const q = detail?.quotation ?? detail?.Quotation;
-        const net = Number(q?.netTotal ?? q?.NetTotal ?? 0);
-        const pays = detail?.payments ?? detail?.Payments ?? [];
-        const paid = pays
-          .filter((p) =>
-            String(p.approvalStatusName || p.ApprovalStatusName || p.approvalStatus || "").toLowerCase().includes("approv")
-          )
-          .reduce((sum, p) => sum + Number(p.amount ?? p.Amount ?? 0), 0);
-        const remaining = Math.max(0, Number((net - paid).toFixed(2)));
-        setRemainingBalance(remaining);
-        setFullyPaid(net > 0 && remaining <= 0.01);
-      })
-      .catch(() => {
-        setFullyPaid(false);
-      });
-  }, [paymentsRequired, reservation?.id]);
+  const canHandover = Number(userAgentType) === Number(currentAgentType) && nextAgentType !== null;
 
   const handleHandover = async () => {
     if (!nextAgentType) return;
@@ -136,26 +97,15 @@ export default function ReservationHandover({ reservation, onHandoverComplete, u
   const fetchHistory = async () => {
     setHistoryLoading(true);
     try {
-      const response = await photographyReservationNoteService.getActivityLog(reservation.id);
-      const rows = response?.result ?? response?.Result ?? [];
-      setHistory(Array.isArray(rows) ? rows : []);
+      const response = await photographyReservationNoteService.getHandoverHistory(reservation.id);
+      if (response?.result) {
+        setHistory(response.result);
+      }
     } catch {
       toast.error("Failed to load history");
     } finally {
       setHistoryLoading(false);
     }
-  };
-
-  const activityColor = (type) => {
-    const key = String(type || "").toLowerCase();
-    if (key === "handover") return "secondary";
-    if (key === "status") return "info";
-    if (key === "created") return "success";
-    if (key === "updated") return "primary";
-    if (key === "team") return "warning";
-    if (key === "meeting") return "success";
-    if (key === "note") return "default";
-    return "default";
   };
 
   return (
@@ -199,12 +149,6 @@ export default function ReservationHandover({ reservation, onHandoverComplete, u
         >
           Handover to {getAgentTypeName(nextAgentType)}
         </Button>
-      ) : paymentsRequired && Number(userAgentType) === Number(currentAgentType) && nextAgentType != null ? (
-        <Typography variant="caption" color="warning.main" display="block">
-          {fullyPaid === null
-            ? "Checking payments…"
-            : `Complete all payments before handover to ${getAgentTypeName(nextAgentType)}. Remaining ${remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LKR.`}
-        </Typography>
       ) : nextAgentType == null ? (
         <Typography variant="caption" color="text.secondary">
           Final agent stage — no further handover
@@ -243,7 +187,7 @@ export default function ReservationHandover({ reservation, onHandoverComplete, u
       </Dialog>
 
       <Dialog open={historyOpen} onClose={() => setHistoryOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Activity History</DialogTitle>
+        <DialogTitle>Handover History</DialogTitle>
         <DialogContent>
           {historyLoading ? (
             <Box display="flex" justifyContent="center" py={2}>
@@ -251,45 +195,47 @@ export default function ReservationHandover({ reservation, onHandoverComplete, u
             </Box>
           ) : history.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              No activity yet
+              No handover history
             </Typography>
           ) : (
             <List dense>
-              {history.map((h, idx) => {
-                const actionType = h.actionType || h.ActionType || "Change";
-                const title = h.title || h.Title || actionType;
-                const details = h.details || h.Details;
-                const by = h.changedByName || h.ChangedByName || "";
-                const when = h.changedOn || h.ChangedOn;
-                return (
-                  <React.Fragment key={`${actionType}-${when}-${idx}`}>
-                    {idx > 0 && <Divider />}
-                    <ListItem alignItems="flex-start">
-                      <ListItemText
-                        primary={
-                          <Box display="flex" gap={0.5} alignItems="center" flexWrap="wrap">
-                            <Chip size="small" label={actionType} color={activityColor(actionType)} />
-                            <Typography variant="body2" fontWeight={600}>
-                              {title}
+              {history.map((h, idx) => (
+                <React.Fragment key={h.id || idx}>
+                  {idx > 0 && <Divider />}
+                  <ListItem alignItems="flex-start">
+                    <ListItemText
+                      primary={
+                        <Box display="flex" gap={0.5} alignItems="center" flexWrap="wrap">
+                          <Chip
+                            size="small"
+                            label={h.fromAgentTypeName || getAgentTypeName(h.fromAgentType)}
+                            color={getAgentTypeColor(h.fromAgentType)}
+                          />
+                          <SwapHorizIcon fontSize="small" />
+                          <Chip
+                            size="small"
+                            label={h.toAgentTypeName || getAgentTypeName(h.toAgentType)}
+                            color={getAgentTypeColor(h.toAgentType)}
+                          />
+                        </Box>
+                      }
+                      secondary={
+                        <>
+                          {h.handoverByUserName || h.HandoverByUserName || ""}{" "}
+                          {h.handoverDate || h.HandoverDate
+                            ? `· ${new Date(h.handoverDate || h.HandoverDate).toLocaleString()}`
+                            : ""}
+                          {(h.notes || h.Notes) && (
+                            <Typography variant="caption" display="block">
+                              {h.notes || h.Notes}
                             </Typography>
-                          </Box>
-                        }
-                        secondary={
-                          <>
-                            {by}
-                            {when ? ` · ${new Date(when).toLocaleString()}` : ""}
-                            {details && (
-                              <Typography variant="caption" display="block" sx={{ whiteSpace: "pre-wrap", mt: 0.25 }}>
-                                {details}
-                              </Typography>
-                            )}
-                          </>
-                        }
-                      />
-                    </ListItem>
-                  </React.Fragment>
-                );
-              })}
+                          )}
+                        </>
+                      }
+                    />
+                  </ListItem>
+                </React.Fragment>
+              ))}
             </List>
           )}
         </DialogContent>

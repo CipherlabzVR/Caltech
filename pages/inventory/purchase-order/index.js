@@ -295,8 +295,9 @@ export default function PurchaseOrder() {
               <TableHead>
                 <TableRow>
                   <TableCell>PO Date</TableCell>
-                  <TableCell>PO No</TableCell>                  
-                  <TableCell>GRN No</TableCell>                  
+                  <TableCell>PO No</TableCell>
+                  <TableCell>Shipment No</TableCell>
+                  <TableCell>GRN No</TableCell> 
                   <TableCell>Supplier</TableCell>
                   <TableCell>Reference No</TableCell>
                   <TableCell>Remark</TableCell>
@@ -306,7 +307,7 @@ export default function PurchaseOrder() {
               <TableBody>
                 {poList.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} align="center">
+                    <TableCell colSpan={8} align="center">
                       <Typography color="error">
                         No Purchase Orders Available
                       </Typography>
@@ -319,8 +320,13 @@ export default function PurchaseOrder() {
                     return (
                       <TableRow key={index}>
                         <TableCell>{formatDate(item.poDate)}</TableCell>
-                        <TableCell>{item.purchaseOrderNo}</TableCell>                        
-                        <TableCell>{item.documentNo}</TableCell>                        
+                        <TableCell>{item.purchaseOrderNo}</TableCell>
+                        <TableCell>
+                          {Array.isArray(item.shipmentNos) && item.shipmentNos.length > 0
+                            ? item.shipmentNos.join(", ")
+                            : item.shipmentNo || ""}
+                        </TableCell>
+                        <TableCell>{item.documentNo}</TableCell> 
                         <TableCell>{item.supplierName}</TableCell>
                         <TableCell>{item.referanceNo}</TableCell>
                         <TableCell>{item.remark}</TableCell>

@@ -47,48 +47,19 @@ const PAYMENT_METHODS = [
   { value: 1, label: "Cash" },
   { value: 2, label: "Card" },
   { value: 3, label: "Bank Transfer" },
+  { value: 4, label: "Cheque" },
 ];
 
-const PAYMENT_TYPES = [
-  { value: "advance", label: "Advance (first payment)" },
-  { value: "installment", label: "Installment / second payment" },
-  { value: "final", label: "Final payment" },
-];
-
-function remainingOf(quotation, paidApproved, pendingAmount) {
-  const net = Number(quotation?.netTotal) || 0;
-  return Math.max(0, Number((net - Number(paidApproved || 0) - Number(pendingAmount || 0)).toFixed(2)));
-}
-
-export default function RecordPayment({
-  quotation,
-  fetchItems,
-  canRecordPayment = true,
-  paidApproved = 0,
-  pendingAmount = 0,
-  variant = "icon",
-}) {
+export default function RecordPayment({ quotation, fetchItems }) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState(3);
-  const [paymentType, setPaymentType] = useState("advance");
   const [remark, setRemark] = useState("");
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
 
-  if (!canRecordPayment) return null;
-
-  const remaining = remainingOf(quotation, paidApproved, pendingAmount);
-  const hasPrior = Number(paidApproved) > 0;
-
   const handleOpen = () => {
-    if (remaining <= 0) {
-      toast.info("This quotation is fully paid (or already has pending payments covering the balance).");
-      return;
-    }
-    const nextType = hasPrior ? (remaining > 0 ? "installment" : "final") : "advance";
-    setPaymentType(nextType);
-    setAmount(nextType === "final" ? String(remaining) : "");
+    setAmount("");
     setMethod(3);
     setRemark("");
     setFile(null);
@@ -97,33 +68,18 @@ export default function RecordPayment({
   };
   const handleClose = () => setOpen(false);
 
-  const applyType = (type) => {
-    setPaymentType(type);
-    if (type === "final") setAmount(String(remaining));
-  };
-
   const handleSubmit = async () => {
-    const paymentAmount = Number(amount);
-    if (amount === "" || isNaN(paymentAmount) || paymentAmount <= 0) {
+    if (amount === "" || isNaN(Number(amount)) || Number(amount) <= 0) {
       toast.error("Enter a valid payment amount");
-      return;
-    }
-    if (paymentAmount > remaining + 0.001) {
-      toast.error(`Payment cannot exceed the remaining balance of ${formatCurrency(remaining)}`);
       return;
     }
     const token = localStorage.getItem("token");
     const formData = new FormData();
     formData.append("QuotationId", quotation.id);
-    formData.append("Amount", paymentAmount);
+    formData.append("Amount", Number(amount));
     formData.append("PaymentMethod", Number(method));
-    formData.append("IsAdvance", paymentType === "advance");
-    formData.append(
-      "Remark",
-      [paymentType === "final" ? "Final payment" : paymentType === "installment" ? "Installment" : "Advance", remark]
-        .filter(Boolean)
-        .join(" — ")
-    );
+    formData.append("IsAdvance", true);
+    formData.append("Remark", remark || "");
     if (file) formData.append("PaySlipFile", file);
 
     try {
@@ -146,69 +102,26 @@ export default function RecordPayment({
     }
   };
 
-  const title =
-    paymentType === "final"
-      ? "Record Final Payment"
-      : paymentType === "installment"
-        ? "Record Installment"
-        : "Record Advance Payment";
-
   return (
     <>
-      {variant === "button" ? (
-        <Button
-          size="small"
-          variant="contained"
-          startIcon={<PaymentsIcon />}
-          onClick={handleOpen}
-          disabled={remaining <= 0}
-          sx={{ textTransform: "none", fontSize: 12 }}
-        >
-          {hasPrior ? "Add payment" : "Record payment"}
-        </Button>
-      ) : (
-        <Tooltip title={hasPrior ? "Record another payment" : "Record Advance Payment"} placement="top">
-          <span>
-            <IconButton size="small" onClick={handleOpen} disabled={remaining <= 0}>
-              <PaymentsIcon color={remaining <= 0 ? "disabled" : "warning"} fontSize="inherit" />
-            </IconButton>
-          </span>
-        </Tooltip>
-      )}
+      <Tooltip title="Record Advance Payment" placement="top">
+        <IconButton size="small" onClick={handleOpen}>
+          <PaymentsIcon color="warning" fontSize="inherit" />
+        </IconButton>
+      </Tooltip>
       <Modal open={open} onClose={handleClose}>
         <Box sx={style} className="bg-black">
           <Typography variant="h5" sx={{ fontWeight: "500", mb: "12px" }}>
-            {title}
+            Record Advance Payment
           </Typography>
           <Typography variant="body2" color="text.secondary" mb={1}>
-            {quotation.quotationNo} · {quotation.customerName}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" mb={1.5}>
-            Net {formatCurrency(quotation.netTotal)} · Paid {formatCurrency(paidApproved)} · Remaining {formatCurrency(remaining)}
+            {quotation.quotationNo} · {quotation.customerName} · Net {formatCurrency(quotation.netTotal)}
           </Typography>
 
           <Grid container spacing={1}>
-            <Grid item xs={12}>
-              <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>Payment type</Typography>
-              <TextField select fullWidth size="small" value={paymentType} onChange={(e) => applyType(e.target.value)}>
-                {PAYMENT_TYPES.filter((t) => (hasPrior ? t.value !== "advance" : true)).map((t) => (
-                  <MenuItem key={t.value} value={t.value}>
-                    {t.label}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Grid>
             <Grid item xs={12} md={6}>
               <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>Amount</Typography>
-              <TextField
-                fullWidth
-                size="small"
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                inputProps={{ min: 0, max: remaining, step: "0.01" }}
-                helperText={`Max ${formatCurrency(remaining)}`}
-              />
+              <TextField fullWidth size="small" value={amount} onChange={(e) => setAmount(e.target.value)} />
             </Grid>
             <Grid item xs={12} md={6}>
               <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>Payment Method</Typography>

@@ -1,275 +1,161 @@
-import React, { useEffect, useState } from "react";
-import {
-  IconButton,
-  Tooltip,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Stack,
-} from "@mui/material";
+import React, { useRef } from "react";
+import { IconButton, Tooltip } from "@mui/material";
 import PrintIcon from "@mui/icons-material/Print";
-import PreviewIcon from "@mui/icons-material/Preview";
 import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
-import BASE_URL from "Base/api";
-
-const RECEIPT_CSS = `
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: Georgia, 'Times New Roman', serif;
-    color: #1a1a1a;
-    background: #fff;
-    padding: 48px 56px;
-    max-width: 850px;
-    margin: 0 auto;
-  }
-  .logo-wrap { width: 170px; }
-  .logo-wrap img { width: 170px; height: auto; object-fit: contain; display: block; }
-  .wordmark { font-size: 22px; font-weight: 700; letter-spacing: 3px; line-height: 1.25; text-transform: uppercase; }
-  .hr { border-top: 1px solid #ccc; margin: 20px 0 28px; }
-  .doc-title { font-size: 26px; font-weight: 700; margin-bottom: 14px; color: #1a1a1a; }
-  .top-grid { display: flex; justify-content: space-between; gap: 24px; }
-  .top-grid .right { text-align: right; }
-  .label {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: #555;
-    margin-bottom: 6px;
-    font-family: 'Segoe UI', Tahoma, sans-serif;
-  }
-  .kv, .line { font-size: 12.5px; margin-bottom: 3px; font-family: 'Segoe UI', Tahoma, sans-serif; color: #1a1a1a; }
-  .kv .k { font-weight: 700; margin-right: 4px; }
-  .line.strong { font-weight: 700; font-family: Georgia, 'Times New Roman', serif; font-size: 13.5px; }
-  table.details {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 32px;
-    font-family: 'Segoe UI', Tahoma, sans-serif;
-  }
-  table.details th {
-    text-align: left;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    color: #555;
-    padding: 10px 8px;
-    border-bottom: 1px solid #ccc;
-  }
-  table.details td {
-    font-size: 12.5px;
-    padding: 12px 8px;
-    border-bottom: 1px solid #eee;
-    color: #1a1a1a;
-  }
-  .num { text-align: right; white-space: nowrap; }
-  .amount-row td {
-    border-top: 2px solid #1a1a1a;
-    border-bottom: none;
-    font-size: 14px;
-    font-weight: 700;
-    padding-top: 12px;
-    font-family: Georgia, 'Times New Roman', serif;
-  }
-  .stamp {
-    display: inline-block;
-    border: 2px solid #1a1a1a;
-    color: #1a1a1a;
-    padding: 8px 22px;
-    font-weight: 800;
-    font-size: 16px;
-    letter-spacing: 2px;
-    margin: 28px 0 8px;
-    font-family: Georgia, 'Times New Roman', serif;
-  }
-  .footer {
-    text-align: center;
-    margin-top: 24px;
-    padding-top: 16px;
-    border-top: 1px solid #ccc;
-    font-size: 12px;
-    color: #555;
-    font-family: 'Segoe UI', Tahoma, sans-serif;
-  }
-  @media print { body { padding: 24px 32px; } }
-`;
-
-function paymentTypeLabel(payment) {
-  if (payment?.isAdvance) return "Advance payment";
-  const remark = String(payment?.remark || "").toLowerCase();
-  if (remark.includes("final")) return "Final payment";
-  return "Installment";
-}
-
-function receiptBodyHtml(payment, logoUrl) {
-  const logo = logoUrl
-    ? `<div class="logo-wrap"><img src="${logoUrl}" alt="Company logo" /></div>`
-    : `<div class="wordmark">BEYOND<br/>DESTINY</div>`;
-
-  return `
-    ${logo}
-    <div class="hr"></div>
-
-    <div class="top-grid">
-      <div>
-        <h1 class="doc-title">Payment Receipt</h1>
-        <div class="kv"><span class="k">Receipt No:</span><span>${payment.paymentNo || "-"}</span></div>
-        <div class="kv"><span class="k">Date:</span><span>${formatDate(payment.approvedOn || payment.createdOn)}</span></div>
-        <div class="kv"><span class="k">Quotation:</span><span>${payment.quotationNo || "-"}</span></div>
-      </div>
-      <div class="right">
-        <div class="label">RECEIVED FROM</div>
-        <div class="line strong">${payment.customerName || "-"}</div>
-        ${payment.customerMobileNo ? `<div class="line">Phone number: ${payment.customerMobileNo}</div>` : ""}
-      </div>
-    </div>
-
-    <div class="top-grid" style="margin-top:24px;">
-      <div>
-        <div class="label">FROM</div>
-        <div class="line strong">Beyond Destiny</div>
-        <div class="line">Phone number: 0779944812 / 0779944155</div>
-        <div class="line">Email: contact@beyonddestinyweddings.com</div>
-        <div class="line">No 27A, Skelton Road, Bambalapitiya., Sri Lanka</div>
-      </div>
-      <div class="right">
-        <div class="line strong">${payment.eventTypeName || "-"}</div>
-        <div class="line">Shoot</div>
-        <div class="line">${formatDate(payment.eventDate)}</div>
-        ${payment.venue ? `<div class="line">${payment.venue}</div>` : ""}
-      </div>
-    </div>
-
-    <table class="details">
-      <thead>
-        <tr>
-          <th>Description</th>
-          <th class="num">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Payment method</td>
-          <td class="num">${payment.paymentMethodName || "-"}</td>
-        </tr>
-        <tr>
-          <td>Payment type</td>
-          <td class="num">${paymentTypeLabel(payment)}</td>
-        </tr>
-        <tr>
-          <td>Quotation total</td>
-          <td class="num">${formatCurrency(payment.quotationNetTotal)}</td>
-        </tr>
-        ${
-          payment.remark
-            ? `<tr><td>Remarks</td><td class="num">${payment.remark}</td></tr>`
-            : ""
-        }
-        <tr class="amount-row">
-          <td>Amount received</td>
-          <td class="num">${formatCurrency(payment.amount)}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div style="text-align:center;">
-      <div class="stamp">PAID</div>
-    </div>
-
-    <div class="footer">
-      <p>Beyond Destiny Photography</p>
-      <p>0779944812 / 0779944155 · contact@beyonddestinyweddings.com</p>
-      <p>No 27A, Skelton Road, Bambalapitiya, Sri Lanka</p>
-      <p style="margin-top:10px;">Thank you for your payment.</p>
-    </div>
-  `;
-}
-
-function receiptDocumentHtml(payment, logoUrl) {
-  return `
-    <html>
-      <head>
-        <title>Payment Receipt - ${payment?.paymentNo || ""}</title>
-        <style>${RECEIPT_CSS}</style>
-      </head>
-      <body>${receiptBodyHtml(payment, logoUrl)}</body>
-    </html>
-  `;
-}
-
-function printReceipt(payment, logoUrl) {
-  const printWindow = window.open("", "_blank", "width=800,height=900");
-  if (!printWindow) return;
-  printWindow.document.write(receiptDocumentHtml(payment, logoUrl));
-  printWindow.document.close();
-  printWindow.focus();
-  setTimeout(() => {
-    printWindow.print();
-    printWindow.close();
-  }, 250);
-}
 
 export default function PrintReceipt({ payment }) {
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [companyLogo, setCompanyLogo] = useState("");
-
-  useEffect(() => {
-    const warehouse = typeof window !== "undefined" ? localStorage.getItem("warehouse") : null;
-    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    if (!warehouse || !token) return;
-    fetch(`${BASE_URL}/Company/GetCompanyLogoByWarehouseId?warehouseId=${warehouse}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        const url = data?.logoUrl || data?.LogoUrl || "";
-        if (url) setCompanyLogo(url);
-      })
-      .catch(() => {});
-  }, []);
-
-  const status = String(payment.approvalStatusName || payment.ApprovalStatusName || payment.approvalStatus || payment.ApprovalStatus || "").toLowerCase();
-  const confirmed = status.includes("approv") || status === "2";
-
-  if (!payment || !confirmed) return null;
+  const handlePrint = () => {
+    const printWindow = window.open("", "_blank", "width=800,height=900");
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Payment Receipt - ${payment.paymentNo}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+            
+            .header { text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px solid #10B981; }
+            .header h1 { font-size: 28px; color: #10B981; margin-bottom: 5px; }
+            .header .subtitle { font-size: 14px; color: #666; }
+            
+            .receipt-info { display: flex; justify-content: space-between; margin-bottom: 30px; }
+            .receipt-box { padding: 15px; background: #f0fdf4; border-radius: 8px; border-left: 4px solid #10B981; }
+            .receipt-box h2 { font-size: 24px; color: #10B981; margin-bottom: 5px; }
+            .receipt-box p { font-size: 12px; color: #666; margin-bottom: 3px; }
+            
+            .parties { display: flex; gap: 30px; margin-bottom: 30px; }
+            .party { flex: 1; padding: 20px; background: #f8f9fa; border-radius: 8px; }
+            .party h3 { font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 10px; letter-spacing: 1px; }
+            .party p { font-size: 13px; margin-bottom: 5px; }
+            .party strong { color: #333; font-size: 16px; }
+            
+            .payment-details { background: #fff; border: 2px solid #10B981; border-radius: 12px; overflow: hidden; margin-bottom: 30px; }
+            .payment-details-header { background: #10B981; color: white; padding: 15px 20px; }
+            .payment-details-header h3 { font-size: 16px; margin: 0; }
+            .payment-details-body { padding: 20px; }
+            
+            .detail-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #e2e8f0; }
+            .detail-row:last-child { border-bottom: none; }
+            .detail-row .label { color: #666; font-size: 14px; }
+            .detail-row .value { font-weight: 600; font-size: 14px; }
+            
+            .amount-box { background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: white; padding: 25px; border-radius: 12px; text-align: center; margin-bottom: 30px; }
+            .amount-box .label { font-size: 14px; opacity: 0.9; margin-bottom: 5px; }
+            .amount-box .amount { font-size: 36px; font-weight: 800; }
+            .amount-box .status { display: inline-block; margin-top: 10px; background: rgba(255,255,255,0.2); padding: 5px 15px; border-radius: 20px; font-size: 12px; }
+            
+            .summary { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
+            .summary-row { display: flex; justify-content: space-between; padding: 8px 0; }
+            .summary-row.total { border-top: 2px solid #10B981; margin-top: 10px; padding-top: 15px; font-size: 16px; font-weight: 700; }
+            
+            .footer { text-align: center; padding-top: 30px; border-top: 1px solid #e2e8f0; }
+            .footer p { font-size: 12px; color: #666; margin-bottom: 5px; }
+            .footer .company { font-weight: 600; color: #10B981; margin-bottom: 10px; }
+            .footer .contact { font-size: 11px; }
+            
+            .stamp { display: inline-block; border: 3px solid #10B981; color: #10B981; padding: 10px 25px; border-radius: 8px; font-weight: 800; font-size: 18px; transform: rotate(-5deg); margin: 20px 0; }
+            
+            @media print { 
+              body { padding: 20px; }
+              .amount-box { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>PAYMENT RECEIPT</h1>
+            <p class="subtitle">Beyond Destiny Photography</p>
+          </div>
+          
+          <div class="receipt-info">
+            <div class="receipt-box">
+              <h2>${payment.paymentNo}</h2>
+              <p><strong>Receipt No</strong></p>
+              <p>Date: ${formatDate(payment.approvedOn || payment.createdOn)}</p>
+            </div>
+            <div style="text-align: right;">
+              <p><strong>Quotation:</strong> ${payment.quotationNo}</p>
+              <p><strong>Event Date:</strong> ${formatDate(payment.eventDate)}</p>
+              ${payment.venue ? `<p><strong>Venue:</strong> ${payment.venue}</p>` : ""}
+            </div>
+          </div>
+          
+          <div class="parties">
+            <div class="party">
+              <h3>Received From</h3>
+              <p><strong>${payment.customerName}</strong></p>
+              ${payment.customerMobileNo ? `<p>📞 ${payment.customerMobileNo}</p>` : ""}
+            </div>
+            <div class="party">
+              <h3>Event Details</h3>
+              <p><strong>${payment.eventTypeName}</strong></p>
+              <p>📅 ${formatDate(payment.eventDate)}</p>
+              ${payment.venue ? `<p>📍 ${payment.venue}</p>` : ""}
+            </div>
+          </div>
+          
+          <div class="amount-box">
+            <p class="label">Amount Received</p>
+            <p class="amount">${formatCurrency(payment.amount)}</p>
+            <span class="status">✓ ${payment.isAdvance ? "ADVANCE PAYMENT" : "PAYMENT"}</span>
+          </div>
+          
+          <div class="payment-details">
+            <div class="payment-details-header">
+              <h3>Payment Details</h3>
+            </div>
+            <div class="payment-details-body">
+              <div class="detail-row">
+                <span class="label">Payment Method</span>
+                <span class="value">${payment.paymentMethodName}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Payment Type</span>
+                <span class="value">${payment.isAdvance ? "Advance Payment" : "Balance Payment"}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Quotation Total</span>
+                <span class="value">${formatCurrency(payment.quotationNetTotal)}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">This Payment</span>
+                <span class="value" style="color: #10B981; font-size: 16px;">${formatCurrency(payment.amount)}</span>
+              </div>
+              ${payment.remark ? `
+              <div class="detail-row">
+                <span class="label">Remarks</span>
+                <span class="value">${payment.remark}</span>
+              </div>
+              ` : ""}
+            </div>
+          </div>
+          
+          <div style="text-align: center;">
+            <div class="stamp">PAID</div>
+          </div>
+          
+          <div class="footer">
+            <p class="company">Beyond Destiny Photography</p>
+            <p class="contact">📞 0779944812 / 0779944155 | ✉️ contact@beyonddestinyweddings.com</p>
+            <p class="contact">No 27A, Skelton Road, Bambalapitiya, Sri Lanka</p>
+            <p style="margin-top: 15px; font-style: italic;">Thank you for your payment!</p>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
+  };
 
   return (
-    <>
-      <Stack direction="row" spacing={0} alignItems="center">
-        <Tooltip title="Preview receipt">
-          <IconButton size="small" onClick={() => setPreviewOpen(true)} sx={{ color: "#1a1a1a" }}>
-            <PreviewIcon sx={{ fontSize: 16 }} />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Print receipt">
-          <IconButton size="small" onClick={() => printReceipt(payment, companyLogo)} sx={{ color: "#1a1a1a" }}>
-            <PrintIcon sx={{ fontSize: 16 }} />
-          </IconButton>
-        </Tooltip>
-      </Stack>
-
-      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1, py: 1.25 }}>
-          <PreviewIcon color="primary" />
-          Receipt preview
-        </DialogTitle>
-        <DialogContent dividers sx={{ p: 0, bgcolor: "#f1f5f9" }}>
-          <iframe
-            title="Receipt preview"
-            srcDoc={receiptDocumentHtml(payment, companyLogo)}
-            style={{ width: "100%", height: "70vh", border: 0, background: "#fff" }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPreviewOpen(false)}>Close</Button>
-          <Button variant="contained" startIcon={<PrintIcon />} onClick={() => printReceipt(payment, companyLogo)}>
-            Print
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </>
+    <Tooltip title="Print Receipt" placement="top">
+      <IconButton size="small" onClick={handlePrint} sx={{ color: "#10B981" }}>
+        <PrintIcon fontSize="inherit" />
+      </IconButton>
+    </Tooltip>
   );
 }

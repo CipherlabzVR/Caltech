@@ -84,8 +84,7 @@ import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import SignatureCanvas from "react-signature-canvas";
 import CameraCaptureModal from "@/components/work-track/CameraCaptureModal";
 import WorkTrackShareDialog from "@/components/work-track/WorkTrackShareDialog";
-import { parseChecklistImageUrls } from "@/components/work-track/sharedViewHelpers";
-import PhotoLibraryIcon from "@mui/icons-material/PhotoLibrary";
+import TechnicianNotesCard from "@/components/work-track/TechnicianNotesCard";
 
 /** Extract checklist array from ApiResponse / alternate shapes */
 function extractChecklistArrayFromResponse(result) {
@@ -173,7 +172,6 @@ export default function WorkTrackDetailView() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteType, setDeleteType] = useState(""); // "checklist" or "item"
   const [deleteId, setDeleteId] = useState(null);
-  const [deleteImageUrl, setDeleteImageUrl] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
   // Duplicate checklist
@@ -197,6 +195,9 @@ export default function WorkTrackDetailView() {
   const [sessionLoading, setSessionLoading] = useState(false);
   const [liveTimer, setLiveTimer] = useState(0);
   const timerIntervalRef = useRef(null);
+  const workSummaryStatusRef = useRef(null);
+  const breaksSnapshotRef = useRef("");
+  const liveRefreshRef = useRef(async () => {});
 
   // Break state
   const [breakActive, setBreakActive] = useState(false);
@@ -423,6 +424,7 @@ export default function WorkTrackDetailView() {
       if (seqMarker !== detailNavSeqRef.current) return;
 
       setWorkSummary(summaryData);
+      workSummaryStatusRef.current = summaryData?.currentStatus || null;
 
       // Start live timer ONLY if work is actively in progress (not on break/hold)
       if (summaryData?.currentStatus === "Started") {
@@ -707,8 +709,18 @@ export default function WorkTrackDetailView() {
   const syncBreaksFromAPI = useCallback(async () => {
     const apiBreaks = await loadBreaksFromAPI();
     if (apiBreaks) {
-      setBreaksTaken(apiBreaks);
-      
+      const snapshot = JSON.stringify({
+        first: apiBreaks.first,
+        lunch: apiBreaks.lunch,
+        second: apiBreaks.second,
+        currentBreakType: apiBreaks.currentBreakType || null,
+      });
+      const breakDataUnchanged = snapshot === breaksSnapshotRef.current;
+      if (!breakDataUnchanged) {
+        breaksSnapshotRef.current = snapshot;
+        setBreaksTaken(apiBreaks);
+      }
+
       // Check if there's an active break in the database that we need to sync locally
       if (apiBreaks.currentBreakType) {
         const breakKey = apiBreaks.currentBreakType;
@@ -721,11 +733,12 @@ export default function WorkTrackDetailView() {
           if (remaining > 0) {
             const breakTypeMap = { first: "1st", lunch: "lunch", second: "2nd" };
             const mappedType = breakTypeMap[breakKey];
-            
-            // Set break state directly
-            setBreakActive(true);
-            setBreakType(mappedType);
-            setBreakCountdown(remaining);
+
+            if (!breakDataUnchanged) {
+              setBreakActive(true);
+              setBreakType(mappedType);
+              setBreakCountdown(remaining);
+            }
             
             // Start the countdown interval if not already running
             if (!breakIntervalRef.current) {
@@ -771,43 +784,53 @@ export default function WorkTrackDetailView() {
     return null;
   }, [loadBreaksFromAPI]);
 
-  // Periodically refresh work summary for real-time sync (every 2 seconds) - matches technician page
+  // Idle detail screens must not poll. While work is Started or Held, refresh every 30s
+  // so the office timer can catch a pause or resume. The on-screen timer still ticks locally.
   useEffect(() => {
-    if (!id) return;
-    
-    // Sync immediately on mount
-    syncBreaksFromAPI();
-    
-    const syncInterval = setInterval(async () => {
-      // Sync breaks from API first, then refresh work summary
-      await syncBreaksFromAPI();
-      // Refresh work summary to keep timer in sync with technician page
-      fetchWorkSummary();
-    }, 2000); // Refresh every 2 seconds for real-time sync
-    
-    return () => clearInterval(syncInterval);
-  }, [id, syncBreaksFromAPI]);
+    if (!id || isTimeTrackingHidden) return;
 
-  // Sync immediately when page gains focus
+    syncBreaksFromAPI();
+
+    const syncInterval = setInterval(() => {
+      const status = workSummaryStatusRef.current;
+      if (status !== "Started" && status !== "Held") return;
+      liveRefreshRef.current();
+    }, 30000);
+
+    return () => clearInterval(syncInterval);
+  }, [id, isTimeTrackingHidden, syncBreaksFromAPI]);
+
+  liveRefreshRef.current = async () => {
+    await syncBreaksFromAPI();
+    await fetchWorkSummary();
+  };
+
+  // One refresh when the user returns to the tab. The listener is removed on unmount.
   useEffect(() => {
+    if (!id || isTimeTrackingHidden) return;
+    let lastRefreshAt = 0;
+
     const handleFocus = () => {
-      syncBreaksFromAPI();
-      fetchWorkSummary();
+      const now = Date.now();
+      if (now - lastRefreshAt < 10000) return;
+      lastRefreshAt = now;
+      liveRefreshRef.current();
     };
 
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
         handleFocus();
       }
-    });
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [syncBreaksFromAPI]);
-
-  // Break data is now synced from database API via polling - no localStorage listener needed
+  }, [id, isTimeTrackingHidden]);
 
   const formatDuration = (totalSeconds) => {
     const hours = Math.floor(totalSeconds / 3600);
@@ -1599,8 +1622,6 @@ export default function WorkTrackDetailView() {
   // Handle camera capture from modal
   const handleCameraCapture = async (imageData) => {
     if (!cameraItemId) return;
-    const imageDatas = (Array.isArray(imageData) ? imageData : [imageData]).filter(Boolean);
-    if (imageDatas.length === 0) return;
 
     try {
       const response = await fetch(`${BASE_URL}/WorkTrackChecklist/UploadChecklistItemImage`, {
@@ -1611,8 +1632,7 @@ export default function WorkTrackDetailView() {
         },
         body: JSON.stringify({
           id: cameraItemId,
-          imageData: imageDatas[0],
-          imageDatas,
+          imageData,
           workTrackDetailId: detail?.id != null ? Number(detail.id) : Number(id),
         }),
       });
@@ -1620,10 +1640,7 @@ export default function WorkTrackDetailView() {
       const result = await response.json();
       if (result?.statusCode === 200 || response.ok) {
         await refreshChecklists();
-        toast(
-          imageDatas.length === 1 ? "Photo uploaded successfully!" : `${imageDatas.length} photos uploaded successfully!`,
-          { type: "success" }
-        );
+        toast("Photo captured and uploaded successfully!", { type: "success" });
       } else {
         toast(result?.message || "Failed to upload photo", { type: "error" });
       }
@@ -1666,11 +1683,10 @@ export default function WorkTrackDetailView() {
   };
 
   // Delete handlers
-  const handleDeleteClick = (type, id, imageUrl = null) => {
+  const handleDeleteClick = (type, id) => {
     if (isReadOnly && type !== "image") return;
     setDeleteType(type);
     setDeleteId(id);
-    setDeleteImageUrl(imageUrl);
     setDeleteDialogOpen(true);
   };
 
@@ -1689,7 +1705,6 @@ export default function WorkTrackDetailView() {
           },
           body: JSON.stringify({
             id: deleteId,
-            imageUrl: deleteImageUrl,
             workTrackDetailId: detail?.id != null ? Number(detail.id) : Number(id),
           }),
         });
@@ -1722,7 +1737,6 @@ export default function WorkTrackDetailView() {
       setDeleteDialogOpen(false);
       setDeleteType("");
       setDeleteId(null);
-      setDeleteImageUrl(null);
     }
   };
 
@@ -1995,6 +2009,15 @@ export default function WorkTrackDetailView() {
           </Typography>
         </Alert>
       )}
+
+      <TechnicianNotesCard
+        workTrackDetailId={detail?.id || id}
+        submissionStatus={detail?.submissionStatus}
+        allowAdd
+        title="Technician Notes"
+        placeholder="Reply..."
+        assignedTechnicianId={detail?.assignedTechnicianId}
+      />
 
       {/* Summary Dashboard */}
       <Card 
@@ -3291,55 +3314,38 @@ export default function WorkTrackDetailView() {
                             {/* Image Upload */}
                             {item.itemType === "Image" && (
                               <Box sx={{ ml: 4, mt: 1 }}>
-                                {(() => {
-                                  const imageUrls = parseChecklistImageUrls(item.imageUrl);
-                                  const canEditImages = !isReadOnly && (isTimeTrackingHidden || isPendingApproval || workSummary?.currentStatus === "Started");
-                                  return imageUrls.length > 0 ? (
+                                {item.imageUrl ? (
                                   <Box>
-                                    <Box display="flex" gap={1} flexWrap="wrap">
-                                      {imageUrls.map((url) => (
-                                        <Box key={url} sx={{ position: "relative" }}>
-                                          <Box
-                                            component="img"
-                                            src={url}
-                                            alt={item.title}
-                                            onClick={() => window.open(url, "_blank")}
-                                            sx={{
-                                              width: 140,
-                                              height: 140,
-                                              objectFit: "cover",
-                                              borderRadius: 1,
-                                              border: "1px solid #ddd",
-                                              display: "block",
-                                              cursor: "pointer",
-                                            }}
-                                          />
-                                          <IconButton
-                                            size="small"
-                                            onClick={() => handleDeleteClick("image", item.id, url)}
-                                            sx={{
-                                              position: "absolute",
-                                              top: 4,
-                                              right: 4,
-                                              bgcolor: "rgba(255,255,255,0.9)",
-                                            }}
-                                          >
-                                            <DeleteOutlineIcon fontSize="small" color="error" />
-                                          </IconButton>
-                                        </Box>
-                                      ))}
-                                    </Box>
+                                    <img
+                                      src={item.imageUrl}
+                                      alt={item.title}
+                                      style={{
+                                        maxWidth: "100%",
+                                        maxHeight: 200,
+                                        borderRadius: 8,
+                                        border: "1px solid #ddd",
+                                      }}
+                                    />
                                     <Box mt={1} display="flex" gap={1} flexWrap="wrap">
-                                      {canEditImages && (
+                                      {!isReadOnly && (isTimeTrackingHidden || isPendingApproval || workSummary?.currentStatus === "Started") && (
                                         <Button
                                           variant="outlined"
                                           size="small"
-                                          startIcon={<PhotoLibraryIcon />}
+                                          startIcon={<CameraAltIcon />}
                                           onClick={() => openCameraModal(item.id)}
                                         >
-                                          Add Photos
+                                          Retake Photo
                                         </Button>
                                       )}
+                                      <Button
+                                        variant="outlined"
+                                        color="error"
+                                        size="small"
+                                        startIcon={<DeleteOutlineIcon />}
+                                        onClick={() => handleDeleteClick("image", item.id)}
+                                      >
+                                        Delete Photo
+                                      </Button>
                                     </Box>
                                   </Box>
                                 ) : (
@@ -3354,23 +3360,22 @@ export default function WorkTrackDetailView() {
                                   >
                                     <CameraAltIcon sx={{ fontSize: 40, color: "#aaa", mb: 1 }} />
                                     <Typography variant="body2" color="textSecondary" gutterBottom>
-                                      {!canEditImages
+                                      {isReadOnly || (!isTimeTrackingHidden && !isPendingApproval && workSummary?.currentStatus !== "Started")
                                         ? "No photo captured"
-                                        : "Take a photo or choose multiple from gallery"}
+                                        : "Tap to capture photo"}
                                     </Typography>
-                                    {canEditImages && (
+                                    {!isReadOnly && (isTimeTrackingHidden || isPendingApproval || workSummary?.currentStatus === "Started") && (
                                       <Button
                                         variant="contained"
                                         size="small"
-                                        startIcon={<PhotoLibraryIcon />}
+                                        startIcon={<CameraAltIcon />}
                                         onClick={() => openCameraModal(item.id)}
                                       >
-                                        Add Photos
+                                        Take Photo
                                       </Button>
                                     )}
                                   </Box>
-                                );
-                                })()}
+                                )}
                               </Box>
                             )}
                           </Box>
@@ -3940,7 +3945,7 @@ export default function WorkTrackDetailView() {
           setCameraItemId(null);
         }}
         onCapture={handleCameraCapture}
-        title="Add Work Photos"
+        title="Capture Work Photo"
       />
 
       {/* Session History Modal */}

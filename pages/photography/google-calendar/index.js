@@ -26,7 +26,6 @@ export default function GoogleCalendarSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [settings, setSettings] = useState({
     enabled: false,
     calendarId: "",
@@ -108,33 +107,6 @@ export default function GoogleCalendarSettings() {
       setTestResult({ success: false, message: "Connection test failed" });
     } finally {
       setTesting(false);
-    }
-  };
-
-  const handleSyncExisting = async () => {
-    if (
-      !window.confirm(
-        "Write all reservations that have at least one payment onto the connected Google Calendar? Existing events will be updated."
-      )
-    ) {
-      return;
-    }
-
-    setSyncing(true);
-    const token = localStorage.getItem("token");
-    try {
-      const res = await fetch(`${BASE_URL}/GoogleCalendar/SyncExistingReservations`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      const success = data.statusCode === "SUCCESS" || data.statusCode === 200;
-      if (success) toast.success("Sync complete");
-      else toast.error(data.message || "Sync failed");
-    } catch (e) {
-      toast.error("Sync failed");
-    } finally {
-      setSyncing(false);
     }
   };
 
@@ -268,13 +240,6 @@ export default function GoogleCalendarSettings() {
                 disabled={testing || !settings.hasServiceAccount}
               >
                 {testing ? <CircularProgress size={20} /> : "Test Connection"}
-              </Button>
-              <Button
-                variant="outlined"
-                onClick={handleSyncExisting}
-                disabled={syncing || !settings.enabled || !settings.hasServiceAccount}
-              >
-                {syncing ? <CircularProgress size={20} /> : "Sync Existing to Calendar"}
               </Button>
             </Box>
           </Grid>

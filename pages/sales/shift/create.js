@@ -16,7 +16,12 @@ import {
   FormControl,
   MenuItem,
   Tabs,
-  Tab
+  Tab,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from "@mui/material";
 import { Field, Form, Formik } from "formik";
 import BASE_URL from "Base/api";
@@ -58,11 +63,15 @@ export default function AddShift({ fetchItems }) {
   const inputRef = useRef(null);
   const { data: isDayEndDone } = IsDayEndDone();
   const { data: isPOSShiftLinkToBackOffice } = IsAppSettingEnabled("IsPOSShiftLinkToBackOffice");
-  const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
+  const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveToShiftEndEnable");
   const [tabValue, setTabValue] = useState(0);
   const [shiftItems, setShiftItems] = useState([]);
+  const [requireEndQty, setRequireEndQty] = useState(false);
+  const [confirmEndQtyOpen, setConfirmEndQtyOpen] = useState(false);
+  const [shiftItemsLoading, setShiftItemsLoading] = useState(false);
 
   const fetchShiftItems = async () => {
+    setShiftItemsLoading(true);
     try {
       const response = await fetch(`${BASE_URL}/Items/GetAllShiftEndItems`, {
         method: "GET",
@@ -73,12 +82,19 @@ export default function AddShift({ fetchItems }) {
       });
       if (response.ok) {
         const data = await response.json();
-        if (data.result) {
-          setShiftItems(data.result.map(item => ({ itemId: item.id, name: item.name, code: item.code, startQty: "" })));
-        }
+        setShiftItems(
+          (data.result || []).map(item => ({ itemId: item.id, name: item.name, code: item.code, startQty: "" }))
+        );
+      } else {
+        setShiftItems([]);
+        toast.error("Failed to load shift items.");
       }
     } catch (error) {
       console.error("Error fetching shift items:", error);
+      setShiftItems([]);
+      toast.error("Failed to load shift items.");
+    } finally {
+      setShiftItemsLoading(false);
     }
   };
 
@@ -86,7 +102,22 @@ export default function AddShift({ fetchItems }) {
     setTabValue(newValue);
   };
 
+  const isNegativeQuantity = (qty) => {
+    if (qty === "" || qty === null || qty === undefined) return false;
+    const parsed = parseFloat(qty);
+    return !Number.isNaN(parsed) && parsed < 0;
+  };
+
+  const isStartQtyFilled = (qty) => {
+    if (qty === 0 || qty === "0") return true;
+    const text = String(qty ?? "").trim();
+    if (text === "") return false;
+    const parsed = parseFloat(text);
+    return !Number.isNaN(parsed) && parsed >= 0;
+  };
+
   const updateItemQty = (index, qty) => {
+    if (isNegativeQuantity(qty)) return;
     const updated = [...shiftItems];
     updated[index].startQty = qty;
     setShiftItems(updated);
@@ -179,14 +210,15 @@ export default function AddShift({ fetchItems }) {
           return;
         } else {
           fetchAvailableTerminalList();
-          if (isItemEndInvolveEnable) {
-            fetchShiftItems();
-          } else {
-            setShiftItems([]);
-          }
           setCashData(denominations.map((val) => ({ val, qty: "", total: 0 })));
           setTabValue(0);
-          setOpen(true);
+          if (isItemEndInvolveEnable) {
+            setConfirmEndQtyOpen(true);
+          } else {
+            setRequireEndQty(false);
+            setShiftItems([]);
+            setOpen(true);
+          }
         }
       })
       .catch((err) => toast.error(err.message || ""));
@@ -195,7 +227,25 @@ export default function AddShift({ fetchItems }) {
 
   const handleClose = () => setOpen(false);
 
+  const startShiftWithEndQtyChoice = (withEndQty) => {
+    setRequireEndQty(withEndQty);
+    if (withEndQty) {
+      fetchShiftItems();
+    } else {
+      setShiftItems([]);
+    }
+    setConfirmEndQtyOpen(false);
+    setOpen(true);
+  };
+
+  const blockNegativeNumberKeys = (e) => {
+    if (e.key === "-" || e.key === "e" || e.key === "E" || e.key === "+") {
+      e.preventDefault();
+    }
+  };
+
   const updateQty = (index, qty) => {
+    if (isNegativeQuantity(qty)) return;
     const updated = [...cashData];
     updated[index].qty = qty;
     updated[index].total = parseFloat(qty || 0) * updated[index].val;
@@ -216,6 +266,31 @@ export default function AddShift({ fetchItems }) {
 
   const handleSubmit = (values) => {
     const used = cashData.filter((row) => parseFloat(row.qty) > 0);
+
+    if (cashData.some((row) => isNegativeQuantity(row.qty))) {
+      toast.error("Money quantity cannot be negative.");
+      return;
+    }
+
+    if (requireEndQty && shiftItems.some((si) => isNegativeQuantity(si.startQty))) {
+      toast.error("Item quantity cannot be negative.");
+      return;
+    }
+
+    if (requireEndQty) {
+      if (shiftItemsLoading) {
+        toast.error("Please wait until items are loaded.");
+        return;
+      }
+      if (shiftItems.length > 0) {
+        const missingStartQty = shiftItems.some((si) => !isStartQtyFilled(si.startQty));
+        if (missingStartQty) {
+          setTabValue(1);
+          toast.error("Please enter Start Qty for all items before starting the shift.");
+          return;
+        }
+      }
+    }
 
     if (used.length === 0) {
       toast.error("Please enter at least one quantity.");
@@ -258,10 +333,10 @@ export default function AddShift({ fetchItems }) {
       One: 0,
       FiftyCents: 0,
       TerminalId: values.TerminalId,
-      ShiftItems: isItemEndInvolveEnable
+      ShiftItems: requireEndQty
         ? shiftItems.map(si => ({
             ItemId: si.itemId,
-            StartQty: parseFloat(si.startQty || 0),
+            StartQty: parseFloat(si.startQty),
             EndQty: null
           }))
         : []
@@ -299,6 +374,19 @@ export default function AddShift({ fetchItems }) {
       <Button variant="outlined" onClick={handleOpen}>
         + start shift
       </Button>
+      <Dialog open={confirmEndQtyOpen} onClose={() => setConfirmEndQtyOpen(false)}>
+        <DialogTitle>End Qty</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Do you need to add End Qty for this shift?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmEndQtyOpen(false)}>Cancel</Button>
+          <Button onClick={() => startShiftWithEndQtyChoice(false)}>No</Button>
+          <Button variant="contained" onClick={() => startShiftWithEndQtyChoice(true)}>Yes</Button>
+        </DialogActions>
+      </Dialog>
       <Modal open={open}>
         <Box sx={style}>
           <Formik
@@ -370,7 +458,7 @@ export default function AddShift({ fetchItems }) {
                           )}
                         </FormControl>
                       </Grid>
-                      {isItemEndInvolveEnable && (
+                      {requireEndQty && (
                         <Grid item xs={12}>
                           <Tabs value={tabValue} onChange={handleTabChange}>
                             <Tab label="Denominations" />
@@ -378,7 +466,7 @@ export default function AddShift({ fetchItems }) {
                           </Tabs>
                         </Grid>
                       )}
-                      {(!isItemEndInvolveEnable || tabValue === 0) && (
+                      {(!requireEndQty || tabValue === 0) && (
                         <>
                           <Grid item xs={12}>
                             <Typography fontWeight={500} my={1}>
@@ -407,6 +495,8 @@ export default function AddShift({ fetchItems }) {
                                           type="number"
                                           size="small"
                                           value={row.qty}
+                                          inputProps={{ min: 0 }}
+                                          onKeyDown={blockNegativeNumberKeys}
                                           onChange={(e) =>
                                             updateQty(index, e.target.value)
                                           }
@@ -443,6 +533,8 @@ export default function AddShift({ fetchItems }) {
                                         type="number"
                                         size="small"
                                         value={row.qty}
+                                        inputProps={{ min: 0 }}
+                                        onKeyDown={blockNegativeNumberKeys}
                                         onChange={(e) =>
                                           updateQty(index, e.target.value)
                                         }
@@ -465,7 +557,7 @@ export default function AddShift({ fetchItems }) {
                       </>
                       )}
 
-                      {isItemEndInvolveEnable && tabValue === 1 && (
+                      {requireEndQty && tabValue === 1 && (
                         <Grid item xs={12} sx={{ minWidth: 0, width: "100%", pr: 0 }}>
                           <TableContainer
                             sx={{ width: "100%", maxWidth: "100%", minWidth: 0 }}
@@ -483,11 +575,15 @@ export default function AddShift({ fetchItems }) {
                                 <TableRow>
                                   <TableCell sx={{ py: 1 }}>Item Code</TableCell>
                                   <TableCell sx={{ py: 1 }}>Item Name</TableCell>
-                                  <TableCell sx={{ py: 1, pr: 0 }}>Start Qty</TableCell>
+                                  <TableCell sx={{ py: 1, pr: 0 }}>Start Qty *</TableCell>
                                 </TableRow>
                               </TableHead>
                               <TableBody>
-                                {shiftItems.length === 0 ? (
+                                {shiftItemsLoading ? (
+                                  <TableRow>
+                                    <TableCell colSpan={3} align="center">Loading items...</TableCell>
+                                  </TableRow>
+                                ) : shiftItems.length === 0 ? (
                                   <TableRow>
                                     <TableCell colSpan={3} align="center">No items found</TableCell>
                                   </TableRow>
@@ -502,6 +598,9 @@ export default function AddShift({ fetchItems }) {
                                           size="small"
                                           fullWidth
                                           value={item.startQty}
+                                          error={!isStartQtyFilled(item.startQty)}
+                                          inputProps={{ min: 0 }}
+                                          onKeyDown={blockNegativeNumberKeys}
                                           onChange={(e) => updateItemQty(index, e.target.value)}
                                         />
                                       </TableCell>
@@ -524,7 +623,7 @@ export default function AddShift({ fetchItems }) {
                       >
                         Cancel
                       </Button>
-                      <Button disabled={saveDisabled} type="submit" variant="contained">
+                      <Button disabled={saveDisabled || (requireEndQty && shiftItemsLoading)} type="submit" variant="contained">
                         Save
                       </Button>
                     </Grid>

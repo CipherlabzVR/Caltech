@@ -88,7 +88,11 @@ export default function AddPOProducts({
       shipment?.shipmentUnitPrice ?? shipment?.ShipmentUnitPrice ?? 0
     );
     const overseasCost = Number(
-      shipment?.shipmentAdditionalCost ?? shipment?.ShipmentAdditionalCost ?? 0
+      shipment?.shipmentOverseasTransportCost ??
+        shipment?.ShipmentOverseasTransportCost ??
+        shipment?.shipmentAdditionalCost ??
+        shipment?.ShipmentAdditionalCost ??
+        0
     );
     const freightDutyCost = Number(
       shipment?.shipmentFreightDutyCost ?? shipment?.ShipmentFreightDutyCost ?? 0
@@ -125,8 +129,12 @@ export default function AddPOProducts({
       shipment?.shipmentSellingPrice,
       shipment?.ShipmentSellingPrice,
     ];
+    const isZeroReceivedScenario = getShipmentReceivedQty(shipment) === 0;
     for (const value of candidates) {
-      if (value !== null && value !== undefined && value !== "" && Number(value) > 0) {
+      if (value === null || value === undefined || value === "") continue;
+      const numeric = Number(value);
+      if (Number.isNaN(numeric)) continue;
+      if (numeric > 0 || (isZeroReceivedScenario && numeric >= 0)) {
         return value;
       }
     }
@@ -293,8 +301,18 @@ export default function AddPOProducts({
           seededPrices[id] = price;
         }
         const qtyValue = shipment.poReceivedQty ?? shipment.POReceivedQty;
-        if (qtyValue !== null && qtyValue !== undefined && Number(qtyValue) > 0) {
+        if (getShipmentReceivedQty(shipment) === 0) {
+          seededQty[id] = qtyValue === null || qtyValue === undefined ? 0 : qtyValue;
+        } else if (qtyValue !== null && qtyValue !== undefined && Number(qtyValue) >= 0) {
           seededQty[id] = qtyValue;
+        }
+        if (getShipmentReceivedQty(shipment) === 0 && seededPrices[id] === undefined) {
+          const storedPrice =
+            shipment.shipmentSellingPrice ?? shipment.ShipmentSellingPrice;
+          seededPrices[id] =
+            storedPrice === null || storedPrice === undefined || storedPrice === ""
+              ? 0
+              : storedPrice;
         }
         const orderQty = getShipmentOrderedQty(shipment);
         if (orderQty > 0) {
@@ -393,11 +411,21 @@ export default function AddPOProducts({
         : currentOrderQty;
     const orderQtyChanged = parsedOrderQty !== currentOrderQty;
 
+    const shipmentReceivedQty = getShipmentReceivedQty(shipment);
+    const isZeroReceivedScenario = shipmentReceivedQty === 0;
+
     const receivedQtyRaw = poReceivedQtyValues[shipmentId];
+    const parsedReceivedQty = isZeroReceivedScenario
+      ? receivedQtyRaw === undefined || receivedQtyRaw === "" || Number.isNaN(Number(receivedQtyRaw))
+        ? 0
+        : Number(receivedQtyRaw)
+      : Number(receivedQtyRaw);
     const hasReceivedQtyUpdate =
-      receivedQtyRaw !== undefined &&
-      receivedQtyRaw !== "" &&
-      Number(receivedQtyRaw) > 0;
+      isZeroReceivedScenario ||
+      (receivedQtyRaw !== undefined &&
+        receivedQtyRaw !== "" &&
+        !Number.isNaN(parsedReceivedQty) &&
+        parsedReceivedQty >= 0);
 
     const isStockUpdated = !!(
       shipment.isStockUpdated ?? shipment.IsStockUpdated
@@ -432,7 +460,7 @@ export default function AddPOProducts({
           0
         );
 
-      if (otherPOReceived + Number(receivedQtyRaw) > poTotalQty) {
+      if (otherPOReceived + parsedReceivedQty > poTotalQty) {
         toast.error(
           `Total received qty cannot exceed PO qty (${poTotalQty}).`
         );
@@ -453,7 +481,14 @@ export default function AddPOProducts({
           ? sellingPriceRaw
           : getSellingPriceValue(shipment);
 
-      if (!sellingPrice || Number(sellingPrice) <= 0) {
+      if (isZeroReceivedScenario || parsedReceivedQty === 0) {
+        sellingPrice =
+          sellingPrice === "" || sellingPrice == null ? 0 : Number(sellingPrice);
+        if (Number.isNaN(sellingPrice) || sellingPrice < 0) {
+          toast.error("Please enter a valid selling price");
+          return;
+        }
+      } else if (!sellingPrice || Number(sellingPrice) <= 0) {
         toast.error("Please Enter Selling Price");
         return;
       }
@@ -485,7 +520,7 @@ export default function AddPOProducts({
       if (hasReceivedQtyUpdate && !isStockUpdated) {
         const receivedMessage = await updatePOReceivedQuantity(
           shipmentId,
-          receivedQtyRaw,
+          parsedReceivedQty,
           sellingPrice
         );
         toast.success(receivedMessage);
@@ -632,8 +667,13 @@ export default function AddPOProducts({
                               <TextField
                                 value={
                                   poReceivedQtyValues[shipmentId] !== undefined
-                                    ? poReceivedQtyValues[shipmentId] || ""
-                                    : shipment.poReceivedQty || ""
+                                    ? poReceivedQtyValues[shipmentId] === "" ||
+                                      poReceivedQtyValues[shipmentId] === null
+                                      ? ""
+                                      : poReceivedQtyValues[shipmentId]
+                                    : shipment.poReceivedQty ??
+                                      shipment.POReceivedQty ??
+                                      ""
                                 }
                                 size="small"
                                 type="number"
@@ -674,10 +714,12 @@ export default function AddPOProducts({
                                 <TableCell align="right">
                                   <Typography>
                                     {formatCurrency(
-                                      calculateProfit(
-                                        shipmentSellingPrice,
-                                        shipmentTotalUnitCost
-                                      )
+                                      getShipmentReceivedQty(shipment) === 0
+                                        ? 0
+                                        : calculateProfit(
+                                            shipmentSellingPrice,
+                                            shipmentTotalUnitCost
+                                          )
                                     )}
                                   </Typography>
                                 </TableCell>

@@ -6,6 +6,7 @@ import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import PrintIcon from "@mui/icons-material/Print";
+import PrintExcelButton from "@/components/ReportTemplate/PrintExcelButton";
 import BASE_URL from "Base/api";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -272,7 +273,9 @@ export default function PurchaseOrderPrintPage() {
         fetchSidebarLogo();
     }, [purchaseOrderData?.warehouseId]);
 
-  const lineItems = purchaseOrderData?.goodReceivedNoteLineDetails ?? [];
+  const lineItems = (purchaseOrderData?.goodReceivedNoteLineDetails ?? []).filter(
+    (item) => !item.isDeleted
+  );
   const poType = purchaseOrderData?.type ?? purchaseOrderData?.purchasingOrderType;
   const isLocalPO = poType == 1;
   const isImportPO = !isLocalPO;
@@ -288,7 +291,11 @@ export default function PurchaseOrderPrintPage() {
       tally?.shipmentUnitPrice ?? tally?.ShipmentUnitPrice ?? 0
     );
     const overseasCost = Number(
-      tally?.shipmentAdditionalCost ?? tally?.ShipmentAdditionalCost ?? 0
+      tally?.shipmentOverseasTransportCost ??
+        tally?.ShipmentOverseasTransportCost ??
+        tally?.shipmentAdditionalCost ??
+        tally?.ShipmentAdditionalCost ??
+        0
     );
     const freightDutyCost = Number(
       tally?.shipmentFreightDutyCost ?? tally?.ShipmentFreightDutyCost ?? 0
@@ -309,6 +316,7 @@ export default function PurchaseOrderPrintPage() {
   const getReceivedQty = (item) =>
     Number(
       item.receivedQty ??
+        item.poReceivedQty ??
         item.shipmentReceivedQty ??
         item.ShipmentReceivedQty ??
         0
@@ -718,7 +726,12 @@ export default function PurchaseOrderPrintPage() {
                     >
                         Print
                     </Button>
-                    {/* <Button
+          <PrintExcelButton
+            iframeRef={iframeRef}
+            downloadName={`PurchaseOrder_${purchaseOrderData?.documentNo || documentNumber || "document"}`}
+            disabled={isLoading || !finalHtml}
+          />
+          {/* <Button
             variant="outlined"
             startIcon={<PictureAsPdfIcon />}
             onClick={handleDownloadPDF}

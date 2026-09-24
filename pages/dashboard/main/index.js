@@ -52,7 +52,7 @@ export default function Dashboard() {
   const fetchOutstandingCustomers = async () => {
     try {
       const response = await fetch(
-        `${BASE_URL}/Outstanding/GetAllOutstandingsGroupedByCustomer`,
+        `${BASE_URL}/Outstanding/GetMainDashboardOutstandingsGroupedByCustomer`,
         {
           method: "GET",
           headers: authHeaders,

@@ -2,20 +2,20 @@ import React, { useState } from "react";
 import {
   Button,
   Grid,
-  IconButton,
   MenuItem,
   Select,
-  Stack,
   TextField,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import Box from "@mui/material/Box";
 import Modal from "@mui/material/Modal";
 import "react-toastify/dist/ReactToastify.css";
-import DescriptionIcon from "@mui/icons-material/Description";
-import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
+import SummaryReportModeButtons, {
+  REPORT_MODE,
+  openSummaryHtmlReport,
+  summaryModalTitle,
+} from "@/components/UIElements/Modal/Reports/Summery/SummaryReportModeButtons";
 import { Report } from "Base/report";
 import { Catelogue } from "Base/catelogue";
 import ReportFilterSelect from "@/components/utils/ReportFilterSelect";
@@ -45,19 +45,6 @@ const CASH_TYPE_OPTIONS = [
   { value: 1, label: "Cash In" },
   { value: 2, label: "Cash Out" },
 ];
-
-const REPORT_MODE = { CUSTOM: "custom", DEFAULT: "default" };
-
-const printActionSx = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  gap: 0.25,
-  minWidth: 52,
-  borderRadius: 1,
-  px: 0.5,
-  py: 0.25,
-};
 
 export default function CashFlowSummaryReport({ docName, reportName } = {}) {
   const warehouseId = typeof window !== "undefined" ? localStorage.getItem("warehouse") : "";
@@ -116,7 +103,7 @@ export default function CashFlowSummaryReport({ docName, reportName } = {}) {
       cashFlowTypeName,
       cashTypeName,
     });
-    window.open(`/reports/cash-flow-summary/print?${params.toString()}`, "_blank");
+    openSummaryHtmlReport("/reports/cash-flow-summary/print", params, reportMode === REPORT_MODE.EXCEL);
   };
 
   const handleSubmit = () => {
@@ -126,27 +113,11 @@ export default function CashFlowSummaryReport({ docName, reportName } = {}) {
   };
 
   const canSubmit = Boolean(fromDate && toDate);
-  const modalTitle =
-    reportMode === REPORT_MODE.CUSTOM
-      ? "Cash Flow Summary Report (Custom)"
-      : "Cash Flow Summary Report (Default)";
+  const modalTitle = summaryModalTitle("Cash Flow Summary Report", reportMode);
 
   return (
     <>
-      <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
-        <Tooltip title="Print (Custom)" placement="top">
-          <IconButton onClick={() => handleOpen(REPORT_MODE.CUSTOM)} aria-label="Custom print" size="small" sx={printActionSx}>
-            <DescriptionIcon color="action" fontSize="medium" />
-            <Typography variant="caption" sx={{ lineHeight: 1.1, color: "text.secondary" }}>Custom</Typography>
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Print (Default)" placement="top">
-          <IconButton onClick={() => handleOpen(REPORT_MODE.DEFAULT)} aria-label="Default print" size="small" sx={printActionSx}>
-            <LocalPrintshopIcon color="primary" fontSize="medium" />
-            <Typography variant="caption" sx={{ lineHeight: 1.1, color: "primary.main" }}>Default</Typography>
-          </IconButton>
-        </Tooltip>
-      </Stack>
+      <SummaryReportModeButtons onOpen={handleOpen} />
 
       <Modal open={open} onClose={handleClose}>
         <Box sx={style} className="bg-black">

@@ -41,12 +41,15 @@ const style = {
 
 const denominations = [5000, 2000, 1000, 500, 100, 50, 20, 10, 5, 2, 1, 0.5];
 
-export default function EditShift({ fetchItems, item }) {
-  const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
+function ShiftEndDialog({ fetchItems, item }) {
+  const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveToShiftEndEnable");
   const [open, setOpen] = useState(false);
   const [cashData, setCashData] = useState(
     denominations.map((val) => ({ val, qty: "", total: 0 }))
   );
+  const [tabValue, setTabValue] = useState(0);
+  const [shiftItems, setShiftItems] = useState([]);
+  const [requireEndQty, setRequireEndQty] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -59,12 +62,9 @@ export default function EditShift({ fetchItems, item }) {
     }
   }, [open]);
 
-  const [tabValue, setTabValue] = useState(0);
-  const [shiftItems, setShiftItems] = useState([]);
-
   const fetchShiftItems = async () => {
     try {
-      const response = await fetch(`${BASE_URL}/Items/GetAllShiftEndItems`, {
+      const response = await fetch(`${BASE_URL}/Shift/GetShiftItems?shiftId=${item.id}`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -73,12 +73,22 @@ export default function EditShift({ fetchItems, item }) {
       });
       if (response.ok) {
         const data = await response.json();
-        if (data.result) {
-          setShiftItems(data.result.map(i => ({ itemId: i.id, name: i.name, code: i.code, endQty: "" })));
-        }
+        const list = data.result || [];
+        setShiftItems(list.map(i => ({
+          itemId: i.itemId,
+          name: i.name,
+          code: i.code,
+          endQty: i.endQty ?? ""
+        })));
+        setRequireEndQty(list.length > 0);
+      } else {
+        setShiftItems([]);
+        setRequireEndQty(false);
       }
     } catch (error) {
       console.error("Error fetching shift items:", error);
+      setShiftItems([]);
+      setRequireEndQty(false);
     }
   };
 
@@ -94,11 +104,7 @@ export default function EditShift({ fetchItems, item }) {
 
   const handleOpen = () => {
     setCashData(denominations.map((val) => ({ val, qty: "", total: 0 })));
-    if (isItemEndInvolveEnable) {
-      fetchShiftItems();
-    } else {
-      setShiftItems([]);
-    }
+    fetchShiftItems();
     setTabValue(0);
     setOpen(true);
   };
@@ -116,12 +122,29 @@ export default function EditShift({ fetchItems, item }) {
     return cashData.reduce((sum, row) => sum + row.total, 0);
   };
 
+  const isEndQtyFilled = (qty) => {
+    if (qty === 0 || qty === "0") return true;
+    const text = String(qty ?? "").trim();
+    if (text === "") return false;
+    const parsed = parseFloat(text);
+    return !Number.isNaN(parsed) && parsed >= 0;
+  };
+
   const handleSubmit = (values) => {
     const used = cashData.filter((row) => parseFloat(row.qty) > 0);
 
     if (used.length === 0) {
       toast.error("Please enter at least one quantity.");
       return;
+    }
+
+    if (requireEndQty && shiftItems.length > 0) {
+      const missingEndQty = shiftItems.some((si) => !isEndQtyFilled(si.endQty));
+      if (missingEndQty) {
+        setTabValue(1);
+        toast.error("Please enter End Qty for all items before ending the shift.");
+        return;
+      }
     }
 
     const denominationMap = {
@@ -161,11 +184,11 @@ export default function EditShift({ fetchItems, item }) {
       One: 0,
       FiftyCents: 0,
       TerminalId: item.terminalId,
-      ShiftItems: isItemEndInvolveEnable
+      ShiftItems: requireEndQty
         ? shiftItems.map(si => ({
             ItemId: si.itemId,
             StartQty: 0,
-            EndQty: parseFloat(si.endQty || 0)
+            EndQty: isEndQtyFilled(si.endQty) ? parseFloat(si.endQty) : null
           }))
         : []
     };
@@ -247,7 +270,7 @@ export default function EditShift({ fetchItems, item }) {
                           value={item.terminalCode}
                         />
                       </Grid>
-                      {isItemEndInvolveEnable && (
+                      {requireEndQty && (
                         <Grid item xs={12}>
                           <Tabs value={tabValue} onChange={handleTabChange}>
                             <Tab label="Denominations" />
@@ -255,7 +278,7 @@ export default function EditShift({ fetchItems, item }) {
                           </Tabs>
                         </Grid>
                       )}
-                      {(!isItemEndInvolveEnable || tabValue === 0) && (
+                      {(!requireEndQty || tabValue === 0) && (
                         <>
                           <Grid item xs={12}>
                             <Typography fontWeight={500} my={2}>
@@ -342,7 +365,7 @@ export default function EditShift({ fetchItems, item }) {
                         </>
                       )}
 
-                      {isItemEndInvolveEnable && tabValue === 1 && (
+                      {requireEndQty && tabValue === 1 && (
                         <Grid item xs={12} sx={{ minWidth: 0, width: "100%", pr: 0 }}>
                           <TableContainer
                             sx={{ width: "100%", maxWidth: "100%", minWidth: 0 }}
@@ -360,7 +383,7 @@ export default function EditShift({ fetchItems, item }) {
                                 <TableRow>
                                   <TableCell sx={{ py: 1 }}>Item Code</TableCell>
                                   <TableCell sx={{ py: 1 }}>Item Name</TableCell>
-                                  <TableCell sx={{ py: 1, pr: 0 }}>End Qty</TableCell>
+                                  <TableCell sx={{ py: 1, pr: 0 }}>End Qty *</TableCell>
                                 </TableRow>
                               </TableHead>
                               <TableBody>
@@ -378,7 +401,10 @@ export default function EditShift({ fetchItems, item }) {
                                           type="number"
                                           size="small"
                                           fullWidth
+                                          required
                                           value={item.endQty}
+                                          error={String(item.endQty ?? "").trim() === ""}
+                                          inputProps={{ min: 0 }}
                                           onChange={(e) => updateItemQty(index, e.target.value)}
                                         />
                                       </TableCell>
@@ -414,4 +440,8 @@ export default function EditShift({ fetchItems, item }) {
       </Modal>
     </>
   );
+}
+
+export default function EditShift(props) {
+  return <ShiftEndDialog key={props.item?.id} {...props} />;
 }

@@ -16,41 +16,25 @@ import CloseIcon from "@mui/icons-material/Close";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import FlipCameraIosIcon from "@mui/icons-material/FlipCameraIos";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import PhotoLibraryIcon from "@mui/icons-material/PhotoLibrary";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { toast } from "react-toastify";
 
-const fileToDataUrl = (file) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-
-export default function CameraCaptureModal({
-  open,
-  onClose,
-  onCapture,
-  title = "Add Photos",
-}) {
+export default function CameraCaptureModal({ open, onClose, onCapture, title = "Take Photo" }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const [selectedImages, setSelectedImages] = useState([]);
+  const [capturedImage, setCapturedImage] = useState(null);
   const [capturing, setCapturing] = useState(false);
-  const [facingMode, setFacingMode] = useState("environment");
+  const [facingMode, setFacingMode] = useState("environment"); // "environment" = back camera, "user" = front camera
   const [cameraError, setCameraError] = useState(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
-  const galleryInputRef = useRef(null);
 
   useEffect(() => {
     if (open) {
       startCamera();
     } else {
       stopCamera();
-      setSelectedImages([]);
+      setCapturedImage(null);
       setCameraError(null);
     }
     return () => stopCamera();
@@ -59,13 +43,14 @@ export default function CameraCaptureModal({
   const startCamera = async () => {
     try {
       setCameraError(null);
+      // Stop any existing stream first
       stopCamera();
-
+      
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
+        video: { 
           facingMode: facingMode,
           width: { ideal: 1280 },
-          height: { ideal: 720 },
+          height: { ideal: 720 }
         },
       });
       streamRef.current = stream;
@@ -74,7 +59,8 @@ export default function CameraCaptureModal({
       }
     } catch (error) {
       console.error("Error accessing camera:", error);
-      setCameraError("Unable to access camera. You can still choose photos from the gallery.");
+      setCameraError("Unable to access camera. Please check permissions.");
+      toast("Unable to access camera. Please check permissions.", { type: "error" });
     }
   };
 
@@ -89,73 +75,53 @@ export default function CameraCaptureModal({
   };
 
   const toggleCamera = () => {
-    setFacingMode((prev) => (prev === "environment" ? "user" : "environment"));
-  };
-
-  const addImages = (images) => {
-    const next = (images || []).filter(Boolean);
-    if (next.length === 0) return;
-    setSelectedImages((prev) => [...prev, ...next]);
+    setFacingMode(prev => prev === "environment" ? "user" : "environment");
   };
 
   const capturePhoto = () => {
     if (!videoRef.current || !canvasRef.current) return;
-
+    
     setCapturing(true);
     const video = videoRef.current;
     const canvas = canvasRef.current;
-
+    
+    // Set canvas size to match video
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-
+    
     const ctx = canvas.getContext("2d");
+    
+    // If using front camera, mirror the image
     if (facingMode === "user") {
       ctx.translate(canvas.width, 0);
       ctx.scale(-1, 1);
     }
-
+    
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Get the image as base64
     const imageData = canvas.toDataURL("image/jpeg", 0.85);
-    addImages([imageData]);
+    setCapturedImage(imageData);
     setCapturing(false);
-    toast("Photo added. Capture more or choose from gallery.", { type: "success" });
   };
 
-  const handleGalleryChange = async (event) => {
-    const files = Array.from(event.target.files || []).filter((file) =>
-      file.type.startsWith("image/")
-    );
-    event.target.value = "";
-    if (files.length === 0) return;
-
-    try {
-      const images = await Promise.all(files.map(fileToDataUrl));
-      addImages(images);
-      toast(
-        files.length === 1 ? "Photo selected from gallery" : `${files.length} photos selected from gallery`,
-        { type: "success" }
-      );
-    } catch (error) {
-      console.error("Error reading gallery photos:", error);
-      toast("Failed to read selected photos", { type: "error" });
-    }
-  };
-
-  const removeSelectedImage = (index) => {
-    setSelectedImages((prev) => prev.filter((_, i) => i !== index));
+  const retakePhoto = () => {
+    setCapturedImage(null);
+    startCamera();
   };
 
   const handleConfirm = () => {
-    if (selectedImages.length === 0) return;
-    onCapture(selectedImages);
-    onClose();
+    if (capturedImage) {
+      onCapture(capturedImage);
+      onClose();
+    }
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="sm"
+    <Dialog 
+      open={open} 
+      onClose={onClose} 
+      maxWidth="sm" 
       fullWidth
       fullScreen={isMobile}
     >
@@ -165,35 +131,49 @@ export default function CameraCaptureModal({
           <CloseIcon />
         </IconButton>
       </DialogTitle>
-
+      
       <DialogContent sx={{ p: 2 }}>
-        <input
-          ref={galleryInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          hidden
-          onChange={handleGalleryChange}
-        />
-
         {cameraError ? (
-          <Box sx={{ textAlign: "center", py: 3 }}>
-            <Typography color="error" gutterBottom>
-              {cameraError}
-            </Typography>
-            <Button variant="outlined" onClick={startCamera} startIcon={<RefreshIcon />} sx={{ mr: 1, mb: 1 }}>
-              Retry Camera
+          <Box sx={{ textAlign: "center", py: 4 }}>
+            <Typography color="error" gutterBottom>{cameraError}</Typography>
+            <Button variant="outlined" onClick={startCamera} startIcon={<RefreshIcon />}>
+              Retry
             </Button>
-            <Button
-              variant="contained"
-              startIcon={<PhotoLibraryIcon />}
-              onClick={() => galleryInputRef.current?.click()}
-              sx={{ mb: 1 }}
+          </Box>
+        ) : capturedImage ? (
+          // Show captured image
+          <Box>
+            <Box
+              sx={{
+                position: "relative",
+                width: "100%",
+                bgcolor: "#000",
+                borderRadius: 2,
+                overflow: "hidden",
+              }}
             >
-              Choose from Gallery
+              <img
+                src={capturedImage}
+                alt="Captured"
+                style={{
+                  width: "100%",
+                  height: "auto",
+                  display: "block",
+                }}
+              />
+            </Box>
+            <Button
+              variant="outlined"
+              fullWidth
+              startIcon={<RefreshIcon />}
+              onClick={retakePhoto}
+              sx={{ mt: 2 }}
+            >
+              Retake Photo
             </Button>
           </Box>
         ) : (
+          // Show camera preview
           <Box>
             <Box
               sx={{
@@ -217,7 +197,8 @@ export default function CameraCaptureModal({
                 }}
               />
               <canvas ref={canvasRef} style={{ display: "none" }} />
-
+              
+              {/* Camera switch button */}
               <IconButton
                 onClick={toggleCamera}
                 sx={{
@@ -232,73 +213,21 @@ export default function CameraCaptureModal({
                 <FlipCameraIosIcon />
               </IconButton>
             </Box>
-
-            <Box display="flex" gap={1} flexWrap="wrap" sx={{ mt: 2 }}>
-              <Button
-                variant="contained"
-                startIcon={capturing ? <CircularProgress size={20} color="inherit" /> : <CameraAltIcon />}
-                onClick={capturePhoto}
-                disabled={capturing}
-                sx={{ flex: 1, minWidth: 140 }}
-              >
-                {capturing ? "Capturing..." : "Take Photo"}
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={<PhotoLibraryIcon />}
-                onClick={() => galleryInputRef.current?.click()}
-                sx={{ flex: 1, minWidth: 140 }}
-              >
-                Gallery
-              </Button>
-            </Box>
-          </Box>
-        )}
-
-        {selectedImages.length > 0 && (
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              {selectedImages.length} photo{selectedImages.length === 1 ? "" : "s"} ready to upload
-            </Typography>
-            <Box display="flex" gap={1} flexWrap="wrap">
-              {selectedImages.map((src, index) => (
-                <Box key={`${index}-${src.slice(-16)}`} sx={{ position: "relative" }}>
-                  <Box
-                    component="img"
-                    src={src}
-                    alt={`Selected ${index + 1}`}
-                    sx={{
-                      width: 84,
-                      height: 84,
-                      objectFit: "cover",
-                      borderRadius: 1,
-                      border: "1px solid #ddd",
-                      display: "block",
-                    }}
-                  />
-                  <IconButton
-                    size="small"
-                    onClick={() => removeSelectedImage(index)}
-                    sx={{
-                      position: "absolute",
-                      top: -8,
-                      right: -8,
-                      bgcolor: "error.main",
-                      color: "white",
-                      width: 22,
-                      height: 22,
-                      "&:hover": { bgcolor: "error.dark" },
-                    }}
-                  >
-                    <DeleteOutlineIcon sx={{ fontSize: 14 }} />
-                  </IconButton>
-                </Box>
-              ))}
-            </Box>
+            
+            <Button
+              variant="contained"
+              fullWidth
+              startIcon={capturing ? <CircularProgress size={20} color="inherit" /> : <CameraAltIcon />}
+              onClick={capturePhoto}
+              disabled={capturing}
+              sx={{ mt: 2 }}
+            >
+              {capturing ? "Capturing..." : "Capture Photo"}
+            </Button>
           </Box>
         )}
       </DialogContent>
-
+      
       <DialogActions>
         <Button onClick={onClose} color="inherit">
           Cancel
@@ -307,11 +236,12 @@ export default function CameraCaptureModal({
           onClick={handleConfirm}
           variant="contained"
           color="primary"
-          disabled={selectedImages.length === 0}
+          disabled={!capturedImage}
         >
-          {selectedImages.length <= 1 ? "Upload Photo" : `Upload ${selectedImages.length} Photos`}
+          Use This Photo
         </Button>
       </DialogActions>
     </Dialog>
   );
 }
+

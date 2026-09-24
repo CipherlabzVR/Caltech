@@ -257,6 +257,8 @@ export default function ProfitabilityReportPrintPage() {
         errorText="No profitability report available to print."
         downloadName={`ProfitabilityReport_${new Date().toISOString().slice(0, 10)}`}
         showDownloadPdf={false}
+        showDownloadExcel
+        autoExportExcel={String(router.query.exportExcel || "") === "1"}
       />
       <ToastContainer position="top-right" autoClose={3000} />
     </>

@@ -129,6 +129,9 @@ const POEdit = () => {
             purchaseOrderNo: item.purchaseOrderNo,
             weightedUnitPriceTotal: 0,
             weightedAdditionalCostTotal: 0,
+            weightedOverseasTotal: 0,
+            weightedFreightOnlyTotal: 0,
+            weightedLocalTransportTotal: 0,
             totalFreightDutyDisplay: 0,
             totalAdditionalDisplay: 0,
             totalReceivedQty: 0,
@@ -137,7 +140,13 @@ const POEdit = () => {
 
         const receivedQty = Number(item.poReceivedQty) || 0;
         const shipmentUnitPrice = Number(item.shipmentUnitPrice) || 0;
-        const shipmentAdditionalCost = Number(item.shipmentAdditionalCost) || 0;
+        const shipmentAdditionalCost =
+          Number(
+            item.shipmentOverseasTransportCost ??
+              item.ShipmentOverseasTransportCost ??
+              item.shipmentAdditionalCost ??
+              item.ShipmentAdditionalCost
+          ) || 0;
         const shipmentFreightDutyCost = Number(item.shipmentFreightDutyCost) || 0;
         const shipmentLocalTransportCost =
           Number(item.shipmentLocalTransportCost) || 0;
@@ -149,6 +158,11 @@ const POEdit = () => {
               shipmentFreightDutyCost +
               shipmentLocalTransportCost) *
             receivedQty;
+          acc[key].weightedOverseasTotal += shipmentAdditionalCost * receivedQty;
+          acc[key].weightedFreightOnlyTotal +=
+            shipmentFreightDutyCost * receivedQty;
+          acc[key].weightedLocalTransportTotal +=
+            shipmentLocalTransportCost * receivedQty;
           acc[key].totalReceivedQty += receivedQty;
         }
 
@@ -166,6 +180,18 @@ const POEdit = () => {
         averageFreightDutyCost:
           item.totalReceivedQty > 0
             ? item.weightedAdditionalCostTotal / item.totalReceivedQty
+            : 0,
+        averageOverseasCost:
+          item.totalReceivedQty > 0
+            ? item.weightedOverseasTotal / item.totalReceivedQty
+            : 0,
+        averageFreightDutyOnlyCost:
+          item.totalReceivedQty > 0
+            ? item.weightedFreightOnlyTotal / item.totalReceivedQty
+            : 0,
+        averageLocalTransportCost:
+          item.totalReceivedQty > 0
+            ? item.weightedLocalTransportTotal / item.totalReceivedQty
             : 0,
         poReceivedQty: item.totalReceivedQty,
         totalFreightDutyCost: item.totalFreightDutyDisplay,
@@ -270,7 +296,9 @@ const POEdit = () => {
     Batch: row.batch,
     ExpDate: row.expDate,
     UnitPrice: parseFloat(row.avgUnitPrice) || 0,
-    AdditionalCost: isLocalPO ? 0 : parseFloat(row.avgFreighCost) || 0,
+    OverseasTransportCost: isLocalPO ? 0 : parseFloat(row.avgOverseasCost) || 0,
+    FreightDutyCost: isLocalPO ? 0 : parseFloat(row.avgFreightDutyCost) || 0,
+    LocalTransportCost: isLocalPO ? 0 : parseFloat(row.avgLocalTransportCost) || 0,
     CostPrice: isLocalPO
       ? parseFloat(row.avgUnitPrice) || 0
       : parseFloat(row.costPrice) || 0,
@@ -279,6 +307,8 @@ const POEdit = () => {
     Profit: calculateProfit(row.sellingPrice, row.costPrice),
     ProfitMargin: calculateProfitMargin(row.sellingPrice, row.costPrice),
     Qty: Number(row.poReceivedQty) || 0,
+    POQty: Number(row.poQty) || 0,
+    ReceivedQty: Number(row.poReceivedQty) || 0,
     Free: row.free,
     DiscountRate: parseFloat(row.discountRate) || 0,
     DiscountAmount: parseFloat(row.discountAmount) || 0,
@@ -306,7 +336,9 @@ const POEdit = () => {
     OrderedQty: 0,
     ReceivedQty: Number(row.poReceivedQty) || 0,
     UnitPrice: parseFloat(row.avgUnitPrice) || 0,
-    AdditionalCost: isLocalPO ? 0 : parseFloat(row.avgFreighCost) || 0,
+    OverseasTransportCost: isLocalPO ? 0 : parseFloat(row.avgOverseasCost) || 0,
+    FreightDutyCost: isLocalPO ? 0 : parseFloat(row.avgFreightDutyCost) || 0,
+    LocalTransportCost: isLocalPO ? 0 : parseFloat(row.avgLocalTransportCost) || 0,
     CostPrice: isLocalPO
       ? parseFloat(row.avgUnitPrice) || 0
       : parseFloat(row.costPrice) || 0,
@@ -505,19 +537,32 @@ const POEdit = () => {
         const avgUnitPrice = matchedItem ? matchedItem.averageUnitPrice : 0;
         const rawFreightCost = matchedItem?.averageFreightDutyCost || 0;
         const avgFreighCost = !isFinite(rawFreightCost) ? 0 : rawFreightCost;
+        const avgOverseasCost = matchedItem?.averageOverseasCost || 0;
+        const avgFreightDutyCost = matchedItem?.averageFreightDutyOnlyCost || 0;
+        const avgLocalTransportCost = matchedItem?.averageLocalTransportCost || 0;
 
         const costPrice = avgUnitPrice + avgFreighCost;
         const poReceivedQty = matchedItem
           ? matchedItem.poReceivedQty
           : parseFloat(row.receivedQty) || 0;
+        const sellingPrice =
+          (parseFloat(poReceivedQty) || 0) === 0
+            ? row.sellingPrice === "" || row.sellingPrice == null
+              ? 0
+              : row.sellingPrice
+            : row.sellingPrice;
 
         const baseRow = {
           ...row,
           poQty: row.poQty ?? row.qty ?? 0,
           avgUnitPrice: avgUnitPrice.toFixed(2),
           avgFreighCost: avgFreighCost.toFixed(2),
+          avgOverseasCost: avgOverseasCost.toFixed(2),
+          avgFreightDutyCost: avgFreightDutyCost.toFixed(2),
+          avgLocalTransportCost: avgLocalTransportCost.toFixed(2),
           costPrice: costPrice.toFixed(2),
           poReceivedQty,
+          sellingPrice,
           discountType,
           discountInput,
         };
@@ -704,6 +749,9 @@ const POEdit = () => {
                     purchaseOrderNo: item.purchaseOrderNo,
                     weightedUnitPriceTotal: 0,
                     weightedAdditionalCostTotal: 0,
+                    weightedOverseasTotal: 0,
+                    weightedFreightOnlyTotal: 0,
+                    weightedLocalTransportTotal: 0,
                     totalFreightDutyDisplay: 0,
                     totalAdditionalDisplay: 0,
                     totalReceivedQty: 0,
@@ -713,7 +761,12 @@ const POEdit = () => {
                 const receivedQty = Number(item.poReceivedQty) || 0;
                 const shipmentUnitPrice = Number(item.shipmentUnitPrice) || 0;
                 const shipmentAdditionalCost =
-                  Number(item.shipmentAdditionalCost) || 0;
+                  Number(
+                    item.shipmentOverseasTransportCost ??
+                      item.ShipmentOverseasTransportCost ??
+                      item.shipmentAdditionalCost ??
+                      item.ShipmentAdditionalCost
+                  ) || 0;
                 const shipmentFreightDutyCost =
                   Number(item.shipmentFreightDutyCost) || 0;
                 const shipmentLocalTransportCost =
@@ -727,6 +780,12 @@ const POEdit = () => {
                       shipmentFreightDutyCost +
                       shipmentLocalTransportCost) *
                     receivedQty;
+                  acc[key].weightedOverseasTotal +=
+                    shipmentAdditionalCost * receivedQty;
+                  acc[key].weightedFreightOnlyTotal +=
+                    shipmentFreightDutyCost * receivedQty;
+                  acc[key].weightedLocalTransportTotal +=
+                    shipmentLocalTransportCost * receivedQty;
                   acc[key].totalReceivedQty += receivedQty;
                 }
 
@@ -745,6 +804,18 @@ const POEdit = () => {
                 averageFreightDutyCost:
                   item.totalReceivedQty > 0
                     ? item.weightedAdditionalCostTotal / item.totalReceivedQty
+                    : 0,
+                averageOverseasCost:
+                  item.totalReceivedQty > 0
+                    ? item.weightedOverseasTotal / item.totalReceivedQty
+                    : 0,
+                averageFreightDutyOnlyCost:
+                  item.totalReceivedQty > 0
+                    ? item.weightedFreightOnlyTotal / item.totalReceivedQty
+                    : 0,
+                averageLocalTransportCost:
+                  item.totalReceivedQty > 0
+                    ? item.weightedLocalTransportTotal / item.totalReceivedQty
                     : 0,
                 poReceivedQty: item.totalReceivedQty,
                 totalFreightDutyCost: item.totalFreightDutyDisplay,
@@ -791,18 +862,32 @@ const POEdit = () => {
               const avgUnitPrice = matchedItem ? matchedItem.averageUnitPrice : 0;
               const rawFreightCost = matchedItem?.averageFreightDutyCost || 0;
               const avgFreighCost = !isFinite(rawFreightCost) ? 0 : rawFreightCost;
+              const avgOverseasCost = matchedItem?.averageOverseasCost || 0;
+              const avgFreightDutyCost = matchedItem?.averageFreightDutyOnlyCost || 0;
+              const avgLocalTransportCost =
+                matchedItem?.averageLocalTransportCost || 0;
               const costPrice = avgUnitPrice + avgFreighCost;
               const poReceivedQty = matchedItem
                 ? matchedItem.poReceivedQty
                 : parseFloat(row.receivedQty) || 0;
+              const sellingPrice =
+                (parseFloat(poReceivedQty) || 0) === 0
+                  ? row.sellingPrice === "" || row.sellingPrice == null
+                    ? 0
+                    : row.sellingPrice
+                  : row.sellingPrice;
 
               const baseRow = {
                 ...row,
                 poQty: row.poQty ?? row.qty ?? 0,
                 avgUnitPrice: avgUnitPrice.toFixed(2),
                 avgFreighCost: avgFreighCost.toFixed(2),
+                avgOverseasCost: avgOverseasCost.toFixed(2),
+                avgFreightDutyCost: avgFreightDutyCost.toFixed(2),
+                avgLocalTransportCost: avgLocalTransportCost.toFixed(2),
                 costPrice: costPrice.toFixed(2),
                 poReceivedQty,
+                sellingPrice,
                 discountType,
                 discountInput,
               };
@@ -835,10 +920,20 @@ const POEdit = () => {
   };
 
   const validateCompletion = () => {
-    const invalidQty = selectedRows.find((row) => row.poReceivedQty <= 0);
-    if (invalidQty) {
-      toast.info("Received Quantity Cannot be 0.");
-      return false;
+    if (isLocalPO) {
+      const invalidQty = selectedRows.find((row) => row.poReceivedQty <= 0);
+      if (invalidQty) {
+        toast.info("Received Quantity Cannot be 0.");
+        return false;
+      }
+    } else {
+      const hasAnyReceived = selectedRows.some(
+        (row) => parseFloat(row.poReceivedQty) > 0
+      );
+      if (!hasAnyReceived) {
+        toast.info("Received Quantity Cannot be 0.");
+        return false;
+      }
     }
 
     if (isLocalPO) {
@@ -865,24 +960,30 @@ const POEdit = () => {
       }
     }
 
-    const missingSellingPrice = selectedRows.find(
-      (row) =>
+    const missingSellingPrice = selectedRows.find((row) => {
+      const received = parseFloat(row.poReceivedQty) || 0;
+      if (received === 0) return false;
+      return (
         !row.sellingPrice ||
         row.sellingPrice === "" ||
         row.sellingPrice === null ||
         row.sellingPrice === undefined
-    );
+      );
+    });
     if (missingSellingPrice) {
       toast.info("Selling Price is required.");
       return false;
     }
 
-    const invalidRow = selectedRows.find(
-      (row) =>
+    const invalidRow = selectedRows.find((row) => {
+      const received = parseFloat(row.poReceivedQty) || 0;
+      if (received === 0) return false;
+      return (
         parseFloat(row.sellingPrice) <= 0 ||
         (!AllowCostLessThanSelling &&
           parseFloat(row.sellingPrice) <= parseFloat(row.costPrice))
-    );
+      );
+    });
 
     if (invalidRow) {
       toast.info("Please Enter Selling Price greater than Cost Price.");
@@ -1077,7 +1178,11 @@ const POEdit = () => {
     () =>
       !isPOComplete &&
       selectedRows.length > 0 &&
-      selectedRows.every((row) => parseFloat(row.sellingPrice) > 0) &&
+      selectedRows.every((row) => {
+        const received = parseFloat(row.poReceivedQty) || 0;
+        if (received === 0) return true;
+        return parseFloat(row.sellingPrice) > 0;
+      }) &&
       selectedRows.every((row) => parseFloat(row.poQty) > 0) &&
       selectedRows.some((row) => parseFloat(row.poReceivedQty) > 0),
     [isPOComplete, selectedRows]
@@ -1089,9 +1194,11 @@ const POEdit = () => {
     if (selectedRows.length === 0) {
       return "Add at least one line item before completing the Purchase Order.";
     }
-    const missingSellingPrice = selectedRows.some(
-      (row) => !(parseFloat(row.sellingPrice) > 0)
-    );
+    const missingSellingPrice = selectedRows.some((row) => {
+      const received = parseFloat(row.poReceivedQty) || 0;
+      if (received === 0) return false;
+      return !(parseFloat(row.sellingPrice) > 0);
+    });
     const missingReceivedQty = !selectedRows.some(
       (row) => parseFloat(row.poReceivedQty) > 0
     );
@@ -1575,7 +1682,18 @@ const POEdit = () => {
                             type="number"
                             sx={{ width: "150px" }}
                             fullWidth
-                            value={row.sellingPrice === 0 || row.sellingPrice === null || row.sellingPrice === undefined ? "" : row.sellingPrice}
+                            value={
+                              (parseFloat(row.poReceivedQty) || 0) === 0
+                                ? row.sellingPrice === "" ||
+                                  row.sellingPrice == null
+                                  ? 0
+                                  : row.sellingPrice
+                                : row.sellingPrice === 0 ||
+                                  row.sellingPrice === null ||
+                                  row.sellingPrice === undefined
+                                ? ""
+                                : row.sellingPrice
+                            }
                             onChange={(e) =>
                               handleInputChange(
                                 index,

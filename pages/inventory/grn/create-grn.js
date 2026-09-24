@@ -61,7 +61,6 @@ const GRNCreate = () => {
   const today = new Date();
   const [grossTotal, setGrossTotal] = useState(0);
   const [open, setOpen] = useState(false);
-  const [freight, setFreight] = useState(0);
   const [suppliers, setSuppliers] = useState([]);
   const [serialNumbers, setSerialNumbers] = useState([]);
   const [salesPersons, setSalesPersons] = useState([]);
@@ -133,15 +132,25 @@ const GRNCreate = () => {
   const { data: IsEcommerceWebSiteAvailable } = IsAppSettingEnabled("IsEcommerceWebSiteAvailable");
   const { uoms } = GetAllItemDetails();
 
+  const sumExtraCostTotal = (field) =>
+    selectedRows.reduce(
+      (sum, row) =>
+        sum +
+        (parseFloat(row[field]) || 0) *
+          ((parseFloat(row.quantity) || 0) + (parseFloat(row.free) || 0)),
+      0
+    );
+
+  const overseasCostTotal = useMemo(
+    () => sumExtraCostTotal("overseasCost"),
+    [selectedRows]
+  );
   const freightDutyTotal = useMemo(
-    () =>
-      selectedRows.reduce(
-        (sum, row) =>
-          sum +
-          (parseFloat(row.freight) || 0) *
-            ((parseFloat(row.quantity) || 0) + (parseFloat(row.free) || 0)),
-        0
-      ),
+    () => sumExtraCostTotal("freightDutyCost"),
+    [selectedRows]
+  );
+  const localTransportCostTotal = useMemo(
+    () => sumExtraCostTotal("localTransportCost"),
     [selectedRows]
   );
 
@@ -267,10 +276,32 @@ const GRNCreate = () => {
     return ((sp - cp) / sp) * 100;
   };
 
+  const getRowExtraUnitCost = (row, overrides = {}) => {
+    const overseas =
+      parseFloat(
+        overrides.overseasCost !== undefined
+          ? overrides.overseasCost
+          : row.overseasCost
+      ) || 0;
+    const freightDuty =
+      parseFloat(
+        overrides.freightDutyCost !== undefined
+          ? overrides.freightDutyCost
+          : row.freightDutyCost ?? row.freight
+      ) || 0;
+    const localTransport =
+      parseFloat(
+        overrides.localTransportCost !== undefined
+          ? overrides.localTransportCost
+          : row.localTransportCost
+      ) || 0;
+    return overseas + freightDuty + localTransport;
+  };
+
   const computeRowLineFinancials = (row, overrides = {}) => {
     const qty = parseFloat(overrides.quantity ?? row.quantity) || 0;
     const unitPrice = parseFloat(overrides.averagePrice ?? row.averagePrice) || 0;
-    const freightCost = parseFloat(overrides.freight ?? row.freight) || 0;
+    const extraUnitCost = getRowExtraUnitCost(row, overrides);
     const free = parseFloat(overrides.free ?? row.free) || 0;
 
     const discountRaw =
@@ -284,7 +315,7 @@ const GRNCreate = () => {
     const qtyPlusFree = qty + free;
     const costPrice =
       qtyPlusFree > 0
-        ? (unitPrice * qty + freightCost * qtyPlusFree - lineDiscountAmount) /
+        ? (unitPrice * qty + extraUnitCost * qtyPlusFree - lineDiscountAmount) /
           qtyPlusFree
         : 0;
     const totalPrice = costPrice * qty;
@@ -364,7 +395,9 @@ const GRNCreate = () => {
         Batch: row.batchNumber,
         ExpDate: row.expDate,
         UnitPrice: row.averagePrice,
-        AdditionalCost: freight,
+        OverseasTransportCost: parseFloat(row.overseasCost) || 0,
+        FreightDutyCost: parseFloat(row.freightDutyCost ?? row.freight) || 0,
+        LocalTransportCost: parseFloat(row.localTransportCost) || 0,
         CostPrice: row.costPrice,
         SellingPrice: row.sellingPrice,
         MaximumSellingPrice: row.maxSellingPrice,
@@ -632,15 +665,14 @@ const GRNCreate = () => {
     setSelectedRows(updatedRows);
     setTotal((prevTotal) => prevTotal - row.rowTotal);
   };
-  const handleFreightChange = (index, newPrice) => {
-    setFreight(newPrice);
+  const handleExtraCostChange = (index, field, newPrice) => {
     const updatedRows = [...selectedRows];
     const row = updatedRows[index];
     const oldTotalPrice = parseFloat(row.totalPrice) || 0;
 
-    row.freight = newPrice;
+    row[field] = newPrice;
 
-    const financials = computeRowLineFinancials(row, { freight: newPrice });
+    const financials = computeRowLineFinancials(row, { [field]: newPrice });
     row.discountAmount = financials.discountAmount;
     row.totalPrice = financials.totalPrice;
     row.costPrice = financials.costPrice;
@@ -1064,9 +1096,17 @@ const GRNCreate = () => {
                       <TableCell sx={{ color: "#fff" }}>Discount (%)</TableCell>
                       <TableCell sx={{ color: "#fff" }}>Discount</TableCell>
                       {IsFreightDutyEnabled && (
-                        <TableCell sx={{ color: "#fff" }}>
-                          Freight&nbsp;Duty & Transport
-                        </TableCell>
+                        <>
+                          <TableCell sx={{ color: "#fff" }}>
+                            Overseas&nbsp;Transport
+                          </TableCell>
+                          <TableCell sx={{ color: "#fff" }}>
+                            Freight&nbsp;Duty
+                          </TableCell>
+                          <TableCell sx={{ color: "#fff" }}>
+                            Local&nbsp;Transport
+                          </TableCell>
+                        </>
                       )}
                       <TableCell sx={{ color: "#fff" }}>
                         Cost&nbsp;Price
@@ -1241,19 +1281,62 @@ const GRNCreate = () => {
                           {row.discountAmount || "0"}
                         </TableCell>
                         {IsFreightDutyEnabled && (
-                          <TableCell sx={{ p: 1 }}>
-                            <TextField
-                              size="small"
-                              type="number"
-                              fullWidth
-                              name=""
-                              sx={{ width: "150px" }}
-                              value={selectedRows[index]?.freight || ""}
-                              onChange={(e) =>
-                                handleFreightChange(index, e.target.value)
-                              }
-                            />
-                          </TableCell>
+                          <>
+                            <TableCell sx={{ p: 1 }}>
+                              <TextField
+                                size="small"
+                                type="number"
+                                fullWidth
+                                sx={{ width: "120px" }}
+                                value={selectedRows[index]?.overseasCost || ""}
+                                onChange={(e) =>
+                                  handleExtraCostChange(
+                                    index,
+                                    "overseasCost",
+                                    e.target.value
+                                  )
+                                }
+                              />
+                            </TableCell>
+                            <TableCell sx={{ p: 1 }}>
+                              <TextField
+                                size="small"
+                                type="number"
+                                fullWidth
+                                sx={{ width: "120px" }}
+                                value={
+                                  selectedRows[index]?.freightDutyCost ??
+                                  selectedRows[index]?.freight ??
+                                  ""
+                                }
+                                onChange={(e) =>
+                                  handleExtraCostChange(
+                                    index,
+                                    "freightDutyCost",
+                                    e.target.value
+                                  )
+                                }
+                              />
+                            </TableCell>
+                            <TableCell sx={{ p: 1 }}>
+                              <TextField
+                                size="small"
+                                type="number"
+                                fullWidth
+                                sx={{ width: "120px" }}
+                                value={
+                                  selectedRows[index]?.localTransportCost || ""
+                                }
+                                onChange={(e) =>
+                                  handleExtraCostChange(
+                                    index,
+                                    "localTransportCost",
+                                    e.target.value
+                                  )
+                                }
+                              />
+                            </TableCell>
+                          </>
                         )}
                         <TableCell sx={{ p: 1 }}>
                           {formatCurrency(selectedRows[index]?.costPrice) || 0}
@@ -1336,20 +1419,50 @@ const GRNCreate = () => {
                 }}
               >
                 {IsFreightDutyEnabled && (
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "flex-end",
-                      alignItems: "center",
-                      gap: 2,
-                      py: 0.5,
-                    }}
-                  >
-                    <Typography variant="h6">Freight Duty Total</Typography>
-                    <Typography variant="h6">
-                      {formatCurrency(freightDutyTotal)}
-                    </Typography>
-                  </Box>
+                  <>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        alignItems: "center",
+                        gap: 2,
+                        py: 0.5,
+                      }}
+                    >
+                      <Typography variant="h6">Overseas Transport Total</Typography>
+                      <Typography variant="h6">
+                        {formatCurrency(overseasCostTotal)}
+                      </Typography>
+                    </Box>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        alignItems: "center",
+                        gap: 2,
+                        py: 0.5,
+                      }}
+                    >
+                      <Typography variant="h6">Freight Duty Total</Typography>
+                      <Typography variant="h6">
+                        {formatCurrency(freightDutyTotal)}
+                      </Typography>
+                    </Box>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        alignItems: "center",
+                        gap: 2,
+                        py: 0.5,
+                      }}
+                    >
+                      <Typography variant="h6">Local Transport Total</Typography>
+                      <Typography variant="h6">
+                        {formatCurrency(localTransportCostTotal)}
+                      </Typography>
+                    </Box>
+                  </>
                 )}
                 <Box
                   sx={{

@@ -7,6 +7,7 @@ import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import PrintIcon from "@mui/icons-material/Print";
+import PrintExcelButton from "@/components/ReportTemplate/PrintExcelButton";
 import BASE_URL from "Base/api";
 import { ProjectNo } from "Base/catelogue";
 import { toast, ToastContainer } from "react-toastify";
@@ -907,6 +908,12 @@ export default function InvoicePrintPage() {
               <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint} sx={{ textTransform: "none" }}>
                 Print
               </Button>
+              <PrintExcelButton
+                iframeRef={iframeRef}
+                contentRef={contentRef}
+                downloadName={`Invoice_${invoiceData?.documentNo || documentNumber || "document"}`}
+                disabled={loadingInvoice || !invoiceData}
+              />
               {/* <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleDownloadPDF} sx={{ textTransform: "none" }}>
                 Download PDF
               </Button> */}

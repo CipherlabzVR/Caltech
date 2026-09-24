@@ -26,8 +26,9 @@ export const parseApiDateForDisplay = (value) => {
     const d = new Date(s);
     return Number.isNaN(d.getTime()) ? null : d;
   }
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?$/i.test(s)) {
-    const d = new Date(`${s}Z`);
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?(\.\d+)?$/i.test(s)) {
+    const formattedStr = s.replace(" ", "T");
+    const d = new Date(formattedStr);
     return Number.isNaN(d.getTime()) ? null : d;
   }
   const d = new Date(s);

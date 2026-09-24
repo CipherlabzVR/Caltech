@@ -25,89 +25,12 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
-import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import AssignmentIndIcon from "@mui/icons-material/AssignmentInd";
 import { toast } from "react-toastify";
 import BASE_URL from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
 
-const STATUS_COLORS = {
-  Pending: "default",
-  InProgress: "info",
-  Hold: "warning",
-  Completed: "success",
-};
-
-function getAssignment(item) {
-  return item?.assignment || item?.Assignment || null;
-}
-
-function assignmentStarted(assignment) {
-  if (!assignment) return false;
-  const status = assignment.statusName || assignment.StatusName || "";
-  if (assignment.startedOn || assignment.StartedOn) return true;
-  return status === "InProgress" || status === "Completed";
-}
-
-function statusChip(assignment) {
-  if (!assignment) return null;
-  const name = assignment.statusName || assignment.StatusName || "Pending";
-  return (
-    <Chip
-      size="small"
-      label={name}
-      color={STATUS_COLORS[name] || "default"}
-      sx={{ height: 20, fontSize: 10 }}
-    />
-  );
-}
-
-function AssignmentActions({ item, enabled, canManageTasks, onAssign, onReassign }) {
-  const assignment = getAssignment(item);
-  const technicianName =
-    assignment?.technicianName ||
-    assignment?.TechnicianName ||
-    (item.assignedTechnicians?.length ? item.assignedTechnicians.join(", ") : "");
-  const started = assignmentStarted(assignment);
-  const canReassign = enabled && canManageTasks && assignment && !started;
-
-  if (technicianName) {
-    return (
-      <Stack direction="row" alignItems="center" spacing={0.5}>
-        {statusChip(assignment)}
-        <Chip size="small" label={technicianName} color="success" sx={{ height: 20, fontSize: 10 }} />
-        {canReassign && (
-          <IconButton size="small" color="primary" onClick={onReassign} title="Reassign technician">
-            <SwapHorizIcon fontSize="small" />
-          </IconButton>
-        )}
-      </Stack>
-    );
-  }
-
-  if (!canManageTasks) return null;
-
-  return (
-    <IconButton
-      size="small"
-      color="primary"
-      onClick={onAssign}
-      title="Assign Technician"
-      disabled={!enabled}
-    >
-      <PersonAddIcon fontSize="small" />
-    </IconButton>
-  );
-}
-
-export default function TaskAssignment({
-  reservationId,
-  refreshKey = 0,
-  enabled = true,
-  userAgentType,
-  isAdminUser = false,
-}) {
-  const canManageTasks = isAdminUser || userAgentType === 3;
+export default function TaskAssignment({ reservationId, refreshKey = 0, enabled = true }) {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [tasks, setTasks] = useState([]);
@@ -159,18 +82,9 @@ export default function TaskAssignment({
     fetchTechnicians();
   }, [fetchTasks, refreshKey]);
 
-  const handleOpenAssign = (task, subTask = null, isReassign = false) => {
+  const handleOpenAssign = (task, subTask = null) => {
     if (!enabled) {
       toast.info("Task assignment unlocks after handover to After Wedding Manager");
-      return;
-    }
-    if (!canManageTasks) {
-      toast.info("Only After Wedding Manager can assign or reassign tasks");
-      return;
-    }
-    const assignment = getAssignment(subTask || task);
-    if (isReassign && assignmentStarted(assignment)) {
-      toast.info("Cannot reassign after the technician has started this task");
       return;
     }
     setSelectedTask(task);
@@ -204,7 +118,7 @@ export default function TaskAssignment({
       });
       const data = await res.json();
       if (data.statusCode === "SUCCESS" || data.statusCode === 200) {
-        toast.success(data.message || "Task assigned successfully");
+        toast.success("Task assigned successfully");
         setDialogOpen(false);
         fetchTasks();
       } else {
@@ -271,13 +185,7 @@ export default function TaskAssignment({
             borderRadius: "0 0 4px 4px",
           }}
         >
-          {[...tasks]
-            .sort((a, b) =>
-              String(a.eventTypeName || a.EventTypeName || "").localeCompare(
-                String(b.eventTypeName || b.EventTypeName || "")
-              )
-            )
-            .map((task) => (
+          {tasks.map((task) => (
             <Box key={task.id} sx={{ borderBottom: "1px solid #f0f0f0" }}>
               <Box
                 sx={{
@@ -293,18 +201,30 @@ export default function TaskAssignment({
                     {task.taskName}
                   </Typography>
                   <Typography variant="caption" color="text.secondary" display="block">
-                    {task.eventTypeName || task.EventTypeName || "Event"}
-                    {task.dueDate ? ` · Due: ${formatDate(task.dueDate)}` : ""}
+                    Due: {formatDate(task.dueDate)}
                   </Typography>
                 </Box>
                 {task.subTasks?.length === 0 && (
-                  <AssignmentActions
-                    item={task}
-                    enabled={enabled}
-                    canManageTasks={canManageTasks}
-                    onAssign={() => handleOpenAssign(task)}
-                    onReassign={() => handleOpenAssign(task, null, true)}
-                  />
+                  <Box>
+                    {task.assignedTechnicians?.length > 0 ? (
+                      <Chip
+                        size="small"
+                        label={task.assignedTechnicians.join(", ")}
+                        color="success"
+                        sx={{ height: 20, fontSize: 10 }}
+                      />
+                    ) : (
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => handleOpenAssign(task)}
+                        title="Assign Technician"
+                        disabled={!enabled}
+                      >
+                        <PersonAddIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Box>
                 )}
               </Box>
               {task.subTasks?.length > 0 && (
@@ -323,17 +243,27 @@ export default function TaskAssignment({
                       <Box flex={1}>
                         <Typography variant="caption">{subTask.subTaskName}</Typography>
                         <Typography variant="caption" color="text.secondary" display="block">
-                          {task.eventTypeName || task.EventTypeName || "Event"}
-                          {subTask.dueDate ? ` · Due: ${formatDate(subTask.dueDate)}` : ""}
+                          Due: {formatDate(subTask.dueDate)}
                         </Typography>
                       </Box>
-                      <AssignmentActions
-                        item={subTask}
-                        enabled={enabled}
-                        canManageTasks={canManageTasks}
-                        onAssign={() => handleOpenAssign(task, subTask)}
-                        onReassign={() => handleOpenAssign(task, subTask, true)}
-                      />
+                      {subTask.assignedTechnicians?.length > 0 ? (
+                        <Chip
+                          size="small"
+                          label={subTask.assignedTechnicians.join(", ")}
+                          color="success"
+                          sx={{ height: 20, fontSize: 10 }}
+                        />
+                      ) : (
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() => handleOpenAssign(task, subTask)}
+                          title="Assign Technician"
+                          disabled={!enabled}
+                        >
+                          <PersonAddIcon fontSize="small" />
+                        </IconButton>
+                      )}
                     </Box>
                   ))}
                 </Box>
@@ -344,15 +274,10 @@ export default function TaskAssignment({
       </Collapse>
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>
-          {getAssignment(selectedSubTask || selectedTask) ? "Reassign Technician" : "Assign Technician"}
-        </DialogTitle>
+        <DialogTitle>Assign Technician</DialogTitle>
         <DialogContent>
           <Typography variant="body2" gutterBottom>
             <strong>Task:</strong> {selectedSubTask?.subTaskName || selectedTask?.taskName}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            <strong>Event:</strong> {selectedTask?.eventTypeName || selectedTask?.EventTypeName || "Event"}
           </Typography>
           <FormControl fullWidth size="small" sx={{ mt: 2 }}>
             <InputLabel>Technician</InputLabel>
@@ -386,13 +311,7 @@ export default function TaskAssignment({
             onClick={handleAssign}
             disabled={assigning || !selectedTechnician}
           >
-            {assigning ? (
-              <CircularProgress size={20} />
-            ) : getAssignment(selectedSubTask || selectedTask) ? (
-              "Reassign"
-            ) : (
-              "Assign"
-            )}
+            {assigning ? <CircularProgress size={20} /> : "Assign"}
           </Button>
         </DialogActions>
       </Dialog>

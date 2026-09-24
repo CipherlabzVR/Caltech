@@ -12,7 +12,6 @@ export default function BoardColumn({
   canEdit,
   canChangeStatus,
   onRefresh,
-  eventTypes,
   fillWidth,
   stepIndex = 0,
   totalSteps = 1,
@@ -138,7 +137,6 @@ export default function BoardColumn({
               canEdit={canEdit}
               canChangeStatus={canChangeStatus}
               onRefresh={onRefresh}
-              eventTypes={eventTypes}
               stepIndex={stepIndex}
               totalSteps={totalSteps}
             />

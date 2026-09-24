@@ -40,7 +40,8 @@ export default function Shift() {
   const { data: ReportName } = GetReportSettingValueByName("ShiftEndReport");
   const name = localStorage.getItem("name");
   const { data: showCashInvoiceTotalsInShiftAndDayend } = IsAppSettingEnabled("ShowCashInvoiceTotalsInShiftAndDayend");
-  const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
+  const { data: isShiftEndReceiptAmountBreakdownEnable } = IsAppSettingEnabled("IsShiftEndReceiptAmountBreakdownEnable");
+  const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveToShiftEndEnable");
 
 
   const fetchShifts = async (page = 1, search = "", size = pageSize) => {
@@ -118,8 +119,20 @@ export default function Shift() {
           }
         </Grid>
         <Grid item xs={12} >
-          <TableContainer component={Paper}>
-            <Table size="small" aria-label="simple table" className="dark-table">
+          <Paper>
+          <TableContainer sx={{ overflowX: "auto" }}>
+            <Table
+              size="small"
+              aria-label="simple table"
+              className="dark-table"
+              sx={{
+                "& .MuiTableCell-root": {
+                  px: 2,
+                  py: 1.25,
+                  whiteSpace: "nowrap",
+                },
+              }}
+            >
               <TableHead>
                 <TableRow>
                   <TableCell>Shift Code</TableCell>
@@ -133,6 +146,10 @@ export default function Shift() {
                   {showCashInvoiceTotalsInShiftAndDayend &&<TableCell>Cash Inv. Total</TableCell>}
                   {showCashInvoiceTotalsInShiftAndDayend &&<TableCell>Cash Return Inv. Total</TableCell>}
                   <TableCell>Canceled Inv.</TableCell>
+                  {isShiftEndReceiptAmountBreakdownEnable && <TableCell>Total Cash Receipt</TableCell>}
+                  {isShiftEndReceiptAmountBreakdownEnable && <TableCell>Total Card Receipt</TableCell>}
+                  {isShiftEndReceiptAmountBreakdownEnable && <TableCell>Total Bank Transfer Receipt</TableCell>}
+                  {isShiftEndReceiptAmountBreakdownEnable && <TableCell>Total Cheque Receipt</TableCell>}
                   <TableCell>Receipt Total</TableCell>
                   <TableCell>Summary</TableCell>
                   <TableCell>Warehouse</TableCell>
@@ -163,6 +180,10 @@ export default function Shift() {
                       {showCashInvoiceTotalsInShiftAndDayend && <TableCell>{!item.isActive && formatCurrency(item.totalCashInvoice)}</TableCell>}
                       {showCashInvoiceTotalsInShiftAndDayend && <TableCell>{!item.isActive && formatCurrency(item.totalCashSalesReturnAmount)}</TableCell>}
                       <TableCell>{!item.isActive && formatCurrency(item.totalCanceledInvoice)}</TableCell>
+                      {isShiftEndReceiptAmountBreakdownEnable && <TableCell>{!item.isActive && formatCurrency(item.totalCashReceipt)}</TableCell>}
+                      {isShiftEndReceiptAmountBreakdownEnable && <TableCell>{!item.isActive && formatCurrency(item.totalCardReceipt)}</TableCell>}
+                      {isShiftEndReceiptAmountBreakdownEnable && <TableCell>{!item.isActive && formatCurrency(item.totalBankTransferReceipt)}</TableCell>}
+                      {isShiftEndReceiptAmountBreakdownEnable && <TableCell>{!item.isActive && formatCurrency(item.totalChequeReceipt)}</TableCell>}
                       <TableCell>{!item.isActive && formatCurrency(item.totalReceipt)}</TableCell>
                       <TableCell>
                         {item.cashVariance < 0 ? (
@@ -221,7 +242,14 @@ export default function Shift() {
                 )}
               </TableBody>
             </Table>
-            <Grid container justifyContent="space-between" mt={2} mb={2}>
+          </TableContainer>
+            <Box
+              display="flex"
+              justifyContent="space-between"
+              alignItems="center"
+              px={2}
+              py={2}
+            >
               <Pagination
                 count={Math.ceil(totalCount / pageSize)}
                 page={page}
@@ -229,7 +257,7 @@ export default function Shift() {
                 color="primary"
                 shape="rounded"
               />
-              <FormControl size="small" sx={{ mr: 2, width: "100px" }}>
+              <FormControl size="small" sx={{ width: "100px" }}>
                 <InputLabel>Page Size</InputLabel>
                 <Select value={pageSize} label="Page Size" onChange={handlePageSizeChange}>
                   <MenuItem value={5}>5</MenuItem>
@@ -237,8 +265,8 @@ export default function Shift() {
                   <MenuItem value={25}>25</MenuItem>
                 </Select>
               </FormControl>
-            </Grid>
-          </TableContainer>
+            </Box>
+          </Paper>
         </Grid>
       </Grid>
     </>

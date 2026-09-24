@@ -37,10 +37,7 @@ const statusColor = (status) => {
 };
 
 export default function WhatsAppTemplates() {
-  const sessionCategory =
-    typeof window !== "undefined" ? sessionStorage.getItem("category") : null;
-  const parsedCategory = sessionCategory ? parseInt(sessionCategory, 10) : NaN;
-  const cId = Number.isFinite(parsedCategory) ? parsedCategory : 251;
+  const cId = typeof window !== "undefined" ? sessionStorage.getItem("category") : null;
   const { navigate } = IsPermissionEnabled(cId);
 
   const [accounts, setAccounts] = useState([]);

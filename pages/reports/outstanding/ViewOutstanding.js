@@ -23,6 +23,9 @@ import { Catelogue } from "Base/catelogue";
 import GetReportSettingValueByName from "@/components/utils/GetReportSettingValueByName";
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
+import GridOnIcon from "@mui/icons-material/GridOn";
+import { toast } from "react-toastify";
+import { exportCustomerOutstandingDetail } from "./exportCustomerOutstandingExcel";
 
 const style = {
     position: "absolute",
@@ -41,6 +44,7 @@ export default function ViewOutstanding({ item, asOfDate }) {
     const [open, setOpen] = React.useState(false);
     const [result, setResult] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [exporting, setExporting] = useState(false);
     const name = localStorage.getItem("name");
     const { data: InvoiceReportName } = GetReportSettingValueByName("Invoice");
     const { data: POSInvoiceReportName } = GetReportSettingValueByName("POSInvoice");
@@ -80,6 +84,21 @@ export default function ViewOutstanding({ item, asOfDate }) {
     const handleOpen = () => {
         setOpen(true);
         fetchOutstandingBalance();
+    };
+
+    const handleExportExcel = async () => {
+        try {
+            setExporting(true);
+            await exportCustomerOutstandingDetail({
+                customerName: item.customerName,
+                asOfDate,
+                lines: result,
+            });
+        } catch (error) {
+            toast.error(error?.message || "Failed to convert to Excel.");
+        } finally {
+            setExporting(false);
+        }
     };
 
     const totalInvoiceAmount = result.reduce(
@@ -179,7 +198,7 @@ export default function ViewOutstanding({ item, asOfDate }) {
                             </TableContainer>
                         )}
                     </Box>
-                    <Box display="flex" my={2} justifyContent="space-between">
+                    <Box display="flex" my={2} justifyContent="space-between" gap={1}>
                         <Button
                             variant="contained"
                             size="small"
@@ -187,6 +206,17 @@ export default function ViewOutstanding({ item, asOfDate }) {
                             onClick={handleClose}
                         >
                             Close
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            color="success"
+                            size="small"
+                            startIcon={<GridOnIcon />}
+                            onClick={handleExportExcel}
+                            disabled={loading || exporting || result.length === 0}
+                            sx={{ textTransform: "none" }}
+                        >
+                            Convert to Excel
                         </Button>
                     </Box>
                 </Box>

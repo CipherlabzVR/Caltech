@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import * as XLSX from "xlsx";
+import { writeOrganizedExcel } from "@/components/ReportTemplate/exportReportHtmlToExcel";
 import { format } from "date-fns";
 import Grid from "@mui/material/Grid";
 import Table from "@mui/material/Table";
@@ -139,22 +139,36 @@ export default function DailyOutstandings() {
     }
   };
 
-  const exportBreakdownToExcel = (date, customers) => {
+  const exportBreakdownToExcel = async (date, customers) => {
     if (!customers || customers.length === 0) {
       toast.error("Nothing to export.");
       return;
     }
-    const rows = customers.map((c, index) => ({
-      "#": index + 1,
-      "Customer Name": c.customerName,
-      "Outstanding Amount": Number(c.outstandingAmount ?? 0),
-    }));
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    worksheet["!cols"] = [{ wch: 6 }, { wch: 32 }, { wch: 20 }];
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Customers");
-    XLSX.writeFile(workbook, `Daily_Outstanding_${date}.xlsx`);
-    toast.success(`Exported ${rows.length} customer(s)`);
+    const total = customers.reduce(
+      (sum, customer) => sum + (Number(customer.outstandingAmount ?? 0) || 0),
+      0
+    );
+    await writeOrganizedExcel(
+      {
+        title: "DAILY CUSTOMER OUTSTANDING",
+        detailsLeft: [["Snapshot Date", date || "-"]],
+        detailsRight: [["Customers", customers.length]],
+        sections: [
+          {
+            title: "Customer Outstanding",
+            headers: ["#", "Customer Name", "Outstanding Amount"],
+            rows: customers.map((customer, index) => [
+              index + 1,
+              customer.customerName || "-",
+              Number(customer.outstandingAmount ?? 0) || 0,
+            ]),
+            totals: [["Total Outstanding", total]],
+          },
+        ],
+      },
+      `Daily_Outstanding_${date}`
+    );
+    toast.success(`Exported ${customers.length} customer(s)`);
   };
 
   const handleExportDetail = () =>

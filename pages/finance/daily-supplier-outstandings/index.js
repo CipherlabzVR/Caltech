@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
-import * as XLSX from "xlsx";
+import { writeOrganizedExcel } from "@/components/ReportTemplate/exportReportHtmlToExcel";
 import { format } from "date-fns";
 import Grid from "@mui/material/Grid";
 import Table from "@mui/material/Table";
@@ -123,22 +123,36 @@ export default function DailySupplierOutstandings() {
     }
   };
 
-  const exportBreakdownToExcel = (date, suppliers) => {
+  const exportBreakdownToExcel = async (date, suppliers) => {
     if (!suppliers || suppliers.length === 0) {
       toast.error("Nothing to export.");
       return;
     }
-    const rows = suppliers.map((s, index) => ({
-      "#": index + 1,
-      "Supplier Name": s.supplierName,
-      "Due Amount": Number(s.dueAmount ?? 0),
-    }));
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    worksheet["!cols"] = [{ wch: 6 }, { wch: 32 }, { wch: 20 }];
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Suppliers");
-    XLSX.writeFile(workbook, `Daily_Supplier_Outstanding_${date}.xlsx`);
-    toast.success(`Exported ${rows.length} supplier(s)`);
+    const total = suppliers.reduce(
+      (sum, supplier) => sum + (Number(supplier.dueAmount ?? 0) || 0),
+      0
+    );
+    await writeOrganizedExcel(
+      {
+        title: "DAILY SUPPLIER OUTSTANDING",
+        detailsLeft: [["Snapshot Date", date || "-"]],
+        detailsRight: [["Suppliers", suppliers.length]],
+        sections: [
+          {
+            title: "Supplier Outstanding",
+            headers: ["#", "Supplier Name", "Due Amount"],
+            rows: suppliers.map((supplier, index) => [
+              index + 1,
+              supplier.supplierName || "-",
+              Number(supplier.dueAmount ?? 0) || 0,
+            ]),
+            totals: [["Total Due", total]],
+          },
+        ],
+      },
+      `Daily_Supplier_Outstanding_${date}`
+    );
+    toast.success(`Exported ${suppliers.length} supplier(s)`);
   };
 
   const handleExportDetail = () =>

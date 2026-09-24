@@ -86,8 +86,8 @@ const TopNavbar = ({
   }, []);
 
   const defaultLogo =
-    ProjectNo === 1 ? "/images/IMG_4684.png" : "/images/db-logo.png";
-  const logoSrc = ProjectNo === 1 ? "/images/IMG_4684.png" : companyLogo || defaultLogo;
+    ProjectNo === 1 ? "/images/cbass.png" : "/images/db-logo.png";
+  const logoSrc = companyLogo || defaultLogo;
   const homeHref = ProjectNo === 2 ? "/dashboard/reservation" : "/";
 
   return (

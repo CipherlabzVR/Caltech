@@ -387,6 +387,12 @@ const InvoiceCreate = () => {
       return;
     }
 
+    const currentQty = Number(item.currentQuantityValue ?? item.CurrentQuantityValue ?? 0);
+    if (currentQty <= 0) {
+      toast.error(`Cannot add "${item.name ?? item.Name ?? item.productName ?? "outlet item"}". Stock is 0.`);
+      return;
+    }
+
     const baseCostPrice = parseFloat(item.costPrice ?? item.CostPrice ?? 0);
     const uomValue = parseFloat(item.uomValue ?? item.UOMValue ?? 0);
     const updatedCostPrice = uomValue > 0 ? baseCostPrice / uomValue : baseCostPrice;
@@ -720,6 +726,30 @@ const InvoiceCreate = () => {
       return toast.error("At least one item must be added to the table.");
     }
 
+    if (!isBookingSystem) {
+      const zeroStockItems = selectedRows.filter(
+        (row) => !row.isNonInventory && (Number(row.bookBalanceQuantity) || 0) <= 0
+      );
+      if (zeroStockItems.length > 0) {
+        return toast.error(
+          `Cannot create invoice. No stock for: ${zeroStockItems
+            .map((row) => row.productName || row.packageName || "item")
+            .join(", ")}.`
+        );
+      }
+
+      const zeroOutletItems = rows.filter(
+        (row) => (Number(row.currentQuantityValue ?? row.CurrentQuantityValue) || 0) <= 0
+      );
+      if (zeroOutletItems.length > 0) {
+        return toast.error(
+          `Cannot create invoice. No stock for: ${zeroOutletItems
+            .map((row) => row.name || row.productName || "outlet item")
+            .join(", ")}.`
+        );
+      }
+    }
+
     const underCostMessages = invoiceLines
       .map((line) => {
         if (line.StockBalanceId === 0 && line.ItemType === 1 && !showCostPrice) {
@@ -899,6 +929,15 @@ const InvoiceCreate = () => {
     }
 
     item = stock[selectedIndex];
+    if (!item) {
+      toast.error("Please select a stock line.");
+      return;
+    }
+
+    if ((Number(item.bookBalanceQuantity) || 0) <= 0) {
+      toast.error(`Cannot add "${item.productName || "item"}". Stock is 0.`);
+      return;
+    }
 
     const existingItem = selectedRows.find((row) => row.id === item.id);
     if (existingItem) {
@@ -2064,7 +2103,12 @@ const InvoiceCreate = () => {
             </Button>
             <Button
               variant="contained"
-              disabled={stock.length === 0}
+              disabled={
+                stock.length === 0 ||
+                (isOutlet
+                  ? (Number(stock[selectedIndex]?.currentQuantityValue ?? stock[selectedIndex]?.CurrentQuantityValue) || 0) <= 0
+                  : (Number(stock[selectedIndex]?.bookBalanceQuantity) || 0) <= 0)
+              }
               onClick={() => isOutlet ? handleAddOutlet(selectedItem) : handleAddRow(selectedItem)}
             >
               <Typography sx={{ fontWeight: "bold" }}>Add</Typography>

@@ -11,7 +11,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
 import { Pagination, Typography, FormControl, InputLabel, MenuItem, Select, Tooltip, IconButton, Box, Button, TextField } from "@mui/material";
-import { ToastContainer } from "react-toastify";
+import { toast, ToastContainer } from "react-toastify";
 import BASE_URL from "Base/api";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
 import { formatCurrency } from "@/components/utils/formatHelper";
@@ -22,7 +22,12 @@ import GetReportSettingValueByName from "@/components/utils/GetReportSettingValu
 import ShareReports from "@/components/UIElements/Modal/Reports/ShareReports";
 import { Report } from "Base/report";
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
+import GridOnIcon from "@mui/icons-material/GridOn";
 import { Catelogue } from "Base/catelogue";
+import {
+  exportCustomerOutstandingDetail,
+  fetchCustomerOutstandingLines,
+} from "./exportCustomerOutstandingExcel";
 
 export default function Outstanding() {
   const cId = sessionStorage.getItem("category");
@@ -36,6 +41,7 @@ export default function Outstanding() {
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
   const [asOfDate, setAsOfDate] = useState("");
+  const [exporting, setExporting] = useState(false);
   const searchTimeoutRef = useRef(null);
 
   const buildDateQuery = (date) => (date ? `&AsOfDate=${date}` : "");
@@ -100,6 +106,22 @@ export default function Outstanding() {
     onFetch: (p, s, sz) => fetchOutstandingList(p, s, sz, asOfDate),
   });
 
+
+  const handleExportCustomerExcel = async (item) => {
+    try {
+      setExporting(true);
+      const lines = await fetchCustomerOutstandingLines(item.customerId, asOfDate);
+      await exportCustomerOutstandingDetail({
+        customerName: item.customerName,
+        asOfDate,
+        lines,
+      });
+    } catch (error) {
+      toast.error(error?.message || "Failed to convert to Excel.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     fetchOutstandingList();
@@ -185,6 +207,16 @@ export default function Outstanding() {
                             {whatsAppShare ? (
                               <ShareReports url={`/PrintDocumentsByCustomerIdUpload?InitialCatalog=${Catelogue}&reportName=${OutstandingReport}&customerId=${item.customerId}&warehouseId=${warehouseId}&currentUser=${name}`} mobile={item.customerContactNo} />
                             ) : ""}
+                            <Tooltip title="Convert to Excel" placement="top">
+                              <IconButton
+                                aria-label="Convert to Excel"
+                                size="small"
+                                disabled={exporting}
+                                onClick={() => handleExportCustomerExcel(item)}
+                              >
+                                <GridOnIcon color="success" fontSize="medium" />
+                              </IconButton>
+                            </Tooltip>
                             {print ? <Tooltip title="Print" placement="top">
                               <a href={`${Report}` + reportLink} target="_blank">
                                 <IconButton aria-label="print" size="small">

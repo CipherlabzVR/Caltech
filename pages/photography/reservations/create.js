@@ -33,12 +33,11 @@ const style = {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: { xs: "96vw", md: "94vw" },
-  maxWidth: 1100,
+  width: { lg: 750, xs: 380 },
   bgcolor: "background.paper",
   boxShadow: 24,
-  p: { xs: 1.5, md: 2 },
-  maxHeight: "92vh",
+  p: 2,
+  maxHeight: "90vh",
   overflowY: "auto",
 };
 
@@ -48,20 +47,8 @@ const CEREMONY_TYPES = [
   { value: 3, label: "Other" },
 ];
 
-const EVENT_SESSIONS = ["Morning", "Evening"];
-
 const validationSchema = Yup.object().shape({
   CoupleNames: Yup.string().required("Couple / client name is required"),
-  Events: Yup.array()
-    .min(1, "At least one event is required")
-    .of(
-      Yup.object({
-        EventDate: Yup.string().required("Date is required"),
-        EventSession: Yup.string()
-          .oneOf(EVENT_SESSIONS, "Session is required")
-          .required("Session is required"),
-      })
-    ),
 });
 
 const normalizeDateQuery = (value) => {
@@ -80,7 +67,6 @@ const createEmptyEvent = (eventTypes, isMain = false) => ({
   EventType: eventTypes[0]?.id ?? 1,
   EventDate: "",
   EventTime: "",
-  EventSession: "",
   Location: "",
   IsMainEvent: isMain,
 });
@@ -91,33 +77,22 @@ function EventRow({ event, index, eventTypes, usedTypes, onUpdate, onRemove, onS
   );
 
   return (
-    <Box sx={{ border: "1px solid", borderColor: event.IsMainEvent ? "primary.main" : "divider", borderRadius: 1, p: { xs: 1, md: 1.25 }, mb: 1, bgcolor: event.IsMainEvent ? "action.selected" : "transparent" }}>
-      <Box
-        sx={{
-          display: "grid",
-          gap: 1,
-          alignItems: "end",
-          gridTemplateColumns: {
-            xs: "auto 1fr auto",
-            sm: "auto 1fr 1fr 1fr",
-            md: "auto minmax(0,1.4fr) minmax(132px,1fr) minmax(110px,0.9fr) minmax(128px,0.95fr) auto",
-          },
-          gridTemplateAreas: {
-            xs: `"radio type del" "date date date" "time time session" "loc loc loc"`,
-            sm: `"radio type type type" "date time session del" "loc loc loc loc"`,
-            md: `"radio type date time session del" "loc loc loc loc loc loc"`,
-          },
-        }}
-      >
-        <Box sx={{ gridArea: "radio" }}>
-          <Radio
-            checked={event.IsMainEvent}
-            onChange={() => onSetMain(event.id)}
-            size="small"
+    <Box sx={{ border: "1px solid", borderColor: event.IsMainEvent ? "primary.main" : "divider", borderRadius: 1, p: 1.5, mb: 1, bgcolor: event.IsMainEvent ? "action.selected" : "transparent" }}>
+      <Grid container spacing={1} alignItems="center">
+        <Grid item xs={12} sm={1}>
+          <FormControlLabel
+            control={
+              <Radio
+                checked={event.IsMainEvent}
+                onChange={() => onSetMain(event.id)}
+                size="small"
+              />
+            }
+            label=""
             title="Set as main event"
           />
-        </Box>
-        <Box sx={{ gridArea: "type", minWidth: 0 }}>
+        </Grid>
+        <Grid item xs={12} sm={3}>
           <Typography variant="caption" sx={{ fontWeight: 500 }}>
             Event Type {event.IsMainEvent && <span style={{ color: "#1976d2" }}>(Main)</span>}
           </Typography>
@@ -134,8 +109,8 @@ function EventRow({ event, index, eventTypes, usedTypes, onUpdate, onRemove, onS
               </MenuItem>
             ))}
           </TextField>
-        </Box>
-        <Box sx={{ gridArea: "date", minWidth: 0 }}>
+        </Grid>
+        <Grid item xs={12} sm={3}>
           <Typography variant="caption" sx={{ fontWeight: 500 }}>Date *</Typography>
           <TextField
             fullWidth
@@ -146,8 +121,8 @@ function EventRow({ event, index, eventTypes, usedTypes, onUpdate, onRemove, onS
             InputLabelProps={{ shrink: true }}
             error={!event.EventDate}
           />
-        </Box>
-        <Box sx={{ gridArea: "time", minWidth: 0 }}>
+        </Grid>
+        <Grid item xs={12} sm={2}>
           <Typography variant="caption" sx={{ fontWeight: 500 }}>Time</Typography>
           <TextField
             select
@@ -166,32 +141,8 @@ function EventRow({ event, index, eventTypes, usedTypes, onUpdate, onRemove, onS
               </MenuItem>
             ))}
           </TextField>
-        </Box>
-        <Box sx={{ gridArea: "session", minWidth: 0 }}>
-          <Typography variant="caption" sx={{ fontWeight: 500 }}>Session *</Typography>
-          <TextField
-            select
-            fullWidth
-            size="small"
-            value={event.EventSession || ""}
-            onChange={(e) => onUpdate(event.id, "EventSession", e.target.value)}
-            error={!event.EventSession}
-            SelectProps={{
-              displayEmpty: true,
-              renderValue: (v) => v || "Select session",
-            }}
-          >
-            <MenuItem value="">
-              <em>Select session</em>
-            </MenuItem>
-            {EVENT_SESSIONS.map((s) => (
-              <MenuItem key={s} value={s}>
-                {s}
-              </MenuItem>
-            ))}
-          </TextField>
-        </Box>
-        <Box sx={{ gridArea: "loc", minWidth: 0 }}>
+        </Grid>
+        <Grid item xs={12} sm={2}>
           <Typography variant="caption" sx={{ fontWeight: 500 }}>Location</Typography>
           <TextField
             fullWidth
@@ -199,15 +150,15 @@ function EventRow({ event, index, eventTypes, usedTypes, onUpdate, onRemove, onS
             value={event.Location}
             onChange={(e) => onUpdate(event.id, "Location", e.target.value)}
           />
-        </Box>
-        <Box sx={{ gridArea: "del", display: "flex", justifyContent: "flex-end" }}>
+        </Grid>
+        <Grid item xs={12} sm={1} sx={{ textAlign: "center" }}>
           {canRemove && (
             <IconButton size="small" color="error" onClick={() => onRemove(event.id)} title="Remove event">
               <DeleteOutlineIcon fontSize="small" />
             </IconButton>
           )}
-        </Box>
-      </Box>
+        </Grid>
+      </Grid>
     </Box>
   );
 }
@@ -222,6 +173,7 @@ function ReservationFormFields({
   photographers,
   videographers,
   teamDefaultIds,
+  videoTeamDefaultIds,
   eventTypes,
   availabilityMsg,
   availabilitySeverity,
@@ -518,6 +470,7 @@ function ReservationFormFields({
                   const checked = e.target.checked;
                   setFieldValue("HasVideography", checked);
                   if (!checked) {
+                    setFieldValue("AssignedVideographyTeamId", "");
                     setFieldValue("VideographerIds", []);
                   }
                 }}
@@ -528,32 +481,89 @@ function ReservationFormFields({
         </Grid>
 
         {values.HasVideography && (
-          <Grid item xs={12} md={6} mt={1}>
-            <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>
-              Videographers
-            </Typography>
-            <Select
-              multiple
-              fullWidth
-              size="small"
-              value={values.VideographerIds || []}
-              onChange={(e) => setFieldValue("VideographerIds", e.target.value)}
-              input={<OutlinedInput />}
-              renderValue={(selectedIds) =>
-                (videographers || [])
-                  .filter((p) => selectedIds.includes(p.id))
-                  .map((p) => p.name)
-                  .join(", ")
-              }
-            >
-              {(videographers || []).map((p) => (
-                <MenuItem key={p.id} value={p.id}>
-                  <Checkbox checked={(values.VideographerIds || []).includes(p.id)} />
-                  <ListItemText primary={p.name} />
-                </MenuItem>
-              ))}
-            </Select>
-          </Grid>
+          <>
+            <Grid item xs={12} md={4} mt={1}>
+              <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>
+                Assigned Videography Team
+              </Typography>
+              <TextField
+                select
+                fullWidth
+                size="small"
+                value={values.AssignedVideographyTeamId}
+                onChange={(e) => {
+                  const newTeamId = e.target.value;
+                  const oldDefaults = videoTeamDefaultIds(values.AssignedVideographyTeamId);
+                  const newDefaults = videoTeamDefaultIds(newTeamId);
+                  const kept = (values.VideographerIds || []).filter(
+                    (id) => !oldDefaults.includes(id)
+                  );
+                  setFieldValue("AssignedVideographyTeamId", newTeamId);
+                  setFieldValue(
+                    "VideographerIds",
+                    Array.from(new Set([...newDefaults, ...kept]))
+                  );
+                }}
+              >
+                <MenuItem value="">Unassigned</MenuItem>
+                {(teams || []).map((t) => (
+                  <MenuItem key={t.id} value={t.id}>
+                    {t.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+
+            <Grid item xs={12} md={4} mt={1}>
+              <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>
+                Videographer
+              </Typography>
+              {(() => {
+                const lockedIds = videoTeamDefaultIds(values.AssignedVideographyTeamId);
+                const selected = Array.from(
+                  new Set([...lockedIds, ...(values.VideographerIds || [])])
+                );
+                return (
+                  <Select
+                    multiple
+                    fullWidth
+                    size="small"
+                    value={selected}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      const unlocked = next.filter((id) => !lockedIds.includes(id));
+                      setFieldValue(
+                        "VideographerIds",
+                        Array.from(new Set([...lockedIds, ...unlocked]))
+                      );
+                    }}
+                    input={<OutlinedInput />}
+                    renderValue={(selectedIds) =>
+                      (videographers || [])
+                        .filter((p) => selectedIds.includes(p.id))
+                        .map((p) => p.name)
+                        .join(", ")
+                    }
+                  >
+                    {(videographers || []).map((p) => {
+                      const locked = lockedIds.includes(p.id);
+                      return (
+                        <MenuItem key={p.id} value={p.id} disabled={locked}>
+                          <Checkbox checked={selected.includes(p.id)} />
+                          <ListItemText
+                            primary={p.name}
+                            secondary={
+                              locked ? "Team default" : p.defaultTeam?.name || ""
+                            }
+                          />
+                        </MenuItem>
+                      );
+                    })}
+                  </Select>
+                );
+              })()}
+            </Grid>
+          </>
         )}
 
         <Grid item xs={12} mt={1}>
@@ -653,6 +663,13 @@ export default function AddReservation({
 
   const videographers = (photographers || []).filter((p) => p.isVideography);
 
+  const videoTeamDefaultIds = (teamId) => {
+    if (!teamId) return [];
+    return videographers
+      .filter((p) => Number(p.defaultTeamId) === Number(teamId))
+      .map((p) => p.id);
+  };
+
   const isPageRoute =
     router.pathname === "/photography/reservations/create" ||
     router.pathname === "/photography/reservations/create/";
@@ -710,11 +727,8 @@ export default function AddReservation({
     }
     for (const evt of values.Events) {
       if (!evt.EventDate) {
-        toast.error("Date is required for each event");
-        return;
-      }
-      if (!evt.EventSession || !EVENT_SESSIONS.includes(evt.EventSession)) {
-        toast.error("Session (Morning or Evening) is required for each event");
+        const typeName = eventTypes.find((t) => t.id === evt.EventType)?.name || "Event";
+        toast.error(`${typeName} date is required`);
         return;
       }
     }
@@ -723,15 +737,21 @@ export default function AddReservation({
     const photographerIds = Array.from(
       new Set([...teamDefaultIds(values.AssignedTeamId), ...(values.PhotographerIds || [])])
     );
-    const videographerIds = values.HasVideography ? values.VideographerIds || [] : [];
+    const videographerIds = values.HasVideography
+      ? Array.from(
+          new Set([
+            ...videoTeamDefaultIds(values.AssignedVideographyTeamId),
+            ...(values.VideographerIds || []),
+          ])
+        )
+      : [];
 
     const payload = {
       CoupleNames: values.CoupleNames,
       Events: values.Events.map((e) => ({
         EventType: Number(e.EventType),
-        EventDate: e.EventDate || null,
+        EventDate: e.EventDate,
         EventTime: e.EventTime || null,
-        EventSession: e.EventSession || null,
         Location: e.Location || null,
         IsMainEvent: e.IsMainEvent,
       })),
@@ -745,6 +765,10 @@ export default function AddReservation({
       ClientLocalAddress: values.ClientLocalAddress || null,
       AssignedTeamId: values.AssignedTeamId ? Number(values.AssignedTeamId) : null,
       HasVideography: !!values.HasVideography,
+      AssignedVideographyTeamId:
+        values.HasVideography && values.AssignedVideographyTeamId
+          ? Number(values.AssignedVideographyTeamId)
+          : null,
       MobileContentCreatorRequired: !!values.MobileContentCreatorRequired,
       MobileContentCreatorId:
         values.MobileContentCreatorRequired && values.MobileContentCreatorId
@@ -798,7 +822,6 @@ export default function AddReservation({
       EventType: eventTypes[0]?.id ?? 1,
       EventDate: initialDate,
       EventTime: "",
-      EventSession: "",
       Location: "",
       IsMainEvent: true,
     };
@@ -837,6 +860,7 @@ export default function AddReservation({
               AssignedTeamId: "",
               PhotographerIds: [],
               HasVideography: false,
+              AssignedVideographyTeamId: "",
               VideographerIds: [],
               MobileContentCreatorRequired: false,
               MobileContentCreatorId: "",
@@ -854,6 +878,7 @@ export default function AddReservation({
                   photographers={photographers}
                   videographers={videographers}
                   teamDefaultIds={teamDefaultIds}
+                  videoTeamDefaultIds={videoTeamDefaultIds}
                   eventTypes={eventTypes}
                   availabilityMsg={availabilityMsg}
                   availabilitySeverity={availabilitySeverity}

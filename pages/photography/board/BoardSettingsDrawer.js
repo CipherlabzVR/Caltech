@@ -47,14 +47,13 @@ export default function BoardSettingsDrawer({
   const set = (patch) => onChange({ ...settings, ...patch });
 
   const visibleIds = Array.isArray(settings.visibleStatusIds)
-    ? settings.visibleStatusIds.map(Number)
-    : (statuses || []).map((s) => Number(s.id ?? s.Id));
+    ? settings.visibleStatusIds
+    : (statuses || []).map((s) => s.id ?? s.Id);
 
   const toggleStatus = (id) => {
-    const nid = Number(id);
-    const next = visibleIds.includes(nid)
-      ? visibleIds.filter((x) => Number(x) !== nid)
-      : [...visibleIds, nid];
+    const next = visibleIds.includes(id)
+      ? visibleIds.filter((x) => x !== id)
+      : [...visibleIds, id];
     set({ visibleStatusIds: next });
   };
 
@@ -172,11 +171,10 @@ export default function BoardSettingsDrawer({
                 onChange={(e) => set({ dateWindow: Number(e.target.value) })}
                 sx={{ bgcolor: "#fff", borderRadius: 2 }}
               >
-                <MenuItem value={-1}>All reservations</MenuItem>
-                <MenuItem value={0}>All upcoming</MenuItem>
                 <MenuItem value={30}>Today + 30 days</MenuItem>
                 <MenuItem value={60}>Today + 60 days</MenuItem>
                 <MenuItem value={90}>Today + 90 days</MenuItem>
+                <MenuItem value={0}>All upcoming</MenuItem>
               </Select>
             </FormControl>
           </Section>

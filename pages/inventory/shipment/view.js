@@ -154,6 +154,8 @@ const ShipmentView = () => {
     (total, row) => total + (row.lineTotal || 0),
     0
   );
+  const overseasCost = parseFloat(overseasTransport) || 0;
+  const grandTotal = (finalTotal || 0) + overseasCost;
 
   const handleSubmit = async () => {
     if (!currencyId) {
@@ -161,15 +163,21 @@ const ShipmentView = () => {
       return;
     }
 
-    const hasInvalidUnitPrice = shipmentLineDetails.some(
-      (row) =>
-        row.unitPrice === null ||
-        row.unitPrice === undefined ||
-        row.unitPrice < 0
+    const hasMissingUnitPrice = shipmentLineDetails.some(
+      (row) => row.unitPrice === null || row.unitPrice === undefined
     );
 
-    if (hasInvalidUnitPrice) {
+    if (hasMissingUnitPrice) {
       toast.info("Please enter unit price for all shipment lines.");
+      return;
+    }
+
+    const hasNegativeUnitPrice = shipmentLineDetails.some(
+      (row) => row.unitPrice < 0
+    );
+
+    if (hasNegativeUnitPrice) {
+      toast.info("Unit price must be 0 or greater.");
       return;
     }
 
@@ -422,11 +430,35 @@ const ShipmentView = () => {
                       )}
                       <TableRow>
                         <TableCell align="right" colSpan={4}>
+                          <Typography sx={{ fontWeight: 500 }}>
+                            Total unit price
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography sx={{ fontWeight: 500 }}>
+                            {formatCurrency(finalTotal || null)}
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell align="right" colSpan={4}>
+                          <Typography sx={{ fontWeight: 500 }}>
+                            Overseas cost
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography sx={{ fontWeight: 500 }}>
+                            {formatCurrency(overseasCost || null)}
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell align="right" colSpan={4}>
                           <Typography sx={{ fontWeight: "bold" }}>Total</Typography>
                         </TableCell>
                         <TableCell align="right">
                           <Typography sx={{ fontWeight: "bold" }}>
-                            {formatCurrency(finalTotal || null)}
+                            {formatCurrency(grandTotal || null)}
                           </Typography>
                         </TableCell>
                       </TableRow>

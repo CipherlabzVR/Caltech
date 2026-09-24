@@ -90,7 +90,7 @@ const ReceiptCreate = () => {
 
   const { data: totalOutstandingApiResult } = useApi(
     customer?.id
-      ? `/Outstanding/GetCustomerWiseTotalOutstandingAmount?customerId=${customer.id}`
+      ? `/Outstanding/GetCustomerWiseTotalOutstandingAmount?customerId=${customer.id}&includeSalesOrders=true`
       : null
   );
 
@@ -148,7 +148,7 @@ const ReceiptCreate = () => {
   const fetchInvoices = async (customer) => {
     try {
       const response = await fetch(
-        `${BASE_URL}/Outstanding/GetAllCustomerwiseOustandingsByIsSettled?customerId=${customer.id}&isSettled=false`,
+        `${BASE_URL}/Outstanding/GetAllCustomerwiseOustandingsByIsSettled?customerId=${customer.id}&isSettled=false&includeSalesOrders=true`,
         {
           method: "GET",
           headers: {
@@ -701,11 +701,13 @@ const ReceiptCreate = () => {
                   </TableHead>
                   <TableBody>
                     {customerInvoices.map((invoice, index) => {
-                      const dueAmount =
-                        invoice.totalInvoiceAmount != null &&
-                          invoice.paymentAmount != null
-                          ? invoice.totalInvoiceAmount - invoice.paymentAmount
-                          : "N/A"; // You can replace 'N/A' with another default value if necessary
+                      // outstandingAmount is the balance the server still expects, already net of
+                      // every earlier receipt, so it is the due amount for both invoices and
+                      // sales orders. returnedAmount is null on sales orders.
+                      const totalAmount = Number(invoice.totalInvoiceAmount) || 0;
+                      const returnedAmount = Number(invoice.returnedAmount) || 0;
+                      const dueAmount = Number(invoice.outstandingAmount) || 0;
+                      const receivedAmount = totalAmount - (dueAmount + returnedAmount);
 
                       return (
                         <TableRow
@@ -727,14 +729,10 @@ const ReceiptCreate = () => {
                           </TableCell>
                           <TableCell>{invoice.isSalesOrder ? "-" : invoice.invoiceNumber}</TableCell>
                           <TableCell>{invoice.isSalesOrder ? invoice.invoiceNumber : "-"}</TableCell>
-                          <TableCell>{invoice.totalInvoiceAmount}</TableCell>
-                          <TableCell>
-                            {invoice.totalInvoiceAmount -
-                              (invoice.outstandingAmount + invoice.returnedAmount)}
-
-                          </TableCell>
-                          <TableCell>{invoice.returnedAmount}</TableCell>
-                          <TableCell>{invoice.outstandingAmount}</TableCell>
+                          <TableCell>{totalAmount}</TableCell>
+                          <TableCell>{receivedAmount}</TableCell>
+                          <TableCell>{returnedAmount}</TableCell>
+                          <TableCell>{dueAmount}</TableCell>
                           <TableCell align="right">
                             <TextField
                               sx={{ width: "150px" }}

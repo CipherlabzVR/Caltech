@@ -10,14 +10,6 @@ import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
 import BASE_URL from "Base/api";
 import { ProjectNo } from "Base/catelogue";
 
-function findNavPermission(transformed, menuModuleId, sub) {
-  const moduleId = Number(sub.permissionModuleId ?? menuModuleId);
-  const categoryId = Number(sub.categoryId);
-  return transformed.find(
-    (t) => Number(t.ModuleId) === moduleId && Number(t.CategoryId) === categoryId
-  );
-}
-
 /** Apply role permissions to sidebar subNav; supports one level of nested subNav (e.g. Master Data → HR). */
 function applyPermissionsToSubNav(subNav, moduleId, transformed, isHelpDeskSupport) {
   if (!subNav?.length) return subNav;
@@ -34,13 +26,17 @@ function applyPermissionsToSubNav(subNav, moduleId, transformed, isHelpDeskSuppo
       if (!isHelpDeskSupport) {
         return { ...sub, isAvailable: false };
       }
-      const matched = findNavPermission(transformed, moduleId, sub);
+      const matched = transformed.find(
+        (t) => t.ModuleId === moduleId && t.CategoryId === sub.categoryId
+      );
       return {
         ...sub,
         isAvailable: matched ? matched.IsAvailable : false,
       };
     }
-    const matched = findNavPermission(transformed, moduleId, sub);
+    const matched = transformed.find(
+      (t) => t.ModuleId === moduleId && t.CategoryId === sub.categoryId
+    );
     return {
       ...sub,
       isAvailable: matched ? matched.IsAvailable : false,
@@ -98,7 +94,9 @@ function resolveSubNavAvailability(sub, menuModuleId, transformed) {
     };
   }
 
-  const matched = findNavPermission(transformed, menuModuleId, sub);
+  const matched = transformed.find(
+    (t) => t.ModuleId === menuModuleId && t.CategoryId === sub.categoryId
+  );
   return {
     ...sub,
     isAvailable: matched ? matched.IsAvailable : false,
@@ -320,8 +318,8 @@ const Sidebar = ({ toogleActive, onGrantedCheck, hoverMode = false }) => {
                 {ProjectNo === 1 ? (
                   <>
                     <img
-                      src="/images/IMG_4684.png"
-                      alt="CBASS-AI Logo"
+                      src={companyLogo !== "" ? companyLogo : "/images/cbass.png"}
+                      alt="Logo"
                       className="black-logo"
                       style={{
                         maxHeight: "100%",
@@ -330,8 +328,8 @@ const Sidebar = ({ toogleActive, onGrantedCheck, hoverMode = false }) => {
                       }}
                     />
                     <img
-                      src="/images/IMG_4684.png"
-                      alt="CBASS-AI Logo"
+                      src={companyLogo !== "" ? companyLogo : "/images/cbass.png"}
+                      alt="Logo"
                       className="white-logo"
                       style={{
                         maxHeight: "100%",

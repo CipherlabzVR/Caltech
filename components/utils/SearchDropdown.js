@@ -14,6 +14,7 @@ const SearchDropdown = ({
   wideDropdown = false,
   dropdownMinWidth = 360,
   getOptionDisplay,
+  filterResults,
 }) => {
   const [searchValue, setSearchValue] = useState("");
   const [results, setResults] = useState([]);
@@ -71,7 +72,8 @@ const SearchDropdown = ({
       });
       if (response.ok) {
         const data = await response.json();
-        setResults(data.result);
+        const list = data.result || [];
+        setResults(filterResults ? list.filter(filterResults) : list);
         setShowDropdown(true);
       }
     } catch (err) {

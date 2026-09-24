@@ -10,7 +10,6 @@ import {
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Modal from "@mui/material/Modal";
-import Paper from "@mui/material/Paper";
 import TextField from "@mui/material/TextField";
 import { Field, Form, Formik } from "formik";
 import * as Yup from "yup";
@@ -18,13 +17,6 @@ import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import BorderColorIcon from "@mui/icons-material/BorderColor";
 import BASE_URL from "Base/api";
-
-import CloseIcon from "@mui/icons-material/Close";
-import {
-  DEFAULT_ICON_KEY,
-  ICON_OPTIONS,
-  resolveEventTypeIcon,
-} from "@/utils/photography/eventTypeIcons";
 
 const style = {
   position: "absolute",
@@ -47,69 +39,6 @@ const validationSchema = Yup.object().shape({
     .required("Order is required"),
 });
 
-function IconPicker({ value, onChange, color }) {
-  const SelectedIcon = resolveEventTypeIcon(value);
-
-  const handleClear = () => {
-    // "Deleting" the icon just falls back to the default — the field is
-    // never left empty.
-    onChange(DEFAULT_ICON_KEY);
-  };
-
-  return (
-    <Box>
-      <Box display="flex" alignItems="center" gap={1} mb={1}>
-        <Paper
-          variant="outlined"
-          sx={{
-            width: 44,
-            height: 44,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 2,
-            color: color || "text.primary",
-          }}
-        >
-          <SelectedIcon />
-        </Paper>
-        <Typography variant="body2" color="text.secondary">
-          {value && value !== DEFAULT_ICON_KEY
-            ? ICON_OPTIONS.find((o) => o.key === value)?.label || value
-            : "Default icon"}
-        </Typography>
-        {value && value !== DEFAULT_ICON_KEY && (
-          <Tooltip title="Reset to default icon">
-            <IconButton size="small" onClick={handleClear}>
-              <CloseIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        )}
-      </Box>
-      <Box display="flex" flexWrap="wrap" gap={1}>
-        {ICON_OPTIONS.map(({ key, label, Icon }) => {
-          const selected = value === key || (!value && key === DEFAULT_ICON_KEY);
-          return (
-            <Tooltip key={key} title={label}>
-              <IconButton
-                onClick={() => onChange(key)}
-                sx={{
-                  border: "1px solid",
-                  borderColor: selected ? "primary.main" : "divider",
-                  bgcolor: selected ? "action.selected" : "transparent",
-                  borderRadius: 2,
-                }}
-              >
-                <Icon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          );
-        })}
-      </Box>
-    </Box>
-  );
-}
-
 export default function EditEventType({ item, fetchItems }) {
   const [open, setOpen] = useState(false);
   const handleOpen = () => setOpen(true);
@@ -127,7 +56,6 @@ export default function EditEventType({ item, fetchItems }) {
       DisplayOrder: Math.max(0, Number(values.DisplayOrder) || 0),
       Code: values.Code || null,
       ColorCode: values.ColorCode || null,
-      IconName: values.IconName || DEFAULT_ICON_KEY,
     };
     fetch(`${BASE_URL}/PhotographyEventType/UpdateEventType`, {
       method: "POST",
@@ -169,7 +97,6 @@ export default function EditEventType({ item, fetchItems }) {
               Code: item.code || "",
               DisplayOrder: Math.max(0, Number(item.displayOrder) || 0),
               ColorCode: item.colorCode || "#6366F1",
-              IconName: item.iconName || DEFAULT_ICON_KEY,
               ConsumesWeddingCapacity: !!item.consumesWeddingCapacity,
               IsActive: item.isActive,
             }}
@@ -234,17 +161,6 @@ export default function EditEventType({ item, fetchItems }) {
                       Color
                     </Typography>
                     <Field as={TextField} fullWidth type="color" name="ColorCode" size="small" />
-                  </Grid>
-
-                  <Grid item xs={12} mt={1}>
-                    <Typography sx={{ fontWeight: "500", fontSize: "14px", mb: "5px" }}>
-                      Icon
-                    </Typography>
-                    <IconPicker
-                      value={values.IconName}
-                      color={values.ColorCode}
-                      onChange={(key) => setFieldValue("IconName", key)}
-                    />
                   </Grid>
 
                   <Grid item xs={12} mt={1}>

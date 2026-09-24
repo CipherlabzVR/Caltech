@@ -621,9 +621,6 @@ export const getSidebarData = (IsGarmentSystem) => {
                         { title: "📦 Packages", path: "/photography/packages/", categoryId: 339, isAvailable: true },
                         { title: "🧩 Add-ons", path: "/photography/add-ons/", categoryId: 340, isAvailable: true },
                         { title: "📅 Calendar", path: "/photography/google-calendar/", categoryId: 236, isAvailable: true },
-                        { title: "💬 WhatsApp Integration", path: "/whatsapp/integration/", categoryId: 250, permissionModuleId: 32, isAvailable: true },
-                        { title: "💬 WhatsApp Templates", path: "/whatsapp/templates/", categoryId: 251, permissionModuleId: 32, isAvailable: true },
-                        { title: "💬 Send WhatsApp", path: "/whatsapp/send-message/", categoryId: 252, permissionModuleId: 32, isAvailable: true },
                     ],
                 },
             ],
@@ -637,9 +634,9 @@ export const getSidebarData = (IsGarmentSystem) => {
             ModuleId: 32,
             IsAvailable: true,
             subNav: [
-                { title: "Integration", path: "/whatsapp/integration/", categoryId: 250, isAvailable: true },
-                { title: "Templates", path: "/whatsapp/templates/", categoryId: 251, isAvailable: true },
-                { title: "Send Message", path: "/whatsapp/send-message/", categoryId: 252, isAvailable: true },
+                { title: "Integration", path: "/whatsapp/integration/", categoryId: 230, isAvailable: true },
+                { title: "Templates", path: "/whatsapp/templates/", categoryId: 231, isAvailable: true },
+                { title: "Send Message", path: "/whatsapp/send-message/", categoryId: 232, isAvailable: true },
             ],
         },
         {

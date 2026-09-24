@@ -26,8 +26,9 @@ import {
 import GroupsIcon from "@mui/icons-material/Groups";
 import PlaceIcon from "@mui/icons-material/Place";
 import EventIcon from "@mui/icons-material/Event";
-import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import PhoneIcon from "@mui/icons-material/Phone";
+import FavoriteIcon from "@mui/icons-material/Favorite";
+import CakeIcon from "@mui/icons-material/Cake";
 import CloseIcon from "@mui/icons-material/Close";
 import PersonIcon from "@mui/icons-material/Person";
 import ReceiptIcon from "@mui/icons-material/Receipt";
@@ -40,7 +41,6 @@ import ChangeStatus from "../reservations/change-status";
 import { formatDate } from "@/components/utils/formatHelper";
 import { hexToRgba } from "../../../utils/photography/boardTheme";
 import BASE_URL from "Base/api";
-import { resolveEventTypeIcon } from "@/utils/photography/eventTypeIcons";
 
 const CEREMONY_TYPES = [
   { value: 1, label: "Poruwa" },
@@ -107,7 +107,6 @@ export default function BoardCard({
   canEdit,
   canChangeStatus,
   onRefresh,
-  eventTypes = [],
   stepIndex = 0,
   totalSteps = 1,
 }) {
@@ -122,16 +121,8 @@ export default function BoardCard({
   const eventDate = pick(item, "eventDate", "EventDate");
   const eventTime = pick(item, "eventTime", "EventTime");
   const eventTypeName = pick(item, "eventTypeName", "EventTypeName") || "Event";
-  const eventTypeId = pick(item, "eventType", "EventType");
-  const eventTypeMeta = eventTypes.find((type) => Number(type.id) === Number(eventTypeId));
-  const EventTypeIcon = resolveEventTypeIcon(
-    eventTypeMeta?.iconName ?? eventTypeMeta?.IconName ?? pick(item, "iconName", "IconName")
-  );
   const teamName = pick(item, "assignedTeamName", "AssignedTeamName");
   const location = pick(item, "receptionLocation", "ReceptionLocation");
-  const calendarSynced =
-    Boolean(pick(item, "isGoogleCalendarSynced", "IsGoogleCalendarSynced")) ||
-    /\[GCal:/i.test(pick(item, "remark", "Remark") || "");
   const statusId = pick(item, "currentStatusId", "CurrentStatusId");
   const color = accent || "#4F6D8C";
 
@@ -170,8 +161,7 @@ export default function BoardCard({
   };
   
   const mobileNo = pick(item, "customerMobileNo", "CustomerMobileNo");
-  const usesWeddingCapacity =
-    eventTypeMeta?.consumesWeddingCapacity || eventTypeMeta?.ConsumesWeddingCapacity;
+  const isWedding = (eventTypeName || "").toLowerCase().includes("wedding");
   const initials = (coupleNames || "?")
     .split(" ")
     .filter(Boolean)
@@ -243,7 +233,7 @@ export default function BoardCard({
         {/* Header with gradient */}
         <Box
           sx={{
-            background: usesWeddingCapacity
+            background: isWedding
               ? "linear-gradient(135deg, #312E81 0%, #6366F1 100%)"
               : "linear-gradient(135deg, #0F766E 0%, #0891B2 100%)",
             p: 1.5,
@@ -287,36 +277,19 @@ export default function BoardCard({
                 {cardNo}
               </Typography>
             </Box>
-            <Stack spacing={0.5} alignItems="flex-end">
-              <Chip
-                size="small"
-                icon={<EventTypeIcon />}
-                label={`${eventTypeName} ★`}
-                sx={{
-                  bgcolor: "rgba(255,255,255,0.2)",
-                  color: "#fff",
-                  fontWeight: 600,
-                  fontSize: 10,
-                  height: 24,
-                  "& .MuiChip-icon": { color: "#fff", fontSize: 14 },
-                }}
-              />
-              {calendarSynced && (
-                <Chip
-                  size="small"
-                  icon={<EventAvailableIcon />}
-                  label="Calendar"
-                  sx={{
-                    bgcolor: "rgba(255,255,255,0.28)",
-                    color: "#fff",
-                    fontWeight: 700,
-                    fontSize: 10,
-                    height: 22,
-                    "& .MuiChip-icon": { color: "#fff", fontSize: 14 },
-                  }}
-                />
-              )}
-            </Stack>
+            <Chip
+              size="small"
+              icon={isWedding ? <FavoriteIcon /> : <CakeIcon />}
+              label={`${eventTypeName} ★`}
+              sx={{
+                bgcolor: "rgba(255,255,255,0.2)",
+                color: "#fff",
+                fontWeight: 600,
+                fontSize: 10,
+                height: 24,
+                "& .MuiChip-icon": { color: "#fff", fontSize: 14 },
+              }}
+            />
           </Stack>
         </Box>
 
@@ -499,7 +472,7 @@ export default function BoardCard({
         {/* Header */}
         <Box
           sx={{
-            background: usesWeddingCapacity
+            background: isWedding
               ? "linear-gradient(135deg, #312E81 0%, #4F46E5 100%)"
               : "linear-gradient(135deg, #0F766E 0%, #0891B2 100%)",
             color: "#fff",
@@ -538,7 +511,7 @@ export default function BoardCard({
                 />
                 <Chip
                   size="small"
-                  icon={<EventTypeIcon />}
+                  icon={isWedding ? <FavoriteIcon /> : <CakeIcon />}
                   label={eventTypeName}
                   sx={{
                     bgcolor: "rgba(255,255,255,0.25)",

@@ -33,6 +33,8 @@ import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import BlockIcon from "@mui/icons-material/Block";
 import GroupsIcon from "@mui/icons-material/Groups";
+import FavoriteIcon from "@mui/icons-material/Favorite";
+import CakeIcon from "@mui/icons-material/Cake";
 import EventIcon from "@mui/icons-material/Event";
 import PlaceIcon from "@mui/icons-material/Place";
 import PeopleIcon from "@mui/icons-material/People";
@@ -52,7 +54,6 @@ import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import ViewReservation from "../reservations/view";
 import AddReservation from "../reservations/create";
 import useApi from "@/components/utils/useApi";
-import { resolveEventTypeIcon } from "@/utils/photography/eventTypeIcons";
 
 const CATEGORY_ID = 229;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -237,7 +238,7 @@ function DayReservationCard({ row, eventTypes }) {
 
   const typeLabel = eventTypeLabel(item.eventType, item.eventTypeName, eventTypes);
   const typeMeta = (eventTypes || []).find((t) => Number(t.id) === Number(item.eventType));
-  const usesWeddingCapacity =
+  const isWedding =
     typeMeta?.consumesWeddingCapacity ||
     typeMeta?.ConsumesWeddingCapacity ||
     typeLabel === "Wedding";
@@ -245,10 +246,9 @@ function DayReservationCard({ row, eventTypes }) {
     item.ceremonyTypeName === "Other"
       ? item.ceremonyTypeOther || "Other"
       : item.ceremonyTypeName;
-  const headerBg = usesWeddingCapacity
+  const headerBg = isWedding
     ? "linear-gradient(135deg, #312E81 0%, #4F46E5 100%)"
     : "linear-gradient(135deg, #0F766E 0%, #0891B2 100%)";
-  const EventTypeIcon = resolveEventTypeIcon(typeMeta?.iconName ?? typeMeta?.IconName);
 
   return (
     <Paper
@@ -312,7 +312,7 @@ function DayReservationCard({ row, eventTypes }) {
           >
             <Chip
               size="small"
-              icon={<EventTypeIcon />}
+              icon={isWedding ? <FavoriteIcon /> : <CakeIcon />}
               label={typeLabel}
               sx={{
                 bgcolor: "rgba(255,255,255,0.22)",
@@ -685,11 +685,6 @@ export default function PhotographyAvailability() {
   const yearOther = yearResult?.otherEventsCount ?? yearResult?.OtherEventsCount ?? 0;
   const yearFull = yearResult?.fullyBookedDays ?? yearResult?.FullyBookedDays ?? 0;
   const yearActive = yearResult?.activeTeams ?? yearResult?.ActiveTeams ?? 0;
-  const weddingType = eventTypes.find(
-    (type) => type?.consumesWeddingCapacity || type?.ConsumesWeddingCapacity
-  );
-  const WeddingIcon = resolveEventTypeIcon(weddingType?.iconName ?? weddingType?.IconName);
-  const OtherEventIcon = resolveEventTypeIcon();
 
   const modeTitle =
     mode === "month" ? "Plan your month" : mode === "year" ? "Plan your year" : "Plan your day";
@@ -1049,7 +1044,7 @@ export default function PhotographyAvailability() {
             </Grid>
             <Grid item xs={6} sm={4} md>
               <SummaryStat
-                icon={<WeddingIcon />}
+                icon={<FavoriteIcon />}
                 label="Weddings"
                 value={weddingsBooked}
                 gradient="linear-gradient(135deg, #EC4899 0%, #F43F5E 100%)"
@@ -1057,7 +1052,7 @@ export default function PhotographyAvailability() {
             </Grid>
             <Grid item xs={6} sm={4} md>
               <SummaryStat
-                icon={<OtherEventIcon />}
+                icon={<CakeIcon />}
                 label="Other events"
                 value={birthdayCount}
                 gradient="linear-gradient(135deg, #F59E0B 0%, #FB923C 100%)"
@@ -1321,7 +1316,7 @@ export default function PhotographyAvailability() {
             </Grid>
             <Grid item xs={6} sm={4} md>
               <SummaryStat
-                icon={<WeddingIcon />}
+                icon={<FavoriteIcon />}
                 label="Weddings"
                 value={monthWeddings}
                 gradient="linear-gradient(135deg, #EC4899 0%, #F43F5E 100%)"
@@ -1329,7 +1324,7 @@ export default function PhotographyAvailability() {
             </Grid>
             <Grid item xs={6} sm={4} md>
               <SummaryStat
-                icon={<OtherEventIcon />}
+                icon={<CakeIcon />}
                 label="Other events"
                 value={monthOther}
                 gradient="linear-gradient(135deg, #F59E0B 0%, #FB923C 100%)"
@@ -1551,7 +1546,7 @@ export default function PhotographyAvailability() {
             </Grid>
             <Grid item xs={6} sm={3}>
               <SummaryStat
-                icon={<WeddingIcon />}
+                icon={<FavoriteIcon />}
                 label="Weddings"
                 value={yearWeddings}
                 gradient="linear-gradient(135deg, #EC4899 0%, #F43F5E 100%)"
@@ -1559,7 +1554,7 @@ export default function PhotographyAvailability() {
             </Grid>
             <Grid item xs={6} sm={3}>
               <SummaryStat
-                icon={<OtherEventIcon />}
+                icon={<CakeIcon />}
                 label="Other events"
                 value={yearOther}
                 gradient="linear-gradient(135deg, #F59E0B 0%, #FB923C 100%)"
@@ -1769,7 +1764,7 @@ export default function PhotographyAvailability() {
                                   }}
                                 >
                                   <Stack direction="row" spacing={0.75} alignItems="center">
-                                    <WeddingIcon sx={{ fontSize: 16, color: "#DB2777" }} />
+                                    <FavoriteIcon sx={{ fontSize: 16, color: "#DB2777" }} />
                                     <Typography variant="body2" sx={{ fontWeight: 700, color: "#9D174D" }}>
                                       Weddings
                                     </Typography>
@@ -1792,7 +1787,7 @@ export default function PhotographyAvailability() {
                                   }}
                                 >
                                   <Stack direction="row" spacing={0.75} alignItems="center">
-                                    <OtherEventIcon sx={{ fontSize: 16, color: "#D97706" }} />
+                                    <CakeIcon sx={{ fontSize: 16, color: "#D97706" }} />
                                     <Typography variant="body2" sx={{ fontWeight: 700, color: "#92400E" }}>
                                       Other
                                     </Typography>

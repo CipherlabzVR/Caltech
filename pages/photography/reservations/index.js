@@ -28,16 +28,16 @@ import {
   TextField,
   IconButton,
   Alert,
-  Button,
 } from "@mui/material";
 import ClearIcon from "@mui/icons-material/Clear";
+import FavoriteIcon from "@mui/icons-material/Favorite";
+import CakeIcon from "@mui/icons-material/Cake";
 import PlaceIcon from "@mui/icons-material/Place";
 import EventIcon from "@mui/icons-material/Event";
 import GroupsIcon from "@mui/icons-material/Groups";
 import ViewModuleIcon from "@mui/icons-material/ViewModule";
 import ViewListIcon from "@mui/icons-material/ViewList";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import { ToastContainer } from "react-toastify";
 import DeleteConfirmationById from "@/components/UIElements/Modal/DeleteConfirmationById";
 import { Search, StyledInputBase } from "@/styles/main/search-styles";
@@ -52,9 +52,7 @@ import { formatDate } from "@/components/utils/formatHelper";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import photographyReservationNoteService from "@/Services/photographyReservationNoteService";
-import { getAgentTypes, isApiSuccess } from "@/Services/photographyAgentService";
 import { resolveStatusColor, hexToRgba } from "@/utils/photography/boardTheme";
-import { resolveEventTypeIcon } from "@/utils/photography/eventTypeIcons";
 
 const CATEGORY_ID = 225;
 
@@ -71,10 +69,6 @@ const statusIdOf = (s) => s?.id ?? s?.Id;
 const statusNameOf = (s) => s?.name ?? s?.Name ?? "";
 const statusColorOf = (s, index = 0) => resolveStatusColor(s, index);
 
-const isGoogleCalendarSynced = (item) =>
-  Boolean(item?.isGoogleCalendarSynced ?? item?.IsGoogleCalendarSynced) ||
-  /\[GCal:/i.test(item?.remark || item?.Remark || "");
-
 export default function ReservationList() {
   const sessionCategory =
     typeof window !== "undefined" ? sessionStorage.getItem("category") : null;
@@ -85,13 +79,10 @@ export default function ReservationList() {
 
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [agentTypeFilter, setAgentTypeFilter] = useState("");
-  const [agentTypeOptions, setAgentTypeOptions] = useState([]);
   const [dateFilter, setDateFilter] = useState("");
   const [firstMeetingFilter, setFirstMeetingFilter] = useState("");
   const [view, setView] = useState("card");
   const [selectedItem, setSelectedItem] = useState(null);
-  const [allOverride, setAllOverride] = useState(false);
   const [userAgentType, setUserAgentType] = useState(null);
   const [agentTypeLoaded, setAgentTypeLoaded] = useState(false);
   const [isAdminUser, setIsAdminUser] = useState(false);
@@ -143,7 +134,6 @@ export default function ReservationList() {
       // Photography agents are 1=Coordinator, 2=Payment Handler, 3=After Wedding
       if (n === 1 || n === 2 || n === 3) {
         setUserAgentType(n);
-        setAgentTypeFilter(n);
       } else {
         setUserAgentType(null);
       }
@@ -159,34 +149,18 @@ export default function ReservationList() {
     fetchUserAgentType();
   }, [fetchUserAgentType]);
 
-  useEffect(() => {
-    getAgentTypes()
-      .then((data) => {
-        if (!isApiSuccess(data)) return;
-        const rows = data.result || data.Result || [];
-        const mapped = rows
-          .map((t) => ({
-            value: Number(t.id ?? t.Id),
-            label: t.name ?? t.Name ?? "",
-          }))
-          .filter((t) => Number.isFinite(t.value) && t.value > 0 && t.label);
-        if (mapped.length) setAgentTypeOptions(mapped);
-      })
-      .catch(() => {});
-  }, []);
-
   // Agent users: only their stage. Non-agent Admin/SuperAdmin (and other non-agents): all.
   const isPhotographyAgent = userAgentType === 1 || userAgentType === 2 || userAgentType === 3;
 
-  const buildFilter = useCallback((type = typeFilter, status = statusFilter, date = dateFilter, firstMeeting = firstMeetingFilter, includeAgent = !allOverride, agent = agentTypeFilter) => {
+  const buildFilter = useCallback((type = typeFilter, status = statusFilter, date = dateFilter, firstMeeting = firstMeetingFilter) => {
     const parts = [];
-    if (includeAgent && agent) parts.push(`AgentType:${agent}`);
+    if (isPhotographyAgent) parts.push(`AgentType:${userAgentType}`);
     if (type) parts.push(`EventType:${type}`);
     if (status) parts.push(`Status:${status}`);
     if (date) parts.push(`Date:${date}`);
     if (firstMeeting !== "") parts.push(`FirstMeetingComplete:${firstMeeting}`);
     return parts.join("|");
-  }, [allOverride, agentTypeFilter, typeFilter, statusFilter, dateFilter, firstMeetingFilter]);
+  }, [isPhotographyAgent, userAgentType, typeFilter, statusFilter, dateFilter, firstMeetingFilter]);
 
   const agentFilter = isPhotographyAgent ? `AgentType:${userAgentType}` : "";
   const listEndpoint = agentTypeLoaded
@@ -221,114 +195,68 @@ export default function ReservationList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentTypeLoaded, userAgentType, isPhotographyAgent, listEndpoint]);
 
-  const selectedAgentLabel =
-    agentTypeOptions.find((t) => Number(t.value) === Number(agentTypeFilter))?.label
-    || (Number(agentTypeFilter) === 1
+  const agentTypeLabel =
+    userAgentType === 1
       ? "Customer Coordinator"
-      : Number(agentTypeFilter) === 2
+      : userAgentType === 2
         ? "Payment Handler"
-        : Number(agentTypeFilter) === 3
+        : userAgentType === 3
           ? "After Wedding Manager"
-          : null);
+          : null;
 
   const handleSearchChange = (event) => {
-    setAllOverride(false);
     setSearch(event.target.value);
-    fetchList(1, event.target.value, pageSize, false, buildFilter(typeFilter, statusFilter, dateFilter, firstMeetingFilter, true));
+    fetchList(1, event.target.value, pageSize, false, buildFilter());
     setPage(1);
-  };
-
-  const handleAgentTypeFilterChange = (event) => {
-    const value = event.target.value;
-    setAllOverride(false);
-    setAgentTypeFilter(value);
-    setPage(1);
-    fetchList(1, search, pageSize, false, buildFilter(typeFilter, statusFilter, dateFilter, firstMeetingFilter, Boolean(value), value));
   };
 
   const handleTypeFilterChange = (event) => {
     const value = event.target.value;
-    setAllOverride(false);
     setTypeFilter(value);
     setPage(1);
-    fetchList(1, search, pageSize, false, buildFilter(value, statusFilter, dateFilter, firstMeetingFilter, true));
+    fetchList(1, search, pageSize, false, buildFilter(value, statusFilter, dateFilter));
   };
 
   const handleStatusFilterChange = (event) => {
     const value = event.target.value;
-    setAllOverride(false);
     setStatusFilter(value);
     setPage(1);
-    fetchList(1, search, pageSize, false, buildFilter(typeFilter, value, dateFilter, firstMeetingFilter, true));
+    fetchList(1, search, pageSize, false, buildFilter(typeFilter, value, dateFilter));
   };
 
   const handleDateFilterChange = (event) => {
     const value = event.target.value || "";
-    setAllOverride(false);
     setDateFilter(value);
     setPage(1);
-    fetchList(1, search, pageSize, false, buildFilter(typeFilter, statusFilter, value, firstMeetingFilter, true));
+    fetchList(1, search, pageSize, false, buildFilter(typeFilter, statusFilter, value));
   };
 
   const clearDateFilter = () => {
-    setAllOverride(false);
     setDateFilter("");
     setPage(1);
-    fetchList(1, search, pageSize, false, buildFilter(typeFilter, statusFilter, "", firstMeetingFilter, true));
+    fetchList(1, search, pageSize, false, buildFilter(typeFilter, statusFilter, "", firstMeetingFilter));
   };
 
   const handleFirstMeetingFilterChange = (event) => {
     const value = event.target.value;
-    setAllOverride(false);
     setFirstMeetingFilter(value);
     setPage(1);
-    fetchList(1, search, pageSize, false, buildFilter(typeFilter, statusFilter, dateFilter, value, true));
+    fetchList(1, search, pageSize, false, buildFilter(typeFilter, statusFilter, dateFilter, value));
   };
 
   const handleChangePage = (event, value) => {
     setPage(value);
-    fetchList(value, search, pageSize, false, buildFilter(typeFilter, statusFilter, dateFilter, firstMeetingFilter, !allOverride));
+    fetchList(value, search, pageSize, false, buildFilter());
   };
 
   const handleChangeRowsPerPage = (event) => {
     const size = event.target.value;
     setPageSize(size);
     setPage(1);
-    fetchList(1, search, size, false, buildFilter(typeFilter, statusFilter, dateFilter, firstMeetingFilter, !allOverride));
+    fetchList(1, search, size, false, buildFilter());
   };
 
-  const handleAllClick = () => {
-  if (allOverride) {
-    setAllOverride(false);
-    const agent = isPhotographyAgent ? userAgentType : agentTypeFilter;
-    setAgentTypeFilter(agent || "");
-    setPage(1);
-    const filter = buildFilter(typeFilter, statusFilter, dateFilter, firstMeetingFilter, Boolean(agent), agent || "");
-    setFilter(filter);
-    fetchList(1, search, pageSize, false, filter);
-  } else {
-    // first click: show everything, ignore agent filter
-    setAllOverride(true);
-    setSearch("");
-    setTypeFilter("");
-    setStatusFilter("");
-    setAgentTypeFilter("");
-    setDateFilter("");
-    setFirstMeetingFilter("");
-    setPage(1);
-    setFilter("");
-    fetchList(1, "", pageSize, false, "");
-  }
-};
-
-  const refresh = () =>
-    fetchList(
-      page,
-      search,
-      pageSize,
-      false,
-      buildFilter(typeFilter, statusFilter, dateFilter, firstMeetingFilter, !allOverride),
-    );
+  const refresh = () => fetchList(page, search, pageSize, false, buildFilter());
 
   if (!navigate) return <AccessDenied />;
 
@@ -364,17 +292,7 @@ export default function ReservationList() {
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.5}>
           <Stack direction="row" spacing={0.5} alignItems="center">
             {isDone && <CheckCircleIcon sx={{ fontSize: 15, color: barColor }} />}
-            <Typography
-              variant="caption"
-              sx={{
-                fontWeight: 700,
-                color: barColor,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                maxWidth: 180,
-              }}
-            >
+            <Typography variant="caption" sx={{ fontWeight: 700, color: barColor }}>
               {item.currentStatusName || "No status"}
             </Typography>
           </Stack>
@@ -426,15 +344,16 @@ export default function ReservationList() {
       );
     }
     return list.map((item) => {
+      const typeMeta = eventTypes.find((t) => Number(t.id) === Number(item.eventType));
+      const isWedding =
+        typeMeta?.consumesWeddingCapacity ||
+        typeMeta?.ConsumesWeddingCapacity ||
+        item.eventType === 1 ||
+        (item.eventTypeName || "").toLowerCase().includes("wedding");
       const statusHex = colorForItem(item);
       const headerBg = `linear-gradient(135deg, ${statusHex} 0%, ${hexToRgba(statusHex, 0.82)} 100%)`;
       return (
-        // Was xs=12 sm=6 md=3 (4-up starting at 900px). That made cards only
-        // ~220-270px wide on iPad / MacBook browser widths (900-1280px),
-        // which is exactly what squeezed the header and cropped the
-        // "Preshoot" chip icon. md=4 (3-up) gives that range breathing room;
-        // lg=3 keeps the denser 4-up layout for real desktop widths (1200px+).
-        <Grid item xs={12} sm={6} md={4} lg={3} key={item.id}>
+        <Grid item xs={12} sm={6} md={3} key={item.id}>
           <Paper
             elevation={0}
             onClick={() => update && setSelectedItem(item)}
@@ -455,76 +374,54 @@ export default function ReservationList() {
             }}
           >
             <Box sx={{ p: 2, color: "#fff", background: headerBg }}>
-              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
-                <Avatar
+              <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Avatar sx={{ bgcolor: "rgba(255,255,255,0.3)", fontWeight: 700, width: 44, height: 44 }}>
+                    {initialsOf(item.coupleNames)}
+                  </Avatar>
+                  <Box>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.15 }}>
+                      {item.coupleNames}
+                    </Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.9 }}>
+                      {item.cardNo}
+                    </Typography>
+                  </Box>
+                </Stack>
+                <Chip
+                  size="small"
+                  icon={isWedding ? <FavoriteIcon /> : <CakeIcon />}
+                  label={
+                    (item.events || []).length > 0
+                      ? item.events.map((e) => `${e.eventTypeName}${e.isMainEvent ? " ★" : ""}`).join(" + ")
+                      : item.eventTypeName
+                  }
                   sx={{
-                    bgcolor: "rgba(255,255,255,0.3)",
-                    fontWeight: 700,
-                    width: 44,
-                    height: 44,
-                    flexShrink: 0,
+                    bgcolor: "rgba(255,255,255,0.25)",
+                    color: "#fff",
+                    fontWeight: 600,
+                    "& .MuiChip-icon": { color: "#fff" },
                   }}
-                >
-                  {initialsOf(item.coupleNames)}
-                </Avatar>
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Typography
-                    variant="subtitle1"
-                    sx={{
-                      fontWeight: 800,
-                      lineHeight: 1.15,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {item.coupleNames}
-                  </Typography>
-                  <Typography variant="caption" sx={{ opacity: 0.9 }}>
-                    {item.cardNo}
-                  </Typography>
-                </Box>
-                {isGoogleCalendarSynced(item) && (
-                  <Tooltip title="Synced to Google Calendar">
-                    <Box
-                      sx={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: "50%",
-                        bgcolor: "rgba(255,255,255,0.22)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <EventAvailableIcon sx={{ fontSize: 18, color: "#fff" }} />
-                    </Box>
-                  </Tooltip>
-                )}
+                />
               </Stack>
             </Box>
 
             <Box sx={{ p: 2, flex: 1, display: "flex", flexDirection: "column", gap: 1 }}>
               <Stack direction="row" spacing={1} alignItems="center">
-                <EventIcon sx={{ fontSize: 18, color: "text.disabled", flexShrink: 0 }} />
+                <EventIcon sx={{ fontSize: 18, color: "text.disabled" }} />
                 <Typography variant="body2">
                   {formatDate(item.eventDate)}
                   {item.eventTime ? ` · ${item.eventTime}` : ""}
                 </Typography>
               </Stack>
               <Stack direction="row" spacing={1} alignItems="center">
-                <PlaceIcon sx={{ fontSize: 18, color: "text.disabled", flexShrink: 0 }} />
-                <Typography
-                  variant="body2"
-                  color={item.receptionLocation ? "text.primary" : "text.disabled"}
-                  sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                >
+                <PlaceIcon sx={{ fontSize: 18, color: "text.disabled" }} />
+                <Typography variant="body2" color={item.receptionLocation ? "text.primary" : "text.disabled"}>
                   {item.receptionLocation || "No location"}
                 </Typography>
               </Stack>
               <Stack direction="row" spacing={1} alignItems="center">
-                <GroupsIcon sx={{ fontSize: 18, color: "text.disabled", flexShrink: 0 }} />
+                <GroupsIcon sx={{ fontSize: 18, color: "text.disabled" }} />
                 {item.assignedTeamName ? (
                   <Chip size="small" label={item.assignedTeamName} color="info" variant="outlined" />
                 ) : (
@@ -539,14 +436,7 @@ export default function ReservationList() {
 
             <Divider />
             <Box
-              sx={{
-                px: 1,
-                py: 0.5,
-                display: "flex",
-                justifyContent: "flex-end",
-                alignItems: "center",
-                flexWrap: "wrap",
-              }}
+              sx={{ px: 1, py: 0.5, display: "flex", justifyContent: "flex-end", alignItems: "center" }}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
             >
@@ -584,32 +474,17 @@ export default function ReservationList() {
             ) : (
               list.map((item) => {
                 const typeMeta = eventTypes.find((t) => Number(t.id) === Number(item.eventType));
-                const usesWeddingCapacity =
-                  typeMeta?.consumesWeddingCapacity || typeMeta?.ConsumesWeddingCapacity;
+                const isWedding =
+                  typeMeta?.consumesWeddingCapacity ||
+                  typeMeta?.ConsumesWeddingCapacity ||
+                  item.eventType === 1 ||
+                  (item.eventTypeName || "").toLowerCase().includes("wedding");
                 return (
-                  <TableRow
-                    key={item.id}
-                    hover
-                    onClick={() => update && setSelectedItem(item)}
-                    sx={{ cursor: update ? "pointer" : "default" }}
-                  >
+                  <TableRow key={item.id} hover>
                     <TableCell>
-                      <Stack direction="row" spacing={0.75} alignItems="center">
-                        <Typography variant="body2" sx={{ fontWeight: 700, color: "#4F46E5" }}>
-                          {item.cardNo}
-                        </Typography>
-                        {isGoogleCalendarSynced(item) && (
-                          <Tooltip title="Synced to Google Calendar">
-                            <Chip
-                              size="small"
-                              icon={<EventAvailableIcon />}
-                              label="Calendar"
-                              color="success"
-                              variant="outlined"
-                            />
-                          </Tooltip>
-                        )}
-                      </Stack>
+                      <Typography variant="body2" sx={{ fontWeight: 700, color: "#4F46E5" }}>
+                        {item.cardNo}
+                      </Typography>
                     </TableCell>
                     <TableCell>
                       <Stack direction="row" spacing={1.5} alignItems="center">
@@ -619,7 +494,7 @@ export default function ReservationList() {
                             height: 34,
                             fontSize: 13,
                             fontWeight: 700,
-                            background: usesWeddingCapacity
+                            background: isWedding
                               ? "linear-gradient(135deg, #312E81 0%, #4F46E5 100%)"
                               : "linear-gradient(135deg, #0F766E 0%, #0891B2 100%)",
                           }}
@@ -638,17 +513,7 @@ export default function ReservationList() {
                             <Chip
                               key={evt.id || idx}
                               size="small"
-                              icon={
-                                (() => {
-                                  const eventType = eventTypes.find(
-                                    (type) => Number(type.id) === Number(evt.eventType)
-                                  );
-                                  const EventTypeIcon = resolveEventTypeIcon(
-                                    eventType?.iconName ?? eventType?.IconName ?? evt.iconName ?? evt.IconName
-                                  );
-                                  return <EventTypeIcon />;
-                                })()
-                              }
+                              icon={evt.isMainEvent ? <FavoriteIcon /> : <CakeIcon />}
                               label={`${evt.eventTypeName}${evt.isMainEvent ? " ★" : ""}`}
                               color={evt.isMainEvent ? "primary" : "secondary"}
                               variant={evt.isMainEvent ? "filled" : "outlined"}
@@ -657,16 +522,9 @@ export default function ReservationList() {
                         ) : (
                           <Chip
                             size="small"
-                            icon={
-                              (() => {
-                                const EventTypeIcon = resolveEventTypeIcon(
-                                  typeMeta?.iconName ?? typeMeta?.IconName ?? item.iconName ?? item.IconName
-                                );
-                                return <EventTypeIcon />;
-                              })()
-                            }
+                            icon={isWedding ? <FavoriteIcon /> : <CakeIcon />}
                             label={item.eventTypeName}
-                            color={usesWeddingCapacity ? "primary" : "info"}
+                            color={isWedding ? "primary" : "info"}
                             variant="outlined"
                           />
                         )}
@@ -693,7 +551,7 @@ export default function ReservationList() {
                     <TableCell>
                       <StatusChip item={item} />
                     </TableCell>
-                    <TableCell align="right" onClick={(event) => event.stopPropagation()}>{actionButtons(item)}</TableCell>
+                    <TableCell align="right">{actionButtons(item)}</TableCell>
                   </TableRow>
                 );
               })
@@ -705,7 +563,7 @@ export default function ReservationList() {
   );
 
   return (
-    <Box sx={{ width: "100%", maxWidth: "100%", minWidth: 0, overflowX: "hidden" }}>
+    <>
       <ToastContainer />
       <div className={styles.pageTitle}>
         <h1>📝 Reservations</h1>
@@ -716,9 +574,9 @@ export default function ReservationList() {
           <li>Reservations</li>
         </ul>
       </div>
-      {selectedAgentLabel && !allOverride && (
+      {agentTypeLabel && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          Showing reservations for: <strong>{selectedAgentLabel}</strong>
+          Showing reservations for your agent stage: <strong>{agentTypeLabel}</strong>
         </Alert>
       )}
       {!isPhotographyAgent && isAdminUser && (
@@ -726,66 +584,30 @@ export default function ReservationList() {
           Showing <strong>all</strong> reservations (Admin)
         </Alert>
       )}
-      <Box sx={{ mb: 2, width: "100%", maxWidth: "100%", minWidth: 0, overflowX: "hidden" }}>
-        <Box
-          sx={{
-            display: "grid",
-            width: "100%",
-            gap: 1,
-            alignItems: "center",
-            gridTemplateColumns: {
-              xs: "minmax(0, 1fr) auto",
-              sm: "minmax(0, 1fr) auto auto auto",
-            },
-          }}
-        >
-          <Search
-            className="search-form"
-            sx={{
-              width: "100% !important",
-              minWidth: 0,
-              maxWidth: "100%",
-            }}
-          >
+      <Grid container rowSpacing={1} columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}>
+        <Grid item xs={12} lg={4} order={{ xs: 2, lg: 1 }}>
+          <Search className="search-form">
             <StyledInputBase
-              placeholder="Search…"
+              placeholder="Search by name, phone, card no, location…"
               inputProps={{ "aria-label": "search" }}
               value={search}
               onChange={handleSearchChange}
-              sx={{
-                width: "100%",
-                "& .MuiInputBase-input": {
-                  width: "100% !important",
-                },
-              }}
             />
           </Search>
-          <Button
-            variant={allOverride ? "contained" : "outlined"}
-            size="small"
-            onClick={handleAllClick}
-            sx={{
-              minWidth: 56,
-              height: 40,
-              textTransform: "none",
-              gridColumn: { xs: "1", sm: "auto" },
-              gridRow: { xs: "2", sm: "auto" },
-            }}
-          >
-            All
-          </Button>
-          <ToggleButtonGroup
-            size="small"
-            value={view}
-            exclusive
-            onChange={handleViewChange}
-            sx={{
-              height: 40,
-              gridColumn: { xs: "2", sm: "auto" },
-              gridRow: { xs: "2", sm: "auto" },
-              justifySelf: { xs: "end", sm: "start" },
-            }}
-          >
+        </Grid>
+        <Grid
+          item
+          xs={12}
+          lg={8}
+          mb={1}
+          display="flex"
+          justifyContent="end"
+          alignItems="center"
+          gap={1}
+          flexWrap="wrap"
+          order={{ xs: 1, lg: 2 }}
+        >
+          <ToggleButtonGroup size="small" value={view} exclusive onChange={handleViewChange}>
             <ToggleButton value="card" aria-label="card view">
               <Tooltip title="Card view">
                 <ViewModuleIcon fontSize="small" />
@@ -797,41 +619,14 @@ export default function ReservationList() {
               </Tooltip>
             </ToggleButton>
           </ToggleButtonGroup>
-          {create ? (
-            <Box
-              sx={{
-                justifySelf: "end",
-                gridColumn: { xs: "2", sm: "auto" },
-                gridRow: { xs: "1", sm: "auto" },
-                "& > button": { height: 40, whiteSpace: "nowrap" },
-              }}
-            >
-              <AddReservation fetchItems={() => refresh()} />
-            </Box>
-          ) : null}
-        </Box>
-        <Box
-          sx={{
-            mt: 1,
-            display: "grid",
-            width: "100%",
-            gap: 1,
-            gridTemplateColumns: {
-              xs: "1fr",
-              sm: "repeat(2, minmax(0, 1fr))",
-              md: "repeat(3, minmax(0, 1fr))",
-              lg: "repeat(5, minmax(0, 1fr))",
-            },
-          }}
-        >
           <TextField
             type="date"
             size="small"
-            fullWidth
             label="Event date"
             value={dateFilter}
             onChange={handleDateFilterChange}
             InputLabelProps={{ shrink: true }}
+            sx={{ width: { xs: "100%", sm: 180 } }}
             InputProps={{
               endAdornment: dateFilter ? (
                 <Tooltip title="Clear date">
@@ -842,18 +637,7 @@ export default function ReservationList() {
               ) : null,
             }}
           />
-          <FormControl size="small" fullWidth>
-            <InputLabel>Agent Type</InputLabel>
-            <Select value={agentTypeFilter} label="Agent Type" onChange={handleAgentTypeFilterChange}>
-              <MenuItem value="">All agents</MenuItem>
-              {agentTypeOptions.map((t) => (
-                <MenuItem key={t.value} value={t.value}>
-                  {t.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" fullWidth>
+          <FormControl size="small" sx={{ width: { xs: "100%", sm: 160 } }}>
             <InputLabel>Event Type</InputLabel>
             <Select value={typeFilter} label="Event Type" onChange={handleTypeFilterChange}>
               <MenuItem value="">All</MenuItem>
@@ -864,7 +648,7 @@ export default function ReservationList() {
               ))}
             </Select>
           </FormControl>
-          <FormControl size="small" fullWidth>
+          <FormControl size="small" sx={{ width: { xs: "100%", sm: 180 } }}>
             <InputLabel>Status</InputLabel>
             <Select value={statusFilter} label="Status" onChange={handleStatusFilterChange}>
               <MenuItem value="">All</MenuItem>
@@ -872,7 +656,7 @@ export default function ReservationList() {
                 const color = statusColorOf(s, idx);
                 return (
                   <MenuItem key={statusIdOf(s)} value={statusIdOf(s)}>
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+                    <Stack direction="row" spacing={1} alignItems="center">
                       <Box
                         sx={{
                           width: 12,
@@ -890,20 +674,19 @@ export default function ReservationList() {
               })}
             </Select>
           </FormControl>
-          <FormControl size="small" fullWidth>
+          <FormControl size="small" sx={{ width: { xs: "100%", sm: 160 } }}>
             <InputLabel>First Meeting</InputLabel>
             <Select value={firstMeetingFilter} label="First Meeting" onChange={handleFirstMeetingFilterChange}>
               <MenuItem value="">All</MenuItem>
-              <MenuItem value="true">Complete</MenuItem>
-              <MenuItem value="false">Pending</MenuItem>
+              <MenuItem value="true">✅ Complete</MenuItem>
+              <MenuItem value="false">❌ Pending</MenuItem>
             </Select>
           </FormControl>
-        </Box>
-      </Box>
+          {create ? <AddReservation fetchItems={() => refresh()} /> : ""}
+        </Grid>
 
-      <Grid container sx={{ width: "100%", maxWidth: "100%", minWidth: 0, overflowX: "hidden" }}>
-        <Grid item xs={12} sx={{ minWidth: 0, maxWidth: "100%" }}>
-          <Grid container spacing={2} sx={{ width: "100%", margin: 0 }}>
+        <Grid item xs={12} order={{ xs: 3, lg: 3 }}>
+          <Grid container spacing={2}>
             {view === "card" ? renderCards() : renderTable()}
           </Grid>
 
@@ -927,15 +710,15 @@ export default function ReservationList() {
         </Grid>
       </Grid>
 
-      {selectedItem && update && (
+      {selectedItem && (
         <EditReservation
           item={selectedItem}
           fetchItems={refresh}
-          isOpen
-          hideButton
+          isOpen={true}
           onClose={() => setSelectedItem(null)}
+          hideButton={true}
         />
       )}
-    </Box>
+    </>
   );
 }

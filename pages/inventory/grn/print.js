@@ -6,6 +6,7 @@ import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import PrintIcon from "@mui/icons-material/Print";
+import PrintExcelButton from "@/components/ReportTemplate/PrintExcelButton";
 import BASE_URL from "Base/api";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -16,6 +17,8 @@ import {
   buildLegacyGrnLineItemsRows,
   EMPTY_LINE_ITEMS_HTML,
   getFreightDutyCost,
+  getLocalTransportCost,
+  getOverseasTransportCost,
 } from "@/components/ReportTemplate/grnLineItems";
 import {
   getPageSizeMm,
@@ -366,7 +369,9 @@ export default function GRNPrintPage() {
     fetchLookupData();
   }, []);
 
-  const lineItems = grnData?.goodReceivedNoteLineDetails ?? [];
+  const lineItems = (grnData?.goodReceivedNoteLineDetails ?? []).filter(
+    (item) => !item.isDeleted
+  );
   const totalQty = useMemo(
     () => lineItems.reduce((sum, item) => sum + Number(item.qty ?? 0), 0),
     [lineItems]
@@ -391,14 +396,23 @@ export default function GRNPrintPage() {
     [lineItems]
   );
   // Matches create screen: Σ freightDuty × (qty + free)
+  const sumExtraCostTotal = (getUnitCost) =>
+    lineItems.reduce((sum, item) => {
+      const unitCost = getUnitCost(item);
+      const qtyPlusFree = (Number(item.qty) || 0) + (Number(item.free) || 0);
+      return sum + unitCost * qtyPlusFree;
+    }, 0);
+
+  const overseasTotal = useMemo(
+    () => sumExtraCostTotal(getOverseasTransportCost),
+    [lineItems]
+  );
   const freightDutyTotal = useMemo(
-    () =>
-      lineItems.reduce((sum, item) => {
-        const freight = getFreightDutyCost(item);
-        const qtyPlusFree =
-          (Number(item.qty) || 0) + (Number(item.free) || 0);
-        return sum + freight * qtyPlusFree;
-      }, 0),
+    () => sumExtraCostTotal(getFreightDutyCost),
+    [lineItems]
+  );
+  const localTransportTotal = useMemo(
+    () => sumExtraCostTotal(getLocalTransportCost),
     [lineItems]
   );
 
@@ -480,7 +494,9 @@ export default function GRNPrintPage() {
       createdDate: formatDisplayDateTime(grnData?.createdOn),
       referenceNo: grnData?.referanceNo || "-",
       salesPerson: salesPersonMap[grnData?.salesPerson]?.name || "-",
+      overseasTotal: formatAmount(overseasTotal),
       freightDutyTotal: formatAmount(freightDutyTotal),
+      localTransportTotal: formatAmount(localTransportTotal),
       subtotal: formatAmount(merchandiseTotal),
       orderDiscountPercent: formatAmount(orderDiscountPercent),
       totalDiscount: formatAmount(orderDiscountAmount),
@@ -497,7 +513,9 @@ export default function GRNPrintPage() {
       totalQty,
       userMap,
       salesPersonMap,
+      overseasTotal,
       freightDutyTotal,
+      localTransportTotal,
       merchandiseTotal,
       orderDiscountPercent,
       orderDiscountAmount,
@@ -693,6 +711,11 @@ export default function GRNPrintPage() {
           >
             Print
           </Button>
+          <PrintExcelButton
+            iframeRef={iframeRef}
+            downloadName={`GRN_${grnData?.documentNo || documentNumber || "document"}`}
+            disabled={isLoading || !finalHtml}
+          />
           {/* <Button
             variant="outlined"
             startIcon={<PictureAsPdfIcon />}

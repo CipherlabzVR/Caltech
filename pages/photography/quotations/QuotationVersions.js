@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useState, useRef } from "react";
 import {
   Box,
   Button,
@@ -16,7 +16,6 @@ import {
   Stack,
   Paper,
   Grid,
-  Chip,
 } from "@mui/material";
 import HistoryIcon from "@mui/icons-material/History";
 import PrintIcon from "@mui/icons-material/Print";
@@ -30,7 +29,7 @@ const style = {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
-  width: { xs: "calc(100% - 24px)", md: "calc(100% - 48px)", xl: 1200 },
+  width: 800,
   maxHeight: "90vh",
   overflowY: "auto",
   bgcolor: "background.paper",
@@ -39,219 +38,83 @@ const style = {
   borderRadius: 2,
 };
 
-const valueOf = (source, lower, upper, fallback = "") =>
-  source?.[lower] ?? source?.[upper] ?? fallback;
-
-const normalizeSnapshot = (snapshot = {}) => ({
-  customerName: valueOf(snapshot, "customerName", "CustomerName"),
-  customerMobileNo: valueOf(snapshot, "customerMobileNo", "CustomerMobileNo"),
-  eventTypeName: valueOf(snapshot, "eventTypeName", "EventTypeName"),
-  eventTime: valueOf(snapshot, "eventTime", "EventTime"),
-  eventDate: valueOf(snapshot, "eventDate", "EventDate"),
-  venue: valueOf(snapshot, "venue", "Venue"),
-  noOfGuests: valueOf(snapshot, "noOfGuests", "NoOfGuests"),
-  lines: (valueOf(snapshot, "lines", "Lines", []) || []).map((line) => ({
-    packageName: valueOf(line, "packageName", "PackageName"),
-    unitPrice: valueOf(line, "unitPrice", "UnitPrice", 0),
-    qty: valueOf(line, "qty", "Qty", 1),
-    lineTotal: valueOf(
-      line,
-      "lineTotal",
-      "LineTotal",
-      Number(line.unitPrice || line.UnitPrice || 0) *
-        Number(line.qty || line.Qty || 1),
-    ),
-    items: (valueOf(line, "items", "Items", []) || []).map((item) => ({
-      lineText: valueOf(item, "lineText", "LineText"),
-      isIncluded: valueOf(item, "isIncluded", "IsIncluded", true),
-    })),
-  })),
-  addOns: (valueOf(snapshot, "addOns", "AddOns", []) || []).map((addOn) => ({
-    name: valueOf(addOn, "name", "Name"),
-    price: valueOf(addOn, "price", "Price", 0),
-    qty: valueOf(addOn, "qty", "Qty", 1),
-    lineTotal: valueOf(
-      addOn,
-      "lineTotal",
-      "LineTotal",
-      Number(addOn.price || addOn.Price || 0) *
-        Number(addOn.qty || addOn.Qty || 1),
-    ),
-  })),
-  subTotal: valueOf(snapshot, "subTotal", "SubTotal", 0),
-  discountAmount: valueOf(snapshot, "discountAmount", "DiscountAmount", 0),
-  transportationCost: valueOf(
-    snapshot,
-    "transportationCost",
-    "TransportationCost",
-    0,
-  ),
-  netTotal: valueOf(snapshot, "netTotal", "NetTotal", 0),
-  remark: valueOf(snapshot, "remark", "Remark"),
-});
-
-const versionDate = (version) =>
-  version.savedAt || version.createdOn || version.CreatedOn || "";
-
-const sortVersions = (items) =>
-  [...items].sort((a, b) => {
-    const dateDifference =
-      new Date(versionDate(b)).getTime() - new Date(versionDate(a)).getTime();
-    if (Number.isFinite(dateDifference) && dateDifference !== 0)
-      return dateDifference;
-    return (Number(b.versionNo) || 0) - (Number(a.versionNo) || 0);
-  });
-
-export default function QuotationVersions({ quotation, canPrint = false }) {
+export default function QuotationVersions({ quotation }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [versions, setVersions] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [companyLogo, setCompanyLogo] = useState("");
   const printRef = useRef(null);
-  const printIframeRef = useRef(null);
-
-  useEffect(() => {
-    const warehouse = localStorage.getItem("warehouse");
-    const token = localStorage.getItem("token");
-    if (!warehouse || !token) return;
-
-    const fetchCompanyLogo = async () => {
-      try {
-        const response = await fetch(
-          `${BASE_URL}/Company/GetCompanyLogoByWarehouseId?warehouseId=${warehouse}`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-        if (!response.ok) return;
-        const data = await response.json();
-        setCompanyLogo(data.logoUrl || "");
-      } catch (error) {
-        console.error("Failed to fetch company logo", error);
-      }
-    };
-
-    fetchCompanyLogo();
-  }, []);
 
   const handlePrint = () => {
     if (!printRef.current) return;
-
-    // Remove any previous print iframe so nothing lingers
-    if (printIframeRef.current) {
-      printIframeRef.current.remove();
-      printIframeRef.current = null;
-    }
-
     const printContent = printRef.current.innerHTML;
-
-    // Hidden iframe instead of window.open — this keeps the print dialog
-    // directly over the current page with no second browser window visible
-    // behind it.
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    document.body.appendChild(iframe);
-    printIframeRef.current = iframe;
-
-    const doc = iframe.contentWindow.document;
-    doc.open();
-    doc.write(`
+    const printWindow = window.open("", "_blank", "width=800,height=900");
+    printWindow.document.write(`
       <html>
         <head>
           <title>Quotation - ${quotation.quotationNo} v${selected?.versionNo}</title>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: 'Helvetica Neue', Arial, sans-serif; }
-            @media print { body { padding: 0; } }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; color: #333; }
+            .header { display: flex; justify-content: space-between; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px solid #4F46E5; }
+            .company { }
+            .company h1 { font-size: 24px; color: #4F46E5; margin-bottom: 5px; }
+            .company p { font-size: 12px; color: #666; }
+            .quotation-info { text-align: right; }
+            .quotation-info h2 { font-size: 28px; color: #4F46E5; margin-bottom: 10px; }
+            .quotation-info p { font-size: 12px; color: #666; margin-bottom: 3px; }
+            .parties { display: flex; gap: 40px; margin-bottom: 30px; }
+            .party { flex: 1; padding: 15px; background: #f8f9fa; border-radius: 8px; }
+            .party h3 { font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 8px; }
+            .party p { font-size: 13px; margin-bottom: 3px; }
+            .party strong { color: #333; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th { background: #4F46E5; color: white; padding: 12px 10px; text-align: left; font-size: 12px; }
+            td { padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 12px; }
+            .items { padding-left: 15px; margin-top: 8px; }
+            .items li { font-size: 11px; color: #666; margin-bottom: 3px; }
+            .totals { margin-left: auto; width: 300px; }
+            .totals table { margin-bottom: 0; }
+            .totals td { padding: 8px 10px; }
+            .totals .total-row { background: #f8f9fa; font-weight: bold; }
+            .totals .grand-total { background: #4F46E5; color: white; font-size: 14px; }
+            .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; color: #666; font-size: 11px; }
+            @media print { body { padding: 15px; } }
           </style>
         </head>
         <body>${printContent}</body>
       </html>
     `);
-    doc.close();
-
-    // Give the iframe a tick to render before invoking print, then clean up afterwards
+    printWindow.document.close();
+    printWindow.focus();
     setTimeout(() => {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
+      printWindow.print();
+      printWindow.close();
     }, 250);
-
-    const cleanup = () => {
-      if (printIframeRef.current === iframe) {
-        iframe.remove();
-        printIframeRef.current = null;
-      }
-    };
-    iframe.contentWindow.onafterprint = cleanup;
-    // Fallback in case onafterprint doesn't fire (some browsers on cancel)
-    setTimeout(cleanup, 60000);
   };
 
   const fetchVersions = async () => {
     setLoading(true);
     const token = localStorage.getItem("token");
-    let backendVersions = [];
     try {
       const res = await fetch(
         `${BASE_URL}/PhotographyQuotation/GetQuotationVersions?quotationId=${quotation.id}`,
         {
           method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        }
       );
       const data = await res.json();
       const sc = data.statusCode ?? data.StatusCode;
       if (sc === 200 || sc === "SUCCESS") {
         const result = data?.result ?? data?.Result ?? [];
-        backendVersions = Array.isArray(result)
-          ? result.map((version) => ({
-              ...version,
-              source: "backend",
-              snapshot: normalizeSnapshot(
-                version.snapshot || version.Snapshot || version,
-              ),
-            }))
-          : [];
+        setVersions(Array.isArray(result) ? result : []);
       } else {
         toast.error(data.message || "Failed to load versions");
       }
     } catch (e) {
       toast.error(e.message || "Failed to load versions");
     } finally {
-      let localVersions = [];
-      try {
-        const stored = JSON.parse(
-          localStorage.getItem(`quotation_versions_${quotation.id}`) || "[]",
-        );
-        localVersions = (Array.isArray(stored) ? stored : []).map(
-          (version) => ({
-            ...version,
-            source: "local",
-            snapshot: normalizeSnapshot(version.snapshot),
-          }),
-        );
-      } catch (storageError) {
-        toast.error("Unable to read local quotation versions");
-      }
-      const mergedVersions = sortVersions([
-        ...backendVersions,
-        ...localVersions,
-      ]);
-      setVersions(mergedVersions);
-      setSelected(mergedVersions[0] || null);
       setLoading(false);
     }
   };
@@ -273,674 +136,187 @@ export default function QuotationVersions({ quotation, canPrint = false }) {
         </IconButton>
       </Tooltip>
       <Modal open={open} onClose={handleClose}>
-        <Box sx={style}>
+        <Box sx={style} className="bg-black">
           <Typography sx={{ fontWeight: 500, fontSize: 16, mb: 1 }}>
             Version History — {quotation.quotationNo}
           </Typography>
 
-          <Grid container spacing={2} alignItems="flex-start">
-            <Grid item xs={12} md={4} lg={3}>
-              <Paper
-                variant="outlined"
-                sx={{
-                  p: 1,
-                  maxHeight: { xs: 320, md: "70vh" },
-                  overflowY: "auto",
-                }}
-              >
-                <Typography sx={{ fontWeight: 600, px: 1, py: 1 }}>
-                  Versions
-                </Typography>
-
-                {loading ? (
-                  <Box display="flex" justifyContent="center" py={4}>
-                    <CircularProgress size={28} />
-                  </Box>
-                ) : versions.length === 0 ? (
-                  <Typography color="text.secondary" py={2}>
-                    No versions recorded.
-                  </Typography>
-                ) : (
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Version</TableCell>
-                        <TableCell>Change</TableCell>
-                        <TableCell align="right">View</TableCell>
-                        <TableCell>Status</TableCell>
-                        <TableCell>Net Total</TableCell>
-                        <TableCell>By</TableCell>
-                        <TableCell>Date</TableCell>
-                        <TableCell>Source</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {versions.map((v) => (
-                        <TableRow
-                          key={`${v.source}-${v.id}`}
-                          selected={
-                            selected?.id === v.id &&
-                            selected?.source === v.source
-                          }
-                        >
-                          <TableCell>v{v.versionNo}</TableCell>
-                          <TableCell>{v.note}</TableCell>
-                          <TableCell align="right">
-                            <Button
-                              size="small"
-                              variant="contained"
-                              onClick={() => setSelected(v)}
-                              sx={{
-                                minWidth: 58,
-                                px: 1.5,
-                                py: 0.35,
-                                textTransform: "none",
-                                backgroundColor:
-                                  selected?.id === v.id &&
-                                  selected?.source === v.source
-                                    ? "#1a1a1a"
-                                    : "#f0f0f0",
-                                color:
-                                  selected?.id === v.id &&
-                                  selected?.source === v.source
-                                    ? "#fff"
-                                    : "#1a1a1a",
-                                boxShadow: "none",
-                                "&:hover": {
-                                  backgroundColor: "#333",
-                                  color: "#fff",
-                                  boxShadow: "none",
-                                },
-                              }}
-                            >
-                              View
-                            </Button>
-                          </TableCell>
-                          <TableCell>
-                            <Chip
-                              size="small"
-                              label={v.statusName || "-"}
-                              color={
-                                v.statusName === "Approved"
-                                  ? "success"
-                                  : "default"
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>{formatCurrency(v.netTotal)}</TableCell>
-                          <TableCell>{v.createdByName || "-"}</TableCell>
-                          <TableCell>{formatDate(versionDate(v))}</TableCell>
-                          <TableCell>
-                            {v.source === "local" ? (
-                              <Chip
-                                size="small"
-                                label="Local"
-                                color="warning"
-                              />
-                            ) : (
-                              <Chip size="small" label="Server" />
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </Paper>
-            </Grid>
-
-            <Grid item xs={12} md={8} lg={9}>
-              {snap ? (
-                <Box>
-                  <Stack
-                    direction="row"
-                    justifyContent="space-between"
-                    alignItems="center"
-                    mb={2}
-                  >
-                    <Typography sx={{ fontWeight: 600, fontSize: 16 }}>
-                      Version {selected.versionNo} Details
-                    </Typography>
-                    <Stack direction="row" spacing={1.5} alignItems="center">
-                      {canPrint && selected?.id === versions[0]?.id && (
-                        <Button
-                          variant="contained"
-                          size="small"
-                          startIcon={<PrintIcon />}
-                          onClick={handlePrint}
-                          sx={{
-                            bgcolor: "#1a1a1a",
-                            "&:hover": { bgcolor: "#000" },
-                          }}
-                        >
-                          Print Quotation
-                        </Button>
-                      )}
-                      <Button variant="outlined" onClick={handleClose}>
-                        Close
+          {loading ? (
+            <Box display="flex" justifyContent="center" py={4}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : versions.length === 0 ? (
+            <Typography color="text.secondary" py={2}>
+              No versions recorded.
+            </Typography>
+          ) : (
+            <Table size="small" className="dark-table">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Version</TableCell>
+                  <TableCell>Change</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Net Total</TableCell>
+                  <TableCell>By</TableCell>
+                  <TableCell>Date</TableCell>
+                  <TableCell align="right"></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {versions.map((v) => (
+                  <TableRow key={v.id} selected={selected?.id === v.id}>
+                    <TableCell>v{v.versionNo}</TableCell>
+                    <TableCell>{v.note}</TableCell>
+                    <TableCell>{v.statusName}</TableCell>
+                    <TableCell>{formatCurrency(v.netTotal)}</TableCell>
+                    <TableCell>{v.createdByName || "-"}</TableCell>
+                    <TableCell>{formatDate(v.createdOn)}</TableCell>
+                    <TableCell align="right">
+                      <Button size="small" onClick={() => setSelected(v)}>
+                        View
                       </Button>
-                    </Stack>
-                  </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
 
-                  <Divider sx={{ mb: 2 }} />
+          {snap ? (
+            <Box mt={2}>
+              <Divider sx={{ mb: 2 }} />
+              <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                <Typography sx={{ fontWeight: 600, fontSize: 16 }}>
+                  📄 Version {selected.versionNo} Details
+                </Typography>
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={<PrintIcon />}
+                  onClick={handlePrint}
+                  sx={{ bgcolor: "#4F46E5" }}
+                >
+                  Print Quotation
+                </Button>
+              </Stack>
 
-                  {/* Printable Content — plain HTML + inline styles so it survives
-                      innerHTML being copied into the print window unchanged */}
-                  <div
-                    ref={printRef}
-                    style={{
-                      fontFamily: "'Helvetica Neue', Arial, sans-serif",
-                      color: "#1a1a1a",
-                      fontSize: 13,
-                      background: "#fff",
-                      padding: 16,
-                    }}
-                  >
-                    {/* Brand + heading row */}
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-end",
-                        paddingBottom: 18,
-                        marginBottom: 24,
-                        borderBottom: "1px solid #cfcfcf",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                        }}
-                      >
-                        <img
-                          src={companyLogo || "/images/cbass.png"}
-                          alt="Company Logo"
-                          style={{
-                            width: 120,
-                            height: "auto",
-                            objectFit: "contain",
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* FROM (left) + Quotation For (right) */}
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 40,
-                        paddingBottom: 24,
-                        marginBottom: 24,
-                        borderBottom: "1px solid #e5e5e5",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div style={{ flex: 1, minWidth: 220 }}>
-                        <div
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            letterSpacing: "0.6px",
-                            textTransform: "uppercase",
-                            color: "#8a8a8a",
-                            marginBottom: 6,
-                          }}
-                        >
-                          From
-                        </div>
-                        <p style={{ fontSize: 12.5, margin: "0 0 3px 0" }}>
-                          Beyond Destiny
-                        </p>
-                        <p style={{ fontSize: 12.5, margin: "0 0 3px 0" }}>
-                          Phone: 0779944812 / 0779944155
-                        </p>
-                        <p style={{ fontSize: 12.5, margin: "0 0 3px 0" }}>
-                          Email: contact@beyonddestinyweddings.com
-                        </p>
-
-                        <p
-                          style={{
-                            fontSize: 13.5,
-                            fontWeight: 700,
-                            margin: "12px 0 2px 0",
-                          }}
-                        >
-                          {snap.eventTypeName || "-"}
-                        </p>
-                        <p
-                          style={{
-                            fontSize: 12.5,
-                            color: "#444",
-                            margin: "0 0 3px 0",
-                          }}
-                        >
-                          {snap.eventTime}
-                          {snap.eventTime ? " | " : ""}
-                          {formatDate(snap.eventDate)}
-                        </p>
-                        {snap.venue && (
-                          <p
-                            style={{
-                              fontSize: 12.5,
-                              color: "#444",
-                              margin: "0 0 3px 0",
-                            }}
-                          >
-                            {snap.venue}
-                          </p>
-                        )}
-                        {snap.noOfGuests && (
-                          <p
-                            style={{
-                              fontSize: 12.5,
-                              color: "#444",
-                              margin: "0 0 3px 0",
-                            }}
-                          >
-                            Guests: {snap.noOfGuests}
-                          </p>
-                        )}
-                      </div>
-
-                      <div
-                        style={{ flex: 1, minWidth: 220, textAlign: "right" }}
-                      >
-                        <div
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            letterSpacing: "0.6px",
-                            textTransform: "uppercase",
-                            color: "#8a8a8a",
-                            marginBottom: 6,
-                          }}
-                        >
-                          Quotation For
-                        </div>
-                        <p
-                          style={{
-                            fontSize: 12.5,
-                            fontWeight: 700,
-                            margin: "0 0 3px 0",
-                          }}
-                        >
-                          {snap.customerName || "-"}
-                        </p>
-                        {snap.customerMobileNo && (
-                          <p style={{ fontSize: 12.5, margin: "0 0 3px 0" }}>
-                            Phone: {snap.customerMobileNo}
-                          </p>
-                        )}
-
-                        <div style={{ marginTop: 12 }}>
-                          <p style={{ fontSize: 12.5, margin: "0 0 3px 0" }}>
-                            <span style={{ color: "#8a8a8a" }}>
-                              Quotation No:{" "}
-                            </span>
-                            <strong>{quotation.quotationNo}</strong>
-                          </p>
-                          <p style={{ fontSize: 12.5, margin: "0 0 3px 0" }}>
-                            <span style={{ color: "#8a8a8a" }}>Version: </span>
-                            <strong>{selected.versionNo}</strong>
-                          </p>
-                          <p style={{ fontSize: 12.5, margin: "0 0 3px 0" }}>
-                            <span style={{ color: "#8a8a8a" }}>
-                              Issue Date:{" "}
-                            </span>
-                            <strong>{formatDate(selected.createdOn)}</strong>
-                          </p>
-                          <p style={{ fontSize: 12.5, margin: "0 0 3px 0" }}>
-                            <span style={{ color: "#8a8a8a" }}>Status: </span>
-                            <strong>{selected.statusName}</strong>
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Line items table */}
-                    <table
-                      style={{
-                        width: "100%",
-                        borderCollapse: "collapse",
-                        marginBottom: 20,
-                      }}
-                    >
-                      <thead>
-                        <tr>
-                          <th
-                            style={{
-                              textAlign: "left",
-                              fontSize: 10.5,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.4px",
-                              color: "#6b6b6b",
-                              fontWeight: 700,
-                              padding: "8px 6px",
-                              borderBottom: "1.5px solid #1a1a1a",
-                            }}
-                          >
-                            Package Name
-                          </th>
-                          <th
-                            style={{
-                              textAlign: "left",
-                              fontSize: 10.5,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.4px",
-                              color: "#6b6b6b",
-                              fontWeight: 700,
-                              padding: "8px 6px",
-                              borderBottom: "1.5px solid #1a1a1a",
-                            }}
-                          >
-                            Description
-                          </th>
-                          <th
-                            style={{
-                              textAlign: "right",
-                              fontSize: 10.5,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.4px",
-                              color: "#6b6b6b",
-                              fontWeight: 700,
-                              padding: "8px 6px",
-                              borderBottom: "1.5px solid #1a1a1a",
-                            }}
-                          >
-                            Unit Price
-                          </th>
-                          <th
-                            style={{
-                              textAlign: "center",
-                              fontSize: 10.5,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.4px",
-                              color: "#6b6b6b",
-                              fontWeight: 700,
-                              padding: "8px 6px",
-                              borderBottom: "1.5px solid #1a1a1a",
-                            }}
-                          >
-                            Qty
-                          </th>
-                          <th
-                            style={{
-                              textAlign: "right",
-                              fontSize: 10.5,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.4px",
-                              color: "#6b6b6b",
-                              fontWeight: 700,
-                              padding: "8px 6px",
-                              borderBottom: "1.5px solid #1a1a1a",
-                            }}
-                          >
-                            Amount
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(snap.lines || []).map((l, idx) => (
-                          <tr key={idx}>
-                            <td
-                              style={{
-                                padding: "12px 6px",
-                                borderBottom: "1px solid #e5e5e5",
-                                fontSize: 12.5,
-                                verticalAlign: "top",
-                              }}
-                            >
-                              <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                                {l.packageName}
-                              </div>
-                            </td>
-                            <td>
-                              {l.items && l.items.length > 0 && (
-                                <ul
-                                  style={{
-                                    paddingLeft: 14,
-                                    margin: "4px 0 0 0",
-                                  }}
-                                >
-                                  {l.items
-                                    .filter((i) => i.isIncluded !== false)
-                                    .map((item, iIdx) => (
-                                      <li
-                                        key={iIdx}
-                                        style={{
-                                          fontSize: 11.5,
-                                          color: "#444",
-                                          marginBottom: 2,
-                                          listStyle: "none",
-                                        }}
-                                      >
-                                        ° {item.lineText}
-                                      </li>
-                                    ))}
-                                </ul>
-                              )}
-                            </td>
-                            <td
-                              style={{
-                                padding: "12px 6px",
-                                borderBottom: "1px solid #e5e5e5",
-                                fontSize: 12.5,
-                                textAlign: "right",
-                                verticalAlign: "top",
-                              }}
-                            >
-                              {formatCurrency(l.unitPrice)}
-                            </td>
-                            <td
-                              style={{
-                                padding: "12px 6px",
-                                borderBottom: "1px solid #e5e5e5",
-                                fontSize: 12.5,
-                                textAlign: "center",
-                                verticalAlign: "top",
-                              }}
-                            >
-                              {l.qty}
-                            </td>
-                            <td
-                              style={{
-                                padding: "12px 6px",
-                                borderBottom: "1px solid #e5e5e5",
-                                fontSize: 12.5,
-                                textAlign: "right",
-                                verticalAlign: "top",
-                              }}
-                            >
-                              {formatCurrency(l.lineTotal)}
-                            </td>
-                          </tr>
-                        ))}
-                        {(snap.addOns || []).map((a, idx) => (
-                          <tr key={`addon-${idx}`}>
-                            <td
-                              style={{
-                                padding: "12px 6px",
-                                borderBottom: "1px solid #e5e5e5",
-                                fontSize: 12.5,
-                              }}
-                            >
-                              {a.name} (Add-on)
-                            </td>
-                            <td
-                              style={{
-                                padding: "12px 6px",
-                                borderBottom: "1px solid #e5e5e5",
-                                fontSize: 12.5,
-                                textAlign: "right",
-                              }}
-                            >
-                              {formatCurrency(a.price)}
-                            </td>
-                            <td
-                              style={{
-                                padding: "12px 6px",
-                                borderBottom: "1px solid #e5e5e5",
-                                fontSize: 12.5,
-                                textAlign: "center",
-                              }}
-                            >
-                              {a.qty}
-                            </td>
-                            <td
-                              style={{
-                                padding: "12px 6px",
-                                borderBottom: "1px solid #e5e5e5",
-                                fontSize: 12.5,
-                                textAlign: "right",
-                              }}
-                            >
-                              {formatCurrency(a.lineTotal)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-
-                    {/* Totals */}
-                    <div
-                      style={{
-                        marginLeft: "auto",
-                        width: 280,
-                        maxWidth: "100%",
-                      }}
-                    >
-                      <table
-                        style={{ width: "100%", borderCollapse: "collapse" }}
-                      >
-                        <tbody>
-                          <tr>
-                            <td style={{ padding: "8px 6px", fontSize: 12.5 }}>
-                              Subtotal
-                            </td>
-                            <td
-                              style={{
-                                padding: "8px 6px",
-                                fontSize: 12.5,
-                                textAlign: "right",
-                              }}
-                            >
-                              {formatCurrency(snap.subTotal)}
-                            </td>
-                          </tr>
-                          {snap.discountAmount > 0 && (
-                            <tr>
-                              <td
-                                style={{ padding: "8px 6px", fontSize: 12.5 }}
-                              >
-                                Discount
-                              </td>
-                              <td
-                                style={{
-                                  padding: "8px 6px",
-                                  fontSize: 12.5,
-                                  textAlign: "right",
-                                }}
-                              >
-                                -{formatCurrency(snap.discountAmount)}
-                              </td>
-                            </tr>
-                          )}
-                          {snap.transportationCost > 0 && (
-                            <tr>
-                              <td
-                                style={{ padding: "8px 6px", fontSize: 12.5 }}
-                              >
-                                Transportation
-                              </td>
-                              <td
-                                style={{
-                                  padding: "8px 6px",
-                                  fontSize: 12.5,
-                                  textAlign: "right",
-                                }}
-                              >
-                                {formatCurrency(snap.transportationCost)}
-                              </td>
-                            </tr>
-                          )}
-                          <tr>
-                            <td
-                              style={{
-                                padding: "10px 6px 8px",
-                                fontSize: 13.5,
-                                fontWeight: 700,
-                                borderTop: "1.5px solid #1a1a1a",
-                              }}
-                            >
-                              Total
-                            </td>
-                            <td
-                              style={{
-                                padding: "10px 6px 8px",
-                                fontSize: 13.5,
-                                fontWeight: 700,
-                                textAlign: "right",
-                                borderTop: "1.5px solid #1a1a1a",
-                              }}
-                            >
-                              {formatCurrency(snap.netTotal)}
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-
-                      {snap.remark && (
-                        <div
-                          style={{
-                            marginTop: 20,
-                            padding: "10px 12px",
-                            border: "1px solid #e5e5e5",
-                            fontSize: 12,
-                            color: "#444",
-                          }}
-                        >
-                          <strong style={{ color: "#1a1a1a" }}>Note:</strong>{" "}
-                          {snap.remark}
-                        </div>
-                      )}
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: 40,
-                        paddingTop: 16,
-                        borderTop: "1px solid #e5e5e5",
-                        textAlign: "center",
-                        color: "#8a8a8a",
-                        fontSize: 11,
-                      }}
-                    ></div>
-
-                    <div
-                      style={{
-                        textAlign: "right",
-                        marginTop: 20,
-                        padding: "10px 12px",
-                        color: "#444",
-                      }}
-                    >
-                      <img
-                        src="/images/IMG_4685.png"
-                        alt=""
-                        style={{
-                          width: 240,
-                          height: "auto",
-                          objectFit: "contain",
-                        }}
-                      />
-                    </div>
+              {/* Printable Content */}
+              <Box ref={printRef}>
+                <div className="header">
+                  <div className="company">
+                    <h1>Beyond Destiny</h1>
+                    <p>Phone: 0779944812 / 0779944155</p>
+                    <p>Email: contact@beyonddestinyweddings.com</p>
+                    <p>No 27A, Skelton Road, Bambalapitiya., Sri Lanka</p>
                   </div>
-                </Box>
-              ) : null}
-            </Grid>
-          </Grid>
+                  <div className="quotation-info">
+                    <h2>QUOTATION</h2>
+                    <p><strong>Quotation No:</strong> {quotation.quotationNo}</p>
+                    <p><strong>Version:</strong> {selected.versionNo}</p>
+                    <p><strong>Issue Date:</strong> {formatDate(selected.createdOn)}</p>
+                    <p><strong>Status:</strong> {selected.statusName}</p>
+                  </div>
+                </div>
+
+                <div className="parties">
+                  <div className="party">
+                    <h3>Quotation For</h3>
+                    <p><strong>{snap.customerName}</strong></p>
+                    {snap.customerMobileNo && <p>Phone: {snap.customerMobileNo}</p>}
+                  </div>
+                  <div className="party">
+                    <h3>Event Details</h3>
+                    <p><strong>{snap.eventTypeName}</strong></p>
+                    <p>{snap.eventTime || ""} | {formatDate(snap.eventDate)}</p>
+                    {snap.venue && <p>{snap.venue}</p>}
+                    {snap.noOfGuests && <p>Guests: {snap.noOfGuests}</p>}
+                  </div>
+                </div>
+
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{ width: "50%" }}>Product / Package</th>
+                      <th style={{ textAlign: "right" }}>Unit Price</th>
+                      <th style={{ textAlign: "center" }}>Qty</th>
+                      <th style={{ textAlign: "right" }}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(snap.lines || []).map((l, idx) => (
+                      <tr key={idx}>
+                        <td>
+                          <strong>{l.packageName}</strong>
+                          {l.items && l.items.length > 0 && (
+                            <ul className="items">
+                              {l.items.filter(i => i.isIncluded !== false).map((item, iIdx) => (
+                                <li key={iIdx}>° {item.lineText}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right", verticalAlign: "top" }}>{formatCurrency(l.unitPrice)}</td>
+                        <td style={{ textAlign: "center", verticalAlign: "top" }}>{l.qty}</td>
+                        <td style={{ textAlign: "right", verticalAlign: "top" }}>{formatCurrency(l.lineTotal)}</td>
+                      </tr>
+                    ))}
+                    {(snap.addOns || []).map((a, idx) => (
+                      <tr key={`addon-${idx}`}>
+                        <td>{a.name} (Add-on)</td>
+                        <td style={{ textAlign: "right" }}>{formatCurrency(a.price)}</td>
+                        <td style={{ textAlign: "center" }}>{a.qty}</td>
+                        <td style={{ textAlign: "right" }}>{formatCurrency(a.lineTotal)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="totals">
+                  <table>
+                    <tbody>
+                      <tr>
+                        <td>Subtotal</td>
+                        <td style={{ textAlign: "right" }}>{formatCurrency(snap.subTotal)}</td>
+                      </tr>
+                      {snap.discountAmount > 0 && (
+                        <tr>
+                          <td>Discount</td>
+                          <td style={{ textAlign: "right", color: "green" }}>-{formatCurrency(snap.discountAmount)}</td>
+                        </tr>
+                      )}
+                      {snap.transportationCost > 0 && (
+                        <tr>
+                          <td>Transportation</td>
+                          <td style={{ textAlign: "right" }}>{formatCurrency(snap.transportationCost)}</td>
+                        </tr>
+                      )}
+                      <tr className="grand-total">
+                        <td><strong>Total</strong></td>
+                        <td style={{ textAlign: "right" }}><strong>{formatCurrency(snap.netTotal)}</strong></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {snap.remark && (
+                  <div style={{ marginTop: "20px", padding: "10px", background: "#fef3c7", borderRadius: "4px" }}>
+                    <strong>Note:</strong> {snap.remark}
+                  </div>
+                )}
+
+                <div className="footer">
+                  <p>Thank you for choosing Beyond Destiny!</p>
+                  <p>This quotation is valid for 30 days from the issue date.</p>
+                </div>
+              </Box>
+            </Box>
+          ) : null}
+
+          <Box display="flex" justifyContent="flex-end" mt={3}>
+            <Button variant="outlined" onClick={handleClose}>
+              Close
+            </Button>
+          </Box>
         </Box>
       </Modal>
     </>

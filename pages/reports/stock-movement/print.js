@@ -258,6 +258,8 @@ export default function StockMovementReportPrintPage() {
         errorText="No stock movement report available to print."
         downloadName={downloadName}
         showDownloadPdf={false}
+        showDownloadExcel
+        autoExportExcel={String(router.query.exportExcel || "") === "1"}
       />
       <ToastContainer position="top-right" autoClose={3000} />
     </>

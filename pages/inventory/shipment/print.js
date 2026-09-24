@@ -6,6 +6,7 @@ import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import PrintIcon from "@mui/icons-material/Print";
+import PrintExcelButton from "@/components/ReportTemplate/PrintExcelButton";
 import BASE_URL from "Base/api";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -50,6 +51,34 @@ const formatAmount = (value) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+};
+
+const shipmentTableGridSx = {
+  display: "grid",
+  gridTemplateColumns: {
+    xs: "minmax(2.5rem, 0.9fr) minmax(3rem, 1.25fr) repeat(2, minmax(2.25rem, 0.65fr)) minmax(2.75rem, 0.72fr) minmax(2.75rem, 0.72fr) minmax(2.85rem, 0.88fr) minmax(2.5rem, 0.72fr) minmax(2.5rem, 0.68fr)",
+    sm: "minmax(3rem, 1fr) minmax(4rem, 1.45fr) repeat(2, minmax(2.75rem, 0.75fr)) minmax(3.25rem, 0.82fr) minmax(3.25rem, 0.82fr) minmax(3.5rem, 1fr) minmax(2.75rem, 0.82fr) minmax(2.75rem, 0.78fr)",
+  },
+  columnGap: { xs: "8px", sm: "12px" },
+  alignItems: "start",
+};
+
+const shipmentHeaderCellSx = {
+  fontSize: { xs: "0.48rem", sm: "0.68rem" },
+  lineHeight: 1.25,
+  whiteSpace: "normal",
+  wordBreak: "break-word",
+};
+
+const shipmentBodyCellSx = {
+  fontSize: { xs: "0.5rem", sm: "0.72rem" },
+  lineHeight: 1.3,
+};
+
+const shipmentNumericCellSx = {
+  ...shipmentBodyCellSx,
+  textAlign: "right",
+  whiteSpace: "nowrap",
 };
 
 export default function ShipmentPrintPage() {
@@ -318,21 +347,22 @@ export default function ShipmentPrintPage() {
     <Box sx={{ mb: { xs: 2, sm: 3 }, borderTop: "2px solid #333", borderBottom: "2px solid #333" }}>
       <Box
         sx={{
-          display: "flex",
+          ...shipmentTableGridSx,
           padding: { xs: "6px 4px", sm: "10px 6px" },
           fontWeight: 600,
           borderBottom: "1px solid #333",
           color: "black",
         }}
       >
-        <Box sx={{ flex: 1.3, fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>PO No</Box>
-        <Box sx={{ flex: 1.8, fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Product</Box>
-        <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Ordered Qty</Box>
-        <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Received Qty</Box>
-        <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Unit Price</Box>
-        <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Freight Duty</Box>
-        <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Additional Cost</Box>
-        <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.74rem" } }}>Total</Box>
+        <Box sx={shipmentHeaderCellSx}>PO No</Box>
+        <Box sx={shipmentHeaderCellSx}>Product</Box>
+        <Box sx={{ ...shipmentHeaderCellSx, textAlign: "right" }}>Ordered Qty</Box>
+        <Box sx={{ ...shipmentHeaderCellSx, textAlign: "right" }}>Received Qty</Box>
+        <Box sx={{ ...shipmentHeaderCellSx, textAlign: "right" }}>Unit Price</Box>
+        <Box sx={{ ...shipmentHeaderCellSx, textAlign: "right" }}>Freight Duty</Box>
+        <Box sx={{ ...shipmentHeaderCellSx, textAlign: "right" }}>Overseas Transport Cost</Box>
+        <Box sx={{ ...shipmentHeaderCellSx, textAlign: "right" }}>Local Transport</Box>
+        <Box sx={{ ...shipmentHeaderCellSx, textAlign: "right" }}>Total</Box>
       </Box>
 
       {items.length === 0 ? (
@@ -346,33 +376,26 @@ export default function ShipmentPrintPage() {
           <Box
             key={item.id || `${item.productCode}-${index}`}
             sx={{
-              display: "flex",
+              ...shipmentTableGridSx,
               padding: { xs: "5px 4px", sm: "8px 6px" },
               borderBottom: index === items.length - 1 ? "none" : "1px solid #cfcfcf",
             }}
           >
-            <Box sx={{ flex: 1.3, fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>
-              {item.purchaseOrderNo || "-"}
-            </Box>
-            <Box sx={{ flex: 1.8, fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>
+            <Box sx={shipmentBodyCellSx}>{item.purchaseOrderNo || "-"}</Box>
+            <Box sx={{ ...shipmentBodyCellSx, wordBreak: "break-word" }}>
               {item.productName || item.productCode || "-"}
             </Box>
-            <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>
-              {formatQty(item.qty)}
+            <Box sx={shipmentNumericCellSx}>{formatQty(item.qty)}</Box>
+            <Box sx={shipmentNumericCellSx}>{formatQty(item.receivedQty)}</Box>
+            <Box sx={shipmentNumericCellSx}>{formatAmount(item.unitPrice)}</Box>
+            <Box sx={shipmentNumericCellSx}>{formatAmount(item.freightDutyCost)}</Box>
+            <Box sx={shipmentNumericCellSx}>
+              {formatAmount(item.additionalCost ?? item.AdditionalCost)}
             </Box>
-            <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>
-              {formatQty(item.receivedQty)}
+            <Box sx={shipmentNumericCellSx}>
+              {formatAmount(item.localTransportCost ?? item.LocalTransportCost)}
             </Box>
-            <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>
-              {formatAmount(item.unitPrice)}
-            </Box>
-            <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>
-              {formatAmount(item.freightDutyCost)}
-            </Box>
-            <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.72rem" } }}>
-              {formatAmount(item.additionalCost)}
-            </Box>
-            <Box sx={{ flex: 1, textAlign: "right", fontSize: { xs: "0.5rem", sm: "0.72rem" }, fontWeight: 600 }}>
+            <Box sx={{ ...shipmentNumericCellSx, fontWeight: 600 }}>
               {formatAmount(item.lineTotal)}
             </Box>
           </Box>
@@ -523,6 +546,11 @@ export default function ShipmentPrintPage() {
               <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint} sx={{ textTransform: "none" }}>
                 Print
               </Button>
+              <PrintExcelButton
+                contentRef={contentRef}
+                downloadName={`Shipment_${shipmentData?.documentNo || documentNumber || "document"}`}
+                disabled={loadingShipment || !shipmentData}
+              />
               {/* <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleDownloadPDF} sx={{ textTransform: "none" }}>
                 Download PDF
               </Button> */}

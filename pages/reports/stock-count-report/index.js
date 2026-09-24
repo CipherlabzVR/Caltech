@@ -25,7 +25,7 @@ import {
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import { ToastContainer, toast } from "react-toastify";
-import * as XLSX from "xlsx";
+import { writeOrganizedExcel } from "@/components/ReportTemplate/exportReportHtmlToExcel";
 import styles from "@/styles/PageTitle.module.css";
 import BASE_URL from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
@@ -220,14 +220,21 @@ const StockCountReport = () => {
         toast.info("No data to export");
         return;
       }
-      const aoa = [
-        exportColumns.map((c) => c.header),
-        ...data.map((row) => exportColumns.map((c) => c.get(row))),
-      ];
-      const worksheet = XLSX.utils.aoa_to_sheet(aoa);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Stock Count Report");
-      XLSX.writeFile(workbook, `stock-count-report-${Date.now()}.xlsx`);
+      await writeOrganizedExcel(
+        {
+          title: "STOCK COUNT REPORT",
+          detailsLeft: [["Generated On", formatDate(new Date()) || "-"]],
+          detailsRight: [["Rows", data.length]],
+          sections: [
+            {
+              title: "Count Details",
+              headers: exportColumns.map((column) => column.header),
+              rows: data.map((row) => exportColumns.map((column) => column.get(row))),
+            },
+          ],
+        },
+        `stock-count-report-${Date.now()}`
+      );
     } catch (error) {
       toast.error(error.message || "Excel export failed");
     } finally {

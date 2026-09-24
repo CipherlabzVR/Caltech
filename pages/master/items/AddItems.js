@@ -323,7 +323,7 @@ export default function AddItems({
     [isSubCategoryNotRequired, isUOMNotRequired]
   );
   const router = useRouter();
-  const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
+  const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveToShiftEndEnable");
   const { data: enableItemTypeFilter } = IsAppSettingEnabled("EnableItemTypeFilter");
   const [itemCode, setItemCode] = useState(null);
   const [duplicateSourceId, setDuplicateSourceId] = useState(null);

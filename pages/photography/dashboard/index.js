@@ -34,6 +34,8 @@ import {
   Legend,
 } from "recharts";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
+import FavoriteIcon from "@mui/icons-material/Favorite";
+import CakeIcon from "@mui/icons-material/Cake";
 import EventIcon from "@mui/icons-material/Event";
 import UpcomingIcon from "@mui/icons-material/Upcoming";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
@@ -43,7 +45,6 @@ import useApi from "@/components/utils/useApi";
 import { formatDate } from "@/components/utils/formatHelper";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
-import { resolveEventTypeIcon } from "@/utils/photography/eventTypeIcons";
 
 const CATEGORY_ID = 300;
 
@@ -210,9 +211,7 @@ export default function PhotographyDashboard() {
   const { navigate } = IsPermissionEnabled(Number.isFinite(cId) ? cId : CATEGORY_ID);
 
   const { data, loading } = useApi("/PhotographyReservation/GetDashboard");
-  const { data: eventTypesRaw } = useApi("/PhotographyEventType/GetActiveEventTypes");
   const d = data || {};
-  const eventTypes = Array.isArray(eventTypesRaw) ? eventTypesRaw : [];
   const byStatus = d.byStatus || [];
   const byEventType = d.byEventType || [];
   const monthlyTrend = d.monthlyTrend || [];
@@ -230,13 +229,6 @@ export default function PhotographyDashboard() {
   const eventTypePie = byEventType.map((e) => ({ name: e.name, value: e.count }));
   const teamBars = teamWorkload.map((t) => ({ name: t.teamName, value: t.count }));
   const capacityData = [{ name: "Capacity", value: capacityPct, fill: capacityPct >= 100 ? "#EF4444" : "#6366F1" }];
-  const eventTypeIcon = (name) => {
-    const type = eventTypes.find(
-      (eventType) => String(eventType.name || eventType.Name).toLowerCase() === String(name).toLowerCase()
-    );
-    const Icon = resolveEventTypeIcon(type?.iconName ?? type?.IconName);
-    return <Icon />;
-  };
 
   if (!navigate) return <AccessDenied />;
 
@@ -267,7 +259,7 @@ export default function PhotographyDashboard() {
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <StatCard
-              icon={eventTypeIcon("Wedding")}
+              icon={<FavoriteIcon />}
               label="Weddings"
               value={d.weddings}
               gradient="linear-gradient(135deg, #EC4899 0%, #F43F5E 100%)"
@@ -275,7 +267,7 @@ export default function PhotographyDashboard() {
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <StatCard
-              icon={eventTypeIcon("Birthday Party")}
+              icon={<CakeIcon />}
               label="Birthday Parties"
               value={d.birthdayParties}
               gradient="linear-gradient(135deg, #F59E0B 0%, #FB923C 100%)"
@@ -339,7 +331,7 @@ export default function PhotographyDashboard() {
           {/* Event type donut */}
           <Grid item xs={12} md={4}>
             <Paper elevation={0} sx={panelSx}>
-              <SectionTitle icon={<EventIcon fontSize="small" sx={{ color: "#EC4899" }} />}>
+              <SectionTitle icon={<FavoriteIcon fontSize="small" sx={{ color: "#EC4899" }} />}>
                 Event Types
               </SectionTitle>
               <Box sx={{ height: 300 }}>

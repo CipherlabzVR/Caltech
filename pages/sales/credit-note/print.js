@@ -6,6 +6,7 @@ import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import PrintIcon from "@mui/icons-material/Print";
+import PrintExcelButton from "@/components/ReportTemplate/PrintExcelButton";
 import BASE_URL from "Base/api";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -497,6 +498,11 @@ export default function CreditNotePrintPage() {
           >
             Print
           </Button>
+          <PrintExcelButton
+            iframeRef={iframeRef}
+            downloadName={`CustomerNote_${noteData?.documentNo || documentNumber || "document"}`}
+            disabled={isLoading || !finalHtml}
+          />
           {/* <Button
             variant="outlined"
             startIcon={<PictureAsPdfIcon />}

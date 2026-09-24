@@ -100,7 +100,7 @@ const DEFAULT_SETTINGS = {
   refreshSec: 30,
   visibleStatusIds: null,
   hideEmpty: false,
-  dateWindow: -1,
+  dateWindow: 90,
   eventTypeId: "",
   teamId: "",
   search: "",
@@ -118,14 +118,7 @@ const loadSettings = () => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_SETTINGS;
-    const parsed = JSON.parse(raw);
-    const merged = { ...DEFAULT_SETTINGS, ...parsed };
-    // Old default was "today + 90 days", which hid wedding dates 6–18 months out
-    // (and any past events). Keep an explicit later choice of 90 days.
-    if (!parsed.dateWindowV2 && parsed.dateWindow === 90) {
-      merged.dateWindow = -1;
-    }
-    return merged;
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -184,19 +177,18 @@ export default function BoardWorkspace({ mode = "manage" }) {
   const setSettings = useCallback((next) => {
     setSettingsState(next);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...next, dateWindowV2: true }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
       /* ignore */
     }
   }, []);
 
   const fetchBoard = useCallback(async () => {
+    const from = toDateInput(new Date());
     const params = new URLSearchParams();
+    params.set("fromDate", from);
+
     const windowDays = Number(settings.dateWindow);
-    // -1 = all reservations (same as the list). 0 = today onward. >0 = today + N days.
-    if (windowDays >= 0) {
-      params.set("fromDate", toDateInput(new Date()));
-    }
     if (windowDays > 0) {
       const to = new Date();
       to.setDate(to.getDate() + windowDays);
@@ -262,7 +254,7 @@ export default function BoardWorkspace({ mode = "manage" }) {
         const parsed = Number(type);
         if (Number.isFinite(parsed) && parsed > 0) {
           setUserAgentType(parsed);
-          setAgentFilter(0);
+          setAgentFilter(parsed);
         } else {
           setUserAgentType(null);
           setAgentFilter(0);
@@ -322,62 +314,42 @@ export default function BoardWorkspace({ mode = "manage" }) {
 
   const columns = useMemo(() => {
     const visibleIds = Array.isArray(settings.visibleStatusIds)
-      ? new Set(settings.visibleStatusIds.map(Number).filter(Number.isFinite))
+      ? new Set(settings.visibleStatusIds)
       : null;
 
-    const statusIdOf = (s) => Number(s?.id ?? s?.Id);
-    const cardStatusId = (r) => {
-      const raw = r.currentStatusId ?? r.CurrentStatusId;
-      if (raw == null || raw === "") return NaN;
-      return Number(raw);
-    };
+    const filteredReservations = reservations;
 
     const byStatus = new Map();
-    reservations.forEach((r) => {
-      const sid = cardStatusId(r);
-      if (!Number.isFinite(sid)) return;
+    filteredReservations.forEach((r) => {
+      const sid = r.currentStatusId ?? r.CurrentStatusId;
+      if (sid == null) return;
       if (!byStatus.has(sid)) byStatus.set(sid, []);
       byStatus.get(sid).push(r);
     });
 
-    const agentTypesOf = (s) =>
-      (s.agentTypes ?? s.AgentTypes ?? []).map(Number).filter(Number.isFinite);
+    const agentTypesOf = (s) => s.agentTypes ?? s.AgentTypes ?? [];
+    // Statuses are only filtered by agent once at least one of them is mapped,
+    // otherwise an unmapped setup would leave the board empty.
     const hasAnyMapping = statuses.some((s) => agentTypesOf(s).length > 0);
 
     let cols = statuses
       .filter((s) => {
-        const id = statusIdOf(s);
-        if (!Number.isFinite(id)) return false;
+        const id = s.id ?? s.Id;
         if (visibleIds && !visibleIds.has(id)) return false;
-        if (!agentFilter || !hasAnyMapping) return true;
-        return agentTypesOf(s).includes(Number(agentFilter));
+        if (!hasAnyMapping) return true;
+        const mapped = agentTypesOf(s);
+        if (!mapped.length) return false;
+        if (!agentFilter) return true;
+        return mapped.includes(agentFilter);
       })
       .map((s, index) => {
-        const id = statusIdOf(s);
+        const id = s.id ?? s.Id;
         return {
           status: s,
           accent: resolveStatusColor(s, index),
           cards: byStatus.get(id) || [],
         };
       });
-
-    const shownIds = new Set(cols.map((c) => statusIdOf(c.status)).filter(Number.isFinite));
-    const knownIds = new Set(statuses.map(statusIdOf).filter(Number.isFinite));
-    // Only park cards here when their status is unknown. Agent-filtered
-    // statuses must not dump their bookings into "Other status".
-    const orphans = !agentFilter
-      ? reservations.filter((r) => {
-          const sid = cardStatusId(r);
-          return Number.isFinite(sid) && !knownIds.has(sid) && !shownIds.has(sid);
-        })
-      : [];
-    if (orphans.length) {
-      cols.push({
-        status: { id: -1, name: "Other status", colorCode: "#64748B" },
-        accent: "#64748B",
-        cards: orphans,
-      });
-    }
 
     if (settings.hideEmpty) cols = cols.filter((c) => c.cards.length > 0);
     return cols;
@@ -734,7 +706,6 @@ export default function BoardWorkspace({ mode = "manage" }) {
                     canEdit={!!update}
                     canChangeStatus={!!photoChangeStatus}
                     onRefresh={fetchBoard}
-                    eventTypes={eventTypes}
                     fillWidth={fillWidth}
                     stepIndex={stepIndex}
                     totalSteps={totalSteps}

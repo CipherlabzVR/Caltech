@@ -973,7 +973,7 @@ export default function EditItems({
     [isSubCategoryNotRequired, isUOMNotRequired, item.id, item.Id, item.code, item.Code]
   );
   const router = useRouter();
-  const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveEnable");
+  const { data: isItemEndInvolveEnable } = IsAppSettingEnabled("IsItemEndInvolveToShiftEndEnable");
   const { data: enableItemTypeFilter } = IsAppSettingEnabled("EnableItemTypeFilter");
   const [open, setOpen] = React.useState(false);
   const [formInitialValues, setFormInitialValues] = useState(() =>

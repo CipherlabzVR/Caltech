@@ -6,6 +6,7 @@ import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import PrintIcon from "@mui/icons-material/Print";
+import PrintExcelButton from "@/components/ReportTemplate/PrintExcelButton";
 import BASE_URL from "Base/api";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -421,6 +422,11 @@ export default function PaymentPrintPage() {
               <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint} sx={{ textTransform: "none" }}>
                 Print
               </Button>
+              <PrintExcelButton
+                contentRef={contentRef}
+                downloadName={`Payment_${paymentData?.documentNo || documentNumber || "document"}`}
+                disabled={loadingPayment || !paymentData}
+              />
               <Button variant="outlined" startIcon={<PictureAsPdfIcon />} onClick={handleDownloadPDF} sx={{ textTransform: "none" }}>
                 Download PDF
               </Button>

@@ -2,24 +2,6 @@ import BASE_URL from 'Base/api';
 import { useState, useEffect } from 'react';
 
 const IsPermissionEnabled = (cId) => {
-  const hasPermission = (permissions, type, names = []) =>
-    permissions.some((item) => {
-      const permissionType = Number(item.permissionType ?? item.PermissionType);
-      const permissionName = String(item.name ?? item.permissionName ?? item.Name ?? "")
-        .replace(/[^a-zA-Z0-9]/g, "")
-        .toLowerCase();
-      const enabledValue =
-        item.isActive ??
-        item.IsActive ??
-        item.isPermissionEnabled ??
-        item.IsPermissionEnabled ??
-        item.isGranted ??
-        item.IsGranted;
-      const isEnabled = enabledValue === undefined || enabledValue === true || enabledValue === 1 || enabledValue === "1";
-
-      return isEnabled && (permissionType === type || names.includes(permissionName));
-    });
-
   const [permissionsLoading, setPermissionsLoading] = useState(true);
   const [navigate, setNavigate] = useState(true);
   const [create, setCreate] = useState(false);
@@ -88,28 +70,28 @@ const IsPermissionEnabled = (cId) => {
 
         if (cancelled) return;
 
-        setNavigate(hasPermission(data, 1, ["navigation"]));
-        setCreate(hasPermission(data, 2, ["create"]));
-        setUpdate(hasPermission(data, 3, ["update"]));
-        setRemove(hasPermission(data, 4, ["delete", "remove"]));
-        setPrint(hasPermission(data, 5, ["print"]));
-        setApprove1(hasPermission(data, 6, ["approvallevel1", "approvelevel1"]));
-        setApprove2(hasPermission(data, 7, ["approvallevel2", "approvelevel2"]));
-        setApprove3(hasPermission(data, 8, ["approvallevel3", "approvelevel3"]));
-        setCustomPrint(hasPermission(data, 9, ["customprint"]));
-        setJcDiagnose(hasPermission(data, 20));
-        setJcApprove(hasPermission(data, 21));
-        setJcStartWork(hasPermission(data, 22));
-        setJcHoldResume(hasPermission(data, 23));
-        setJcMarkReady(hasPermission(data, 24));
-        setJcDeliver(hasPermission(data, 25));
-        setJcPartsSubmit(hasPermission(data, 26));
-        setJcPartsApprove(hasPermission(data, 27));
-        setJcLineEdit(hasPermission(data, 28));
-        setWhatsAppShare(hasPermission(data, 29));
-        setEditStockPrice(hasPermission(data, 30));
-        setPhotoAssignTeam(hasPermission(data, 40));
-        setPhotoChangeStatus(hasPermission(data, 41));
+        setNavigate(data.some((item) => item.permissionType === 1));
+        setCreate(data.some((item) => item.permissionType === 2));
+        setUpdate(data.some((item) => item.permissionType === 3));
+        setRemove(data.some((item) => item.permissionType === 4));
+        setPrint(data.some((item) => item.permissionType === 5));
+        setApprove1(data.some((item) => item.permissionType === 6));
+        setApprove2(data.some((item) => item.permissionType === 7));
+        setApprove3(data.some((item) => item.permissionType === 8));
+        setCustomPrint(data.some((item) => item.permissionType === 9));
+        setJcDiagnose(data.some((item) => item.permissionType === 20));
+        setJcApprove(data.some((item) => item.permissionType === 21));
+        setJcStartWork(data.some((item) => item.permissionType === 22));
+        setJcHoldResume(data.some((item) => item.permissionType === 23));
+        setJcMarkReady(data.some((item) => item.permissionType === 24));
+        setJcDeliver(data.some((item) => item.permissionType === 25));
+        setJcPartsSubmit(data.some((item) => item.permissionType === 26));
+        setJcPartsApprove(data.some((item) => item.permissionType === 27));
+        setJcLineEdit(data.some((item) => item.permissionType === 28));
+        setWhatsAppShare(data.some((item) => item.permissionType === 29));
+        setEditStockPrice(data.some((item) => item.permissionType === 30));
+        setPhotoAssignTeam(data.some((item) => item.permissionType === 40));
+        setPhotoChangeStatus(data.some((item) => item.permissionType === 41));
       } catch (err) {
         if (!cancelled) {
           setNavigate(false);

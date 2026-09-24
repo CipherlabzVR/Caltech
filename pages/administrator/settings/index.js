@@ -9,6 +9,7 @@ import {
   InputLabel,
   MenuItem,
   Select,
+  FormControlLabel,
   Paper,
   Switch,
   Table,
@@ -163,21 +164,17 @@ export default function Settings() {
         </Grid>
 
         <Grid item xs={12}>
-          <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
-            <Table aria-label="simple table" className="dark-table" sx={{ minWidth: 980, tableLayout: "fixed" }}>
+          <TableContainer component={Paper}>
+            <Table aria-label="simple table" className="dark-table">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ width: 56 }}>#</TableCell>
-                  <TableCell sx={{ width: 240 }}>Setting Name</TableCell>
-                  <TableCell sx={{ width: 180 }}>Value</TableCell>
+                  <TableCell>#</TableCell>
+                  <TableCell>Setting Name</TableCell>
+                  <TableCell>Value</TableCell>
                   <TableCell>Description</TableCell>
-                  <TableCell sx={{ width: 130 }}>Document Link</TableCell>
-                  <TableCell sx={{ width: 100, position: "sticky", right: 56, bgcolor: "background.paper", zIndex: 2 }}>
-                    Enable
-                  </TableCell>
-                  <TableCell align="right" sx={{ width: 56, position: "sticky", right: 0, bgcolor: "background.paper", zIndex: 2 }}>
-                    Action
-                  </TableCell>
+                  <TableCell>Document Link</TableCell>
+                  <TableCell>Enable</TableCell>
+                  <TableCell align="right">Action</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -202,16 +199,7 @@ export default function Settings() {
                       </TableCell>
                       <TableCell>{setting.settingName}</TableCell>
                       <TableCell>{setting.value}</TableCell>
-                      <TableCell
-                        sx={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        title={setting.description || ""}
-                      >
-                        {setting.description || "-"}
-                      </TableCell>
+                      <TableCell>{setting.description || "-"}</TableCell>
                       <TableCell>
                         {setting.documentLink ? (
                           <a href={setting.documentLink} target="_blank" rel="noopener noreferrer" style={{ color: '#1976d2', textDecoration: 'underline' }}>
@@ -221,18 +209,14 @@ export default function Settings() {
                           "-"
                         )}
                       </TableCell>
-                      <TableCell sx={{ position: "sticky", right: 56, bgcolor: "background.paper" }}>
-                        <Switch
-                          checked={!!setting.isEnabled}
-                          onChange={(e) => handleChangeSwitch(e.target.checked, setting)}
-                          size="small"
-                        />
+                      <TableCell>
+                        <FormControlLabel control={<Switch checked={setting.isEnabled} onChange={(e) => handleChangeSwitch(e.target.checked, setting)} />} />
                       </TableCell>
-                      <TableCell align="right" sx={{ position: "sticky", right: 0, bgcolor: "background.paper" }}>
-                        <EditSetting
+                      <TableCell align="right">
+                        {update ? <EditSetting
                           item={setting}
                           fetchItems={refreshSettingsList}
-                        />
+                        /> : ""}
                       </TableCell>
                     </TableRow>
                   ))

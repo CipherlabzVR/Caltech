@@ -14,7 +14,6 @@ import DeleteUserConfirmationById from "@/components/UIElements/Modal/DeleteUser
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import SendIcon from "@mui/icons-material/Send";
-import LockResetIcon from "@mui/icons-material/LockReset";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
@@ -35,9 +34,6 @@ export default function Users() {
   const [isVerificationDialogOpen, setIsVerificationDialogOpen] = useState(false);
   const [selectedUserForVerification, setSelectedUserForVerification] = useState(null);
   const [verificationLoading, setVerificationLoading] = useState(false);
-  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
-  const [selectedUserForReset, setSelectedUserForReset] = useState(null);
-  const [resetLoading, setResetLoading] = useState(false);
 
   const fetchUsers = async (
     currentPage = page,
@@ -207,47 +203,6 @@ export default function Users() {
     }
   };
 
-  const handleResetPasswordClick = (user) => {
-    setSelectedUserForReset(user);
-    setIsResetDialogOpen(true);
-  };
-
-  const handleCloseResetDialog = () => {
-    setIsResetDialogOpen(false);
-    setSelectedUserForReset(null);
-  };
-
-  const handleConfirmResetPassword = async () => {
-    if (!selectedUserForReset?.id) {
-      toast.error("Unable to reset password for this user.");
-      return;
-    }
-
-    try {
-      setResetLoading(true);
-      const response = await fetch(
-        `${BASE_URL}/User/ResetUserPasswordToDefault?userId=${selectedUserForReset.id}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      const data = await response.json().catch(() => null);
-      if (!response.ok || (data?.statusCode && data.statusCode !== "SUCCESS" && data.statusCode !== 200)) {
-        throw new Error(data?.message || "Failed to reset password");
-      }
-      toast.success(data?.message || "Password reset to the default password.");
-      handleCloseResetDialog();
-    } catch (error) {
-      toast.error(error.message || "Unable to reset password");
-    } finally {
-      setResetLoading(false);
-    }
-  };
-
   if (!navigate) {
     return <AccessDenied />;
   }
@@ -401,18 +356,6 @@ export default function Users() {
                             roles={roles}
                             warehouses={warehouseList}
                           /> : ""}
-                          {update ? (
-                            <Tooltip title="Reset password to default">
-                              <IconButton
-                                size="small"
-                                color="warning"
-                                aria-label="reset password"
-                                onClick={() => handleResetPasswordClick(user)}
-                              >
-                                <LockResetIcon fontSize="inherit" />
-                              </IconButton>
-                            </Tooltip>
-                          ) : null}
                           {user.isEmailVerified !== true ? (
                             <Tooltip title="Send Verification">
                               <IconButton
@@ -457,30 +400,6 @@ export default function Users() {
           </TableContainer>
         </Grid>
       </Grid>
-
-      <Dialog open={isResetDialogOpen} onClose={handleCloseResetDialog} maxWidth="xs" fullWidth>
-        <DialogTitle>Reset Password</DialogTitle>
-        <DialogContent dividers>
-          <DialogContentText>
-            Reset the password for{" "}
-            <strong>
-              {selectedUserForReset
-                ? selectedUserForReset.userName ||
-                  `${selectedUserForReset.firstName || ""} ${selectedUserForReset.lastName || ""}`.trim()
-                : "this user"}
-            </strong>{" "}
-            to the Internal User Default Password setting?
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseResetDialog} color="inherit" disabled={resetLoading}>
-            Cancel
-          </Button>
-          <Button onClick={handleConfirmResetPassword} color="warning" variant="contained" disabled={resetLoading}>
-            {resetLoading ? "Resetting..." : "Reset"}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       <Dialog open={isVerificationDialogOpen} onClose={handleCloseVerificationDialog} maxWidth="xs" fullWidth>
         <DialogTitle>Send Verification Email</DialogTitle>

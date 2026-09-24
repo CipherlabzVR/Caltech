@@ -4,12 +4,14 @@ import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import PrintIcon from "@mui/icons-material/Print";
+import GridOnIcon from "@mui/icons-material/GridOn";
 import { toast } from "react-toastify";
 import {
   getPageSizeMm,
   PAGE_ORIENTATION,
   parsePageOrientation,
 } from "@/components/ReportTemplate/pageOrientation";
+import exportReportHtmlToExcel from "@/components/ReportTemplate/exportReportHtmlToExcel";
 
 /**
  * Renders a resolved HTML document (tokens already substituted) inside an A4
@@ -21,7 +23,9 @@ import {
  *  - loading:      whether the source document is still loading
  *  - loadingText:  message shown while loading
  *  - errorText:    message shown when not loading and finalHtml is empty
- *  - downloadName: file name (without extension) for the exported PDF
+ *  - downloadName: file name (without extension) for the exported PDF/Excel
+ *  - showDownloadExcel: show Convert to Excel (on for all report/document prints)
+ *  - autoExportExcel: download Excel once the preview is ready
  */
 export default function TemplatePrintFrame({
   finalHtml,
@@ -30,8 +34,11 @@ export default function TemplatePrintFrame({
   errorText = "Failed to load document",
   downloadName = "document",
   showDownloadPdf = true,
+  showDownloadExcel = true,
+  autoExportExcel = false,
 }) {
   const iframeRef = useRef(null);
+  const autoExportedRef = useRef(false);
   const [iframeHeight, setIframeHeight] = useState(1123);
   const pageOrientation = useMemo(
     () => parsePageOrientation(finalHtml),
@@ -59,9 +66,29 @@ export default function TemplatePrintFrame({
     }
   };
 
+  const handleDownloadExcel = async () => {
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    if (!doc) {
+      toast.error("Nothing to export yet.");
+      return;
+    }
+
+    try {
+      await exportReportHtmlToExcel(doc, downloadName);
+    } catch (error) {
+      console.error("Error generating Excel:", error);
+      toast.error(error?.message || "Failed to convert to Excel. Please try again.");
+    }
+  };
+
   const handleIframeLoad = () => {
     resizeIframe();
     setTimeout(resizeIframe, 300);
+    if (autoExportExcel && !autoExportedRef.current && finalHtml) {
+      autoExportedRef.current = true;
+      setTimeout(handleDownloadExcel, 200);
+    }
   };
 
   const handlePrint = () => {
@@ -231,6 +258,18 @@ export default function TemplatePrintFrame({
               sx={{ textTransform: "none" }}
             >
               Download PDF
+            </Button>
+          ) : null}
+          {showDownloadExcel ? (
+            <Button
+              variant="outlined"
+              color="success"
+              startIcon={<GridOnIcon />}
+              onClick={handleDownloadExcel}
+              disabled={loading || !finalHtml}
+              sx={{ textTransform: "none" }}
+            >
+              Convert to Excel
             </Button>
           ) : null}
         </Box>

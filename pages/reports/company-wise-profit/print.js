@@ -197,6 +197,8 @@ export default function CompanyWiseProfitPrintPage() {
         errorText="No company wise profit available to print."
         downloadName={`CompanyWiseProfit_${new Date().toISOString().slice(0, 10)}`}
         showDownloadPdf={false}
+        showDownloadExcel
+        autoExportExcel={String(router.query.exportExcel || "") === "1"}
       />
       <ToastContainer position="top-right" autoClose={3000} />
     </>

@@ -18,22 +18,6 @@ export function pick(obj, ...keys) {
   return undefined;
 }
 
-export function parseChecklistImageUrls(value) {
-  if (!value) return [];
-  if (Array.isArray(value)) return value.filter(Boolean);
-  const trimmed = String(value).trim();
-  if (!trimmed) return [];
-  if (trimmed.startsWith("[")) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) return parsed.filter((url) => typeof url === "string" && url.trim());
-    } catch {
-      return [trimmed];
-    }
-  }
-  return [trimmed];
-}
-
 export function parseOptionsList(item) {
   const list = pick(item, "optionsList", "OptionsList");
   if (Array.isArray(list)) return list;

@@ -56,14 +56,6 @@ const photographyReservationNoteService = {
     return response.json();
   },
 
-  getActivityLog: async (reservationId) => {
-    const response = await fetch(`${BASE_URL}/PhotographyReservationNote/GetActivityLog/${reservationId}`, {
-      method: "GET",
-      headers: getHeaders(),
-    });
-    return response.json();
-  },
-
   updateFirstMeeting: async (data) => {
     const response = await fetch(`${BASE_URL}/PhotographyReservationNote/UpdateFirstMeeting`, {
       method: "POST",

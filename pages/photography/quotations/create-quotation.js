@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import { useRouter } from "next/router";
@@ -53,7 +53,7 @@ import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
 import useApi from "@/components/utils/useApi";
 
-const CATEGORY_ID = 341;
+const CATEGORY_ID = 304;
 
 const CEREMONY_TYPES = [
   { value: "", label: "N/A" },
@@ -65,32 +65,25 @@ const CEREMONY_TYPES = [
 const DEFAULT_FIXED_MESSAGE =
   "Please note: Transportation charges apply for events held outside Colombo. Any discount shown has been specially applied for you as discussed. This quotation is valid for 14 days. To confirm your booking, an advance payment is required.";
 
-const isPendingApprovalStatus = (status) =>
-  Number(status) === 6 ||
-  String(status || "").replace(/[\s_-]/g, "").toLowerCase() === "pendingapproval";
-
-const isFinalQuotationStatus = (status) =>
-  ["approved", "sent", "converted"].includes(
-    String(status || "").replace(/[\s_-]/g, "").toLowerCase()
-  );
-
 export default function CreateQuotation() {
   const router = useRouter();
   const editId = router.query.id ? Number(router.query.id) : null;
 
-  const { navigate, create, update, approve1, remove } = IsPermissionEnabled(CATEGORY_ID);
+  const cId = typeof window !== "undefined" ? sessionStorage.getItem("category") : null;
+  const resolvedId = cId ? parseInt(cId, 10) : CATEGORY_ID;
+  const { navigate, create, update, approve1, remove } = IsPermissionEnabled(
+    Number.isFinite(resolvedId) ? resolvedId : CATEGORY_ID
+  );
 
   const { data: eventTypesRaw } = useApi("/PhotographyEventType/GetActiveEventTypes");
   const eventTypes = Array.isArray(eventTypesRaw) ? eventTypesRaw : [];
 
   const [packages, setPackages] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [addOnsMaster, setAddOnsMaster] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [reservationId, setReservationId] = useState(null);
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [savedId, setSavedId] = useState(editId);
-  const originalQuotationRef = useRef(null);
 
   const [form, setForm] = useState({
     eventType: 1,
@@ -129,13 +122,6 @@ export default function CreateQuotation() {
       .then((res) => res.json())
       .then((data) => setPackages(data?.result || []))
       .catch(() => setPackages([]));
-
-    fetch(`${BASE_URL}/PhotographyPackageCategory/GetActiveCategories`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data) => setCategories(data?.result || []))
-      .catch(() => setCategories([]));
 
     fetch(`${BASE_URL}/PhotographyAddOn/GetActiveAddOns`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -199,61 +185,33 @@ export default function CreateQuotation() {
     const quoted = r.quotedEventTypes || r.QuotedEventTypes || [];
     const events = r.events || r.Events || [];
 
+    // Use new events array if available
     if (events.length > 0) {
       return events.map((e) => ({
-        eventType: e.eventType ?? e.EventType,
-        name: e.eventTypeName || e.EventTypeName || "Event",
-        quoted: e.hasQuotation || e.HasQuotation || quoted.includes(Number(e.eventType ?? e.EventType)),
-        isMain: e.isMainEvent || e.IsMainEvent,
-        eventDate: e.eventDate || e.EventDate || "",
-        eventTime: e.eventTime || e.EventTime || "",
-        eventSession: e.eventSession || e.EventSession || "",
-        location: e.location || e.Location || r.receptionLocation || "",
+        eventType: e.eventType,
+        name: e.eventTypeName || "Event",
+        quoted: e.hasQuotation || quoted.includes(Number(e.eventType)),
+        isMain: e.isMainEvent,
       }));
     }
 
-    return [
+    // Fallback to legacy fields
+    const result = [
       {
         eventType: r.eventType,
         name: r.eventTypeName || "Main event",
         quoted: quoted.includes(Number(r.eventType)),
         isMain: true,
-        eventDate: r.eventDate || "",
-        eventTime: r.eventTime || "",
-        eventSession: "",
-        location: r.receptionLocation || "",
       },
     ];
+    return result;
   };
 
   const applyReservation = (r) => {
     if (!r) return;
-    const all = reservationEvents(r);
-    if (all.some((e) => e.quoted)) {
-      toast.error("This reservation already has a quotation. One quotation covers all events.");
-      return;
-    }
-    const pick = all.find((e) => e.isMain) || all[0];
+    const available = reservationEvents(r).filter((e) => !e.quoted);
+    const pick = available[0] || reservationEvents(r)[0];
     applyReservationEvent(r, pick?.eventType);
-  };
-
-  const selectReservation = async (r) => {
-    if (!r?.id) {
-      applyReservation(r);
-      return;
-    }
-    applyReservation(r);
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${BASE_URL}/PhotographyReservation/GetReservationById?id=${r.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      const full = data?.result ?? data?.Result;
-      if (full) applyReservation(full);
-    } catch {
-      /* keep list payload */
-    }
   };
 
   useEffect(() => {
@@ -266,29 +224,14 @@ export default function CreateQuotation() {
       .then((data) => {
         const q = data?.result;
         if (!q) return;
-        const loadedStatus =
-          q.statusName ?? q.StatusName ?? q.status ?? q.Status ?? q.quotationStatus ?? "";
-        setQuotationStatus(isPendingApprovalStatus(loadedStatus) ? "PendingApproval" : loadedStatus);
+        setQuotationStatus(q.statusName || "");
         if (["Approved", "Sent", "Converted"].includes(q.statusName) && !approve1) {
           toast.error("This quotation has already been approved and can no longer be edited.");
           setTimeout(() => router.push("/photography/quotations/"), 1200);
           return;
         }
-        originalQuotationRef.current = q;
         setSavedId(q.id);
         setReservationId(q.reservationId || null);
-        if (q.reservationId) {
-          const token2 = localStorage.getItem("token");
-          fetch(`${BASE_URL}/PhotographyReservation/GetReservationById?id=${q.reservationId}`, {
-            headers: { Authorization: `Bearer ${token2}` },
-          })
-            .then((res) => res.json())
-            .then((resData) => {
-              const full = resData?.result ?? resData?.Result;
-              if (full) setSelectedReservation(full);
-            })
-            .catch(() => {});
-        }
         setForm({
           eventType: q.eventType || 1,
           customerName: q.customerName || "",
@@ -308,7 +251,6 @@ export default function CreateQuotation() {
         });
         setLines(
           (q.lines || []).map((l) => ({
-            categoryId: "",
             packageId: l.packageId,
             packageVariantId: l.packageVariantId || "",
             packageName: l.packageName,
@@ -335,10 +277,7 @@ export default function CreateQuotation() {
   }, [editId, approve1]);
 
   const addLine = () =>
-    setLines((prev) => [
-      ...prev,
-      { categoryId: "", packageId: "", packageVariantId: "", packageName: "", unitPrice: 0, qty: 1, items: [] },
-    ]);
+    setLines((prev) => [...prev, { packageId: "", packageVariantId: "", packageName: "", unitPrice: 0, qty: 1, items: [] }]);
   const removeLine = (idx) => {
     setLines((prev) => prev.filter((_, i) => i !== idx));
     setExpandedLines((prev) => {
@@ -350,97 +289,7 @@ export default function CreateQuotation() {
   const toggleLineExpanded = (idx) =>
     setExpandedLines((prev) => ({ ...prev, [idx]: !prev[idx] }));
 
-  const categoryOptions = useMemo(() => {
-    if (categories.length > 0) return categories;
-    const map = new Map();
-    packages.forEach((p) => {
-      const id = p.categoryId ?? p.CategoryId;
-      if (!id || map.has(Number(id))) return;
-      map.set(Number(id), {
-        id: Number(id),
-        name: p.categoryName || p.CategoryName || `Category ${id}`,
-      });
-    });
-    return Array.from(map.values());
-  }, [categories, packages]);
-
-  const getPackagesForCategory = (categoryId) => {
-    if (!categoryId) return [];
-    return packages.filter((p) => Number(p.categoryId ?? p.CategoryId) === Number(categoryId));
-  };
-
-  const getPackageOptionsForLine = (line) => {
-    const list = getPackagesForCategory(line.categoryId);
-    if (!line.packageId) return list;
-    if (list.some((p) => p.id === Number(line.packageId))) return list;
-    const selected = packages.find((p) => p.id === Number(line.packageId));
-    return selected ? [selected, ...list] : list;
-  };
-
-  // When editing, hydrate categoryId from the selected package once packages are loaded.
-  useEffect(() => {
-    if (!packages.length) return;
-    setLines((prev) => {
-      let changed = false;
-      const next = prev.map((l) => {
-        if (l.categoryId || !l.packageId) return l;
-        const pkg = packages.find((p) => p.id === Number(l.packageId));
-        const catId = pkg?.categoryId ?? pkg?.CategoryId;
-        if (!catId) return l;
-        changed = true;
-        return { ...l, categoryId: Number(catId) };
-      });
-      return changed ? next : prev;
-    });
-  }, [packages, lines.length, editId]);
-
-  const handleCategoryChange = (idx, categoryId) => {
-    setLines((prev) =>
-      prev.map((l, i) =>
-        i === idx
-          ? {
-              ...l,
-              categoryId: categoryId ? Number(categoryId) : "",
-              packageId: "",
-              packageVariantId: "",
-              packageName: "",
-              unitPrice: 0,
-              items: [],
-            }
-          : l
-      )
-    );
-    setExpandedLines((prev) => {
-      const next = { ...prev };
-      delete next[idx];
-      return next;
-    });
-  };
-
   const handlePackageChange = (idx, packageId) => {
-    if (!packageId) {
-      setLines((prev) =>
-        prev.map((l, i) =>
-          i === idx
-            ? {
-                ...l,
-                packageId: "",
-                packageVariantId: "",
-                packageName: "",
-                unitPrice: 0,
-                items: [],
-              }
-            : l
-        )
-      );
-      setExpandedLines((prev) => {
-        const next = { ...prev };
-        delete next[idx];
-        return next;
-      });
-      return;
-    }
-
     const pkg = packages.find((p) => p.id === Number(packageId));
     const packageItems = pkg?.items?.map((item, i) => ({
       packageItemId: item.id,
@@ -448,13 +297,11 @@ export default function CreateQuotation() {
       displayOrder: item.displayOrder || i + 1,
       isIncluded: true,
     })) || [];
-    const catId = pkg?.categoryId ?? pkg?.CategoryId;
     setLines((prev) =>
       prev.map((l, i) =>
         i === idx
           ? {
               ...l,
-              categoryId: catId ? Number(catId) : l.categoryId,
               packageId: Number(packageId),
               packageName: pkg ? pkg.name : "",
               packageVariantId: "",
@@ -627,44 +474,6 @@ export default function CreateQuotation() {
     const payload = buildPayload();
     if (isEdit) payload.Id = savedId;
 
-    if (isEdit && typeof window !== "undefined") {
-      const key = `quotation_versions_${savedId}`;
-      try {
-        const existing = JSON.parse(localStorage.getItem(key) || "[]");
-        const versions = Array.isArray(existing) ? existing : [];
-        const previous = originalQuotationRef.current || {
-          ...payload,
-          id: savedId,
-          statusName: quotationStatus || "Draft",
-        };
-        const nextVersionNo = versions.reduce(
-          (max, version) => Math.max(max, Number(version.versionNo) || 0),
-          0
-        ) + 1;
-        const savedAt = new Date().toISOString();
-        localStorage.setItem(
-          key,
-          JSON.stringify([
-            ...versions,
-            {
-              id: `local-${savedId}-${savedAt}`,
-              versionNo: nextVersionNo,
-              savedAt,
-              createdOn: savedAt,
-              statusName: previous.statusName || quotationStatus || "Draft",
-              note: "Saved before quotation update",
-              createdByName: localStorage.getItem("name") || "Local user",
-              netTotal: previous.netTotal ?? previous.NetTotal ?? 0,
-              source: "local",
-              snapshot: previous,
-            },
-          ])
-        );
-      } catch (storageError) {
-        console.warn("Unable to save local quotation version", storageError);
-      }
-    }
-
     const url = isEdit
       ? `${BASE_URL}/PhotographyQuotation/UpdateQuotation`
       : `${BASE_URL}/PhotographyQuotation/CreateQuotation`;
@@ -812,9 +621,6 @@ export default function CreateQuotation() {
   if (!navigate) return <AccessDenied />;
   if ((editId && !update) || (!editId && !create)) return <AccessDenied />;
 
-  const detailsLocked = Boolean(selectedReservation);
-  const linkedEvents = detailsLocked ? reservationEvents(selectedReservation) : [];
-
   return (
     <>
       <ToastContainer />
@@ -860,7 +666,7 @@ export default function CreateQuotation() {
                   }
                   onChange={(event, newValue) => {
                     if (newValue && typeof newValue === "object") {
-                      selectReservation(newValue);
+                      applyReservation(newValue);
                     } else {
                       setReservationId(null);
                       setSelectedReservation(null);
@@ -874,24 +680,24 @@ export default function CreateQuotation() {
                       setField("customerName", newInputValue);
                     }
                   }}
-                  renderOption={(props, option) => {
-                    const events = option.events || option.Events || [];
-                    const eventNames = events.length > 0
-                      ? events.map((e) => `${e.eventTypeName || "Event"}${e.isMainEvent ? " ★" : ""}`).join(", ")
-                      : option.eventTypeName || "";
-                    return (
-                      <li {...props} key={option.id}>
-                        <Box>
-                          <Typography variant="body2">{option.coupleNames}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {option.cardNo}
-                            {eventNames ? ` · ${eventNames}` : ""}
-                            {option.customerMobileNo ? ` · ${option.customerMobileNo}` : ""}
-                          </Typography>
-                        </Box>
-                      </li>
-                    );
-                  }}
+renderOption={(props, option) => {
+                                    const events = option.events || option.Events || [];
+                                    const eventNames = events.length > 0
+                                      ? events.map((e) => `${e.eventTypeName || "Event"}${e.isMainEvent ? " ★" : ""}`).join(", ")
+                                      : option.eventTypeName || "";
+                                    return (
+                                      <li {...props} key={option.id}>
+                                        <Box>
+                                          <Typography variant="body2">{option.coupleNames}</Typography>
+                                          <Typography variant="caption" color="text.secondary">
+                                            {option.cardNo}
+                                            {eventNames ? ` · ${eventNames}` : ""}
+                                            {option.customerMobileNo ? ` · ${option.customerMobileNo}` : ""}
+                                          </Typography>
+                                        </Box>
+                                      </li>
+                                    );
+                                  }}
                   renderInput={(params) => (
                     <TextField {...params} fullWidth placeholder="Type or select from reservations" />
                   )}
@@ -899,47 +705,8 @@ export default function CreateQuotation() {
               </Grid>
               <Grid item xs={12} md={6}>
                 <Typography sx={labelSx}>Mobile / WhatsApp No</Typography>
-                <TextField fullWidth size="small" value={form.customerMobileNo} onChange={(e) => setField("customerMobileNo", e.target.value)} placeholder="07XXXXXXXX" disabled={detailsLocked} />
+                <TextField fullWidth size="small" value={form.customerMobileNo} onChange={(e) => setField("customerMobileNo", e.target.value)} placeholder="07XXXXXXXX" />
               </Grid>
-              {detailsLocked && (
-                <Grid item xs={12}>
-                  <Alert severity="info" sx={{ py: 0.5 }}>
-                    Reservation {selectedReservation.cardNo || selectedReservation.CardNo || ""} is linked.
-                    This quotation covers all {linkedEvents.length} event{linkedEvents.length === 1 ? "" : "s"}. Customer and event details are locked.
-                  </Alert>
-                  <Typography sx={{ ...labelSx, mt: 1.25 }}>
-                    Events included ({linkedEvents.length})
-                  </Typography>
-                  <Box sx={{ display: "grid", gap: 1, gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" } }}>
-                    {linkedEvents.map((ev) => {
-                      const dateLabel = ev.eventDate ? String(ev.eventDate).split("T")[0] : "";
-                      return (
-                        <Paper
-                          key={ev.eventType}
-                          variant="outlined"
-                          sx={{ p: 1.25, borderColor: ev.isMain ? "primary.main" : "divider" }}
-                        >
-                          <Box display="flex" alignItems="center" gap={0.75} flexWrap="wrap">
-                            <Typography variant="body2" fontWeight={700}>
-                              {ev.name}{ev.isMain ? " ★" : ""}
-                            </Typography>
-                            {ev.isMain && <Chip size="small" color="primary" label="Main" />}
-                          </Box>
-                          <Typography variant="caption" color="text.secondary" display="block">
-                            {[dateLabel, ev.eventTime, ev.eventSession].filter(Boolean).join(" · ")}
-                          </Typography>
-                          {ev.location && (
-                            <Typography variant="caption" color="text.secondary" display="block">
-                              {ev.location}
-                            </Typography>
-                          )}
-                        </Paper>
-                      );
-                    })}
-                  </Box>
-                </Grid>
-              )}
-              {!detailsLocked && (
               <Grid item xs={12} md={4}>
                 <Typography sx={labelSx}>Event Type</Typography>
                 <TextField
@@ -947,23 +714,29 @@ export default function CreateQuotation() {
                   fullWidth
                   size="small"
                   value={form.eventType}
-                  onChange={(e) => setField("eventType", e.target.value)}
+                  onChange={(e) => {
+                    const nextType = e.target.value;
+                    if (selectedReservation) {
+                      applyReservationEvent(selectedReservation, nextType);
+                    } else {
+                      setField("eventType", nextType);
+                    }
+                  }}
                 >
-                  {eventTypes.map((t) => (
-                    <MenuItem key={t.id} value={t.id}>
-                      {t.name}
-                    </MenuItem>
-                  ))}
+{(selectedReservation
+                                    ? reservationEvents(selectedReservation).filter((ev) => !ev.quoted || Number(ev.eventType) === Number(form.eventType))
+                                    : eventTypes.map((t) => ({ eventType: t.id, name: t.name, quoted: false, isMain: false }))
+                                  ).map((t) => (
+                                    <MenuItem key={t.eventType} value={t.eventType} disabled={t.quoted && Number(t.eventType) !== Number(form.eventType)}>
+                                      {t.name}{t.isMain ? " ★" : ""}{t.quoted ? " (quoted)" : ""}
+                                    </MenuItem>
+                                  ))}
                 </TextField>
               </Grid>
-              )}
-              {!detailsLocked && (
               <Grid item xs={12} md={4}>
                 <Typography sx={labelSx}>Event Date</Typography>
                 <TextField type="date" fullWidth size="small" InputLabelProps={{ shrink: true }} value={form.eventDate} onChange={(e) => setField("eventDate", e.target.value)} />
               </Grid>
-              )}
-              {!detailsLocked && (
               <Grid item xs={12} md={4}>
                 <Typography sx={labelSx}>Event Time</Typography>
                 <TextField
@@ -984,24 +757,21 @@ export default function CreateQuotation() {
                   ))}
                 </TextField>
               </Grid>
-              )}
-              {!detailsLocked && (
               <Grid item xs={12} md={6}>
                 <Typography sx={labelSx}>Venue</Typography>
                 <TextField fullWidth size="small" value={form.venue} onChange={(e) => setField("venue", e.target.value)} />
               </Grid>
-              )}
               <Grid item xs={6} md={3}>
                 <Typography sx={labelSx}>No. of Guests</Typography>
-                <TextField type="number" fullWidth size="small" value={form.noOfGuests} onChange={(e) => setField("noOfGuests", e.target.value)} disabled={detailsLocked} />
+                <TextField type="number" fullWidth size="small" value={form.noOfGuests} onChange={(e) => setField("noOfGuests", e.target.value)} />
               </Grid>
               <Grid item xs={6} md={3}>
                 <Typography sx={labelSx}>Makeup Artist</Typography>
-                <TextField fullWidth size="small" value={form.makeupArtist} onChange={(e) => setField("makeupArtist", e.target.value)} disabled={detailsLocked} />
+                <TextField fullWidth size="small" value={form.makeupArtist} onChange={(e) => setField("makeupArtist", e.target.value)} />
               </Grid>
               <Grid item xs={12} md={6}>
                 <Typography sx={labelSx}>Ceremony Type</Typography>
-                <TextField select fullWidth size="small" value={form.ceremonyType} onChange={(e) => setField("ceremonyType", e.target.value)} disabled={detailsLocked}>
+                <TextField select fullWidth size="small" value={form.ceremonyType} onChange={(e) => setField("ceremonyType", e.target.value)}>
                   {CEREMONY_TYPES.map((t) => (
                     <MenuItem key={String(t.value)} value={t.value}>{t.label}</MenuItem>
                   ))}
@@ -1010,7 +780,7 @@ export default function CreateQuotation() {
               {String(form.ceremonyType) === "3" && (
                 <Grid item xs={12} md={6}>
                   <Typography sx={labelSx}>Ceremony (Other)</Typography>
-                  <TextField fullWidth size="small" value={form.ceremonyTypeOther} onChange={(e) => setField("ceremonyTypeOther", e.target.value)} disabled={detailsLocked} />
+                  <TextField fullWidth size="small" value={form.ceremonyTypeOther} onChange={(e) => setField("ceremonyTypeOther", e.target.value)} />
                 </Grid>
               )}
             </Grid>
@@ -1021,400 +791,150 @@ export default function CreateQuotation() {
               <Typography variant="h6">Packages</Typography>
               <Button size="small" startIcon={<AddCircleOutlineIcon />} onClick={addLine}>Add Package</Button>
             </Box>
-
-            {lines.length === 0 ? (
-              <Typography color="error" sx={{ mt: 1 }}>No packages added</Typography>
-            ) : (
-              <>
-                {/* MOBILE: card layout (xs–sm). Each package line is a stacked card instead of a table row. */}
-                <Box sx={{ display: { xs: "block", md: "none" }, mt: 1 }}>
-                  {lines.map((l, idx) => {
+            <Table size="small" sx={{ mt: 1 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Package</TableCell>
+                  <TableCell>Variant</TableCell>
+                  <TableCell>Unit Price</TableCell>
+                  <TableCell>Qty</TableCell>
+                  <TableCell>Total</TableCell>
+                  <TableCell />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {lines.length === 0 ? (
+                  <TableRow><TableCell colSpan={6}><Typography color="error">No packages added</Typography></TableCell></TableRow>
+                ) : (
+                  lines.map((l, idx) => {
                     const pkg = packages.find((p) => p.id === l.packageId);
                     const variants = pkg?.variants || [];
-                    const categoryPackages = getPackageOptionsForLine(l);
                     const hasItems = l.items && l.items.length > 0;
                     const includedCount = hasItems ? l.items.filter((i) => i.isIncluded).length : 0;
                     return (
-                      <Paper key={idx} variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
-                        <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                          <Typography variant="subtitle2" color="text.secondary">Package {idx + 1}</Typography>
-                          <IconButton color="error" size="small" onClick={() => removeLine(idx)}>
-                            <DeleteOutlineIcon fontSize="small" />
-                          </IconButton>
-                        </Box>
-
-                        <TextField
-                          select
-                          fullWidth
-                          size="small"
-                          label="Package Category"
-                          value={l.categoryId || ""}
-                          onChange={(e) => handleCategoryChange(idx, e.target.value)}
-                          SelectProps={{ MenuProps: { PaperProps: { style: { maxHeight: 320 } } } }}
-                        >
-                          <MenuItem value="">Select category</MenuItem>
-                          {categoryOptions.map((c) => (
-                            <MenuItem key={c.id} value={c.id} sx={{ whiteSpace: "normal" }}>
-                              {c.name}
-                            </MenuItem>
-                          ))}
-                        </TextField>
-
-                        <TextField
-                          select
-                          fullWidth
-                          size="small"
-                          label="Package"
-                          sx={{ mt: 1.5 }}
-                          value={l.packageId || ""}
-                          disabled={!l.categoryId}
-                          onChange={(e) => handlePackageChange(idx, e.target.value)}
-                          SelectProps={{ MenuProps: { PaperProps: { style: { maxHeight: 320 } } } }}
-                        >
-                          <MenuItem value="">{l.categoryId ? "Select package" : "Select category first"}</MenuItem>
-                          {categoryPackages.map((p) => (
-                            <MenuItem key={p.id} value={p.id} sx={{ whiteSpace: "normal" }}>
-                              {p.name}
-                            </MenuItem>
-                          ))}
-                        </TextField>
-
-                        {hasItems && (
-                          <Box
-                            display="flex"
-                            justifyContent="space-between"
-                            alignItems="center"
-                            sx={{ mt: 1, cursor: "pointer" }}
-                            onClick={() => toggleLineExpanded(idx)}
-                          >
-                            <Chip
-                              size="small"
-                              label={`${includedCount}/${l.items.length} items`}
-                              color={includedCount === l.items.length ? "success" : "warning"}
-                              variant="outlined"
-                            />
-                            <IconButton size="small">
-                              {expandedLines[idx] ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-                            </IconButton>
-                          </Box>
-                        )}
-
-                        {variants.length > 0 && (
-                          <TextField
-                            select
-                            fullWidth
-                            size="small"
-                            label="Variant"
-                            sx={{ mt: 1.5 }}
-                            value={l.packageVariantId || ""}
-                            onChange={(e) => handleVariantChange(idx, e.target.value)}
-                          >
-                            <MenuItem value="">Base</MenuItem>
-                            {variants.map((v) => (
-                              <MenuItem key={v.id} value={v.id}>{v.variantName}</MenuItem>
-                            ))}
-                          </TextField>
-                        )}
-
-                        <Grid container spacing={1} sx={{ mt: 0.5 }}>
-                          <Grid item xs={6}>
-                            <Typography sx={{ ...labelSx, mb: "2px" }}>Unit Price</Typography>
-                            <TextField size="small" fullWidth value={l.unitPrice} onChange={(e) => updateLinePrice(idx, e.target.value)} />
-                          </Grid>
-                          <Grid item xs={6}>
-                            <Typography sx={{ ...labelSx, mb: "2px" }}>Qty</Typography>
-                            <TextField type="number" size="small" fullWidth value={l.qty} onChange={(e) => updateLineQty(idx, e.target.value)} inputProps={{ min: 1 }} />
-                          </Grid>
-                        </Grid>
-
-                        <Box
-                          display="flex"
-                          justifyContent="space-between"
-                          sx={{ mt: 1.5, pt: 1, borderTop: "1px solid", borderColor: "divider" }}
-                        >
-                          <Typography variant="body2" fontWeight={600}>Total</Typography>
-                          <Typography variant="body2" fontWeight={600}>
-                            {formatCurrency((Number(l.unitPrice) || 0) * (Number(l.qty) || 0))}
-                          </Typography>
-                        </Box>
-
-                        {l.packageId && (
-                          <Collapse in={expandedLines[idx]} timeout="auto" unmountOnExit>
-                            <Box sx={{ mt: 1.5, pt: 1.5, borderTop: "1px solid", borderColor: "divider" }}>
-                              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                                <Typography variant="subtitle2">Package Items</Typography>
-                                <Button size="small" startIcon={<AddCircleOutlineIcon />} onClick={() => addPackageItem(idx)}>
-                                  Add Item
-                                </Button>
-                              </Box>
-                              {l.items && l.items.length > 0 ? (
-                                <List dense disablePadding>
-                                  {l.items.map((item, itemIdx) => (
-                                    <ListItem
-                                      key={itemIdx}
-                                      dense
-                                      sx={{
-                                        bgcolor: "action.hover",
-                                        mb: 0.5,
-                                        borderRadius: 1,
-                                        opacity: item.isIncluded ? 1 : 0.5,
-                                        flexWrap: "wrap",
-                                      }}
-                                      secondaryAction={
-                                        <IconButton edge="end" size="small" color="error" onClick={() => removePackageItem(idx, itemIdx)}>
-                                          <DeleteOutlineIcon fontSize="small" />
-                                        </IconButton>
-                                      }
-                                    >
-                                      <ListItemIcon sx={{ minWidth: 36 }}>
-                                        <IconButton size="small" onClick={() => toggleItemIncluded(idx, itemIdx)}>
-                                          {item.isIncluded ? (
-                                            <CheckBoxIcon fontSize="small" color="success" />
-                                          ) : (
-                                            <CheckBoxOutlineBlankIcon fontSize="small" />
-                                          )}
-                                        </IconButton>
-                                      </ListItemIcon>
-                                      {item.isNew ? (
-                                        <TextField
-                                          size="small"
-                                          fullWidth
-                                          placeholder="Enter item description"
-                                          value={item.lineText}
-                                          onChange={(e) => updatePackageItemText(idx, itemIdx, e.target.value)}
-                                          sx={{ mr: 1 }}
-                                        />
-                                      ) : (
-                                        <ListItemText
-                                          primary={item.lineText}
-                                          sx={{ textDecoration: item.isIncluded ? "none" : "line-through", wordBreak: "break-word" }}
-                                        />
-                                      )}
-                                    </ListItem>
-                                  ))}
-                                </List>
-                              ) : (
-                                <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                                  No items in this package. Click "Add Item" to add custom items.
-                                </Typography>
-                              )}
-                            </Box>
-                          </Collapse>
-                        )}
-                      </Paper>
-                    );
-                  })}
-                </Box>
-
-                {/* DESKTOP: fixed-layout table (md+) */}
-                <Box sx={{ display: { xs: "none", md: "block" } }}>
-                  <Table size="small" sx={{ mt: 1, tableLayout: "fixed", width: "100%" }}>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ width: "18%" }}>Category</TableCell>
-                        <TableCell sx={{ width: "22%" }}>Package</TableCell>
-                        <TableCell sx={{ width: "14%" }}>Variant</TableCell>
-                        <TableCell sx={{ width: "14%" }}>Unit Price</TableCell>
-                        <TableCell sx={{ width: "10%" }}>Qty</TableCell>
-                        <TableCell sx={{ width: "14%" }}>Total</TableCell>
-                        <TableCell sx={{ width: "8%" }} />
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {lines.map((l, idx) => {
-                        const pkg = packages.find((p) => p.id === l.packageId);
-                        const variants = pkg?.variants || [];
-                        const categoryPackages = getPackageOptionsForLine(l);
-                        const hasItems = l.items && l.items.length > 0;
-                        const includedCount = hasItems ? l.items.filter((i) => i.isIncluded).length : 0;
-                        return (
-                          <React.Fragment key={idx}>
-                            <TableRow>
-                              <TableCell sx={{ overflow: "hidden" }}>
-                                <TextField
-                                  select
-                                  fullWidth
-                                  size="small"
-                                  value={l.categoryId || ""}
-                                  onChange={(e) => handleCategoryChange(idx, e.target.value)}
-                                  sx={{
-                                    minWidth: 0,
-                                    "& .MuiSelect-select": {
-                                      whiteSpace: "nowrap",
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      display: "block",
-                                    },
-                                  }}
-                                  SelectProps={{
-                                    MenuProps: { PaperProps: { style: { maxHeight: 320 } } },
-                                  }}
-                                >
-                                  <MenuItem value="">Select</MenuItem>
-                                  {categoryOptions.map((c) => (
-                                    <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
-                                  ))}
-                                </TextField>
-                              </TableCell>
-                              <TableCell sx={{ overflow: "hidden" }}>
-                                <Box display="flex" alignItems="center" gap={0.5}>
-                                  {l.packageId && (
-                                    <IconButton size="small" onClick={() => toggleLineExpanded(idx)}>
-                                      {expandedLines[idx] ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-                                    </IconButton>
-                                  )}
-                                  <TextField
-                                    select
-                                    fullWidth
-                                    size="small"
-                                    value={l.packageId || ""}
-                                    disabled={!l.categoryId}
-                                    onChange={(e) => handlePackageChange(idx, e.target.value)}
-                                    sx={{
-                                      minWidth: 0,
-                                      "& .MuiSelect-select": {
-                                        whiteSpace: "nowrap",
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        display: "block",
-                                      },
-                                    }}
-                                    SelectProps={{
-                                      MenuProps: { PaperProps: { style: { maxHeight: 320 } } },
-                                    }}
-                                  >
-                                    <MenuItem value="">{l.categoryId ? "Select" : "Select category first"}</MenuItem>
-                                    {categoryPackages.map((p) => (
-                                      <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
-                                    ))}
-                                  </TextField>
-                                </Box>
-                                {hasItems && (
-                                  <Chip
-                                    size="small"
-                                    label={`${includedCount}/${l.items.length} items`}
-                                    sx={{ mt: 0.5, ml: 4, maxWidth: "calc(100% - 32px)" }}
-                                    color={includedCount === l.items.length ? "success" : "warning"}
-                                    variant="outlined"
-                                  />
-                                )}
-                              </TableCell>
-                              <TableCell sx={{ overflow: "hidden" }}>
-                                {variants.length > 0 ? (
-                                  <TextField
-                                    select
-                                    fullWidth
-                                    size="small"
-                                    value={l.packageVariantId || ""}
-                                    onChange={(e) => handleVariantChange(idx, e.target.value)}
-                                    sx={{
-                                      minWidth: 0,
-                                      "& .MuiSelect-select": {
-                                        whiteSpace: "nowrap",
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        display: "block",
-                                      },
-                                    }}
-                                  >
-                                    <MenuItem value="">Base</MenuItem>
-                                    {variants.map((v) => (
-                                      <MenuItem key={v.id} value={v.id}>{v.variantName}</MenuItem>
-                                    ))}
-                                  </TextField>
-                                ) : (
-                                  <Typography variant="body2" color="text.secondary">-</Typography>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <TextField size="small" fullWidth value={l.unitPrice} onChange={(e) => updateLinePrice(idx, e.target.value)} />
-                              </TableCell>
-                              <TableCell>
-                                <TextField type="number" size="small" fullWidth value={l.qty} onChange={(e) => updateLineQty(idx, e.target.value)} inputProps={{ min: 1 }} />
-                              </TableCell>
-                              <TableCell sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {formatCurrency((Number(l.unitPrice) || 0) * (Number(l.qty) || 0))}
-                              </TableCell>
-                              <TableCell>
-                                <IconButton color="error" size="small" onClick={() => removeLine(idx)}>
-                                  <DeleteOutlineIcon fontSize="inherit" />
+                      <React.Fragment key={idx}>
+                        <TableRow>
+                          <TableCell sx={{ minWidth: 180 }}>
+                            <Box display="flex" alignItems="center" gap={0.5}>
+                              {l.packageId && (
+                                <IconButton size="small" onClick={() => toggleLineExpanded(idx)}>
+                                  {expandedLines[idx] ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
                                 </IconButton>
-                              </TableCell>
-                            </TableRow>
-                            {l.packageId && (
-                              <TableRow>
-                                <TableCell colSpan={7} sx={{ p: 0, border: expandedLines[idx] ? undefined : "none" }}>
-                                  <Collapse in={expandedLines[idx]} timeout="auto" unmountOnExit>
-                                    <Box sx={{ py: 1, px: 2, bgcolor: "action.hover" }}>
-                                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                                        <Typography variant="subtitle2">Package Items</Typography>
-                                        <Button size="small" startIcon={<AddCircleOutlineIcon />} onClick={() => addPackageItem(idx)}>
-                                          Add Item
-                                        </Button>
-                                      </Box>
-                                      {l.items && l.items.length > 0 ? (
-                                        <List dense disablePadding>
-                                          {l.items.map((item, itemIdx) => (
-                                            <ListItem
-                                              key={itemIdx}
-                                              dense
-                                              sx={{
-                                                bgcolor: "background.paper",
-                                                mb: 0.5,
-                                                borderRadius: 1,
-                                                opacity: item.isIncluded ? 1 : 0.5,
-                                              }}
-                                              secondaryAction={
-                                                <IconButton edge="end" size="small" color="error" onClick={() => removePackageItem(idx, itemIdx)}>
-                                                  <DeleteOutlineIcon fontSize="small" />
-                                                </IconButton>
-                                              }
-                                            >
-                                              <ListItemIcon sx={{ minWidth: 36 }}>
-                                                <IconButton size="small" onClick={() => toggleItemIncluded(idx, itemIdx)}>
-                                                  {item.isIncluded ? (
-                                                    <CheckBoxIcon fontSize="small" color="success" />
-                                                  ) : (
-                                                    <CheckBoxOutlineBlankIcon fontSize="small" />
-                                                  )}
-                                                </IconButton>
-                                              </ListItemIcon>
-                                              {item.isNew ? (
-                                                <TextField
-                                                  size="small"
-                                                  fullWidth
-                                                  placeholder="Enter item description"
-                                                  value={item.lineText}
-                                                  onChange={(e) => updatePackageItemText(idx, itemIdx, e.target.value)}
-                                                  sx={{ mr: 1 }}
-                                                />
-                                              ) : (
-                                                <ListItemText
-                                                  primary={item.lineText}
-                                                  sx={{ textDecoration: item.isIncluded ? "none" : "line-through" }}
-                                                />
-                                              )}
-                                            </ListItem>
-                                          ))}
-                                        </List>
-                                      ) : (
-                                        <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                                          No items in this package. Click "Add Item" to add custom items.
-                                        </Typography>
-                                      )}
-                                    </Box>
-                                  </Collapse>
-                                </TableCell>
-                              </TableRow>
+                              )}
+                              <TextField select fullWidth size="small" value={l.packageId || ""} onChange={(e) => handlePackageChange(idx, e.target.value)}>
+                                <MenuItem value="">Select</MenuItem>
+                                {packages.map((p) => (
+                                  <MenuItem key={p.id} value={p.id}>{p.categoryName} - {p.name}</MenuItem>
+                                ))}
+                              </TextField>
+                            </Box>
+                            {hasItems && (
+                              <Chip
+                                size="small"
+                                label={`${includedCount}/${l.items.length} items`}
+                                sx={{ mt: 0.5, ml: 4 }}
+                                color={includedCount === l.items.length ? "success" : "warning"}
+                                variant="outlined"
+                              />
                             )}
-                          </React.Fragment>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </Box>
-              </>
-            )}
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 140 }}>
+                            {variants.length > 0 ? (
+                              <TextField select fullWidth size="small" value={l.packageVariantId || ""} onChange={(e) => handleVariantChange(idx, e.target.value)}>
+                                <MenuItem value="">Base</MenuItem>
+                                {variants.map((v) => (
+                                  <MenuItem key={v.id} value={v.id}>{v.variantName}</MenuItem>
+                                ))}
+                              </TextField>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">-</Typography>
+                            )}
+                          </TableCell>
+                          <TableCell sx={{ width: 120 }}>
+                            <TextField size="small" value={l.unitPrice} onChange={(e) => updateLinePrice(idx, e.target.value)} />
+                          </TableCell>
+                          <TableCell sx={{ width: 80 }}>
+                            <TextField type="number" size="small" value={l.qty} onChange={(e) => updateLineQty(idx, e.target.value)} inputProps={{ min: 1 }} />
+                          </TableCell>
+                          <TableCell>{formatCurrency((Number(l.unitPrice) || 0) * (Number(l.qty) || 0))}</TableCell>
+                          <TableCell>
+                            <IconButton color="error" size="small" onClick={() => removeLine(idx)}>
+                              <DeleteOutlineIcon fontSize="inherit" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                        {l.packageId && (
+                          <TableRow>
+                            <TableCell colSpan={6} sx={{ p: 0, border: expandedLines[idx] ? undefined : "none" }}>
+                              <Collapse in={expandedLines[idx]} timeout="auto" unmountOnExit>
+                                <Box sx={{ py: 1, px: 2, bgcolor: "action.hover" }}>
+                                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                                    <Typography variant="subtitle2">Package Items</Typography>
+                                    <Button size="small" startIcon={<AddCircleOutlineIcon />} onClick={() => addPackageItem(idx)}>
+                                      Add Item
+                                    </Button>
+                                  </Box>
+                                  {l.items && l.items.length > 0 ? (
+                                    <List dense disablePadding>
+                                      {l.items.map((item, itemIdx) => (
+                                        <ListItem
+                                          key={itemIdx}
+                                          dense
+                                          sx={{
+                                            bgcolor: "background.paper",
+                                            mb: 0.5,
+                                            borderRadius: 1,
+                                            opacity: item.isIncluded ? 1 : 0.5,
+                                          }}
+                                          secondaryAction={
+                                            <IconButton edge="end" size="small" color="error" onClick={() => removePackageItem(idx, itemIdx)}>
+                                              <DeleteOutlineIcon fontSize="small" />
+                                            </IconButton>
+                                          }
+                                        >
+                                          <ListItemIcon sx={{ minWidth: 36 }}>
+                                            <IconButton size="small" onClick={() => toggleItemIncluded(idx, itemIdx)}>
+                                              {item.isIncluded ? (
+                                                <CheckBoxIcon fontSize="small" color="success" />
+                                              ) : (
+                                                <CheckBoxOutlineBlankIcon fontSize="small" />
+                                              )}
+                                            </IconButton>
+                                          </ListItemIcon>
+                                          {item.isNew ? (
+                                            <TextField
+                                              size="small"
+                                              fullWidth
+                                              placeholder="Enter item description"
+                                              value={item.lineText}
+                                              onChange={(e) => updatePackageItemText(idx, itemIdx, e.target.value)}
+                                              sx={{ mr: 1 }}
+                                            />
+                                          ) : (
+                                            <ListItemText
+                                              primary={item.lineText}
+                                              sx={{ textDecoration: item.isIncluded ? "none" : "line-through" }}
+                                            />
+                                          )}
+                                        </ListItem>
+                                      ))}
+                                    </List>
+                                  ) : (
+                                    <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                                      No items in this package. Click "Add Item" to add custom items.
+                                    </Typography>
+                                  )}
+                                </Box>
+                              </Collapse>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
 
             <Divider sx={{ my: 2 }} />
 
@@ -1422,117 +942,47 @@ export default function CreateQuotation() {
               <Typography variant="h6">Add-ons</Typography>
               <Button size="small" startIcon={<AddCircleOutlineIcon />} onClick={addAddOn}>Add Add-on</Button>
             </Box>
-
-            {addOns.length === 0 ? (
-              <Typography color="text.secondary" sx={{ mt: 1 }}>No add-ons</Typography>
-            ) : (
-              <>
-                {/* MOBILE: card layout (xs–sm) */}
-                <Box sx={{ display: { xs: "block", md: "none" }, mt: 1 }}>
-                  {addOns.map((a, idx) => (
-                    <Paper key={idx} variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
-                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                        <Typography variant="subtitle2" color="text.secondary">Add-on {idx + 1}</Typography>
+            <Table size="small" sx={{ mt: 1 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Add-on</TableCell>
+                  <TableCell>Price</TableCell>
+                  <TableCell>Qty</TableCell>
+                  <TableCell>Total</TableCell>
+                  <TableCell />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {addOns.length === 0 ? (
+                  <TableRow><TableCell colSpan={5}><Typography color="text.secondary">No add-ons</Typography></TableCell></TableRow>
+                ) : (
+                  addOns.map((a, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell sx={{ minWidth: 200 }}>
+                        <TextField select fullWidth size="small" value={a.addOnId || ""} onChange={(e) => handleAddOnChange(idx, e.target.value)}>
+                          <MenuItem value="">Select</MenuItem>
+                          {addOnsMaster.map((x) => (
+                            <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>
+                          ))}
+                        </TextField>
+                      </TableCell>
+                      <TableCell sx={{ width: 120 }}>
+                        <TextField size="small" value={a.price} onChange={(e) => updateAddOnPrice(idx, e.target.value)} />
+                      </TableCell>
+                      <TableCell sx={{ width: 80 }}>
+                        <TextField type="number" size="small" value={a.qty} onChange={(e) => updateAddOnQty(idx, e.target.value)} inputProps={{ min: 1 }} />
+                      </TableCell>
+                      <TableCell>{formatCurrency((Number(a.price) || 0) * (Number(a.qty) || 0))}</TableCell>
+                      <TableCell>
                         <IconButton color="error" size="small" onClick={() => removeAddOn(idx)}>
-                          <DeleteOutlineIcon fontSize="small" />
+                          <DeleteOutlineIcon fontSize="inherit" />
                         </IconButton>
-                      </Box>
-                      <TextField
-                        select
-                        fullWidth
-                        size="small"
-                        label="Add-on"
-                        value={a.addOnId || ""}
-                        onChange={(e) => handleAddOnChange(idx, e.target.value)}
-                      >
-                        <MenuItem value="">Select</MenuItem>
-                        {addOnsMaster.map((x) => (
-                          <MenuItem key={x.id} value={x.id} sx={{ whiteSpace: "normal" }}>{x.name}</MenuItem>
-                        ))}
-                      </TextField>
-                      <Grid container spacing={1} sx={{ mt: 0.5 }}>
-                        <Grid item xs={6}>
-                          <Typography sx={{ ...labelSx, mb: "2px" }}>Price</Typography>
-                          <TextField size="small" fullWidth value={a.price} onChange={(e) => updateAddOnPrice(idx, e.target.value)} />
-                        </Grid>
-                        <Grid item xs={6}>
-                          <Typography sx={{ ...labelSx, mb: "2px" }}>Qty</Typography>
-                          <TextField type="number" size="small" fullWidth value={a.qty} onChange={(e) => updateAddOnQty(idx, e.target.value)} inputProps={{ min: 1 }} />
-                        </Grid>
-                      </Grid>
-                      <Box
-                        display="flex"
-                        justifyContent="space-between"
-                        sx={{ mt: 1.5, pt: 1, borderTop: "1px solid", borderColor: "divider" }}
-                      >
-                        <Typography variant="body2" fontWeight={600}>Total</Typography>
-                        <Typography variant="body2" fontWeight={600}>
-                          {formatCurrency((Number(a.price) || 0) * (Number(a.qty) || 0))}
-                        </Typography>
-                      </Box>
-                    </Paper>
-                  ))}
-                </Box>
-
-                {/* DESKTOP: fixed-layout table (md+) */}
-                <Box sx={{ display: { xs: "none", md: "block" } }}>
-                  <Table size="small" sx={{ mt: 1, tableLayout: "fixed", width: "100%" }}>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ width: "40%" }}>Add-on</TableCell>
-                        <TableCell sx={{ width: "18%" }}>Price</TableCell>
-                        <TableCell sx={{ width: "14%" }}>Qty</TableCell>
-                        <TableCell sx={{ width: "18%" }}>Total</TableCell>
-                        <TableCell sx={{ width: "10%" }} />
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {addOns.map((a, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell sx={{ overflow: "hidden" }}>
-                            <TextField
-                              select
-                              fullWidth
-                              size="small"
-                              value={a.addOnId || ""}
-                              onChange={(e) => handleAddOnChange(idx, e.target.value)}
-                              sx={{
-                                minWidth: 0,
-                                "& .MuiSelect-select": {
-                                  whiteSpace: "nowrap",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  display: "block",
-                                },
-                              }}
-                            >
-                              <MenuItem value="">Select</MenuItem>
-                              {addOnsMaster.map((x) => (
-                                <MenuItem key={x.id} value={x.id}>{x.name}</MenuItem>
-                              ))}
-                            </TextField>
-                          </TableCell>
-                          <TableCell>
-                            <TextField size="small" fullWidth value={a.price} onChange={(e) => updateAddOnPrice(idx, e.target.value)} />
-                          </TableCell>
-                          <TableCell>
-                            <TextField type="number" size="small" fullWidth value={a.qty} onChange={(e) => updateAddOnQty(idx, e.target.value)} inputProps={{ min: 1 }} />
-                          </TableCell>
-                          <TableCell sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {formatCurrency((Number(a.price) || 0) * (Number(a.qty) || 0))}
-                          </TableCell>
-                          <TableCell>
-                            <IconButton color="error" size="small" onClick={() => removeAddOn(idx)}>
-                              <DeleteOutlineIcon fontSize="inherit" />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </Box>
-              </>
-            )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
           </Paper>
         </Grid>
 
@@ -1573,11 +1023,49 @@ export default function CreateQuotation() {
             <Typography sx={{ ...labelSx, mt: 1.5 }}>Internal Remark</Typography>
             <TextField fullWidth size="small" multiline minRows={2} value={form.remark} onChange={(e) => setField("remark", e.target.value)} />
 
+            {/* Approval buttons - only visible to users with approve1 permission when status is PendingApproval */}
+            {(approve1 || remove) && savedId && quotationStatus === "PendingApproval" && (
+              <>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  This quotation is pending your approval.
+                </Alert>
+                <Box display="flex" gap={1} mb={2}>
+                  {approve1 ? (
+                    <Button
+                      variant="contained"
+                      color="success"
+                      fullWidth
+                      startIcon={<CheckCircleOutlineIcon />}
+                      onClick={handleApprove}
+                    >
+                      Approve
+                    </Button>
+                  ) : (
+                    ""
+                  )}
+                  {remove ? (
+                    <Button
+                      variant="contained"
+                      color="error"
+                      fullWidth
+                      startIcon={<CancelOutlinedIcon />}
+                      onClick={() => setRejectDialogOpen(true)}
+                    >
+                      Reject
+                    </Button>
+                  ) : (
+                    ""
+                  )}
+                </Box>
+                <Divider sx={{ mb: 2 }} />
+              </>
+            )}
+
             <Box display="flex" flexDirection="column" gap={1} mt={2}>
               <Button variant="contained" onClick={() => save(false)}>
                 {savedId ? "Update Quotation" : "Save as Draft"}
               </Button>
-              {!isFinalQuotationStatus(quotationStatus) && (
+              {quotationStatus !== "PendingApproval" && (
                 <Button variant="contained" color="success" onClick={() => save(true)}>
                   Save & Submit for Approval
                 </Button>
@@ -1647,12 +1135,7 @@ export default function CreateQuotation() {
               <Box sx={{ mb: 2, p: 1.5, bgcolor: "action.hover", borderRadius: 1 }}>
                 <Typography variant="body2"><strong>Name:</strong> {previewData.quotation?.customerName}</Typography>
                 <Typography variant="body2"><strong>Mobile:</strong> {previewData.quotation?.customerMobileNo}</Typography>
-                <Typography variant="body2">
-                  <strong>Events:</strong>{" "}
-                  {linkedEvents.length > 0
-                    ? linkedEvents.map((ev) => ev.name).join(", ")
-                    : `${previewData.quotation?.eventTypeName || ""} on ${previewData.quotation?.eventDate?.split("T")[0] || ""}`}
-                </Typography>
+                <Typography variant="body2"><strong>Event:</strong> {previewData.quotation?.eventTypeName} on {previewData.quotation?.eventDate?.split("T")[0]}</Typography>
               </Box>
 
               <Typography variant="subtitle2" color="primary" gutterBottom>
