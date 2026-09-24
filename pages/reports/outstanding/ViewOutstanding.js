@@ -25,7 +25,7 @@ import ReceiptIcon from '@mui/icons-material/Receipt';
 import LocalPrintshopIcon from "@mui/icons-material/LocalPrintshop";
 import GridOnIcon from "@mui/icons-material/GridOn";
 import { toast } from "react-toastify";
-import { exportCustomerOutstandingDetail } from "./exportCustomerOutstandingExcel";
+import { exportCustomerOutstandingDetail } from "@/components/reports/exportCustomerOutstandingExcel";
 
 const style = {
     position: "absolute",
