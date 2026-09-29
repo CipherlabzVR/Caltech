@@ -27,7 +27,7 @@ import { Catelogue } from "Base/catelogue";
 import {
   exportCustomerOutstandingDetail,
   fetchCustomerOutstandingLines,
-} from "@/components/reports/exportCustomerOutstandingExcel";
+} from "./exportCustomerOutstandingExcel";
 
 export default function Outstanding() {
   const cId = sessionStorage.getItem("category");
