@@ -7,4 +7,15 @@
  const BASE_URL = "https://caltechbackend.cbassai.com/api";    // HTTPS (dotnet run or VS with https profile)
 // const BASE_URL = "https://localhost:44352/api"; // IIS Express (VS with IIS Express profile)
 
+export function getFrontendOrigin() {
+  if (typeof window === "undefined") return "";
+  return window.location?.origin || "";
+}
+
+export function withFrontendOrigin(headers = {}) {
+  const origin = getFrontendOrigin();
+  if (!origin) return headers;
+  return { ...headers, "X-Frontend-Origin": origin };
+}
+
 export default BASE_URL;
