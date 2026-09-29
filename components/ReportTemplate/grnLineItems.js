@@ -167,7 +167,19 @@ export const GRN_LINE_FIELD_GROUPS = [
       { token: "unitPrice", label: "Unit Price", header: "Unit Price", numeric: true },
       { token: "costPrice", label: "Cost Price", header: "Cost Price", numeric: true },
       { token: "freightDuty", label: "Freight Duty", header: "Freight Duty", numeric: true },
-      { token: "additionalCost", label: "Additional Cost", header: "Add. Cost", numeric: true },
+      {
+        token: "overseasCost",
+        label: "Overseas Transport",
+        header: "Overseas Transport",
+        numeric: true,
+      },
+      {
+        token: "localTransportCost",
+        label: "Local Transport",
+        header: "Local Transport",
+        numeric: true,
+      },
+      { token: "additionalCost", label: "Additional Cost (legacy)", header: "Add. Cost", numeric: true },
       { token: "discountRate", label: "Discount %", header: "Dis%", numeric: true },
       { token: "discountAmount", label: "Discount Amount", header: "Discount", numeric: true },
       { token: "sellingPrice", label: "Selling", header: "Selling", numeric: true },
@@ -206,17 +218,79 @@ export const GRN_LINE_TOKEN_NAMES = GRN_LINE_FIELDS.map((field) => field.token);
 const escapeRegExp = (value) =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Tokens currently used inside {{#lineItems}}...{{/lineItems}}. */
+const getLineItemsLoopMatch = (html) =>
+  html.match(/\{\{#\s*lineItems\s*\}\}([\s\S]*?)\{\{\/\s*lineItems\s*\}\}/i);
+
+/** Tokens currently used inside {{#lineItems}}...{{/lineItems}} only. */
 export const getUsedGrnLineTokens = (html) => {
   const used = new Set();
   if (!html) return used;
-  const loop = html.match(/\{\{#\s*lineItems\s*\}\}([\s\S]*?)\{\{\/\s*lineItems\s*\}\}/i);
-  const scope = loop?.[1] || html;
+  const loop = getLineItemsLoopMatch(html);
+  const scope = loop?.[1];
+  if (!scope) return used;
   GRN_LINE_TOKEN_NAMES.forEach((token) => {
     const pattern = new RegExp(`\\{\\{\\s*${escapeRegExp(token)}\\s*\\}\\}`, "i");
     if (pattern.test(scope)) used.add(token);
   });
   return used;
+};
+
+const tokenUsedInLineItemsLoop = (html, token) => {
+  const loop = getLineItemsLoopMatch(html);
+  if (!loop?.[1]) return false;
+  return new RegExp(`\\{\\{\\s*${escapeRegExp(token)}\\s*\\}\\}`, "i").test(
+    loop[1]
+  );
+};
+
+const removeThByHeader = (html, header) =>
+  html.replace(
+    new RegExp(
+      `(<thead[\\s\\S]*?)\\s*<th[^>]*>\\s*${escapeRegExp(header)}\\s*<\\/th>`,
+      "i"
+    ),
+    "$1"
+  );
+
+const removeTdFromLineItemsLoop = (html, token, field) => {
+  const loop = getLineItemsLoopMatch(html);
+  if (!loop?.[1]) return html;
+  if (!tokenUsedInLineItemsLoop(html, token)) return html;
+
+  let rowTemplate = loop[1];
+  const simpleTd = new RegExp(
+    `\\s*<td(?:\\s+class=["']num["'])?>\\s*\\{\\{\\s*${escapeRegExp(
+      token
+    )}\\s*\\}\\}\\s*<\\/td>`,
+    "i"
+  );
+  rowTemplate = rowTemplate.replace(simpleTd, "");
+
+  if (field.cellHtml) {
+    rowTemplate = rowTemplate.replace(
+      new RegExp(
+        `\\s*<td(?:\\s+class=["']num["'])?>\\s*${escapeRegExp(
+          field.cellHtml
+        )}\\s*<\\/td>`,
+        "i"
+      ),
+      ""
+    );
+  }
+
+  if (new RegExp(`\\{\\{\\s*${escapeRegExp(token)}\\s*\\}\\}`, "i").test(rowTemplate)) {
+    rowTemplate = rowTemplate.replace(
+      new RegExp(
+        `\\s*<td(?:\\s+[^>]*)?>[\\s\\S]*?\\{\\{\\s*${escapeRegExp(
+          token
+        )}\\s*\\}\\}[\\s\\S]*?<\\/td>`,
+        "i"
+      ),
+      ""
+    );
+  }
+
+  return html.replace(loop[0], `{{#lineItems}}${rowTemplate}{{/lineItems}}`);
 };
 
 const buildHeaderCell = (field) =>
@@ -272,49 +346,124 @@ export const removeGrnLineColumn = (html, token) => {
   if (!field) return html;
   if (!getUsedGrnLineTokens(html).has(token)) return html;
 
-  let output = html;
-  output = output.replace(
-    new RegExp(
-      `\\s*<th[^>]*>\\s*${escapeRegExp(field.header)}\\s*<\\/th>`,
-      "i"
-    ),
-    ""
-  );
+  let output = removeThByHeader(html, field.header);
+  output = removeTdFromLineItemsLoop(output, token, field);
+  return output;
+};
 
-  if (field.cellHtml) {
-    output = output.replace(
-      new RegExp(
-        `\\s*<td(?:\\s+class=["']num["'])?>\\s*${escapeRegExp(
-          field.cellHtml
-        )}\\s*<\\/td>`,
-        "i"
-      ),
-      ""
-    );
+const GRN_COST_COLUMN_TOKENS = new Set([
+  "overseasCost",
+  "freightDuty",
+  "localTransportCost",
+  "additionalCost",
+]);
+
+const COST_BLOCK_ANCHOR_BEFORE = [
+  "discountRate",
+  "discountAmount",
+  "sellingPrice",
+  "maximumSellingPrice",
+  "lineTotal",
+  "profit",
+  "profitMargin",
+  "averageCostPrice",
+];
+
+const splitTableCells = (rowHtml, tag) => {
+  const re = new RegExp(`<${tag}[^>]*>[\\s\\S]*?<\\/${tag}>`, "gi");
+  return rowHtml.match(re) || [];
+};
+
+const detectCellToken = (cellHtml) => {
+  if (!cellHtml) return null;
+  for (const field of GRN_LINE_FIELDS) {
+    if (field.cellHtml) {
+      const needle = field.cellHtml.replace(/\s+/g, " ").trim();
+      const hay = cellHtml.replace(/\s+/g, " ").trim();
+      if (hay.includes(needle)) return field.token;
+    }
+  }
+  for (const token of GRN_LINE_TOKEN_NAMES) {
+    const pattern = new RegExp(`\\{\\{\\s*${escapeRegExp(token)}\\s*\\}\\}`, "i");
+    if (pattern.test(cellHtml)) return token;
+  }
+  return null;
+};
+
+/**
+ * Place visible cost columns adjacent (in profile order) before Dis% / Selling / Line Total.
+ */
+export const reorderGrnCostColumns = (html, orderedCostTokens = []) => {
+  if (!html || !orderedCostTokens.length) return html;
+  const loop = getLineItemsLoopMatch(html);
+  if (!loop?.[1]) return html;
+
+  const theadMatch = html.match(/<thead[\s\S]*?<tr[^>]*>([\s\S]*?)<\/tr>[\s\S]*?<\/thead>/i);
+  if (!theadMatch) return html;
+
+  const thCells = splitTableCells(theadMatch[1], "th");
+  const trMatch = loop[1].match(/<tr[^>]*>([\s\S]*?)<\/tr>/i);
+  if (!trMatch) return html;
+  const tdCells = splitTableCells(trMatch[1], "td");
+  if (thCells.length !== tdCells.length || thCells.length === 0) return html;
+
+  const columns = thCells.map((th, index) => ({
+    th,
+    td: tdCells[index],
+    token: detectCellToken(tdCells[index]),
+  }));
+
+  const costByToken = new Map();
+  const nonCost = [];
+  columns.forEach((col) => {
+    if (col.token && GRN_COST_COLUMN_TOKENS.has(col.token)) {
+      costByToken.set(col.token, col);
+    } else {
+      nonCost.push(col);
+    }
+  });
+
+  const orderedCostCols = orderedCostTokens
+    .map((token) => costByToken.get(token))
+    .filter(Boolean);
+  if (!orderedCostCols.length) return html;
+
+  let insertAt = nonCost.findIndex((col) =>
+    col.token ? COST_BLOCK_ANCHOR_BEFORE.includes(col.token) : false
+  );
+  if (insertAt < 0) {
+    const afterUnit = nonCost.findIndex((col) => col.token === "unitPrice");
+    insertAt = afterUnit >= 0 ? afterUnit + 1 : nonCost.length;
   }
 
-  output = output.replace(
-    new RegExp(
-      `\\s*<td(?:\\s+class=["']num["'])?>\\s*\\{\\{\\s*${escapeRegExp(
-        token
-      )}\\s*\\}\\}\\s*<\\/td>`,
-      "i"
-    ),
-    ""
+  const nextColumns = [
+    ...nonCost.slice(0, insertAt),
+    ...orderedCostCols,
+    ...nonCost.slice(insertAt),
+  ];
+
+  const newThRow = nextColumns.map((col) => col.th).join("\n          ");
+  const newTdRow = nextColumns.map((col) => col.td).join("\n          ");
+
+  let output = html.replace(
+    /(<thead[\s\S]*?<tr[^>]*>)([\s\S]*?)(<\/tr>[\s\S]*?<\/thead>)/i,
+    `$1\n          ${newThRow}\n        $3`
   );
 
-  // Custom cell markup that still contains this token.
-  if (getUsedGrnLineTokens(output).has(token)) {
-    output = output.replace(
-      new RegExp(
-        `\\s*<td(?:\\s+[^>]*)?>[\\s\\S]*?\\{\\{\\s*${escapeRegExp(
-          token
-        )}\\s*\\}\\}[\\s\\S]*?<\\/td>`,
-        "i"
-      ),
-      ""
-    );
-  }
+  const newLoopInner = loop[1].replace(
+    /(<tr[^>]*>)([\s\S]*?)(<\/tr>)/i,
+    `$1\n          ${newTdRow}\n        $3`
+  );
+
+  output = output.replace(
+    /\{\{#\s*lineItems\s*\}\}[\s\S]*?\{\{\/\s*lineItems\s*\}\}/i,
+    (block) => {
+      const open = block.match(/^\{\{#\s*lineItems\s*\}\}/i)?.[0] ?? "{{#lineItems}}";
+      const close =
+        block.match(/\{\{\/\s*lineItems\s*\}\}$/i)?.[0] ?? "{{/lineItems}}";
+      return `${open}${newLoopInner}${close}`;
+    }
+  );
 
   return output;
 };

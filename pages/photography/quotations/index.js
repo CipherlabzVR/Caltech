@@ -40,7 +40,7 @@ import QuotationReject from "./QuotationReject";
 import QuotationApprove from "./QuotationApprove";
 import QuotationVersions from "./QuotationVersions";
 
-const CATEGORY_ID = 304;
+const CATEGORY_ID = 341;
 
 // Draft=1, Sent=2, Accepted=3, Rejected=4, Converted=5, PendingApproval=6, Approved=7
 const FILTER_BY_TAB = [
@@ -49,19 +49,22 @@ const FILTER_BY_TAB = [
   "Status:4",
 ];
 
+const normalizedStatus = (status) => String(status || "").replace(/[\s_-]/g, "").toLowerCase();
+const isStatus = (status, expected) => normalizedStatus(status) === normalizedStatus(expected);
+
 const statusBadge = (status) => {
-  switch (status) {
-    case "Sent":
+  switch (normalizedStatus(status)) {
+    case "sent":
       return <span className="successBadge">Sent</span>;
-    case "Accepted":
+    case "accepted":
       return <span className="successBadge">Accepted</span>;
-    case "Converted":
+    case "converted":
       return <span className="successBadge">Converted</span>;
-    case "Approved":
+    case "approved":
       return <span className="successBadge">Approved</span>;
-    case "PendingApproval":
+    case "pendingapproval":
       return <span className="warningBadge">Pending Approval</span>;
-    case "Rejected":
+    case "rejected":
       return <span className="dangerBadge">Rejected</span>;
     default:
       return <span className="warningBadge">Draft</span>;
@@ -70,11 +73,7 @@ const statusBadge = (status) => {
 
 export default function PhotographyQuotationList() {
   const router = useRouter();
-  const sessionCategory = typeof window !== "undefined" ? sessionStorage.getItem("category") : null;
-  const cId = sessionCategory ? parseInt(sessionCategory, 10) : CATEGORY_ID;
-  const { navigate, create, update, remove, approve1 } = IsPermissionEnabled(
-    Number.isFinite(cId) ? cId : CATEGORY_ID
-  );
+  const { navigate, create, update, remove, print, approve1, approve2 } = IsPermissionEnabled(CATEGORY_ID);
 
   const [tabIndex, setTabIndex] = useState(0);
 
@@ -242,8 +241,15 @@ export default function PhotographyQuotationList() {
                       {showActionColumn ? (
                         <TableCell align="right">
                           <Box display="flex" gap={0.75} justifyContent="end" alignItems="center" flexWrap="wrap">
-                            <QuotationVersions quotation={item} />
-                            {tabIndex === 0 && update && !["Approved", "Sent", "Converted"].includes(item.statusName) ? (
+                            <QuotationVersions
+                              quotation={item}
+                              canPrint={
+                                tabIndex === 1 &&
+                                print &&
+                                isStatus(item.statusName, "Approved")
+                              }
+                            />
+                            {tabIndex === 0 && update && !["Approved", "Sent", "Converted"].some((status) => isStatus(item.statusName, status)) ? (
                               <Tooltip title="Edit" placement="top">
                                 <IconButton size="small" onClick={() => router.push(`/photography/quotations/create-quotation?id=${item.id}`)}>
                                   <BorderColorIcon color="primary" fontSize="inherit" />
@@ -252,7 +258,7 @@ export default function PhotographyQuotationList() {
                             ) : (
                               ""
                             )}
-                            {tabIndex === 0 && update && (item.statusName === "Draft" || item.statusName === "Rejected") ? (
+                            {tabIndex === 0 && update && (isStatus(item.statusName, "Draft") || isStatus(item.statusName, "Rejected")) ? (
                               <Tooltip title="Submit for Approval" placement="top">
                                 <IconButton size="small" onClick={() => submitForApproval(item.id)}>
                                   <SendIcon color="primary" fontSize="inherit" />
@@ -261,17 +267,17 @@ export default function PhotographyQuotationList() {
                             ) : (
                               ""
                             )}
-                            {tabIndex === 0 && approve1 && item.statusName === "PendingApproval" ? (
-                              <QuotationApprove item={item} fetchItems={refresh} />
+                            {tabIndex === 0 && approve1 && isStatus(item.statusName, "PendingApproval") ? (
+                              <QuotationApprove item={item} fetchItems={refresh} canApprove={approve1} />
                             ) : (
                               ""
                             )}
-                            {tabIndex === 0 && remove && item.statusName === "PendingApproval" ? (
+                            {tabIndex === 0 && remove && isStatus(item.statusName, "PendingApproval") ? (
                               <QuotationReject id={item.id} fetchItems={refresh} />
                             ) : (
                               ""
                             )}
-                            {tabIndex === 1 && (item.statusName === "Approved" || item.statusName === "Sent") ? (
+                            {tabIndex === 1 && (isStatus(item.statusName, "Approved") || isStatus(item.statusName, "Sent")) ? (
                               <Tooltip title="Send WhatsApp" placement="top">
                                 <IconButton size="small" onClick={() => sendWhatsApp(item.id)}>
                                   <WhatsAppIcon color="success" fontSize="inherit" />
@@ -280,8 +286,8 @@ export default function PhotographyQuotationList() {
                             ) : (
                               ""
                             )}
-                            {tabIndex === 1 && create && (item.statusName === "Approved" || item.statusName === "Sent" || item.statusName === "Accepted") ? (
-                              <RecordPayment quotation={item} fetchItems={refresh} />
+                            {tabIndex === 1 && approve2 && (isStatus(item.statusName, "Approved") || isStatus(item.statusName, "Sent") || isStatus(item.statusName, "Accepted")) ? (
+                              <RecordPayment quotation={item} fetchItems={refresh} canRecordPayment={approve2} />
                             ) : (
                               ""
                             )}

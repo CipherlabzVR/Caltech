@@ -173,7 +173,9 @@ export default function TechnicianWorkTrackList() {
     }
     
     // For admin: use selectedTechnician, for technician: use currentUserId
-    const technicianId = isAdmin && selectedTechnician ? selectedTechnician.id : currentUserId;
+    const technicianId = isAdmin && selectedTechnician
+      ? (selectedTechnician.id ?? selectedTechnician.Id)
+      : currentUserId;
     
     if (!technicianId) {
       setLoading(false);

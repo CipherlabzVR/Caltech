@@ -39,6 +39,10 @@ import {
   upgradeGrnLineItemsPlaceholder,
 } from "@/components/ReportTemplate/grnLineItems";
 import {
+  applyGrnCostLayout,
+  GRN_COST_PROFILE,
+} from "@/components/ReportTemplate/grnCostLayout";
+import {
   applyPageOrientation,
   PAGE_ORIENTATION,
   parsePageOrientation,
@@ -65,6 +69,8 @@ const SAMPLE_DATA = {
   referenceNo: "PO-000045",
   salesPerson: "Nimal Silva",
   freightDutyTotal: "2,850.00",
+  overseasTotal: "3,750.00",
+  localTransportTotal: "1,200.00",
   subtotal: "150,000.00",
   orderDiscountPercent: "5.00",
   totalDiscount: "7,500.00",
@@ -80,6 +86,9 @@ const SAMPLE_LINE_ITEMS = [
     qty: 50,
     free: 2,
     unitPrice: 850,
+    overseasTransportCost: 25,
+    freightDutyCost: 15,
+    localTransportCost: 10,
     additionalCost: 25,
     discountRate: 0,
     sellingPrice: 1100,
@@ -94,6 +103,9 @@ const SAMPLE_LINE_ITEMS = [
     qty: 40,
     free: 0,
     unitPrice: 45,
+    overseasTransportCost: 5,
+    freightDutyCost: 3,
+    localTransportCost: 2,
     additionalCost: 5,
     discountRate: 5,
     sellingPrice: 75,
@@ -108,6 +120,9 @@ const SAMPLE_LINE_ITEMS = [
     qty: 30,
     free: 1,
     unitPrice: 1250,
+    overseasTransportCost: 50,
+    freightDutyCost: 20,
+    localTransportCost: 12,
     additionalCost: 50,
     discountRate: 0,
     sellingPrice: 1650,
@@ -129,33 +144,10 @@ const formatSampleDate = (value) => {
   }
 };
 
-const ensureFreightDutyColumnHeader = (html) => {
-  if (!html || /<th[^>]*>\s*Freight\s*Duty/i.test(html)) return html;
-  return html.replace(
-    /(<th[^>]*>\s*Unit\s*Price\s*<\/th>)/i,
-    `$1\n          <th class="num">Freight Duty</th>`
-  );
-};
-
-const ensureFreightDutyTotalRow = (html) => {
-  if (
-    !html ||
-    /\{\{\s*freightDutyTotal\s*\}\}/i.test(html) ||
-    /Freight\s*Duty\s*Total/i.test(html)
-  ) {
-    return html;
-  }
-  return html.replace(
-    /(<div class=["']totals["']>\s*)(<div class=["']row["']>\s*<span>\s*Total\s*<\/span>)/i,
-    `$1<div class="row"><span>Freight Duty Total</span><span>{{freightDutyTotal}}</span></div>\n      $2`
-  );
-};
-
 /** Replace {{token}} placeholders with sample values so the preview looks like a real document. */
-const renderPreview = (html) => {
+const renderPreview = (html, costProfile) => {
   if (!html) return "";
-  let output = ensureFreightDutyColumnHeader(html);
-  output = ensureFreightDutyTotalRow(output);
+  let output = applyGrnCostLayout(html, costProfile);
 
   const lineTokenMaps = SAMPLE_LINE_ITEMS.map((item) =>
     buildGrnLineTokenMap(item, { formatDisplayDate: formatSampleDate })
@@ -181,6 +173,9 @@ export default function GRNPrintTemplatePage() {
   const iframeRef = useRef(null);
   const previewWrapRef = useRef(null);
   const [previewHeight, setPreviewHeight] = useState(0);
+  const [previewCostProfile, setPreviewCostProfile] = useState(
+    GRN_COST_PROFILE.IMPORT_PO
+  );
 
   const authHeaders = useCallback(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -259,7 +254,10 @@ export default function GRNPrintTemplatePage() {
     fetchTemplate();
   }, [fetchTemplate]);
 
-  const previewSrcDoc = useMemo(() => renderPreview(html), [html]);
+  const previewSrcDoc = useMemo(
+    () => renderPreview(html, previewCostProfile),
+    [html, previewCostProfile]
+  );
   const isDirty = html !== savedHtml;
   const pageOrientation = useMemo(() => parsePageOrientation(html), [html]);
   const usedLineTokens = useMemo(() => getUsedGrnLineTokens(html), [html]);
@@ -267,6 +265,11 @@ export default function GRNPrintTemplatePage() {
   const handleOrientationChange = (_event, value) => {
     if (!value) return;
     setHtml((prev) => applyPageOrientation(prev, value));
+  };
+
+  const handlePreviewProfileChange = (_event, value) => {
+    if (!value) return;
+    setPreviewCostProfile(value);
   };
 
   const handleToggleLineField = (token) => {
@@ -549,6 +552,52 @@ export default function GRNPrintTemplatePage() {
                 <ToggleButton value={PAGE_ORIENTATION.LANDSCAPE}>
                   <CropLandscapeOutlinedIcon sx={{ fontSize: 16, mr: 0.5 }} />
                   Landscape
+                </ToggleButton>
+              </ToggleButtonGroup>
+              <Typography
+                sx={{
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  color: "text.secondary",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.4,
+                  minWidth: 64,
+                  width: "100%",
+                  mt: 0.5,
+                }}
+              >
+                Preview as
+              </Typography>
+              <ToggleButtonGroup
+                value={previewCostProfile}
+                exclusive
+                size="small"
+                onChange={handlePreviewProfileChange}
+                disabled={loading || !html}
+                aria-label="GRN cost column preview profile"
+                sx={{
+                  bgcolor: "#fff",
+                  flex: 1,
+                  minWidth: 180,
+                  width: "100%",
+                  "& .MuiToggleButton-root": {
+                    textTransform: "none",
+                    py: 0.35,
+                    px: 1,
+                    fontSize: 11.5,
+                    borderColor: "#d9dde3",
+                    flex: 1,
+                  },
+                }}
+              >
+                <ToggleButton value={GRN_COST_PROFILE.DIRECT}>
+                  Direct GRN
+                </ToggleButton>
+                <ToggleButton value={GRN_COST_PROFILE.LOCAL_PO}>
+                  Local PO
+                </ToggleButton>
+                <ToggleButton value={GRN_COST_PROFILE.IMPORT_PO}>
+                  Import PO
                 </ToggleButton>
               </ToggleButtonGroup>
             </Box>

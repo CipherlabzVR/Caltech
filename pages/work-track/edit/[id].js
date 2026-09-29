@@ -1662,21 +1662,22 @@ export default function EditWorkTrack() {
                       value={
                         technicians.find(
                           (t) =>
-                            t.id === values.assignedTechnicianId ||
-                            t.fullName === values.assignee ||
-                            t.userName === values.assignee ||
-                            t.email === values.assignee
+                            Number(t.id ?? t.Id) === Number(values.assignedTechnicianId) ||
+                            (t.fullName || t.FullName) === values.assignee ||
+                            (t.userName || t.UserName) === values.assignee ||
+                            (t.email || t.Email) === values.assignee
                         ) || null
                       }
                       getOptionLabel={(option) =>
-                        option?.fullName || option?.userName || option?.email || ""
+                        option?.fullName || option?.FullName || option?.userName || option?.UserName || option?.email || option?.Email || ""
                       }
-                      isOptionEqualToValue={(option, val) => option?.id === val?.id}
+                      isOptionEqualToValue={(option, val) => Number(option?.id ?? option?.Id) === Number(val?.id ?? val?.Id)}
                       onChange={(_, selected) => {
-                        setFieldValue("assignedTechnicianId", selected?.id || null);
+                        const selectedId = selected?.id ?? selected?.Id ?? null;
+                        setFieldValue("assignedTechnicianId", selectedId);
                         setFieldValue(
                           "assignee",
-                          selected?.fullName || selected?.userName || selected?.email || ""
+                          selected?.fullName || selected?.FullName || selected?.userName || selected?.UserName || selected?.email || selected?.Email || ""
                         );
                       }}
                       renderInput={(params) => (

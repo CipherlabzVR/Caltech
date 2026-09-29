@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import styles from "@/styles/PageTitle.module.css";
 import Link from "next/link";
 import Grid from "@mui/material/Grid";
@@ -27,6 +27,7 @@ import AddStatus from "./create";
 import EditStatus from "./edit";
 import IsPermissionEnabled from "@/components/utils/IsPermissionEnabled";
 import AccessDenied from "@/components/UIElements/Permission/AccessDenied";
+import { getAgentTypes, isApiSuccess } from "@/Services/photographyAgentService";
 
 const CATEGORY_ID = 228;
 
@@ -38,6 +39,8 @@ export default function PhotographyStatusList() {
     Number.isFinite(cId) ? cId : CATEGORY_ID
   );
   const controller = "PhotographyEventStatus/DeleteStatus";
+  const [agentTypeFilter, setAgentTypeFilter] = useState("");
+  const [agentTypeOptions, setAgentTypeOptions] = useState([]);
 
   const {
     data: list,
@@ -48,25 +51,53 @@ export default function PhotographyStatusList() {
     setPage,
     setPageSize,
     setSearch,
+    setExtraQuery,
     fetchData: fetchList,
   } = usePaginatedFetch("PhotographyEventStatus/GetAllStatusPaged", "", 10, false, false);
 
+  useEffect(() => {
+    getAgentTypes()
+      .then((data) => {
+        if (!isApiSuccess(data)) return;
+        const rows = data.result || data.Result || [];
+        const mapped = rows
+          .map((t) => ({
+            value: Number(t.id ?? t.Id),
+            label: t.name ?? t.Name ?? "",
+          }))
+          .filter((t) => Number.isFinite(t.value) && t.value > 0 && t.label);
+        if (mapped.length) setAgentTypeOptions(mapped);
+      })
+      .catch(() => {});
+  }, []);
+
+  const extraFor = (agentType) => (agentType ? { AgentType: agentType } : {});
+
   const handleSearchChange = (event) => {
     setSearch(event.target.value);
-    fetchList(1, event.target.value, pageSize);
+    fetchList(1, event.target.value, pageSize, false, "", extraFor(agentTypeFilter));
     setPage(1);
+  };
+
+  const handleAgentTypeFilterChange = (event) => {
+    const value = event.target.value;
+    setAgentTypeFilter(value);
+    const extra = extraFor(value);
+    setExtraQuery(extra);
+    setPage(1);
+    fetchList(1, search, pageSize, false, "", extra);
   };
 
   const handleChangePage = (event, value) => {
     setPage(value);
-    fetchList(value, search, pageSize);
+    fetchList(value, search, pageSize, false, "", extraFor(agentTypeFilter));
   };
 
   const handleChangeRowsPerPage = (event) => {
     const size = event.target.value;
     setPageSize(size);
     setPage(1);
-    fetchList(1, search, size);
+    fetchList(1, search, size, false, "", extraFor(agentTypeFilter));
   };
 
   if (!navigate) return <AccessDenied />;
@@ -84,7 +115,7 @@ export default function PhotographyStatusList() {
         </ul>
       </div>
       <Grid container rowSpacing={1} columnSpacing={{ xs: 1, sm: 1, md: 1, lg: 1, xl: 2 }}>
-        <Grid item xs={12} lg={4} order={{ xs: 2, lg: 1 }}>
+        <Grid item xs={12} md={5} lg={4} order={{ xs: 2, lg: 1 }}>
           <Search className="search-form">
             <StyledInputBase
               placeholder="Search by name…"
@@ -94,10 +125,27 @@ export default function PhotographyStatusList() {
             />
           </Search>
         </Grid>
-        <Grid item xs={12} lg={8} mb={1} display="flex" justifyContent="end" order={{ xs: 1, lg: 2 }}>
-          {create ? <AddStatus fetchItems={() => fetchList()} /> : ""}
+        <Grid item xs={12} md={4} lg={3} order={{ xs: 3, lg: 2 }}>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Agent Type</InputLabel>
+            <Select
+              value={agentTypeFilter}
+              label="Agent Type"
+              onChange={handleAgentTypeFilterChange}
+            >
+              <MenuItem value="">All agents</MenuItem>
+              {agentTypeOptions.map((t) => (
+                <MenuItem key={t.value} value={t.value}>
+                  {t.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </Grid>
-        <Grid item xs={12} order={{ xs: 3, lg: 3 }}>
+        <Grid item xs={12} md={3} lg={5} mb={1} display="flex" justifyContent="end" order={{ xs: 1, lg: 3 }}>
+          {create ? <AddStatus fetchItems={() => fetchList(page, search, pageSize, false, "", extraFor(agentTypeFilter))} /> : ""}
+        </Grid>
+        <Grid item xs={12} order={{ xs: 4, lg: 4 }}>
           <TableContainer component={Paper}>
             <Table aria-label="statuses" className="dark-table">
               <TableHead>

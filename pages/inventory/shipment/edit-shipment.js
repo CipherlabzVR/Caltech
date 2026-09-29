@@ -102,11 +102,16 @@ const ShipmentEdit = () => {
 
   const getReceivedQtyValue = (row) => parseFloat(row?.receivedQty) || 0;
 
-  const isZeroReceivedQty = (row) => {
-    const raw = row?.receivedQty;
-    if (raw === 0) return true;
-    const qty = parseFloat(raw);
-    return !isNaN(qty) && qty === 0;
+  const isZeroReceivedQty = (row) => getReceivedQtyValue(row) <= 0;
+
+  const clearCostDraftsForRow = (index) => {
+    setCostDrafts((prev) => {
+      const next = { ...prev };
+      delete next[`${index}-additionalCost`];
+      delete next[`${index}-localTransportCost`];
+      delete next[`${index}-freightDutyCost`];
+      return next;
+    });
   };
 
   const sumQtyWeightedCost = (lines, field) =>
@@ -159,7 +164,7 @@ const ShipmentEdit = () => {
         ...row,
         unitPrice,
         additionalCost: 0,
-        ...(showSupplierFields ? { localTransportCost: 0 } : {}),
+        localTransportCost: 0,
         freightDutyCost: 0,
         costPrice: round2(unitPrice || 0),
         lineTotal: 0,
@@ -314,12 +319,28 @@ const ShipmentEdit = () => {
 
             const result = data.result;
             const shipmentDetailsWithLineTotal = result.shipmentNoteLineDetails.map(
-                (row) => ({
-                    ...row,
-                    receivedQty: row.receivedQty,
-                    unitPrice: row.unitPrice === 0 ? null : row.unitPrice,
-                    damagedQty: row.damagedQty || null,
-                })
+                (row) => {
+                    const receivedQty = parseFloat(row.receivedQty);
+                    const noReceipt =
+                        row.receivedQty == null ||
+                        row.receivedQty === "" ||
+                        isNaN(receivedQty) ||
+                        receivedQty <= 0;
+                    return {
+                        ...row,
+                        receivedQty: row.receivedQty,
+                        unitPrice: row.unitPrice === 0 ? null : row.unitPrice,
+                        damagedQty: row.damagedQty || null,
+                        ...(noReceipt
+                            ? {
+                                  additionalCost: 0,
+                                  localTransportCost: 0,
+                                  freightDutyCost: 0,
+                                  lineTotal: 0,
+                              }
+                            : {}),
+                    };
+                }
             );
 
       setOrder(data.result);
@@ -441,6 +462,10 @@ const ShipmentEdit = () => {
     }
     updatedShipmentLineDetails[index][field] = parsedValue;
 
+    if (field === "receivedQty" && (parsedValue == null || parsedValue <= 0)) {
+      clearCostDraftsForRow(index);
+    }
+
     updatedShipmentLineDetails[index] = applyLineTotals(
       updatedShipmentLineDetails[index]
     );
@@ -449,12 +474,17 @@ const ShipmentEdit = () => {
     };
 
     const handleCostFieldChange = (index, field, value) => {
+      if (isZeroReceivedQty(shipmentLineDetails[index])) return;
       if (rejectIfNegative(value, LINE_COST_FIELD_MESSAGES[field])) return;
       setCostDrafts((prev) => ({ ...prev, [`${index}-${field}`]: value }));
       handleChange(index, field, value);
     };
 
     const handleCostFieldBlur = (index, field, value) => {
+      if (isZeroReceivedQty(shipmentLineDetails[index])) {
+        clearCostDraftsForRow(index);
+        return;
+      }
       setCostDrafts((prev) => {
         const next = { ...prev };
         delete next[`${index}-${field}`];
@@ -787,7 +817,10 @@ const ShipmentEdit = () => {
                 : round2(effectiveExchangeRate),
           }
         : {}),
-      shipmentNoteLineDetails: shipmentLineDetails.map((row) => ({
+      shipmentNoteLineDetails: shipmentLineDetails.map((row) => {
+        const receivedQty = parseFloat(row.receivedQty);
+        const hasReceivedQty = !isNaN(receivedQty) && receivedQty > 0;
+        return {
         Id: row.id,
         shipmentNoteId: row.shipmentNoteId,
         grnHeaderId: row.grnHeaderId,
@@ -799,18 +832,25 @@ const ShipmentEdit = () => {
         productCode: row.productCode,
         productName: row.productName,
         qty: row.qty,
-        receivedQty: row.receivedQty ?? 0,
+        receivedQty: hasReceivedQty ? receivedQty : 0,
         damagedQty : row.damagedQty,
-        freightDutyCost: round2(row.freightDutyCost || 0),
-        additionalCost: round2(row.additionalCost || 0),
+        freightDutyCost: hasReceivedQty ? round2(row.freightDutyCost || 0) : 0,
+        additionalCost: hasReceivedQty ? round2(row.additionalCost || 0) : 0,
         ...(showSupplierFields
-          ? { LocalTransportCost: round2(row.localTransportCost ?? 0) }
+          ? {
+              LocalTransportCost: hasReceivedQty
+                ? round2(row.localTransportCost ?? 0)
+                : 0,
+            }
           : {}),
-        LineTotal: round2(row.lineTotal || 0),
-        CostPrice: round2(row.costPrice || 0),
+        LineTotal: hasReceivedQty ? round2(row.lineTotal || 0) : 0,
+        CostPrice: hasReceivedQty
+          ? round2(row.costPrice || 0)
+          : round2(row.unitPrice || 0),
         UnitPrice: row.unitPrice == null ? null : round2(row.unitPrice),
         Remark: row.remark,
-      })),
+        };
+      }),
     };
 
         try {
@@ -1467,6 +1507,7 @@ const ShipmentEdit = () => {
                             value={getCostFieldDisplay(row, index, "additionalCost")}
                             fullWidth
                             size="small"
+                            disabled={isZeroReceivedQty(row)}
                             inputProps={{ min: 0, step: "0.01" }}
                             onChange={(e) =>
                               handleCostFieldChange(
@@ -1486,11 +1527,12 @@ const ShipmentEdit = () => {
                         </TableCell>
                         {showSupplierFields ? (
                           <TableCell sx={{ p: 1 }}>
-                            <TextField
+                              <TextField
                               type="number"
                               value={getCostFieldDisplay(row, index, "localTransportCost")}
                               fullWidth
                               size="small"
+                              disabled={isZeroReceivedQty(row)}
                               inputProps={{ min: 0, step: "0.01" }}
                               onChange={(e) =>
                                 handleCostFieldChange(
@@ -1515,6 +1557,7 @@ const ShipmentEdit = () => {
                             value={getCostFieldDisplay(row, index, "freightDutyCost")}
                             fullWidth
                             size="small"
+                            disabled={isZeroReceivedQty(row)}
                             inputProps={{ min: 0, step: "0.01" }}
                             onChange={(e) =>
                               handleCostFieldChange(

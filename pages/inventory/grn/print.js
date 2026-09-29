@@ -21,6 +21,10 @@ import {
   getOverseasTransportCost,
 } from "@/components/ReportTemplate/grnLineItems";
 import {
+  applyGrnCostLayout,
+  getGrnCostProfile,
+} from "@/components/ReportTemplate/grnCostLayout";
+import {
   getPageSizeMm,
   PAGE_ORIENTATION,
   parsePageOrientation,
@@ -81,39 +85,12 @@ const getUserLabel = (user) =>
   user?.email ||
   (user?.id != null ? `User #${user.id}` : "-");
 
-// Ensures older DB templates (without this column) still show a Freight Duty header.
-const ensureFreightDutyColumnHeader = (html) => {
-  if (!html || /<th[^>]*>\s*Freight\s*Duty/i.test(html)) {
-    return html;
-  }
-  return html.replace(
-    /(<th[^>]*>\s*Unit\s*Price\s*<\/th>)/i,
-    `$1\n          <th class="num">Freight Duty</th>`
-  );
-};
-
-// Ensures older DB templates still show Freight Duty Total in the footer.
-const ensureFreightDutyTotalRow = (html) => {
-  if (
-    !html ||
-    /\{\{\s*freightDutyTotal\s*\}\}/i.test(html) ||
-    /Freight\s*Duty\s*Total/i.test(html)
-  ) {
-    return html;
-  }
-  return html.replace(
-    /(<div class=["']totals["']>\s*)(<div class=["']row["']>\s*<span>\s*Total\s*<\/span>)/i,
-    `$1<div class="row"><span>Freight Duty Total</span><span>{{freightDutyTotal}}</span></div>\n      $2`
-  );
-};
-
-const renderGrnTemplate = (templateHtml, tokenMap, lineItems) => {
+const renderGrnTemplate = (templateHtml, tokenMap, lineItems, costProfile) => {
   if (!templateHtml) {
     return "";
   }
 
-  let output = ensureFreightDutyColumnHeader(templateHtml);
-  output = ensureFreightDutyTotalRow(output);
+  let output = applyGrnCostLayout(templateHtml, costProfile);
 
   const lineTokenMaps = (lineItems || []).map((item) =>
     buildGrnLineTokenMap(item, { formatDisplayDate })
@@ -534,12 +511,22 @@ export default function GRNPrintPage() {
   const pageWidthCss =
     pageOrientation === PAGE_ORIENTATION.LANDSCAPE ? "297mm" : "210mm";
 
+  const grnCostProfile = useMemo(
+    () => getGrnCostProfile(grnData),
+    [grnData]
+  );
+
   const finalHtml = useMemo(() => {
     if (!templateHtml || !grnData) {
       return "";
     }
-    return renderGrnTemplate(templateHtml, tokenMap, lineItems);
-  }, [templateHtml, grnData, tokenMap, lineItems]);
+    return renderGrnTemplate(
+      templateHtml,
+      tokenMap,
+      lineItems,
+      grnCostProfile
+    );
+  }, [templateHtml, grnData, tokenMap, lineItems, grnCostProfile]);
 
   const resizeIframe = () => {
     const iframe = iframeRef.current;

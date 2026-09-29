@@ -26,7 +26,7 @@ import ImageIcon from "@mui/icons-material/Image";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
-import { parseOptionsList, pick } from "@/components/work-track/sharedViewHelpers";
+import { parseChecklistImageUrls, parseOptionsList, pick } from "@/components/work-track/sharedViewHelpers";
 
 function checklistProgress(checklist) {
   const items = pick(checklist, "items", "Items") || [];
@@ -42,7 +42,7 @@ function SharedChecklistItem({ item }) {
   const isCompleted = !!pick(item, "isCompleted", "IsCompleted");
   const isRequired = !!pick(item, "isRequired", "IsRequired");
   const selectedValue = pick(item, "selectedValue", "SelectedValue") || "";
-  const imageUrl = pick(item, "imageUrl", "ImageUrl");
+  const imageUrls = parseChecklistImageUrls(pick(item, "imageUrl", "ImageUrl"));
   const optionsList = parseOptionsList(item);
 
   return (
@@ -124,19 +124,27 @@ function SharedChecklistItem({ item }) {
 
       {itemType === "Image" && (
         <Box sx={{ ml: 4, mt: 1 }}>
-          {imageUrl ? (
-            <Box
-              component="img"
-              src={imageUrl}
-              alt={title}
-              sx={{
-                maxWidth: "100%",
-                maxHeight: 280,
-                borderRadius: 2,
-                border: "1px solid #ddd",
-                display: "block",
-              }}
-            />
+          {imageUrls.length > 0 ? (
+            <Box display="flex" gap={1} flexWrap="wrap">
+              {imageUrls.map((url) => (
+                <Box
+                  key={url}
+                  component="img"
+                  src={url}
+                  alt={title}
+                  onClick={() => window.open(url, "_blank")}
+                  sx={{
+                    width: 140,
+                    height: 140,
+                    objectFit: "cover",
+                    borderRadius: 2,
+                    border: "1px solid #ddd",
+                    display: "block",
+                    cursor: "pointer",
+                  }}
+                />
+              ))}
+            </Box>
           ) : (
             <Box
               sx={{

@@ -141,10 +141,6 @@ const GRNCreate = () => {
       0
     );
 
-  const overseasCostTotal = useMemo(
-    () => sumExtraCostTotal("overseasCost"),
-    [selectedRows]
-  );
   const freightDutyTotal = useMemo(
     () => sumExtraCostTotal("freightDutyCost"),
     [selectedRows]
@@ -1098,9 +1094,6 @@ const GRNCreate = () => {
                       {IsFreightDutyEnabled && (
                         <>
                           <TableCell sx={{ color: "#fff" }}>
-                            Overseas&nbsp;Transport
-                          </TableCell>
-                          <TableCell sx={{ color: "#fff" }}>
                             Freight&nbsp;Duty
                           </TableCell>
                           <TableCell sx={{ color: "#fff" }}>
@@ -1288,22 +1281,6 @@ const GRNCreate = () => {
                                 type="number"
                                 fullWidth
                                 sx={{ width: "120px" }}
-                                value={selectedRows[index]?.overseasCost || ""}
-                                onChange={(e) =>
-                                  handleExtraCostChange(
-                                    index,
-                                    "overseasCost",
-                                    e.target.value
-                                  )
-                                }
-                              />
-                            </TableCell>
-                            <TableCell sx={{ p: 1 }}>
-                              <TextField
-                                size="small"
-                                type="number"
-                                fullWidth
-                                sx={{ width: "120px" }}
                                 value={
                                   selectedRows[index]?.freightDutyCost ??
                                   selectedRows[index]?.freight ??
@@ -1420,20 +1397,6 @@ const GRNCreate = () => {
               >
                 {IsFreightDutyEnabled && (
                   <>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        justifyContent: "flex-end",
-                        alignItems: "center",
-                        gap: 2,
-                        py: 0.5,
-                      }}
-                    >
-                      <Typography variant="h6">Overseas Transport Total</Typography>
-                      <Typography variant="h6">
-                        {formatCurrency(overseasCostTotal)}
-                      </Typography>
-                    </Box>
                     <Box
                       sx={{
                         display: "flex",

@@ -41,6 +41,19 @@ const formatQty = (value) => {
   });
 };
 
+const hasReceivedQty = (item) => {
+  const qty = Number(item?.receivedQty ?? item?.ReceivedQty ?? 0);
+  return !Number.isNaN(qty) && qty > 0;
+};
+
+const formatReceivedCost = (item, ...values) => {
+  if (!hasReceivedQty(item)) {
+    return formatAmount(0);
+  }
+  const value = values.find((entry) => entry != null && entry !== "");
+  return formatAmount(value);
+};
+
 const formatAmount = (value) => {
   const numericValue = Number(value ?? 0);
   if (Number.isNaN(numericValue)) {
@@ -263,7 +276,12 @@ export default function ShipmentPrintPage() {
   }, [lineItems]);
 
   const grandTotal = useMemo(
-    () => lineItems.reduce((sum, item) => sum + Number(item.lineTotal ?? 0), 0),
+    () =>
+      lineItems.reduce(
+        (sum, item) =>
+          sum + (hasReceivedQty(item) ? Number(item.lineTotal ?? 0) : 0),
+        0
+      ),
     [lineItems]
   );
 
@@ -388,15 +406,21 @@ export default function ShipmentPrintPage() {
             <Box sx={shipmentNumericCellSx}>{formatQty(item.qty)}</Box>
             <Box sx={shipmentNumericCellSx}>{formatQty(item.receivedQty)}</Box>
             <Box sx={shipmentNumericCellSx}>{formatAmount(item.unitPrice)}</Box>
-            <Box sx={shipmentNumericCellSx}>{formatAmount(item.freightDutyCost)}</Box>
             <Box sx={shipmentNumericCellSx}>
-              {formatAmount(item.additionalCost ?? item.AdditionalCost)}
+              {formatReceivedCost(item, item.freightDutyCost)}
             </Box>
             <Box sx={shipmentNumericCellSx}>
-              {formatAmount(item.localTransportCost ?? item.LocalTransportCost)}
+              {formatReceivedCost(item, item.additionalCost, item.AdditionalCost)}
+            </Box>
+            <Box sx={shipmentNumericCellSx}>
+              {formatReceivedCost(
+                item,
+                item.localTransportCost,
+                item.LocalTransportCost
+              )}
             </Box>
             <Box sx={{ ...shipmentNumericCellSx, fontWeight: 600 }}>
-              {formatAmount(item.lineTotal)}
+              {formatReceivedCost(item, item.lineTotal)}
             </Box>
           </Box>
         ))

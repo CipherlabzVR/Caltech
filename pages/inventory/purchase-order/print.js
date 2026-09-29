@@ -322,7 +322,16 @@ export default function PurchaseOrderPrintPage() {
         0
     );
 
+  const isUnreceivedShipmentLine = (item) =>
+    isImportPO &&
+    item.shipmentNoteNo &&
+    item.shipmentNoteNo !== "-" &&
+    getReceivedQty(item) <= 0;
+
   const getQtyForLineAmount = (item) => {
+    if (isUnreceivedShipmentLine(item)) {
+      return 0;
+    }
     if (isImportPO && item.shipmentNoteNo && item.shipmentNoteNo !== "-") {
       return getOrderQty(item);
     }
@@ -336,6 +345,9 @@ export default function PurchaseOrderPrintPage() {
         Number(item.costPrice ?? 0) * getQtyForLineAmount(item);
 
     const getLineDiscount = (item) => {
+        if (isUnreceivedShipmentLine(item)) {
+            return 0;
+        }
         const rate = Number(item.discountRate ?? 0);
         const amount = Number(item.discountAmount ?? 0);
         if (rate > 0) {

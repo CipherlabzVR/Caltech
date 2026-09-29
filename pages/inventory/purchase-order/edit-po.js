@@ -298,10 +298,10 @@ const POEdit = () => {
     UnitPrice: parseFloat(row.avgUnitPrice) || 0,
     OverseasTransportCost: isLocalPO ? 0 : parseFloat(row.avgOverseasCost) || 0,
     FreightDutyCost: isLocalPO ? 0 : parseFloat(row.avgFreightDutyCost) || 0,
-    LocalTransportCost: isLocalPO ? 0 : parseFloat(row.avgLocalTransportCost) || 0,
-    CostPrice: isLocalPO
-      ? parseFloat(row.avgUnitPrice) || 0
-      : parseFloat(row.costPrice) || 0,
+    LocalTransportCost: isLocalPO
+      ? parseFloat(row.avgLocalTransportCost) || 0
+      : parseFloat(row.avgLocalTransportCost) || 0,
+    CostPrice: parseFloat(row.costPrice) || 0,
     SellingPrice: parseSellingPrice(row.sellingPrice),
     MaximumSellingPrice: parseFloat(row.maxSellingPrice) || 0,
     Profit: calculateProfit(row.sellingPrice, row.costPrice),
@@ -338,10 +338,10 @@ const POEdit = () => {
     UnitPrice: parseFloat(row.avgUnitPrice) || 0,
     OverseasTransportCost: isLocalPO ? 0 : parseFloat(row.avgOverseasCost) || 0,
     FreightDutyCost: isLocalPO ? 0 : parseFloat(row.avgFreightDutyCost) || 0,
-    LocalTransportCost: isLocalPO ? 0 : parseFloat(row.avgLocalTransportCost) || 0,
-    CostPrice: isLocalPO
-      ? parseFloat(row.avgUnitPrice) || 0
-      : parseFloat(row.costPrice) || 0,
+    LocalTransportCost: isLocalPO
+      ? parseFloat(row.avgLocalTransportCost) || 0
+      : parseFloat(row.avgLocalTransportCost) || 0,
+    CostPrice: parseFloat(row.costPrice) || 0,
     SellingPrice: parseSellingPrice(row.sellingPrice),
     MaximumSellingPrice: parseFloat(row.maxSellingPrice) || 0,
     DiscountRate: parseFloat(row.discountRate) || 0,
@@ -363,6 +363,7 @@ const POEdit = () => {
     receivedQty: 0,
     avgUnitPrice: "0.00",
     avgFreighCost: "0.00",
+    avgLocalTransportCost: "0.00",
     costPrice: "0.00",
     sellingPrice: "",
     maxSellingPrice: 0,
@@ -437,6 +438,12 @@ const POEdit = () => {
     return parseFloat(row.poReceivedQty) || 0;
   };
 
+  const computeLocalLineCostPrice = (unitPrice, localTransport) => {
+    const unit = parseFloat(unitPrice) || 0;
+    const local = parseFloat(localTransport) || 0;
+    return (unit + local).toFixed(2);
+  };
+
   const computeLineFinancials = (row) => {
     const costPrice = parseFloat(row.costPrice) || 0;
     const qty = getLineQtyForDiscount(row);
@@ -465,11 +472,15 @@ const POEdit = () => {
       if (i !== index) return row;
       const updated = { ...row, [field]: value };
 
-      if (isLocalPO && ["avgUnitPrice", "poReceivedQty"].includes(field)) {
-        const unitPrice = parseFloat(updated.avgUnitPrice) || 0;
-        // Local PO: no freight/transport — cost equals unit price
-        updated.avgFreighCost = 0;
-        updated.costPrice = unitPrice.toFixed(2);
+      if (
+        isLocalPO &&
+        ["avgUnitPrice", "avgLocalTransportCost", "poReceivedQty"].includes(field)
+      ) {
+        updated.avgFreighCost = "0.00";
+        updated.costPrice = computeLocalLineCostPrice(
+          updated.avgUnitPrice,
+          updated.avgLocalTransportCost
+        );
       }
 
       if (field === "poQty") {
@@ -479,6 +490,7 @@ const POEdit = () => {
       if (
         [
           "avgUnitPrice",
+          "avgLocalTransportCost",
           "avgFreighCost",
           "poReceivedQty",
           "poQty",
@@ -510,9 +522,9 @@ const POEdit = () => {
 
         if ((po.type ?? po.purchasingOrderType) == 1) {
           const unitPrice = parseFloat(row.unitPrice) || 0;
-          // Local PO ignores freight/additional cost
-          const costPrice = unitPrice;
-          // Ordered qty is qty/poQty; received must come from receivedQty (starts at 0)
+          const localTransport =
+            parseFloat(row.localTransportCost ?? row.LocalTransportCost) || 0;
+          const costPrice = computeLocalLineCostPrice(unitPrice, localTransport);
           const receivedQty = parseFloat(row.receivedQty) || 0;
 
           const baseRow = {
@@ -520,7 +532,8 @@ const POEdit = () => {
             poQty: row.poQty ?? row.qty ?? 0,
             avgUnitPrice: unitPrice.toFixed(2),
             avgFreighCost: "0.00",
-            costPrice: costPrice.toFixed(2),
+            avgLocalTransportCost: localTransport.toFixed(2),
+            costPrice,
             poReceivedQty: receivedQty,
             discountType,
             discountInput,
@@ -835,9 +848,13 @@ const POEdit = () => {
 
               if (freshIsLocal) {
                 const unitPrice = parseFloat(row.unitPrice) || 0;
-                // Local PO ignores freight/additional cost
-                const costPrice = unitPrice;
-                // Ordered qty is qty/poQty; received must come from receivedQty (starts at 0)
+                const localTransport =
+                  parseFloat(row.localTransportCost ?? row.LocalTransportCost) ||
+                  0;
+                const costPrice = computeLocalLineCostPrice(
+                  unitPrice,
+                  localTransport
+                );
                 const receivedQty = parseFloat(row.receivedQty) || 0;
 
                 const baseRow = {
@@ -845,7 +862,8 @@ const POEdit = () => {
                   poQty: row.poQty ?? row.qty ?? 0,
                   avgUnitPrice: unitPrice.toFixed(2),
                   avgFreighCost: "0.00",
-                  costPrice: costPrice.toFixed(2),
+                  avgLocalTransportCost: localTransport.toFixed(2),
+                  costPrice,
                   poReceivedQty: receivedQty,
                   discountType,
                   discountInput,
@@ -1219,8 +1237,8 @@ const POEdit = () => {
   }, [isPOComplete, canShowCompleteButton, selectedRows, isLocalPO]);
 
   const totalTableColumns = useMemo(() => {
-    // Local has no Freight column (Import keeps it + extra Received Qty)
-    let count = isLocalPO ? 14 : 16;
+    // Local: Local Transport column; Import: Freight column + extra Received Qty
+    let count = isLocalPO ? 15 : 16;
     if (showLineItemModifications) count += 1;
     if (!showDiscountField) count -= 1;
     return count;
@@ -1511,6 +1529,11 @@ const POEdit = () => {
                           Freight&nbsp;Duty & Transport
                         </TableCell>
                       )}
+                      {isLocalPO && (
+                        <TableCell sx={{ color: "#fff" }}>
+                          Local&nbsp;Transport
+                        </TableCell>
+                      )}
                       <TableCell sx={{ color: "#fff" }}>
                         Cost&nbsp;Price
                       </TableCell>
@@ -1673,6 +1696,29 @@ const POEdit = () => {
                         {!isLocalPO && (
                           <TableCell sx={{ p: 1 }}>
                             {formatCurrency(row.avgFreighCost)}
+                          </TableCell>
+                        )}
+                        {isLocalPO && (
+                          <TableCell sx={{ p: 1 }}>
+                            <TextField
+                              size="small"
+                              type="number"
+                              sx={{ width: "120px" }}
+                              value={
+                                row.avgLocalTransportCost === "0.00"
+                                  ? ""
+                                  : row.avgLocalTransportCost ?? ""
+                              }
+                              onChange={(e) =>
+                                handleInputChange(
+                                  index,
+                                  "avgLocalTransportCost",
+                                  e.target.value
+                                )
+                              }
+                              disabled={isPOComplete}
+                              inputProps={{ min: 0, step: "any" }}
+                            />
                           </TableCell>
                         )}
                         <TableCell sx={{ p: 1 }}>{formatCurrency(row.costPrice)}</TableCell>

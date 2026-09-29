@@ -17,16 +17,22 @@ import {
   Button,
   IconButton,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import RequestQuoteIcon from "@mui/icons-material/RequestQuote";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import PrintIcon from "@mui/icons-material/Print";
+import PreviewIcon from "@mui/icons-material/Preview";
 import BASE_URL from "Base/api";
 import { formatCurrency, formatDate } from "@/components/utils/formatHelper";
 import ReservationTasks from "./ReservationTasks";
 import TaskAssignment from "./TaskAssignment";
 import PrintReceipt from "../payment-approval/PrintReceipt";
+import RecordPayment from "../quotations/RecordPayment";
 import { getAgentTypes } from "@/Services/photographyAgentService";
 
 const money = (n) =>
@@ -36,10 +42,24 @@ const money = (n) =>
 
 function statusColor(name) {
   const s = String(name || "").toLowerCase();
-  if (s.includes("approv") || s.includes("convert")) return "success";
+  if (s.includes("approv") || s.includes("convert") || s.includes("accept") || s === "sent") return "success";
   if (s.includes("reject") || s.includes("cancel")) return "error";
   if (s.includes("pending")) return "warning";
   return "default";
+}
+
+function isApprovedQuotation(status) {
+  const s = String(status || "").toLowerCase();
+  return (
+    s.includes("approv") ||
+    s.includes("accept") ||
+    s.includes("convert") ||
+    s === "sent" ||
+    s === "2" ||
+    s === "3" ||
+    s === "5" ||
+    s === "7"
+  );
 }
 
 function pick(obj, ...keys) {
@@ -58,8 +78,10 @@ function normalizeQuotation(q) {
     eventTypeName: pick(q, "eventTypeName", "EventTypeName"),
     customerName: pick(q, "customerName", "CustomerName"),
     customerMobileNo: pick(q, "customerMobileNo", "CustomerMobileNo"),
+    customerEmail: pick(q, "customerEmail", "CustomerEmail", "email", "Email"),
     eventDate: pick(q, "eventDate", "EventDate"),
     eventTime: pick(q, "eventTime", "EventTime"),
+    eventEndTime: pick(q, "eventEndTime", "EventEndTime"),
     venue: pick(q, "venue", "Venue"),
     noOfGuests: pick(q, "noOfGuests", "NoOfGuests"),
     statusName: pick(q, "statusName", "StatusName", "status", "Status"),
@@ -105,6 +127,7 @@ function normalizePayment(p) {
     amount: Number(pick(p, "amount", "Amount") ?? 0),
     paymentMethodName: pick(p, "paymentMethodName", "PaymentMethodName"),
     isAdvance: pick(p, "isAdvance", "IsAdvance"),
+    approvalStatus: pick(p, "approvalStatus", "ApprovalStatus"),
     approvalStatusName: pick(p, "approvalStatusName", "ApprovalStatusName"),
     approvedOn: pick(p, "approvedOn", "ApprovedOn"),
     createdOn: pick(p, "createdOn", "CreatedOn"),
@@ -112,43 +135,98 @@ function normalizePayment(p) {
   };
 }
 
-function openPrintWindow(title, bodyHtml) {
-  const printWindow = window.open("", "_blank", "width=800,height=900");
-  if (!printWindow) return;
-  printWindow.document.write(`
+const QUOTE_DOC_CSS = `
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    color: #1a1a1a;
+    background: #fff;
+    padding: 48px 56px;
+    max-width: 850px;
+    margin: 0 auto;
+  }
+  .logo-wrap { width: 170px; }
+  .logo-wrap img { width: 170px; height: auto; object-fit: contain; display: block; }
+  .hr { border-top: 1px solid #ccc; margin: 20px 0 28px; }
+  .doc-title { font-family: Georgia, 'Times New Roman', serif; font-size: 26px; font-weight: 700; color: #1a1a1a; margin-bottom: 14px; }
+  .top-grid { display: flex; justify-content: space-between; gap: 24px; }
+  .top-grid .right { text-align: right; }
+  .label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #555;
+    margin-bottom: 6px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+  }
+  .kv { font-size: 12.5px; margin-bottom: 3px; font-family: 'Segoe UI', Tahoma, sans-serif; color: #1a1a1a; }
+  .kv .k { font-weight: 700; margin-right: 4px; }
+  .line { font-size: 12.5px; margin-bottom: 3px; font-family: 'Segoe UI', Tahoma, sans-serif; color: #1a1a1a; }
+  .line.strong { font-weight: 700; font-family: Georgia, 'Times New Roman', serif; font-size: 13.5px; color: #1a1a1a; }
+  table.items {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 32px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    color: #1a1a1a;
+  }
+  table.items th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: #555;
+    padding: 10px 8px;
+    border-bottom: 1px solid #ccc;
+    background: #fff;
+  }
+  table.items td {
+    font-size: 12.5px;
+    padding: 12px 8px;
+    border-bottom: 1px solid #eee;
+    vertical-align: top;
+    color: #1a1a1a;
+    background: #fff;
+  }
+  .product-cell { width: 22%; }
+  .desc-cell { color: #333; }
+  .desc-list { margin: 4px 0 0 16px; font-size: 11.5px; color: #444; }
+  .desc-list li { margin-bottom: 2px; }
+  .num-cell { text-align: right; white-space: nowrap; }
+  .num-cell.center { text-align: center; }
+  .subtotal-row td { border-bottom: none; padding-top: 16px; }
+  .total-row td { border-top: 2px solid #1a1a1a; border-bottom: none; font-size: 14px; padding-top: 10px; font-family: Georgia, 'Times New Roman', serif; }
+  .note { margin-top: 20px; font-size: 12.5px; font-family: 'Segoe UI', Tahoma, sans-serif; color: #1a1a1a; }
+  .footer {
+    text-align: center;
+    margin-top: 28px;
+    padding-top: 16px;
+    border-top: 1px solid #ccc;
+    font-size: 12px;
+    color: #555;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+  }
+  @media print { body { padding: 24px 32px; } }
+`;
+
+function wrapPrintDocument(title, bodyHtml, css = QUOTE_DOC_CSS) {
+  return `
     <html>
       <head>
         <title>${title}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 32px; color: #333; max-width: 800px; margin: 0 auto; }
-          .header { display: flex; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 3px solid #4F46E5; }
-          .company h1 { font-size: 22px; color: #4F46E5; }
-          .company p { font-size: 12px; color: #666; }
-          .doc-info { text-align: right; }
-          .doc-info h2 { font-size: 20px; color: #4F46E5; margin-bottom: 6px; }
-          .doc-info p { font-size: 12px; }
-          .parties { display: flex; gap: 20px; margin-bottom: 24px; }
-          .party { flex: 1; padding: 14px; background: #f8f9fa; border-radius: 8px; }
-          .party h3 { font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 8px; }
-          .party p { font-size: 13px; margin-bottom: 4px; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-          th { background: #4F46E5; color: #fff; text-align: left; padding: 10px; font-size: 12px; }
-          td { padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 13px; vertical-align: top; }
-          ul.items { margin: 6px 0 0 16px; color: #555; font-size: 12px; }
-          .totals { margin-left: auto; width: 280px; }
-          .totals td { border: none; padding: 6px 0; }
-          .grand-total td { border-top: 2px solid #4F46E5; padding-top: 10px; font-size: 15px; }
-          .summary { background: #f8f9fa; padding: 16px; border-radius: 8px; margin-bottom: 20px; }
-          .summary-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
-          .summary-row.total { border-top: 2px solid #4F46E5; margin-top: 8px; padding-top: 12px; font-weight: 700; font-size: 15px; }
-          .footer { text-align: center; margin-top: 28px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #666; }
-          @media print { body { padding: 16px; } }
-        </style>
+        <style>${css}</style>
       </head>
       <body>${bodyHtml}</body>
     </html>
-  `);
+  `;
+}
+
+function openPrintWindow(title, bodyHtml, css) {
+  const printWindow = window.open("", "_blank", "width=800,height=900");
+  if (!printWindow) return;
+  printWindow.document.write(wrapPrintDocument(title, bodyHtml, css));
   printWindow.document.close();
   printWindow.focus();
   setTimeout(() => {
@@ -157,177 +235,388 @@ function openPrintWindow(title, bodyHtml) {
   }, 250);
 }
 
-function printQuotation(q) {
-  if (!q) return;
-  const linesHtml = (q.lines || [])
+function quotationBodyHtml(q, logoUrl) {
+  if (!q) return "";
+  const logo = logoUrl || "/images/cbass.png";
+  const descHtml = (l) => {
+    const included = (l.items || []).filter((i) => i.isIncluded !== false);
+    if (!included.length) return "";
+    return `<ul class="desc-list">${included.map((i) => `<li>${i.lineText || ""}</li>`).join("")}</ul>`;
+  };
+  const lineRows = (q.lines || [])
     .map(
       (l) => `
       <tr>
-        <td>
-          <strong>${l.packageName || "-"}</strong>
-          ${
-            (l.items || []).filter((i) => i.isIncluded !== false).length
-              ? `<ul class="items">${(l.items || [])
-                  .filter((i) => i.isIncluded !== false)
-                  .map((i) => `<li>${i.lineText || ""}</li>`)
-                  .join("")}</ul>`
-              : ""
-          }
-        </td>
-        <td style="text-align:right">${formatCurrency(l.unitPrice)}</td>
-        <td style="text-align:center">${l.qty ?? "-"}</td>
-        <td style="text-align:right">${formatCurrency(l.lineTotal)}</td>
+        <td class="product-cell"><strong>${l.packageName || "-"}</strong></td>
+        <td class="desc-cell">${descHtml(l)}</td>
+        <td class="num-cell">${formatCurrency(l.unitPrice)}</td>
+        <td class="num-cell center">${l.qty ?? "-"}</td>
+        <td class="num-cell"><strong>${formatCurrency(l.lineTotal)}</strong></td>
       </tr>`
     )
     .join("");
-  const addOnsHtml = (q.addOns || [])
+  const addOnRows = (q.addOns || [])
     .map(
       (a) => `
       <tr>
-        <td>${a.name || "-"} (Add-on)</td>
-        <td style="text-align:right">${formatCurrency(a.price)}</td>
-        <td style="text-align:center">${a.qty ?? "-"}</td>
-        <td style="text-align:right">${formatCurrency(a.lineTotal)}</td>
+        <td class="product-cell"><strong>${a.name || "-"}</strong></td>
+        <td class="desc-cell">Add-on</td>
+        <td class="num-cell">${formatCurrency(a.price)}</td>
+        <td class="num-cell center">${a.qty ?? "-"}</td>
+        <td class="num-cell"><strong>${formatCurrency(a.lineTotal)}</strong></td>
       </tr>`
     )
     .join("");
-
-  openPrintWindow(
-    `Quotation - ${q.quotationNo || ""}`,
-    `
-    <div class="header">
-      <div class="company">
-        <h1>Beyond Destiny</h1>
-        <p>Phone: 0779944812 / 0779944155</p>
-        <p>Email: contact@beyonddestinyweddings.com</p>
-        <p>No 27A, Skelton Road, Bambalapitiya, Sri Lanka</p>
-      </div>
-      <div class="doc-info">
-        <h2>QUOTATION</h2>
-        <p><strong>No:</strong> ${q.quotationNo || "-"}</p>
-        <p><strong>Date:</strong> ${formatDate(q.createdOn || q.eventDate)}</p>
-        <p><strong>Status:</strong> ${q.statusName || "-"}</p>
-      </div>
-    </div>
-    <div class="parties">
-      <div class="party">
-        <h3>Quotation For</h3>
-        <p><strong>${q.customerName || "-"}</strong></p>
-        ${q.customerMobileNo ? `<p>Phone: ${q.customerMobileNo}</p>` : ""}
-      </div>
-      <div class="party">
-        <h3>Event Details</h3>
-        <p><strong>${q.eventTypeName || "-"}</strong></p>
-        <p>${q.eventTime || ""} ${formatDate(q.eventDate)}</p>
-        ${q.venue ? `<p>${q.venue}</p>` : ""}
-        ${q.noOfGuests ? `<p>Guests: ${q.noOfGuests}</p>` : ""}
-      </div>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th style="width:50%">Product / Package</th>
-          <th style="text-align:right">Unit Price</th>
-          <th style="text-align:center">Qty</th>
-          <th style="text-align:right">Amount</th>
-        </tr>
-      </thead>
-      <tbody>${linesHtml}${addOnsHtml}</tbody>
-    </table>
-    <div class="totals">
-      <table>
-        <tr><td>Subtotal</td><td style="text-align:right">${formatCurrency(q.subTotal)}</td></tr>
-        ${
-          q.discountAmount > 0
-            ? `<tr><td>Discount</td><td style="text-align:right;color:green">-${formatCurrency(q.discountAmount)}</td></tr>`
-            : ""
-        }
-        ${
-          q.transportationCost > 0
-            ? `<tr><td>Transportation</td><td style="text-align:right">${formatCurrency(q.transportationCost)}</td></tr>`
-            : ""
-        }
-        <tr class="grand-total"><td><strong>Total</strong></td><td style="text-align:right"><strong>${formatCurrency(q.netTotal)}</strong></td></tr>
-      </table>
-    </div>
-    ${q.remark ? `<div style="margin-top:16px;padding:10px;background:#fef3c7;border-radius:4px"><strong>Note:</strong> ${q.remark}</div>` : ""}
-    <div class="footer">
-      <p>Thank you for choosing Beyond Destiny!</p>
-      <p>This quotation is valid for 30 days from the issue date.</p>
-    </div>`
-  );
-}
-
-function printInvoice({ quotation, payments, paidTotal, balance }) {
-  if (!quotation) return;
-  const paymentRows = (payments || [])
-    .map(
-      (p) => `
+  const discountRow =
+    q.discountAmount > 0
+      ? `
       <tr>
-        <td>${p.paymentNo || "-"}</td>
-        <td>${formatDate(p.approvedOn || p.createdOn)}</td>
-        <td>${p.paymentMethodName || "-"}${p.isAdvance ? " (Advance)" : ""}</td>
-        <td>${p.approvalStatusName || "-"}</td>
-        <td style="text-align:right">${formatCurrency(p.amount)}</td>
+        <td class="product-cell"><strong>Special Discount</strong></td>
+        <td class="desc-cell">Fixed fee discount</td>
+        <td class="num-cell"></td>
+        <td class="num-cell center"></td>
+        <td class="num-cell"><strong>-${formatCurrency(q.discountAmount)}</strong></td>
       </tr>`
-    )
-    .join("");
+      : "";
+  const transportRow =
+    q.transportationCost > 0
+      ? `
+      <tr>
+        <td class="product-cell"><strong>Transportation</strong></td>
+        <td class="desc-cell">Travel cost</td>
+        <td class="num-cell"></td>
+        <td class="num-cell center"></td>
+        <td class="num-cell"><strong>${formatCurrency(q.transportationCost)}</strong></td>
+      </tr>`
+      : "";
+  const shootStart = q.eventTime ? q.eventTime : "";
+  const shootEnd = q.eventEndTime ? ` - ${q.eventEndTime}` : "";
+  const shootTimeLine = shootStart || shootEnd ? `${shootStart}${shootEnd}` : "";
 
-  openPrintWindow(
-    `Invoice - ${quotation.quotationNo || ""}`,
-    `
-    <div class="header">
-      <div class="company">
-        <h1>Beyond Destiny</h1>
-        <p>Phone: 0779944812 / 0779944155</p>
-        <p>Email: contact@beyonddestinyweddings.com</p>
+  return `
+    <div class="logo-wrap">
+      <img src="${logo}" alt="Company logo" />
+    </div>
+    <div class="hr"></div>
+
+    <div class="top-grid">
+      <div>
+        <h1 class="doc-title">Quotation</h1>
+        <div class="kv"><span class="k">Quotation ID:</span><span class="v">${q.quotationNo || "-"}</span></div>
+        <div class="kv"><span class="k">Issue Date:</span><span class="v">${formatDate(q.createdOn || q.eventDate)}</span></div>
       </div>
-      <div class="doc-info">
-        <h2>INVOICE</h2>
-        <p><strong>Quotation:</strong> ${quotation.quotationNo || "-"}</p>
-        <p><strong>Date:</strong> ${formatDate(new Date())}</p>
+      <div class="right">
+        <div class="label">QUOTATION FOR</div>
+        <div class="line strong">${q.customerName || "-"}</div>
+        ${q.customerMobileNo ? `<div class="line">Phone number: ${q.customerMobileNo}</div>` : ""}
+        ${q.customerEmail ? `<div class="line">Email: ${q.customerEmail}</div>` : ""}
       </div>
     </div>
-    <div class="parties">
-      <div class="party">
-        <h3>Bill To</h3>
-        <p><strong>${quotation.customerName || "-"}</strong></p>
-        ${quotation.customerMobileNo ? `<p>${quotation.customerMobileNo}</p>` : ""}
+
+    <div class="top-grid" style="margin-top:24px;">
+      <div>
+        <div class="label">FROM</div>
+        <div class="line strong">Beyond Destiny</div>
+        <div class="line">Phone number: 0779944812 / 0779944155</div>
+        <div class="line">Email: contact@beyonddestinyweddings.com</div>
+        <div class="line">No 27A, Skelton Road, Bambalapitiya., Sri Lanka</div>
       </div>
-      <div class="party">
-        <h3>Event</h3>
-        <p><strong>${quotation.eventTypeName || "-"}</strong></p>
-        <p>${formatDate(quotation.eventDate)}</p>
-        ${quotation.venue ? `<p>${quotation.venue}</p>` : ""}
+      <div class="right">
+        <div class="line strong">${q.eventTypeName || "-"}</div>
+        <div class="line">Shoot</div>
+        ${shootTimeLine ? `<div class="line">${shootTimeLine} | ${formatDate(q.eventDate)}</div>` : `<div class="line">${formatDate(q.eventDate)}</div>`}
+        ${q.venue ? `<div class="line">${q.venue}</div>` : ""}
+        ${q.noOfGuests ? `<div class="line">Guests: ${q.noOfGuests}</div>` : ""}
       </div>
     </div>
-    <div class="summary">
-      <div class="summary-row"><span>Net total</span><span>${formatCurrency(quotation.netTotal)}</span></div>
-      <div class="summary-row"><span>Paid (approved)</span><span>${formatCurrency(paidTotal)}</span></div>
-      <div class="summary-row total"><span>Balance</span><span>${formatCurrency(balance)}</span></div>
-    </div>
-    <table>
+
+    <table class="items">
       <thead>
         <tr>
-          <th>Payment No</th>
-          <th>Date</th>
-          <th>Method</th>
-          <th>Status</th>
-          <th style="text-align:right">Amount</th>
+          <th>Product / Package</th>
+          <th>Description</th>
+          <th class="num-cell">Unit Price</th>
+          <th class="num-cell center">Quantity</th>
+          <th class="num-cell">Amount</th>
         </tr>
       </thead>
       <tbody>
-        ${paymentRows || `<tr><td colspan="5" style="text-align:center">No payments recorded</td></tr>`}
+        ${lineRows}${addOnRows}${discountRow}${transportRow}
+        <tr class="subtotal-row">
+          <td colspan="4">Subtotal</td>
+          <td class="num-cell"><strong>${formatCurrency(q.subTotal)}</strong></td>
+        </tr>
+        <tr class="total-row">
+          <td colspan="4"><strong>Total</strong></td>
+          <td class="num-cell"><strong>${formatCurrency(q.netTotal)}</strong></td>
+        </tr>
       </tbody>
     </table>
+    ${q.remark ? `<div class="note"><strong>Note:</strong> ${q.remark}</div>` : ""}
     <div class="footer">
-      <p>Beyond Destiny Photography</p>
-      <p>Thank you for your business.</p>
-    </div>`
-  );
+      <p>Thank you for choosing Beyond Destiny.</p>
+      <p>This quotation is valid for 30 days from the issue date.</p>
+    </div>`;
 }
 
-function TasksTabPanel({ reservationId, tasksEnabled }) {
+function quotationDocumentHtml(q, logoUrl) {
+  return wrapPrintDocument(`Quotation - ${q?.quotationNo || ""}`, quotationBodyHtml(q, logoUrl));
+}
+
+function printQuotation(q, logoUrl) {
+  if (!q) return;
+  openPrintWindow(`Quotation - ${q.quotationNo || ""}`, quotationBodyHtml(q, logoUrl));
+}
+
+const INVOICE_DOC_CSS = `
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    color: #1a1a1a;
+    padding: 48px 56px;
+    max-width: 850px;
+    margin: 0 auto;
+    background: #fff;
+  }
+  .logo { font-size: 22px; font-weight: 700; letter-spacing: 3px; line-height: 1.25; text-transform: uppercase; }
+  .logo-wrap { width: 170px; }
+  .logo-wrap img { width: 170px; height: auto; object-fit: contain; display: block; }
+  .hr { border-top: 1px solid #ccc; margin: 20px 0 28px; }
+  .doc-title { font-size: 26px; font-weight: 700; margin-bottom: 14px; }
+  .top-grid { display: flex; justify-content: space-between; gap: 24px; }
+  .top-grid .right { text-align: right; }
+  .label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #555;
+    margin-bottom: 6px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+  }
+  .kv { font-size: 12.5px; margin-bottom: 3px; font-family: 'Segoe UI', Tahoma, sans-serif; }
+  .kv .k { font-weight: 700; margin-right: 4px; }
+  .line { font-size: 12.5px; margin-bottom: 3px; font-family: 'Segoe UI', Tahoma, sans-serif; }
+  .line.strong { font-weight: 700; font-family: Georgia, serif; font-size: 13.5px; }
+  table.items, table.status {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 32px;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+  }
+  table.items th, table.status th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: #555;
+    padding: 10px 8px;
+    border-bottom: 1px solid #ccc;
+  }
+  table.items td, table.status td {
+    font-size: 12.5px;
+    padding: 12px 8px;
+    border-bottom: 1px solid #eee;
+    vertical-align: top;
+  }
+  .product-cell { width: 22%; }
+  .desc-cell { color: #333; }
+  .desc-list { margin: 4px 0 0 16px; font-size: 11.5px; color: #444; }
+  .desc-list li { margin-bottom: 2px; }
+  .num-cell { text-align: right; white-space: nowrap; }
+  .num-cell.center { text-align: center; }
+  .subtotal-row td { border-bottom: none; padding-top: 16px; }
+  .total-row td { border-top: 2px solid #1a1a1a; border-bottom: none; font-size: 14px; padding-top: 10px; }
+  table.status { margin-top: 36px; }
+  .balance-row td { border-top: 2px solid #1a1a1a; border-bottom: none; font-size: 14px; padding-top: 10px; }
+  @media print { body { padding: 24px 32px; } }
+`;
+
+function invoiceBodyHtml({ quotation: q, payments, balance, logoUrl }) {
+  if (!q) return "";
+
+  const issueDate = formatDate(new Date());
+
+  const packageDescriptionHtml = (l) => {
+    const included = (l.items || []).filter((i) => i.isIncluded !== false);
+    if (!included.length) return "";
+    return `<ul class="desc-list">${included.map((i) => `<li>${i.lineText || ""}</li>`).join("")}</ul>`;
+  };
+
+  const lineRows = (q.lines || [])
+    .map(
+      (l) => `
+      <tr>
+        <td class="product-cell"><strong>${l.packageName || "-"}</strong></td>
+        <td class="desc-cell">${packageDescriptionHtml(l)}</td>
+        <td class="num-cell">${formatCurrency(l.unitPrice)}</td>
+        <td class="num-cell center">${l.qty ?? "-"}</td>
+        <td class="num-cell"><strong>${formatCurrency(l.lineTotal)}</strong></td>
+      </tr>`
+    )
+    .join("");
+
+  const addOnRows = (q.addOns || [])
+    .map(
+      (a) => `
+      <tr>
+        <td class="product-cell"><strong>${a.name || "-"}</strong></td>
+        <td class="desc-cell">Add-on</td>
+        <td class="num-cell">${formatCurrency(a.price)}</td>
+        <td class="num-cell center">${a.qty ?? "-"}</td>
+        <td class="num-cell"><strong>${formatCurrency(a.lineTotal)}</strong></td>
+      </tr>`
+    )
+    .join("");
+
+  const discountRow =
+    q.discountAmount > 0
+      ? `
+      <tr>
+        <td class="product-cell"><strong>Special Discount</strong></td>
+        <td class="desc-cell">Fixed fee discount</td>
+        <td class="num-cell"></td>
+        <td class="num-cell center"></td>
+        <td class="num-cell"><strong>-${formatCurrency(q.discountAmount)}</strong></td>
+      </tr>`
+      : "";
+
+  const transportRow =
+    q.transportationCost > 0
+      ? `
+      <tr>
+        <td class="product-cell"><strong>Transportation</strong></td>
+        <td class="desc-cell">Travel cost</td>
+        <td class="num-cell"></td>
+        <td class="num-cell center"></td>
+        <td class="num-cell"><strong>${formatCurrency(q.transportationCost)}</strong></td>
+      </tr>`
+      : "";
+
+  // Payment status rows, styled like the PDF's Status / Due / Last Action / Amount table
+  const paymentStatusRows = (payments || [])
+    .map((p) => {
+      const isApproved = String(p.approvalStatusName || "").toLowerCase().includes("approv");
+      const statusLabel = isApproved ? "Paid" : p.approvalStatusName || "Unpaid";
+      const lastAction = p.approvedOn ? `Paid on ${formatDate(p.approvedOn)}` : "-";
+      return `
+      <tr>
+        <td><strong>${statusLabel}</strong></td>
+        <td>${issueDate}</td>
+        <td>${lastAction}</td>
+        <td class="num-cell"><strong>${formatCurrency(p.amount)}</strong></td>
+      </tr>`;
+    })
+    .join("");
+
+  const unpaidRow =
+    balance > 0
+      ? `
+      <tr>
+        <td><strong>Unpaid</strong></td>
+        <td>${issueDate}</td>
+        <td>-</td>
+        <td class="num-cell"><strong>${formatCurrency(balance)}</strong></td>
+      </tr>`
+      : "";
+
+  const shootStart = q.eventTime ? q.eventTime : "";
+  const shootEnd = q.eventEndTime ? ` - ${q.eventEndTime}` : "";
+  const shootTimeLine = shootStart || shootEnd ? `${shootStart}${shootEnd}` : "";
+
+  const logo = logoUrl
+    ? `<div class="logo-wrap"><img src="${logoUrl}" alt="Company logo" /></div>`
+    : `<div class="logo">BEYOND<br/>DESTINY</div>`;
+
+  return `
+    ${logo}
+    <div class="hr"></div>
+
+    <div class="top-grid">
+      <div>
+        <h1 class="doc-title">Invoice</h1>
+        <div class="kv"><span class="k">Invoice ID:</span><span class="v">${q.quotationNo || "-"}</span></div>
+        <div class="kv"><span class="k">Issue Date:</span><span class="v">${issueDate}</span></div>
+      </div>
+      <div class="right">
+        <div class="label">INVOICE FOR</div>
+        <div class="line strong">${q.customerName || "-"}</div>
+        ${q.customerMobileNo ? `<div class="line">Phone number: ${q.customerMobileNo}</div>` : ""}
+        ${q.customerEmail ? `<div class="line">Email: ${q.customerEmail}</div>` : ""}
+      </div>
+    </div>
+
+    <div class="top-grid" style="margin-top:24px;">
+      <div>
+        <div class="label">FROM</div>
+        <div class="line strong">Beyond Destiny</div>
+        <div class="line">Phone number: 0779944812 / 0779944155</div>
+        <div class="line">Email: contact@beyonddestinyweddings.com</div>
+        <div class="line">No 27A, Skelton Road, Bambalapitiya., Sri Lanka</div>
+      </div>
+      <div class="right">
+        <div class="line strong">${q.eventTypeName || "-"}</div>
+        <div class="line">Shoot</div>
+        ${shootTimeLine ? `<div class="line">${shootTimeLine} | ${formatDate(q.eventDate)}</div>` : `<div class="line">${formatDate(q.eventDate)}</div>`}
+        ${q.venue ? `<div class="line">${q.venue}</div>` : ""}
+      </div>
+    </div>
+
+    <table class="items">
+      <thead>
+        <tr>
+          <th>Product / Package</th>
+          <th>Description</th>
+          <th class="num-cell">Unit Price</th>
+          <th class="num-cell center">Quantity</th>
+          <th class="num-cell">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${lineRows}${addOnRows}${discountRow}${transportRow}
+        <tr class="subtotal-row">
+          <td colspan="4">Subtotal</td>
+          <td class="num-cell"><strong>${formatCurrency(q.subTotal)}</strong></td>
+        </tr>
+        <tr class="total-row">
+          <td colspan="4"><strong>Total</strong></td>
+          <td class="num-cell"><strong>${formatCurrency(q.netTotal)}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table class="status">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Due</th>
+          <th>Last Action</th>
+          <th class="num-cell">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${paymentStatusRows}${unpaidRow}
+        <tr class="balance-row">
+          <td colspan="3"><strong>Balance due</strong></td>
+          <td class="num-cell"><strong>${formatCurrency(balance)}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+}
+
+function invoiceDocumentHtml(args) {
+  const q = args?.quotation;
+  return wrapPrintDocument(`Invoice - ${q?.quotationNo || ""}`, invoiceBodyHtml(args), INVOICE_DOC_CSS);
+}
+
+function printInvoice(args) {
+  if (!args?.quotation) return;
+  openPrintWindow(`Invoice - ${args.quotation.quotationNo || ""}`, invoiceBodyHtml(args), INVOICE_DOC_CSS);
+}
+
+function TasksTabPanel({ reservationId, tasksEnabled, userAgentType, isAdminUser }) {
   const [refreshKey, setRefreshKey] = useState(0);
   return (
     <>
@@ -355,7 +644,13 @@ function TasksTabPanel({ reservationId, tasksEnabled }) {
         enabled={tasksEnabled}
         onChanged={() => setRefreshKey((k) => k + 1)}
       />
-      <TaskAssignment reservationId={reservationId} refreshKey={refreshKey} enabled={tasksEnabled} />
+      <TaskAssignment
+        reservationId={reservationId}
+        refreshKey={refreshKey}
+        enabled={tasksEnabled}
+        userAgentType={userAgentType}
+        isAdminUser={isAdminUser}
+      />
     </>
   );
 }
@@ -364,9 +659,9 @@ function TasksTabPanel({ reservationId, tasksEnabled }) {
  * Sidebar tabs: Quotation | Invoice (payments) | Tasks
  * Visibility rules:
  * - Admin users (type 0 or 1) OR users with no agent type: see all tabs
- * - Payment Handler (agent type 2): sees Quotation and Invoice tabs
- * - After Wedding Manager (agent type 3): sees Tasks tab
- * - Customer Coordinator (agent type 1): sees none (no sidebar tabs)
+ * - Customer Coordinator (1) and Payment Handler (2): see approved quotation
+ * - Payment Handler (2): also sees Invoice
+ * - After Wedding Manager (3): sees Tasks
  */
 export default function ReservationDetailTabs({ reservationId, currentAgentType, userAgentType, isAdminUser }) {
   const [taskAgentTypes, setTaskAgentTypes] = useState([]);
@@ -375,12 +670,23 @@ export default function ReservationDetailTabs({ reservationId, currentAgentType,
   const [quotations, setQuotations] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [payments, setPayments] = useState([]);
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [previewQuote, setPreviewQuote] = useState(null);
+  const [previewKind, setPreviewKind] = useState("quotation");
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [companyLogo, setCompanyLogo] = useState("/images/cbass.png");
 
-  // Visibility: admin or no agent type assigned = see all
+  const openQuotationPreview = (q) => {
+    if (!q) return;
+    setPreviewKind("quotation");
+    setPreviewQuote(q);
+    setPreviewHtml(quotationDocumentHtml(q, companyLogo));
+    setPreviewOpen(true);
+  };
+
   const canSeeAll = isAdminUser || userAgentType === null || userAgentType === undefined;
-  // Payment Handler (2) sees payment info (Quotation/Invoice)
-  const canSeePaymentTabs = canSeeAll || userAgentType === 2;
-  // After Wedding Manager (3) sees Tasks
+  const canSeeQuotationTab = canSeeAll || userAgentType === 1 || userAgentType === 2;
+  const canSeeInvoiceTab = canSeeAll || userAgentType === 2;
   const canSeeTasks = canSeeAll || userAgentType === 3;
 
   useEffect(() => {
@@ -389,6 +695,19 @@ export default function ReservationDetailTabs({ reservationId, currentAgentType,
         if (data?.statusCode === 200 || data?.statusCode === "SUCCESS") {
           setTaskAgentTypes(data.result || data.Result || []);
         }
+      })
+      .catch(() => {});
+
+    const warehouse = typeof window !== "undefined" ? localStorage.getItem("warehouse") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (!warehouse || !token) return;
+    fetch(`${BASE_URL}/Company/GetCompanyLogoByWarehouseId?warehouseId=${warehouse}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        const url = data?.logoUrl || data?.LogoUrl || data?.result || "";
+        if (url && typeof url === "string") setCompanyLogo(url);
       })
       .catch(() => {});
   }, []);
@@ -439,9 +758,14 @@ export default function ReservationDetailTabs({ reservationId, currentAgentType,
     load();
   }, [load]);
 
+  const visibleQuotations = useMemo(() => {
+    if (canSeeAll) return quotations;
+    return quotations.filter((q) => isApprovedQuotation(q.statusName));
+  }, [quotations, canSeeAll]);
+
   const selected = useMemo(
-    () => quotations.find((q) => q.id === selectedId) || quotations[0] || null,
-    [quotations, selectedId]
+    () => visibleQuotations.find((q) => q.id === selectedId) || visibleQuotations[0] || null,
+    [visibleQuotations, selectedId]
   );
 
   const paidTotal = payments
@@ -454,15 +778,17 @@ export default function ReservationDetailTabs({ reservationId, currentAgentType,
   // Build visible tabs based on permissions
   const visibleTabs = useMemo(() => {
     const tabs = [];
-    if (canSeePaymentTabs) {
+    if (canSeeQuotationTab) {
       tabs.push({ key: "quotation", label: "Quotation", icon: <RequestQuoteIcon sx={{ fontSize: 16 }} /> });
+    }
+    if (canSeeInvoiceTab) {
       tabs.push({ key: "invoice", label: "Invoice", icon: <ReceiptLongIcon sx={{ fontSize: 16 }} /> });
     }
     if (canSeeTasks) {
       tabs.push({ key: "tasks", label: "Tasks", icon: <AssignmentIcon sx={{ fontSize: 16 }} /> });
     }
     return tabs;
-  }, [canSeePaymentTabs, canSeeTasks]);
+  }, [canSeeQuotationTab, canSeeInvoiceTab, canSeeTasks]);
 
   const currentTabKey = visibleTabs[tab]?.key || visibleTabs[0]?.key;
 
@@ -497,9 +823,11 @@ export default function ReservationDetailTabs({ reservationId, currentAgentType,
         <>
           {currentTabKey === "quotation" && (
             <Box sx={{ pt: 1.5 }}>
-              {quotations.length === 0 ? (
+              {visibleQuotations.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" align="center" py={2}>
-                  No quotations linked
+                  {quotations.length === 0
+                    ? "No quotations linked"
+                    : "Quotation will appear here after it is approved"}
                 </Typography>
               ) : (
                 <Stack spacing={1.25}>
@@ -508,7 +836,7 @@ export default function ReservationDetailTabs({ reservationId, currentAgentType,
                       Related by mobile (not linked to reservation)
                     </Typography>
                   )}
-                  {quotations.map((q) => {
+                  {visibleQuotations.map((q) => {
                     const active = q.id === selected?.id;
                     return (
                       <Paper
@@ -535,12 +863,23 @@ export default function ReservationDetailTabs({ reservationId, currentAgentType,
                               color={statusColor(q.statusName)}
                               sx={{ height: 20, fontSize: 10 }}
                             />
+                            <Tooltip title="Preview quotation">
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openQuotationPreview(q);
+                                }}
+                              >
+                                <PreviewIcon sx={{ fontSize: 16 }} />
+                              </IconButton>
+                            </Tooltip>
                             <Tooltip title="Print quotation">
                               <IconButton
                                 size="small"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  printQuotation(q);
+                                  printQuotation(q, companyLogo);
                                 }}
                               >
                                 <PrintIcon sx={{ fontSize: 16 }} />
@@ -569,14 +908,24 @@ export default function ReservationDetailTabs({ reservationId, currentAgentType,
                         <Typography variant="caption" fontWeight={700}>
                           Quotation details
                         </Typography>
-                        <Button
-                          size="small"
-                          startIcon={<PrintIcon />}
-                          onClick={() => printQuotation(selected)}
-                          sx={{ textTransform: "none", fontSize: 12 }}
-                        >
-                          Print
-                        </Button>
+                        <Stack direction="row" spacing={0.5}>
+                          <Button
+                            size="small"
+                            startIcon={<PreviewIcon />}
+                            onClick={() => openQuotationPreview(selected)}
+                            sx={{ textTransform: "none", fontSize: 12 }}
+                          >
+                            Preview
+                          </Button>
+                          <Button
+                            size="small"
+                            startIcon={<PrintIcon />}
+                            onClick={() => printQuotation(selected, companyLogo)}
+                            sx={{ textTransform: "none", fontSize: 12 }}
+                          >
+                            Print
+                          </Button>
+                        </Stack>
                       </Box>
                       <Table size="small">
                         <TableHead>
@@ -668,16 +1017,57 @@ export default function ReservationDetailTabs({ reservationId, currentAgentType,
                     <Typography variant="caption" color="text.secondary">
                       Invoice ({selected.quotationNo || "-"})
                     </Typography>
-                    <Button
-                      size="small"
-                      startIcon={<PrintIcon />}
-                      onClick={() =>
-                        printInvoice({ quotation: selected, payments, paidTotal, balance })
-                      }
-                      sx={{ textTransform: "none", fontSize: 12 }}
-                    >
-                      Print invoice
-                    </Button>
+                    <Stack direction="row" spacing={0.5}>
+                      <Button
+                        size="small"
+                        startIcon={<PreviewIcon />}
+                        onClick={() => {
+                          setPreviewKind("invoice");
+                          setPreviewQuote(selected);
+                          setPreviewHtml(
+                            invoiceDocumentHtml({
+                              quotation: selected,
+                              payments,
+                              paidTotal,
+                              balance,
+                              logoUrl: companyLogo,
+                            })
+                          );
+                          setPreviewOpen(true);
+                        }}
+                        sx={{ textTransform: "none", fontSize: 12 }}
+                      >
+                        Preview
+                      </Button>
+                      <Button
+                        size="small"
+                        startIcon={<PrintIcon />}
+                        onClick={() =>
+                          printInvoice({
+                            quotation: selected,
+                            payments,
+                            paidTotal,
+                            balance,
+                            logoUrl: companyLogo,
+                          })
+                        }
+                        sx={{ textTransform: "none", fontSize: 12 }}
+                      >
+                        Print
+                      </Button>
+                      {canSeeInvoiceTab && (
+                        <RecordPayment
+                          quotation={selected}
+                          fetchItems={load}
+                          canRecordPayment
+                          paidApproved={paidTotal}
+                          pendingAmount={payments
+                            .filter((p) => String(p.approvalStatusName || "").toLowerCase().includes("pend"))
+                            .reduce((sum, p) => sum + Number(p.amount || 0), 0)}
+                          variant="button"
+                        />
+                      )}
+                    </Stack>
                   </Box>
                   <Stack spacing={0.5} mt={0.75}>
                     <Box display="flex" justifyContent="space-between">
@@ -741,7 +1131,11 @@ export default function ReservationDetailTabs({ reservationId, currentAgentType,
                       </Box>
                       <Typography variant="caption" color="text.secondary" display="block">
                         {formatDate(p.createdOn)} • {p.paymentMethodName || "-"}
-                        {p.isAdvance ? " • Advance" : ""}
+                        {p.isAdvance
+                          ? " • Advance"
+                          : String(p.remark || "").toLowerCase().includes("final")
+                            ? " • Final"
+                            : " • Installment"}
                       </Typography>
                       <Typography variant="body2" fontWeight={700} color="primary.main" mt={0.5}>
                         {money(p.amount)}
@@ -755,11 +1149,55 @@ export default function ReservationDetailTabs({ reservationId, currentAgentType,
 
           {currentTabKey === "tasks" && (
             <Box sx={{ pt: 1.5 }}>
-              <TasksTabPanel reservationId={reservationId} tasksEnabled={tasksEnabled} />
+              <TasksTabPanel
+                reservationId={reservationId}
+                tasksEnabled={tasksEnabled}
+                userAgentType={userAgentType}
+                isAdminUser={isAdminUser}
+              />
             </Box>
           )}
         </>
       )}
+
+      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1, py: 1.25 }}>
+          <PreviewIcon color="primary" />
+          {previewKind === "invoice" ? "Invoice preview" : "Quotation preview"}
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0, bgcolor: "#f1f5f9" }}>
+          {previewHtml ? (
+            <iframe
+              title={previewKind === "invoice" ? "Invoice preview" : "Quotation preview"}
+              srcDoc={previewHtml}
+              style={{ width: "100%", height: "70vh", border: 0, background: "#fff" }}
+            />
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPreviewOpen(false)}>Close</Button>
+          <Button
+            variant="contained"
+            startIcon={<PrintIcon />}
+            onClick={() => {
+              if (!previewQuote) return;
+              if (previewKind === "invoice") {
+                printInvoice({
+                  quotation: previewQuote,
+                  payments,
+                  paidTotal,
+                  balance,
+                  logoUrl: companyLogo,
+                });
+              } else {
+                printQuotation(previewQuote, companyLogo);
+              }
+            }}
+          >
+            Print
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
   );
 }

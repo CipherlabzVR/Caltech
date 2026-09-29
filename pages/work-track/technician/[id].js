@@ -57,6 +57,9 @@ import FreeBreakfastIcon from "@mui/icons-material/FreeBreakfast";
 import ClockInOutModal from "@/components/work-track/ClockInOutModal";
 import CameraCaptureModal from "@/components/work-track/CameraCaptureModal";
 import TechnicianNotesCard from "@/components/work-track/TechnicianNotesCard";
+import { parseChecklistImageUrls } from "@/components/work-track/sharedViewHelpers";
+import PhotoLibraryIcon from "@mui/icons-material/PhotoLibrary";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import BASE_URL from "Base/api";
 import { formatDate } from "@/components/utils/formatHelper";
 import IsAppSettingEnabled from "@/components/utils/IsAppSettingEnabled";
@@ -307,7 +310,8 @@ export default function TechnicianWorkTrackDetailView() {
   }, [id, isTimeTrackingHidden]);
 
   useEffect(() => {
-    if (detail && currentUserId && detail.assignedTechnicianId !== currentUserId) {
+    const assignedId = detail?.assignedTechnicianId ?? detail?.AssignedTechnicianId;
+    if (detail && currentUserId && Number(assignedId) !== Number(currentUserId)) {
       toast("You are not assigned to this work track", { type: "error" });
       router.push("/work-track/technician");
     }
@@ -1001,6 +1005,8 @@ export default function TechnicianWorkTrackDetailView() {
 
   const handleCameraCapture = async (imageData) => {
     if (!cameraItemId) return;
+    const imageDatas = (Array.isArray(imageData) ? imageData : [imageData]).filter(Boolean);
+    if (imageDatas.length === 0) return;
 
     try {
       const response = await fetch(`${BASE_URL}/WorkTrackChecklist/UploadChecklistItemImage`, {
@@ -1009,19 +1015,54 @@ export default function TechnicianWorkTrackDetailView() {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ id: cameraItemId, imageData, workTrackDetailId: Number(id) }),
+        body: JSON.stringify({
+          id: cameraItemId,
+          imageData: imageDatas[0],
+          imageDatas,
+          workTrackDetailId: Number(id),
+        }),
       });
 
       const result = await response.json();
       if (result?.statusCode === 200 || response.ok) {
         await fetchChecklists();
-        toast("Photo captured and uploaded successfully!", { type: "success" });
+        toast(
+          imageDatas.length === 1 ? "Photo uploaded successfully!" : `${imageDatas.length} photos uploaded successfully!`,
+          { type: "success" }
+        );
       } else {
         toast(result?.message || "Failed to upload photo", { type: "error" });
       }
     } catch (error) {
       console.error("Error uploading photo:", error);
       toast("Failed to upload photo", { type: "error" });
+    }
+  };
+
+  const handleDeleteItemImage = async (itemId, imageUrl) => {
+    try {
+      const response = await fetch(`${BASE_URL}/WorkTrackChecklist/DeleteChecklistItemImage`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: itemId,
+          imageUrl,
+          workTrackDetailId: Number(id),
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (result?.statusCode === 200 || response.ok) {
+        await fetchChecklists();
+        toast("Photo deleted!", { type: "success" });
+      } else {
+        toast(result?.message || "Failed to delete photo", { type: "error" });
+      }
+    } catch (error) {
+      console.error("Error deleting photo:", error);
+      toast("Failed to delete photo", { type: "error" });
     }
   };
 
@@ -1821,28 +1862,55 @@ export default function TechnicianWorkTrackDetailView() {
                         {/* Image Upload */}
                         {item.itemType === "Image" && (
                           <Box sx={{ ml: isMobile ? 4.5 : 4, mt: 1 }}>
-                            {item.imageUrl ? (
+                            {(() => {
+                              const imageUrls = parseChecklistImageUrls(item.imageUrl);
+                              const canEditImages = isTimeTrackingHidden || (clockedIn && workSummary?.currentStatus === "Started");
+                              return imageUrls.length > 0 ? (
                               <Box>
-                                <img
-                                  src={item.imageUrl}
-                                  alt={item.title}
-                                  style={{
-                                    maxWidth: "100%",
-                                    maxHeight: isMobile ? 150 : 200,
-                                    border: "1px solid #ddd",
-                                    borderRadius: 4,
-                                    display: "block",
-                                  }}
-                                />
-                                {(isTimeTrackingHidden || (clockedIn && workSummary?.currentStatus === "Started")) && (
-                                  <Box mt={1}>
+                                <Box display="flex" gap={1} flexWrap="wrap">
+                                  {imageUrls.map((url) => (
+                                    <Box key={url} sx={{ position: "relative" }}>
+                                      <Box
+                                        component="img"
+                                        src={url}
+                                        alt={item.title}
+                                        onClick={() => window.open(url, "_blank")}
+                                        sx={{
+                                          width: isMobile ? 110 : 140,
+                                          height: isMobile ? 110 : 140,
+                                          objectFit: "cover",
+                                          border: "1px solid #ddd",
+                                          borderRadius: 1,
+                                          display: "block",
+                                          cursor: "pointer",
+                                        }}
+                                      />
+                                      {canEditImages && (
+                                        <IconButton
+                                          size="small"
+                                          onClick={() => handleDeleteItemImage(item.id, url)}
+                                          sx={{
+                                            position: "absolute",
+                                            top: 4,
+                                            right: 4,
+                                            bgcolor: "rgba(255,255,255,0.9)",
+                                          }}
+                                        >
+                                          <DeleteOutlineIcon fontSize="small" color="error" />
+                                        </IconButton>
+                                      )}
+                                    </Box>
+                                  ))}
+                                </Box>
+                                {canEditImages && (
+                                  <Box mt={1} display="flex" gap={1} flexWrap="wrap">
                                     <Button
                                       variant="outlined"
                                       size="small"
                                       startIcon={<CameraAltIcon />}
                                       onClick={() => openCameraModal(item.id)}
                                     >
-                                      Retake Photo
+                                      Add Photos
                                     </Button>
                                   </Box>
                                 )}
@@ -1858,22 +1926,23 @@ export default function TechnicianWorkTrackDetailView() {
                               >
                                 <CameraAltIcon sx={{ fontSize: 40, color: "#aaa", mb: 1 }} />
                                 <Typography variant="body2" color="textSecondary" gutterBottom>
-                                  {!isTimeTrackingHidden && (!clockedIn || workSummary?.currentStatus !== "Started")
+                                  {!canEditImages
                                     ? "No photo captured"
-                                    : "Tap to capture photo"}
+                                    : "Take a photo or choose multiple from gallery"}
                                 </Typography>
-                                {(isTimeTrackingHidden || (clockedIn && workSummary?.currentStatus === "Started")) && (
+                                {canEditImages && (
                                   <Button
                                     variant="contained"
-                                    startIcon={<CameraAltIcon />}
+                                    startIcon={<PhotoLibraryIcon />}
                                     sx={{ mt: 1 }}
                                     onClick={() => openCameraModal(item.id)}
                                   >
-                                    Take Photo
+                                    Add Photos
                                   </Button>
                                 )}
                               </Box>
-                            )}
+                            );
+                            })()}
                           </Box>
                         )}
                       </Box>
@@ -1903,7 +1972,7 @@ export default function TechnicianWorkTrackDetailView() {
           setCameraItemId(null);
         }}
         onCapture={handleCameraCapture}
-        title="Capture Work Photo"
+        title="Add Work Photos"
       />
 
       {/* Session History Modal */}

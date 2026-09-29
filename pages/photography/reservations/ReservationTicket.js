@@ -15,12 +15,11 @@ import {
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import EventIcon from "@mui/icons-material/Event";
+import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import PlaceIcon from "@mui/icons-material/Place";
 import GroupsIcon from "@mui/icons-material/Groups";
 import PhoneIcon from "@mui/icons-material/Phone";
 import PersonIcon from "@mui/icons-material/Person";
-import CakeIcon from "@mui/icons-material/Cake";
-import FavoriteIcon from "@mui/icons-material/Favorite";
 import { toast } from "react-toastify";
 import { formatDate } from "@/components/utils/formatHelper";
 import useApi from "@/components/utils/useApi";
@@ -28,6 +27,7 @@ import ReservationNotes from "./ReservationNotes";
 import ReservationHandover from "./ReservationHandover";
 import ReservationDetailTabs from "./ReservationDetailTabs";
 import photographyReservationNoteService from "@/Services/photographyReservationNoteService";
+import { resolveEventTypeIcon } from "@/utils/photography/eventTypeIcons";
 
 const CEREMONY_TYPES = [
   { value: 1, label: "Poruwa" },
@@ -98,8 +98,13 @@ export default function ReservationTicket({ item, open, onClose, onRefresh }) {
 
   if (!item) return null;
 
-  const isWedding = (item.eventTypeName || "").toLowerCase().includes("wedding") || item.eventType === 1;
-  const headerBg = isWedding
+  const typeMeta = eventTypes.find((type) => Number(type.id) === Number(item.eventType));
+  const usesWeddingCapacity =
+    typeMeta?.consumesWeddingCapacity || typeMeta?.ConsumesWeddingCapacity;
+  const EventTypeIcon = resolveEventTypeIcon(
+    typeMeta?.iconName ?? typeMeta?.IconName ?? item.iconName ?? item.IconName
+  );
+  const headerBg = usesWeddingCapacity
     ? "linear-gradient(135deg, #312E81 0%, #4F46E5 100%)"
     : "linear-gradient(135deg, #0F766E 0%, #0891B2 100%)";
 
@@ -151,7 +156,7 @@ export default function ReservationTicket({ item, open, onClose, onRefresh }) {
               />
               <Chip
                 size="small"
-                icon={isWedding ? <FavoriteIcon /> : <CakeIcon />}
+                icon={<EventTypeIcon />}
                 label={item.eventTypeName}
                 sx={{ bgcolor: "rgba(255,255,255,0.25)", color: "#fff", fontWeight: 600, "& .MuiChip-icon": { color: "#fff" } }}
               />
@@ -160,6 +165,16 @@ export default function ReservationTicket({ item, open, onClose, onRefresh }) {
                   size="small"
                   label={item.currentStatusName}
                   sx={{ bgcolor: "rgba(255,255,255,0.3)", color: "#fff", fontWeight: 600 }}
+                />
+              )}
+              {(item.isGoogleCalendarSynced ||
+                item.IsGoogleCalendarSynced ||
+                /\[GCal:/i.test(item.remark || item.Remark || "")) && (
+                <Chip
+                  size="small"
+                  icon={<EventAvailableIcon />}
+                  label="Calendar synced"
+                  sx={{ bgcolor: "rgba(255,255,255,0.28)", color: "#fff", fontWeight: 600, "& .MuiChip-icon": { color: "#fff" } }}
                 />
               )}
             </Stack>
@@ -310,7 +325,12 @@ export default function ReservationTicket({ item, open, onClose, onRefresh }) {
                 }}
                 userAgentType={userAgentType}
               />
-              <ReservationDetailTabs reservationId={item.id} currentAgentType={item.currentAgentType} />
+              <ReservationDetailTabs
+                reservationId={item.id}
+                currentAgentType={item.currentAgentType}
+                userAgentType={userAgentType}
+                isAdminUser={typeof window !== "undefined" && [0, 1].includes(Number(localStorage.getItem("type")))}
+              />
               <ReservationNotes reservationId={item.id} hideQuotations />
             </Box>
           </Grid>
